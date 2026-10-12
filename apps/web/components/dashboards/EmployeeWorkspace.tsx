@@ -592,9 +592,9 @@ export function EmployeeWorkspace({
                 flex: "1 1 240px",
                 padding: "8px 12px",
                 borderRadius: "8px",
-                border: "1px solid var(--border, #334155)",
-                background: "var(--surface, #0f172a)",
-                color: "var(--text, #f8fafc)",
+                border: "1px solid var(--border, #DCE5E1)",
+                background: "var(--surface, #FFFFFF)",
+                color: "var(--text, #172322)",
                 fontSize: "12px",
               }}
             />
@@ -604,9 +604,9 @@ export function EmployeeWorkspace({
               style={{
                 padding: "8px 12px",
                 borderRadius: "8px",
-                border: "1px solid var(--border, #334155)",
-                background: "var(--surface, #0f172a)",
-                color: "var(--text, #f8fafc)",
+                border: "1px solid var(--border, #DCE5E1)",
+                background: "var(--surface, #FFFFFF)",
+                color: "var(--text, #172322)",
                 fontSize: "12px",
               }}
             >
@@ -629,9 +629,9 @@ export function EmployeeWorkspace({
               style={{
                 padding: "8px 12px",
                 borderRadius: "8px",
-                border: "1px solid var(--border, #334155)",
-                background: "var(--surface, #0f172a)",
-                color: "var(--text, #f8fafc)",
+                border: "1px solid var(--border, #DCE5E1)",
+                background: "var(--surface, #FFFFFF)",
+                color: "var(--text, #172322)",
                 fontSize: "12px",
               }}
             >

@@ -1,29 +1,59 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 
 :root {
-  --bg: #f8fafc;
-  --surface: #ffffff;
-  --surface-subtle: #f1f5f9;
-  --surface-hover: #e2e8f0;
-  --text: #0f172a;
-  --muted: #475569;
-  --quiet: #64748b;
-  --accent: #1d4ed8;
-  --accent-soft: #eff6ff;
-  --accent-hover: #1e40af;
-  --success: #15803d;
-  --success-soft: #f0fdf4;
-  --warning: #b45309;
-  --warning-soft: #fffbeb;
-  --critical: #b91c1c;
-  --critical-soft: #fef2f2;
-  --info: #0369a1;
-  --info-soft: #f0f9ff;
-  --border: #e2e8f0;
-  --border-strong: #cbd5e1;
+  /* Documento Brand Palette (Light Theme Only) */
+  --brand-deep: #063C3D;
+  --brand-teal: #0D6866;
+  --brand-teal-bright: #2A9288;
+  --brand-mint: #B9DED4;
+  --brand-seafoam: #DDEFE8;
+  --brand-cream: #F8F7F2;
+  --brand-white: #FFFFFF;
+
+  /* Semantic Light UI Surfaces & Canvas */
+  --bg: #F8F7F2;
+  --surface: #FFFFFF;
+  --surface-subtle: #F1F6F4;
+  --surface-hover: #E7EFEB;
+  --text: #172322;
+  --text-muted: #445451;
+  --text-quiet: #6E7F7C;
+  --muted: #445451;
+  --quiet: #6E7F7C;
+
+  /* Brand Accents & Interactive Actions */
+  --accent: #0D6866;
+  --accent-soft: #DDEFE8;
+  --accent-hover: #063C3D;
+  --accent-bright: #2A9288;
+
+  /* Dividers & Borders */
+  --border: #DCE5E1;
+  --border-subtle: #DCE5E1;
+  --border-strong: #BDCDC7;
+
+  /* Semantic Statuses */
+  --success: #176B50;
+  --success-soft: #EAF6F0;
+  --warning: #8A5A10;
+  --warning-soft: #FEF7EA;
+  --critical: #A62D35;
+  --critical-soft: #FDF2F2;
+  --info: #205E8C;
+  --info-soft: #EDF5FB;
+
+  /* Geometry & Elevation */
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 10px 25px rgba(15, 23, 42, 0.04);
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(6, 60, 61, 0.04);
+  --shadow: 0 2px 6px rgba(6, 60, 61, 0.05), 0 12px 28px rgba(6, 60, 61, 0.04);
+  --shadow-lg: 0 8px 24px rgba(6, 60, 61, 0.08), 0 24px 48px rgba(6, 60, 61, 0.06);
+
+  /* Typography */
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Plus Jakarta Sans", Inter, sans-serif;
 }
 
 * {
@@ -35,9 +65,10 @@ html, body {
   min-height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-size: 15px;
+  -webkit-font-smoothing: antialiased;
 }
 
 button, a, input, select, textarea {
@@ -46,7 +77,7 @@ button, a, input, select, textarea {
 
 /* WCAG 2.2 AA Focus Visibility */
 :focus-visible {
-  outline: 2px solid #2563eb !important;
+  outline: 2px solid var(--accent-bright) !important;
   outline-offset: 2px !important;
   border-radius: 4px;
 }
@@ -69,7 +100,7 @@ button, a, input, select, textarea {
   position: absolute;
   top: -40px;
   left: 12px;
-  background: #1d4ed8;
+  background: var(--brand-deep);
   color: #ffffff;
   padding: 8px 16px;
   z-index: 9999;
@@ -96,26 +127,27 @@ a {
   text-decoration: none;
 }
 
-/* Persona Switcher Banner */
+/* Persona Switcher Banner (Documento Deep Teal Light Environment) */
 .persona-switcher-bar {
-  background: #0f172a;
-  color: #f8fafc;
+  background: #063C3D;
+  color: #F8F7F2;
   padding: 10px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   font-size: 13px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid rgba(185, 222, 212, 0.2);
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: 0 2px 10px rgba(6, 60, 61, 0.12);
 }
 
 .persona-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -123,23 +155,24 @@ a {
 .persona-title span.pulse-indicator {
   width: 8px;
   height: 8px;
-  background: #22c55e;
+  background: #2A9288;
   border-radius: 50%;
-  box-shadow: 0 0 8px #22c55e;
+  box-shadow: 0 0 8px #2A9288;
 }
 
 .persona-pills {
   display: flex;
-  gap: 8px;
-  background: #1e293b;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.22);
   padding: 4px;
   border-radius: 10px;
+  border: 1px solid rgba(185, 222, 212, 0.15);
 }
 
 .persona-pill {
   background: transparent;
   border: none;
-  color: #94a3b8;
+  color: #B9DED4;
   padding: 6px 14px;
   border-radius: 7px;
   cursor: pointer;
@@ -152,19 +185,20 @@ a {
 }
 
 .persona-pill:hover {
-  color: #f8fafc;
-  background: rgba(255, 255, 255, 0.05);
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .persona-pill.active {
-  background: var(--accent);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.4);
+  background: #0D6866;
+  color: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  font-weight: 600;
 }
 
 .persona-meta {
   font-size: 11px;
-  color: #94a3b8;
+  color: #B9DED4;
   display: flex;
   align-items: center;
   gap: 6px;

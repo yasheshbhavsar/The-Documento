@@ -190,9 +190,9 @@ export function CaseRequirementEvaluationView({
                 style={{
                   padding: "6px 12px",
                   borderRadius: "6px",
-                  border: "1px solid var(--border, #334155)",
-                  background: "var(--surface, #0f172a)",
-                  color: "var(--text, #f8fafc)",
+                  border: "1px solid var(--border, #DCE5E1)",
+                  background: "var(--surface, #FFFFFF)",
+                  color: "var(--text, #172322)",
                   fontSize: "12px",
                 }}
               >
@@ -328,78 +328,78 @@ export function CaseRequirementEvaluationView({
                 style={{
                   padding: "8px 12px",
                   borderRadius: "6px",
-                  background: statusFilter === "complete" ? "rgba(16, 185, 129, 0.25)" : "#0f172a",
-                  border: "1px solid rgba(16, 185, 129, 0.4)",
+                  background: statusFilter === "complete" ? "#EAF6F0" : "#FFFFFF",
+                  border: statusFilter === "complete" ? "1px solid #176B50" : "1px solid #DCE5E1",
                   cursor: "pointer",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#10b981", display: "block" }}>✓ Complete</span>
-                <strong style={{ fontSize: "18px", color: "#f8fafc" }}>{summary.complete}</strong>
+                <span style={{ fontSize: "11px", color: "#176B50", display: "block" }}>✓ Complete</span>
+                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.complete}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "missing" ? "all" : "missing")}
                 style={{
                   padding: "8px 12px",
                   borderRadius: "6px",
-                  background: statusFilter === "missing" ? "rgba(239, 68, 68, 0.25)" : "#0f172a",
-                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  background: statusFilter === "missing" ? "#FDF2F2" : "#FFFFFF",
+                  border: statusFilter === "missing" ? "1px solid #A62D35" : "1px solid #DCE5E1",
                   cursor: "pointer",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#ef4444", display: "block" }}>✕ Missing</span>
-                <strong style={{ fontSize: "18px", color: "#f8fafc" }}>{summary.missing}</strong>
+                <span style={{ fontSize: "11px", color: "#A62D35", display: "block" }}>✕ Missing</span>
+                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.missing}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "needs_review" ? "all" : "needs_review")}
                 style={{
                   padding: "8px 12px",
                   borderRadius: "6px",
-                  background: statusFilter === "needs_review" ? "rgba(245, 158, 11, 0.25)" : "#0f172a",
-                  border: "1px solid rgba(245, 158, 11, 0.4)",
+                  background: statusFilter === "needs_review" ? "#FEF7EA" : "#FFFFFF",
+                  border: statusFilter === "needs_review" ? "1px solid #8A5A10" : "1px solid #DCE5E1",
                   cursor: "pointer",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#f59e0b", display: "block" }}>⚠ Needs Review</span>
-                <strong style={{ fontSize: "18px", color: "#f8fafc" }}>{summary.needs_review}</strong>
+                <span style={{ fontSize: "11px", color: "#8A5A10", display: "block" }}>⚠ Needs Review</span>
+                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.needs_review}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "blocked" ? "all" : "blocked")}
                 style={{
                   padding: "8px 12px",
                   borderRadius: "6px",
-                  background: statusFilter === "blocked" ? "rgba(249, 115, 22, 0.25)" : "#0f172a",
-                  border: "1px solid rgba(249, 115, 22, 0.4)",
+                  background: statusFilter === "blocked" ? "#FFF5EB" : "#FFFFFF",
+                  border: statusFilter === "blocked" ? "1px solid #C2410C" : "1px solid #DCE5E1",
                   cursor: "pointer",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#f97316", display: "block" }}>⛔ Blocked</span>
-                <strong style={{ fontSize: "18px", color: "#f8fafc" }}>{summary.blocked}</strong>
+                <span style={{ fontSize: "11px", color: "#C2410C", display: "block" }}>⛔ Blocked</span>
+                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.blocked}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "expired" ? "all" : "expired")}
                 style={{
                   padding: "8px 12px",
                   borderRadius: "6px",
-                  background: statusFilter === "expired" ? "rgba(244, 63, 94, 0.25)" : "#0f172a",
-                  border: "1px solid rgba(244, 63, 94, 0.4)",
+                  background: statusFilter === "expired" ? "#FFF1F2" : "#FFFFFF",
+                  border: statusFilter === "expired" ? "1px solid #BE123C" : "1px solid #DCE5E1",
                   cursor: "pointer",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#f43f5e", display: "block" }}>⏱ Expired</span>
-                <strong style={{ fontSize: "18px", color: "#f8fafc" }}>{summary.expired}</strong>
+                <span style={{ fontSize: "11px", color: "#BE123C", display: "block" }}>⏱ Expired</span>
+                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.expired}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "unknown" ? "all" : "unknown")}
                 style={{
                   padding: "8px 12px",
                   borderRadius: "6px",
-                  background: statusFilter === "unknown" ? "rgba(148, 163, 184, 0.25)" : "#0f172a",
-                  border: "1px solid #334155",
+                  background: statusFilter === "unknown" ? "#F1F6F4" : "#FFFFFF",
+                  border: statusFilter === "unknown" ? "1px solid #6E7F7C" : "1px solid #DCE5E1",
                   cursor: "pointer",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#94a3b8", display: "block" }}>? Unknown</span>
-                <strong style={{ fontSize: "18px", color: "#f8fafc" }}>{summary.unknown}</strong>
+                <span style={{ fontSize: "11px", color: "#6E7F7C", display: "block" }}>? Unknown</span>
+                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.unknown}</strong>
               </div>
             </div>
           </div>
@@ -447,9 +447,9 @@ export function CaseRequirementEvaluationView({
               flex: "1 1 240px",
               padding: "8px 12px",
               borderRadius: "6px",
-              border: "1px solid var(--border, #334155)",
-              background: "var(--surface, #0f172a)",
-              color: "var(--text, #f8fafc)",
+              border: "1px solid var(--border, #DCE5E1)",
+              background: "var(--surface, #FFFFFF)",
+              color: "var(--text, #172322)",
               fontSize: "12px",
             }}
           />
@@ -461,9 +461,9 @@ export function CaseRequirementEvaluationView({
             style={{
               padding: "8px 12px",
               borderRadius: "6px",
-              border: "1px solid var(--border, #334155)",
-              background: "var(--surface, #0f172a)",
-              color: "var(--text, #f8fafc)",
+              border: "1px solid var(--border, #DCE5E1)",
+              background: "var(--surface, #FFFFFF)",
+              color: "var(--text, #172322)",
               fontSize: "12px",
             }}
           >
@@ -485,9 +485,9 @@ export function CaseRequirementEvaluationView({
               style={{
                 padding: "8px 12px",
                 borderRadius: "6px",
-                border: "1px solid var(--border, #334155)",
-                background: "var(--surface, #0f172a)",
-                color: "var(--text, #f8fafc)",
+                border: "1px solid var(--border, #DCE5E1)",
+                background: "var(--surface, #FFFFFF)",
+                color: "var(--text, #172322)",
                 fontSize: "12px",
               }}
             >
@@ -517,10 +517,10 @@ export function CaseRequirementEvaluationView({
             style={{
               padding: "40px",
               textAlign: "center",
-              background: "#0f172a",
+              background: "var(--surface-subtle, #F1F6F4)",
               borderRadius: "8px",
-              border: "1px dashed #334155",
-              color: "var(--muted, #94a3b8)",
+              border: "1px dashed var(--border, #DCE5E1)",
+              color: "var(--muted, #445451)",
             }}
           >
             No requirements match the current filters.
@@ -538,15 +538,15 @@ export function CaseRequirementEvaluationView({
                   style={{
                     padding: "16px",
                     borderRadius: "8px",
-                    background: "#0f172a",
+                    background: "var(--surface, #FFFFFF)",
                     border:
                       displayStatus === "complete"
-                        ? "1px solid rgba(16, 185, 129, 0.4)"
+                        ? "1px solid rgba(23, 107, 80, 0.4)"
                         : displayStatus === "missing"
-                        ? "1px solid rgba(239, 68, 68, 0.4)"
+                        ? "1px solid rgba(166, 45, 53, 0.4)"
                         : displayStatus === "needs_review"
-                        ? "1px solid rgba(245, 158, 11, 0.4)"
-                        : "1px solid #334155",
+                        ? "1px solid rgba(138, 90, 16, 0.4)"
+                        : "1px solid var(--border, #DCE5E1)",
                     display: "flex",
                     flexDirection: "column",
                     gap: "10px",
@@ -755,22 +755,22 @@ export function CaseRequirementEvaluationView({
                 alignItems: "center",
                 padding: "10px 14px",
                 borderRadius: "6px",
-                background: hist.is_superseded ? "#0f172a" : "rgba(30, 41, 59, 0.6)",
-                border: hist.is_superseded ? "1px solid #334155" : "1px solid #38bdf8",
+                background: hist.is_superseded ? "#F8F7F2" : "#EAF6F0",
+                border: hist.is_superseded ? "1px solid #DCE5E1" : "1px solid #B9DED4",
                 fontSize: "12px",
               }}
             >
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <strong style={{ color: "#f8fafc" }}>
+                  <strong style={{ color: "#172322" }}>
                     Evaluation #{hist.id.slice(0, 8)}
                   </strong>
                   <span
                     style={{
                       padding: "2px 8px",
                       borderRadius: "999px",
-                      background: "#1e293b",
-                      color: "#38bdf8",
+                      background: "#DDEFE8",
+                      color: "#063C3D",
                       fontSize: "11px",
                     }}
                   >
@@ -817,8 +817,8 @@ export function CaseRequirementEvaluationView({
         >
           <div
             style={{
-              background: "#0f172a",
-              border: "1px solid #334155",
+              background: "var(--surface, #FFFFFF)",
+              border: "1px solid var(--border, #DCE5E1)",
               borderRadius: "12px",
               maxWidth: "640px",
               width: "100%",
@@ -828,6 +828,7 @@ export function CaseRequirementEvaluationView({
               display: "flex",
               flexDirection: "column",
               gap: "16px",
+              boxShadow: "0 20px 40px rgba(6, 60, 61, 0.2)",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>

@@ -13,8 +13,17 @@ import { CaseDetailModal } from "../components/cases/CaseDetailModal";
 import { DocumentUploadModal } from "../components/modals/DocumentUploadModal";
 import { GuidedQuestionnaireModal } from "../components/modals/GuidedQuestionnaireModal";
 import { AlertBanner } from "../components/common/NotificationToast";
+import { DocumentoLogo } from "../components/common/DocumentoLogo";
+import { DocumentoNavbar } from "../components/landing/DocumentoNavbar";
+import { DocumentoHero } from "../components/landing/DocumentoHero";
+import { DocumentoPreview } from "../components/landing/DocumentoPreview";
+import { DocumentoCapabilities } from "../components/landing/DocumentoCapabilities";
+import { DocumentoWorkflow } from "../components/landing/DocumentoWorkflow";
+import { DocumentoTrust } from "../components/landing/DocumentoTrust";
+import { DocumentoFooter } from "../components/landing/DocumentoFooter";
 
 export default function Home() {
+  const [currentView, setCurrentView] = useState<"landing" | "workspace">("landing");
   const [activeExp, setActiveExp] = useState<UserExperience>("master_admin");
   const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false);
   const [bannerAlert, setBannerAlert] = useState<{ type: "success" | "info" | "warning"; message: string } | null>(null);
@@ -165,39 +174,90 @@ export default function Home() {
     );
   };
 
+  const handleSelectRoleFromLanding = (role: UserExperience) => {
+    setActiveExp(role);
+    setCurrentView("workspace");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleOpenWorkspaces = () => {
+    setCurrentView("workspace");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900" style={{ background: "var(--bg, #f8fafc)" }}>
-      {/* Persona Switcher Bar */}
+    <div className="min-h-screen" style={{ background: "var(--bg, #F8F7F2)" }}>
+      {/* Documento Top Platform Bar */}
       <div className="persona-switcher-bar">
         <div className="persona-title">
-          <span className="pulse-indicator"></span>
-          <span>AI IMMIGRATION</span>
-          <span style={{ color: "#64748b", margin: "0 4px" }}>|</span>
-          <span style={{ fontWeight: 400, color: "#94a3b8" }}>
-            Multi-Tenant Role Sandbox
+          <DocumentoLogo size="sm" showWordmark={false} />
+          <span style={{ fontWeight: 700, color: "#FFFFFF", letterSpacing: "-0.01em" }}>DOCUMENTO</span>
+          <span style={{ color: "#B9DED4", margin: "0 2px", opacity: 0.5 }}>|</span>
+          <span style={{ fontWeight: 400, color: "#B9DED4", fontSize: "12px" }}>
+            {currentView === "landing" ? "Product Overview & Live Sandbox" : "Active Role Workspace"}
           </span>
+          <span className="pulse-indicator"></span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ color: "#94a3b8", fontSize: "12px" }}>Select Persona:</span>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {currentView === "workspace" && (
+            <button
+              type="button"
+              onClick={() => setCurrentView("landing")}
+              style={{
+                background: "rgba(255, 255, 255, 0.12)",
+                border: "1px solid rgba(185, 222, 212, 0.25)",
+                color: "#FFFFFF",
+                padding: "5px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <span>← Back to Overview</span>
+            </button>
+          )}
+
           <div className="persona-pills">
             <button
               type="button"
-              className={`persona-pill ${activeExp === "master_admin" ? "active" : ""}`}
-              onClick={() => setActiveExp("master_admin")}
+              className={`persona-pill ${currentView === "landing" ? "active" : ""}`}
+              onClick={() => setCurrentView("landing")}
             >
-              Owner / Managing Partner
+              Landing Overview
             </button>
             <button
               type="button"
-              className={`persona-pill ${activeExp === "case_manager" ? "active" : ""}`}
-              onClick={() => setActiveExp("case_manager")}
+              className={`persona-pill ${currentView === "workspace" && activeExp === "master_admin" ? "active" : ""}`}
+              onClick={() => {
+                setActiveExp("master_admin");
+                setCurrentView("workspace");
+              }}
             >
-              Employee Workspace
+              Partner View
             </button>
             <button
               type="button"
-              className={`persona-pill ${activeExp === "client_applicant" ? "active" : ""}`}
-              onClick={() => setActiveExp("client_applicant")}
+              className={`persona-pill ${currentView === "workspace" && activeExp === "case_manager" ? "active" : ""}`}
+              onClick={() => {
+                setActiveExp("case_manager");
+                setCurrentView("workspace");
+              }}
+            >
+              Paralegal Hub
+            </button>
+            <button
+              type="button"
+              className={`persona-pill ${currentView === "workspace" && activeExp === "client_applicant" ? "active" : ""}`}
+              onClick={() => {
+                setActiveExp("client_applicant");
+                setCurrentView("workspace");
+              }}
             >
               Client Portal
             </button>
@@ -216,56 +276,81 @@ export default function Home() {
         </div>
       )}
 
-      {/* Role Dashboard View */}
-      <main style={{ padding: "16px 24px 48px 24px" }}>
-        {activeExp === "master_admin" && (
-          <OwnerMasterDashboard
-            cases={cases}
-            clients={clients}
-            auditEvents={auditEvents}
-            invoices={invoices}
-            capacity={capacity}
+      {/* VIEW 1: Documento Brand & Product Landing Page */}
+      {currentView === "landing" && (
+        <div>
+          <DocumentoNavbar
+            onSelectRole={handleSelectRoleFromLanding}
+            onOpenApp={handleOpenWorkspaces}
             isLiveBackend={isLiveBackend}
-            onOpenCreateCase={() => setIsCreateCaseOpen(true)}
-            onOpenCreateClient={() => setIsCreateClientOpen(true)}
-            onSelectCase={(c) => setSelectedCaseForDrawer(c)}
           />
-        )}
+          <DocumentoHero
+            onOpenApp={handleOpenWorkspaces}
+            onSelectRole={handleSelectRoleFromLanding}
+          />
+          <DocumentoPreview />
+          <DocumentoCapabilities />
+          <DocumentoWorkflow />
+          <DocumentoTrust />
+          <DocumentoFooter
+            onSelectRole={handleSelectRoleFromLanding}
+            onOpenApp={handleOpenWorkspaces}
+          />
+        </div>
+      )}
 
-        {activeExp === "case_manager" && (
-          <EmployeeWorkspace
-            cases={cases}
-            clients={clients}
-            documents={documents}
-            tasks={tasks}
-            aiFindings={aiFindings}
-            messages={messages}
-            onToggleTask={handleToggleTask}
-            onSendMessage={handleSendMessage}
-            onSelectCase={(c) => setSelectedCaseForDrawer(c)}
-            onOpenUploadModal={() => setIsUploadModalOpen(true)}
-            onDocumentUpdated={handleDocumentUpdated}
-            onResolveFinding={handleResolveFinding}
-            onDismissFinding={handleDismissFinding}
-            onEscalateFinding={handleEscalateFinding}
-          />
-        )}
+      {/* VIEW 2: Interactive Role Workspaces */}
+      {currentView === "workspace" && (
+        <main style={{ padding: "16px 24px 48px 24px" }}>
+          {activeExp === "master_admin" && (
+            <OwnerMasterDashboard
+              cases={cases}
+              clients={clients}
+              auditEvents={auditEvents}
+              invoices={invoices}
+              capacity={capacity}
+              isLiveBackend={isLiveBackend}
+              onOpenCreateCase={() => setIsCreateCaseOpen(true)}
+              onOpenCreateClient={() => setIsCreateClientOpen(true)}
+              onSelectCase={(c) => setSelectedCaseForDrawer(c)}
+            />
+          )}
 
-        {activeExp === "client_applicant" && (
-          <ClientPortal
-            myCase={cases[0] || null}
-            documents={documents}
-            messages={messages}
-            notifications={notifications}
-            invoices={invoices}
-            onOpenUploadModal={() => setIsUploadModalOpen(true)}
-            onOpenQuestionnaireModal={() => setIsQuestionnaireOpen(true)}
-            onSendMessage={handleSendMessage}
-            onMarkNotificationRead={handleMarkNotificationRead}
-            onDocumentUpdated={handleDocumentUpdated}
-          />
-        )}
-      </main>
+          {activeExp === "case_manager" && (
+            <EmployeeWorkspace
+              cases={cases}
+              clients={clients}
+              documents={documents}
+              tasks={tasks}
+              aiFindings={aiFindings}
+              messages={messages}
+              onToggleTask={handleToggleTask}
+              onSendMessage={handleSendMessage}
+              onSelectCase={(c) => setSelectedCaseForDrawer(c)}
+              onOpenUploadModal={() => setIsUploadModalOpen(true)}
+              onDocumentUpdated={handleDocumentUpdated}
+              onResolveFinding={handleResolveFinding}
+              onDismissFinding={handleDismissFinding}
+              onEscalateFinding={handleEscalateFinding}
+            />
+          )}
+
+          {activeExp === "client_applicant" && (
+            <ClientPortal
+              myCase={cases[0] || null}
+              documents={documents}
+              messages={messages}
+              notifications={notifications}
+              invoices={invoices}
+              onOpenUploadModal={() => setIsUploadModalOpen(true)}
+              onOpenQuestionnaireModal={() => setIsQuestionnaireOpen(true)}
+              onSendMessage={handleSendMessage}
+              onMarkNotificationRead={handleMarkNotificationRead}
+              onDocumentUpdated={handleDocumentUpdated}
+            />
+          )}
+        </main>
+      )}
 
       {/* Modals & Drawers */}
       <CreateCaseModal
