@@ -1,0 +1,790 @@
+import uuid
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.orm import Session
+
+from backend.app.core.errors import AuthenticationError, EntityNotFoundError, PermissionDeniedError
+from backend.app.db.session import get_db
+from backend.app.domain.models import (
+    AuditEvent,
+    ClientConsent,
+    ClientDependant,
+    ClientProfile,
+    ClientQuestionnaire,
+    Document,
+    DocumentRequest,
+    ImmigrationCase,
+    Invitation,
+    MembershipRole,
+    OrganizationMembership,
+    Role,
+    User,
+)
+from backend.app.notifications.service import NotificationService
+from backend.app.security.auth import AuthContext, get_auth_context
+from backend.app.security.passwords import hash_password
+from backend.app.security.rbac import RoleCode
+from backend.app.security.tokens import generate_secure_random_token, hash_opaque_token
+
+router = APIRouter(prefix="/portal", tags=["portal"])
+
+
+# --- Schemas ---
+
+class ClientInviteRequest(BaseModel):
+    case_id: uuid.UUID
+    email: EmailStr
+    full_name: str = Field(..., min_length=2)
+    relationship_type: str = Field(default="primary_applicant", description="'primary_applicant' or 'spouse', 'dependant'")
+    is_authorized_to_view_case: bool = True
+
+
+class ClientInviteResponse(BaseModel):
+    invitation_id: uuid.UUID
+    email: str
+    invitation_token: str
+    expires_at: datetime
+    message: str
+
+
+class ClientActivationRequest(BaseModel):
+    invitation_token: str
+    password: str = Field(..., min_length=8)
+    agreed_to_privacy: bool = Field(default=True)
+
+
+class ClientProfileUpdateRequest(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    phone: str | None = None
+    date_of_birth: datetime | None = None
+    nationality: str | None = None
+    passport_number: str | None = None
+
+
+class DependantInput(BaseModel):
+    first_name: str = Field(..., min_length=1)
+    last_name: str = Field(..., min_length=1)
+    relationship_type: str = Field(..., description="spouse, child, parent, sibling, dependant")
+    email: EmailStr | None = None
+    phone: str | None = None
+    date_of_birth: datetime | None = None
+    nationality: str = Field(default="USA", min_length=2, max_length=3)
+    passport_number: str | None = None
+    is_authorized_to_view_case: bool = Field(default=False)
+
+
+class ConsentGrantRequest(BaseModel):
+    consent_type: str = Field(..., description="representation_g28, data_processing_gdpr, privacy_policy, communication_consent")
+    granted: bool = True
+    case_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class QuestionnaireSaveRequest(BaseModel):
+    responses: dict = Field(default_factory=dict)
+    submit_for_review: bool = False
+
+
+class WaitingStateItem(BaseModel):
+    id: str
+    type: str  # document_request, questionnaire, consent, firm_review, drafting
+    title: str
+    description: str
+    due_date: datetime | None = None
+    priority: str = "medium"
+    action_url: str | None = None
+
+
+class WaitingStateResponse(BaseModel):
+    waiting_on_client_count: int
+    waiting_on_firm_count: int
+    primary_next_action: WaitingStateItem | None
+    waiting_on_client: list[WaitingStateItem]
+    waiting_on_firm: list[WaitingStateItem]
+    profile_completeness_percentage: float
+    onboarding_completed: bool
+
+
+# --- Default Questionnaire Template ---
+
+DEFAULT_EB1A_SECTIONS = [
+    {
+        "id": "biographical",
+        "title": "1. Biographical & Professional Identification",
+        "description": "Full legal name, current academic or corporate title, and contact details matching passport.",
+        "fields": [
+            {"id": "current_employer", "label": "Current Employer or Institutional Affiliation", "type": "text", "required": True},
+            {"id": "job_title", "label": "Current Professional Title", "type": "text", "required": True},
+            {"id": "field_of_expertise", "label": "Specific Field of Extraordinary Ability", "type": "text", "required": True},
+        ]
+    },
+    {
+        "id": "prizes_awards",
+        "title": "2. Nationally or Internationally Recognized Prizes/Awards",
+        "description": "Detail all significant awards received for excellence in your field (8 CFR § 204.5(h)(3)(i)).",
+        "fields": [
+            {"id": "has_awards", "label": "Have you received major national or international awards?", "type": "boolean", "required": True},
+            {"id": "awards_details", "label": "List award names, granting bodies, selection criteria, and dates", "type": "textarea", "required": False},
+        ]
+    },
+    {
+        "id": "scholarly_publications",
+        "title": "3. Scholarly Articles & Citations",
+        "description": "Published articles in major journals or international conference proceedings (8 CFR § 204.5(h)(3)(vi)).",
+        "fields": [
+            {"id": "total_articles_count", "label": "Approximate total number of peer-reviewed articles published", "type": "number", "required": True},
+            {"id": "google_scholar_link", "label": "Google Scholar or Scopus Profile URL", "type": "url", "required": False},
+            {"id": "total_citations", "label": "Total lifetime citations count", "type": "number", "required": False},
+        ]
+    },
+    {
+        "id": "peer_review",
+        "title": "4. Participation as a Judge of the Work of Others",
+        "description": "Peer reviewing for academic journals, grant evaluation, or conference program committees (8 CFR § 204.5(h)(3)(iv)).",
+        "fields": [
+            {"id": "has_judged_others", "label": "Have you acted as a peer reviewer or grant judge?", "type": "boolean", "required": True},
+            {"id": "journals_reviewed_for", "label": "List major journals, conferences, or panels where you served as judge", "type": "textarea", "required": False},
+            {"id": "verified_reviews_count", "label": "Approximate number of completed peer reviews", "type": "number", "required": False},
+        ]
+    },
+]
+
+
+# --- Helpers ---
+
+def _get_client_for_user(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> ClientProfile | None:
+    return (
+        db.query(ClientProfile)
+        .filter(ClientProfile.organization_id == org_id, ClientProfile.user_id == user_id)
+        .first()
+    )
+
+
+# --- Endpoints ---
+
+@router.post("/invite", response_model=ClientInviteResponse, status_code=status.HTTP_201_CREATED)
+def invite_client(
+    payload: ClientInviteRequest,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Staff issues a secure portal onboarding invitation for a client or authorized family dependant.
+    """
+    if ctx.is_retained_client():
+        raise PermissionDeniedError("Clients cannot issue portal invitations")
+
+    ctx.assert_organization_access(ctx.organization_id)
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == payload.case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", payload.case_id)
+
+    raw_token = generate_secure_random_token(32)
+    token_hash = hash_opaque_token(raw_token)
+    now = datetime.now(timezone.utc)
+    from datetime import timedelta
+    expires_at = now + timedelta(days=7)
+
+    email_clean = payload.email.lower().strip()
+
+    invitation = Invitation(
+        organization_id=ctx.organization_id,
+        inviter_user_id=ctx.user_id,
+        email=email_clean,
+        role_code=RoleCode.RETAINED_CLIENT.value,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        created_at=now,
+    )
+    db.add(invitation)
+
+    # If primary applicant, ensure ClientProfile exists or link
+    client = db.query(ClientProfile).filter(
+        ClientProfile.organization_id == ctx.organization_id,
+        ClientProfile.email == email_clean,
+    ).first()
+
+    if not client:
+        names = payload.full_name.split(" ", 1)
+        first_name = names[0]
+        last_name = names[1] if len(names) > 1 else "Applicant"
+        client = ClientProfile(
+            organization_id=ctx.organization_id,
+            first_name=first_name,
+            last_name=last_name,
+            email=email_clean,
+            nationality="USA",
+            created_at=now,
+        )
+        db.add(client)
+        db.flush()
+
+    db.commit()
+    db.refresh(invitation)
+
+    return ClientInviteResponse(
+        invitation_id=invitation.id,
+        email=invitation.email,
+        invitation_token=raw_token,
+        expires_at=invitation.expires_at,
+        message="Client invitation generated successfully. Send token or onboarding activation link.",
+    )
+
+
+@router.post("/activate")
+def activate_client_account(
+    payload: ClientActivationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Client activates their account using the invitation token, sets their password,
+    accepts required privacy notice, and is linked to their ClientProfile.
+    """
+    token_hash = hash_opaque_token(payload.invitation_token)
+    now = datetime.now(timezone.utc)
+
+    invitation = (
+        db.query(Invitation)
+        .filter(
+            Invitation.token_hash == token_hash,
+            Invitation.accepted_at.is_(None),
+            Invitation.expires_at > now,
+        )
+        .first()
+    )
+    if not invitation:
+        raise AuthenticationError("Invalid or expired invitation token")
+
+    # Find or create user
+    email_clean = invitation.email.lower().strip()
+    user = db.query(User).filter(User.email == email_clean).first()
+
+    client_profile = db.query(ClientProfile).filter(
+        ClientProfile.organization_id == invitation.organization_id,
+        ClientProfile.email == email_clean,
+    ).first()
+
+    full_name = f"{client_profile.first_name} {client_profile.last_name}" if client_profile else "Client User"
+
+    if not user:
+        user = User(
+            email=email_clean,
+            full_name=full_name,
+            password_hash=hash_password(payload.password),
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.password_hash = hash_password(payload.password)
+        user.status = "active"
+        user.updated_at = now
+
+    # Link user to client profile
+    if client_profile:
+        client_profile.user_id = user.id
+
+    # Create membership if missing
+    membership = (
+        db.query(OrganizationMembership)
+        .filter(
+            OrganizationMembership.organization_id == invitation.organization_id,
+            OrganizationMembership.user_id == user.id,
+        )
+        .first()
+    )
+    if not membership:
+        membership = OrganizationMembership(
+            organization_id=invitation.organization_id,
+            user_id=user.id,
+            status="active",
+            created_at=now,
+        )
+        db.add(membership)
+        db.flush()
+
+    # Assign retained_client role
+    role = db.query(Role).filter(Role.code == RoleCode.RETAINED_CLIENT.value).first()
+    if not role:
+        role = Role(code=RoleCode.RETAINED_CLIENT.value, name="Retained Client")
+        db.add(role)
+        db.flush()
+
+    existing_mr = (
+        db.query(MembershipRole)
+        .filter(MembershipRole.membership_id == membership.id, MembershipRole.role_id == role.id)
+        .first()
+    )
+    if not existing_mr:
+        db.add(MembershipRole(membership_id=membership.id, role_id=role.id, assigned_at=now))
+
+    # Record initial privacy consent
+    if payload.agreed_to_privacy and client_profile:
+        client_ip = request.client.host if request.client else "unknown"
+        consent = ClientConsent(
+            organization_id=invitation.organization_id,
+            client_id=client_profile.id,
+            consent_type="privacy_policy",
+            granted=True,
+            granted_at=now,
+            ip_address=client_ip,
+            notes="Consented during account activation",
+            created_at=now,
+        )
+        db.add(consent)
+
+    invitation.accepted_at = now
+    db.commit()
+
+    return {
+        "status": "ok",
+        "message": "Account activated successfully. You can now log into your client transparency portal.",
+        "user_id": str(user.id),
+        "email": user.email,
+    }
+
+
+@router.get("/profile")
+def get_client_profile(
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns the client profile, associated dependants, cases, and consents.
+    """
+    client = _get_client_for_user(db, ctx.organization_id, ctx.user_id)
+    if not client:
+        # Fallback if staff is testing or user is not linked
+        user = db.query(User).filter(User.id == ctx.user_id).first()
+        return {
+            "first_name": user.full_name if user else "Client",
+            "last_name": "",
+            "email": ctx.email,
+            "nationality": "USA",
+            "dependants": [],
+            "cases": [],
+            "completeness_score": 50,
+        }
+
+    dependants_data = [
+        {
+            "id": str(d.id),
+            "relationship_type": d.relationship_type,
+            "first_name": d.first_name,
+            "last_name": d.last_name,
+            "email": d.email,
+            "phone": d.phone,
+            "date_of_birth": d.date_of_birth.isoformat() if d.date_of_birth else None,
+            "nationality": d.nationality,
+            "is_authorized_to_view_case": d.is_authorized_to_view_case,
+        }
+        for d in client.dependants
+    ]
+
+    cases_data = [
+        {
+            "id": str(c.id),
+            "case_number": c.case_number,
+            "title": c.title,
+            "jurisdiction": c.jurisdiction,
+            "visa_category": c.visa_category,
+            "status": c.status,
+        }
+        for c in client.cases
+    ]
+
+    # Calculate profile completeness score
+    score = 40
+    if client.phone:
+        score += 15
+    if client.date_of_birth:
+        score += 15
+    if client.passport_number_hash:
+        score += 15
+    if client.dependants:
+        score += 15
+    score = min(score, 100)
+
+    return {
+        "id": str(client.id),
+        "first_name": client.first_name,
+        "last_name": client.last_name,
+        "email": client.email,
+        "phone": client.phone,
+        "date_of_birth": client.date_of_birth.isoformat() if client.date_of_birth else None,
+        "nationality": client.nationality,
+        "passport_verified": client.passport_number_hash is not None,
+        "dependants": dependants_data,
+        "cases": cases_data,
+        "completeness_score": score,
+    }
+
+
+@router.put("/profile")
+def update_client_profile(
+    payload: ClientProfileUpdateRequest,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Updates applicant profile biodata."""
+    client = _get_client_for_user(db, ctx.organization_id, ctx.user_id)
+    if not client:
+        raise EntityNotFoundError("ClientProfile", ctx.user_id)
+
+    if payload.first_name is not None:
+        client.first_name = payload.first_name
+    if payload.last_name is not None:
+        client.last_name = payload.last_name
+    if payload.phone is not None:
+        client.phone = payload.phone
+    if payload.date_of_birth is not None:
+        client.date_of_birth = payload.date_of_birth
+    if payload.nationality is not None:
+        client.nationality = payload.nationality
+    if payload.passport_number is not None:
+        client.passport_number_hash = hash_opaque_token(payload.passport_number)
+
+    db.commit()
+    db.refresh(client)
+    return {"status": "ok", "message": "Profile updated successfully"}
+
+
+@router.post("/dependants")
+def add_dependant(
+    payload: DependantInput,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Adds a family dependant for the authenticated principal applicant."""
+    client = _get_client_for_user(db, ctx.organization_id, ctx.user_id)
+    if not client:
+        raise EntityNotFoundError("ClientProfile", ctx.user_id)
+
+    now = datetime.now(timezone.utc)
+    pass_hash = hash_opaque_token(payload.passport_number) if payload.passport_number else None
+
+    dep = ClientDependant(
+        organization_id=ctx.organization_id,
+        primary_client_id=client.id,
+        relationship_type=payload.relationship_type,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        email=payload.email,
+        phone=payload.phone,
+        date_of_birth=payload.date_of_birth,
+        nationality=payload.nationality,
+        passport_number_hash=pass_hash,
+        is_authorized_to_view_case=payload.is_authorized_to_view_case,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(dep)
+    db.commit()
+    db.refresh(dep)
+
+    return {
+        "id": str(dep.id),
+        "first_name": dep.first_name,
+        "last_name": dep.last_name,
+        "relationship_type": dep.relationship_type,
+        "is_authorized_to_view_case": dep.is_authorized_to_view_case,
+    }
+
+
+@router.delete("/dependants/{dep_id}")
+def delete_dependant(
+    dep_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Deletes a dependant with ownership check."""
+    client = _get_client_for_user(db, ctx.organization_id, ctx.user_id)
+    if not client:
+        raise EntityNotFoundError("ClientProfile", ctx.user_id)
+
+    dep = db.query(ClientDependant).filter(ClientDependant.id == dep_id).first()
+    if not dep or dep.primary_client_id != client.id:
+        raise EntityNotFoundError("ClientDependant", dep_id)
+
+    db.delete(dep)
+    db.commit()
+    return {"status": "ok", "message": "Dependant removed"}
+
+
+@router.get("/consents")
+def list_consents(
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Lists legal and privacy consents granted by the client."""
+    client = _get_client_for_user(db, ctx.organization_id, ctx.user_id)
+    if not client:
+        return []
+
+    consents = db.query(ClientConsent).filter(ClientConsent.client_id == client.id).all()
+    return [
+        {
+            "id": str(c.id),
+            "consent_type": c.consent_type,
+            "granted": c.granted,
+            "granted_at": c.granted_at.isoformat(),
+            "notes": c.notes,
+        }
+        for c in consents
+    ]
+
+
+@router.post("/consents")
+def grant_consent(
+    payload: ConsentGrantRequest,
+    request: Request,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Records client consent grant or revocation."""
+    client = _get_client_for_user(db, ctx.organization_id, ctx.user_id)
+    if not client:
+        raise EntityNotFoundError("ClientProfile", ctx.user_id)
+
+    client_ip = request.client.host if request.client else "unknown"
+    now = datetime.now(timezone.utc)
+
+    consent = ClientConsent(
+        organization_id=ctx.organization_id,
+        client_id=client.id,
+        case_id=payload.case_id,
+        consent_type=payload.consent_type,
+        granted=payload.granted,
+        granted_at=now,
+        ip_address=client_ip,
+        notes=payload.notes,
+        created_at=now,
+    )
+    db.add(consent)
+    db.commit()
+    db.refresh(consent)
+    return {"status": "ok", "consent_id": str(consent.id)}
+
+
+# --- Questionnaires ---
+
+@router.get("/questionnaires")
+def get_questionnaires(
+    case_id: uuid.UUID | None = Query(default=None),
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Returns questionnaires for the authenticated client."""
+    client = _get_client_for_user(db, ctx.organization_id, ctx.user_id)
+    if not client:
+        return []
+
+    query = db.query(ClientQuestionnaire).filter(ClientQuestionnaire.client_id == client.id)
+    if case_id:
+        query = query.filter(ClientQuestionnaire.case_id == case_id)
+
+    questionnaires = query.all()
+    if not questionnaires:
+        # Seed default EB-1A intake questionnaire
+        now = datetime.now(timezone.utc)
+        q = ClientQuestionnaire(
+            organization_id=ctx.organization_id,
+            client_id=client.id,
+            case_id=case_id,
+            title="EB-1A Extraordinary Ability Statutory Intake Questionnaire",
+            status="in_progress",
+            sections_json=DEFAULT_EB1A_SECTIONS,
+            responses_json={},
+            completion_percentage=0.0,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(q)
+        db.commit()
+        db.refresh(q)
+        questionnaires = [q]
+
+    return [
+        {
+            "id": str(q.id),
+            "title": q.title,
+            "status": q.status,
+            "completion_percentage": q.completion_percentage,
+            "sections": q.sections_json,
+            "responses": q.responses_json,
+            "submitted_at": q.submitted_at.isoformat() if q.submitted_at else None,
+            "reviewed_at": q.reviewed_at.isoformat() if q.reviewed_at else None,
+            "reviewer_notes": q.reviewer_notes,
+        }
+        for q in questionnaires
+    ]
+
+
+@router.put("/questionnaires/{questionnaire_id}")
+def save_questionnaire_responses(
+    questionnaire_id: uuid.UUID,
+    payload: QuestionnaireSaveRequest,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Saves draft questionnaire responses or submits for legal review."""
+    q = db.query(ClientQuestionnaire).filter(ClientQuestionnaire.id == questionnaire_id).first()
+    if not q:
+        raise EntityNotFoundError("ClientQuestionnaire", questionnaire_id)
+
+    ctx.assert_organization_access(q.organization_id)
+    if ctx.is_retained_client():
+        client = _get_client_for_user(db, ctx.organization_id, ctx.user_id)
+        if not client or q.client_id != client.id:
+            raise PermissionDeniedError("Cannot modify another client's questionnaire")
+
+    now = datetime.now(timezone.utc)
+    q.responses_json = payload.responses
+    q.updated_at = now
+
+    # Calculate completion percentage
+    total_fields = sum(len(sec.get("fields", [])) for sec in q.sections_json)
+    answered_fields = sum(1 for val in payload.responses.values() if val not in (None, "", False))
+    q.completion_percentage = round((answered_fields / max(total_fields, 1)) * 100, 1)
+
+    if payload.submit_for_review:
+        q.status = "submitted"
+        q.submitted_at = now
+
+    db.commit()
+    db.refresh(q)
+    return {
+        "status": "ok",
+        "questionnaire_status": q.status,
+        "completion_percentage": q.completion_percentage,
+    }
+
+
+# --- Waiting State & Next Action Engine ---
+
+@router.get("/waiting-state", response_model=WaitingStateResponse)
+def get_waiting_state(
+    case_id: uuid.UUID | None = Query(default=None),
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Computes a clear, transparent breakdown of what is waiting on the client vs what is waiting on the firm.
+    Clearly shows the immediate next action.
+    """
+    client = _get_client_for_user(db, ctx.organization_id, ctx.user_id)
+
+    waiting_on_client: list[WaitingStateItem] = []
+    waiting_on_firm: list[WaitingStateItem] = []
+
+    client_id = client.id if client else None
+
+    # 1. Open document requests
+    req_query = db.query(DocumentRequest).filter(
+        DocumentRequest.organization_id == ctx.organization_id,
+        DocumentRequest.status.in_(["requested", "rejected"]),
+    )
+    if client_id:
+        req_query = req_query.filter(DocumentRequest.requested_from_client_id == client_id)
+    if case_id:
+        req_query = req_query.filter(DocumentRequest.case_id == case_id)
+
+    open_requests = req_query.all()
+    for req in open_requests:
+        is_rejected = req.status == "rejected"
+        waiting_on_client.append(
+            WaitingStateItem(
+                id=str(req.id),
+                type="document_request",
+                title=f"{'Action Needed: Re-upload' if is_rejected else 'Upload Required'}: {req.title}",
+                description=req.rejection_reason if is_rejected else req.description,
+                due_date=req.due_date,
+                priority="high" if is_rejected else "medium",
+                action_url=f"/portal/requests/{req.id}",
+            )
+        )
+
+    # 2. Submitted requests waiting on firm review
+    submitted_query = db.query(DocumentRequest).filter(
+        DocumentRequest.organization_id == ctx.organization_id,
+        DocumentRequest.status == "submitted",
+    )
+    if client_id:
+        submitted_query = submitted_query.filter(DocumentRequest.requested_from_client_id == client_id)
+    for req in submitted_query.all():
+        waiting_on_firm.append(
+            WaitingStateItem(
+                id=str(req.id),
+                type="firm_review",
+                title=f"Legal Review of Submitted Evidence: {req.title}",
+                description="Your evidence was received and is currently being audited by your case manager.",
+                due_date=None,
+                priority="medium",
+            )
+        )
+
+    # 3. Questionnaire completion
+    q_query = db.query(ClientQuestionnaire).filter(ClientQuestionnaire.organization_id == ctx.organization_id)
+    if client_id:
+        q_query = q_query.filter(ClientQuestionnaire.client_id == client_id)
+    for q in q_query.all():
+        if q.status == "in_progress":
+            waiting_on_client.append(
+                WaitingStateItem(
+                    id=str(q.id),
+                    type="questionnaire",
+                    title=f"Complete Intake Questionnaire ({q.completion_percentage}% done)",
+                    description="Answer career accomplishments and statutory criteria questions.",
+                    priority="high",
+                    action_url="/portal/questionnaire",
+                )
+            )
+        elif q.status == "submitted":
+            waiting_on_firm.append(
+                WaitingStateItem(
+                    id=str(q.id),
+                    type="firm_review",
+                    title="Attorney Analysis of Evidentiary Questionnaire",
+                    description="Our legal team is reviewing your questionnaire responses to map statutory evidence.",
+                    priority="medium",
+                )
+            )
+
+    # 4. Attorney brief and petition indexing
+    waiting_on_firm.append(
+        WaitingStateItem(
+            id="drafting-brief",
+            type="drafting",
+            title="Formal Legal Brief & Kazarian Two-Part Argument Drafting",
+            description="Our Senior Immigration Attorney is synthesizing your exhibits into the formal USCIS petition brief.",
+            priority="low",
+        )
+    )
+
+    # Resolve primary next action
+    primary_next = waiting_on_client[0] if waiting_on_client else (waiting_on_firm[0] if waiting_on_firm else None)
+
+    completeness = 85.0
+    if client:
+        completeness = 50.0
+        if client.passport_number_hash:
+            completeness += 20.0
+        if not open_requests:
+            completeness += 20.0
+        if client.dependants:
+            completeness += 10.0
+
+    return WaitingStateResponse(
+        waiting_on_client_count=len(waiting_on_client),
+        waiting_on_firm_count=len(waiting_on_firm),
+        primary_next_action=primary_next,
+        waiting_on_client=waiting_on_client,
+        waiting_on_firm=waiting_on_firm,
+        profile_completeness_percentage=min(completeness, 100.0),
+        onboarding_completed=len(waiting_on_client) == 0,
+    )

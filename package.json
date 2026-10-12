@@ -1,0 +1,13 @@
+{
+  "name": "ai-immigration-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Immigration Case Intelligence & Management Platform",
+  "scripts": {
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "start": "npm --prefix apps/web run start",
+    "test": "npm --prefix apps/web run test",
+    "backend": "powershell -ExecutionPolicy Bypass -File ./run_backend.ps1"
+  }
+}

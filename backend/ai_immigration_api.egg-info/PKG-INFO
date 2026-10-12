@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: ai-immigration-api
+Version: 0.1.0
+Summary: AI Immigration backend
+Requires-Python: >=3.12
+Requires-Dist: fastapi
+Requires-Dist: uvicorn[standard]
+Requires-Dist: pydantic
+Requires-Dist: pydantic-settings
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: psycopg[binary]>=3.2
+Requires-Dist: alembic>=1.13.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: pytest>=8.0.0
