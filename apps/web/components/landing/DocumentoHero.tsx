@@ -1,12 +1,8 @@
-import React from "react";
-import { UserExperience } from "../../lib/types";
-
 interface DocumentoHeroProps {
-  onOpenApp: () => void;
-  onSelectRole: (role: UserExperience) => void;
+  onOpenLogin: (portal?: "firm" | "client") => void;
 }
 
-export function DocumentoHero({ onOpenApp, onSelectRole }: DocumentoHeroProps) {
+export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
   return (
     <section
       id="hero"
@@ -132,12 +128,12 @@ export function DocumentoHero({ onOpenApp, onSelectRole }: DocumentoHeroProps) {
               justifyContent: "center",
               flexWrap: "wrap",
               gap: "14px",
-              marginBottom: "48px",
+              marginBottom: "32px",
             }}
           >
             <button
               type="button"
-              onClick={onOpenApp}
+              onClick={() => onOpenLogin("firm")}
               style={{
                 background: "#0D6866",
                 color: "#FFFFFF",
@@ -164,7 +160,7 @@ export function DocumentoHero({ onOpenApp, onSelectRole }: DocumentoHeroProps) {
                 e.currentTarget.style.boxShadow = "0 4px 14px rgba(13, 104, 102, 0.25)";
               }}
             >
-              <span>Explore Interactive Workspaces</span>
+              <span>Access Workspaces</span>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -202,107 +198,6 @@ export function DocumentoHero({ onOpenApp, onSelectRole }: DocumentoHeroProps) {
               </svg>
               <span>View Case Pipeline Preview</span>
             </a>
-          </div>
-
-          {/* Quick Persona Launchers */}
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              flexWrap: "wrap",
-              justifyContent: "center",
-              gap: "8px",
-              padding: "10px 18px",
-              borderRadius: "14px",
-              background: "rgba(255, 255, 255, 0.8)",
-              border: "1px solid #DCE5E1",
-              boxShadow: "0 2px 8px rgba(6, 60, 61, 0.04)",
-            }}
-          >
-            <span style={{ fontSize: "12px", fontWeight: 600, color: "#6E7F7C", marginRight: "4px" }}>
-              Test Direct Role View:
-            </span>
-            <button
-              type="button"
-              onClick={() => onSelectRole("master_admin")}
-              style={{
-                background: "#F1F6F4",
-                border: "1px solid #DCE5E1",
-                color: "#063C3D",
-                padding: "6px 12px",
-                borderRadius: "8px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#0D6866";
-                e.currentTarget.style.color = "#FFFFFF";
-                e.currentTarget.style.borderColor = "#0D6866";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#F1F6F4";
-                e.currentTarget.style.color = "#063C3D";
-                e.currentTarget.style.borderColor = "#DCE5E1";
-              }}
-            >
-              Managing Partner Dashboard
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectRole("case_manager")}
-              style={{
-                background: "#F1F6F4",
-                border: "1px solid #DCE5E1",
-                color: "#063C3D",
-                padding: "6px 12px",
-                borderRadius: "8px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#0D6866";
-                e.currentTarget.style.color = "#FFFFFF";
-                e.currentTarget.style.borderColor = "#0D6866";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#F1F6F4";
-                e.currentTarget.style.color = "#063C3D";
-                e.currentTarget.style.borderColor = "#DCE5E1";
-              }}
-            >
-              Employee Casework Hub
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectRole("client_applicant")}
-              style={{
-                background: "#F1F6F4",
-                border: "1px solid #DCE5E1",
-                color: "#063C3D",
-                padding: "6px 12px",
-                borderRadius: "8px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#0D6866";
-                e.currentTarget.style.color = "#FFFFFF";
-                e.currentTarget.style.borderColor = "#0D6866";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#F1F6F4";
-                e.currentTarget.style.color = "#063C3D";
-                e.currentTarget.style.borderColor = "#DCE5E1";
-              }}
-            >
-              Client Onboarding Portal
-            </button>
           </div>
         </div>
 

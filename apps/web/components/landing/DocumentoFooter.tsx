@@ -3,11 +3,10 @@ import { DocumentoLogo } from "../common/DocumentoLogo";
 import { UserExperience } from "../../lib/types";
 
 interface DocumentoFooterProps {
-  onSelectRole: (role: UserExperience) => void;
-  onOpenApp: () => void;
+  onOpenLogin: (portal?: "firm" | "client") => void;
 }
 
-export function DocumentoFooter({ onSelectRole, onOpenApp }: DocumentoFooterProps) {
+export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
   const currentYear = new Date().getFullYear();
 
   return (
@@ -80,13 +79,13 @@ export function DocumentoFooter({ onSelectRole, onOpenApp }: DocumentoFooterProp
           {/* Role Workspaces */}
           <div>
             <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginBottom: "16px" }}>
-              Interactive Workspaces
+              Secure Portals
             </div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", fontSize: "14px" }}>
               <li>
                 <button
                   type="button"
-                  onClick={() => onSelectRole("master_admin")}
+                  onClick={() => onOpenLogin("firm")}
                   style={{
                     background: "none",
                     border: "none",
@@ -97,13 +96,13 @@ export function DocumentoFooter({ onSelectRole, onOpenApp }: DocumentoFooterProp
                     textAlign: "left",
                   }}
                 >
-                  Managing Partner Executive Dashboard →
+                  Law Firm &amp; Attorney Sign In →
                 </button>
               </li>
               <li>
                 <button
                   type="button"
-                  onClick={() => onSelectRole("case_manager")}
+                  onClick={() => onOpenLogin("client")}
                   style={{
                     background: "none",
                     border: "none",
@@ -114,46 +113,30 @@ export function DocumentoFooter({ onSelectRole, onOpenApp }: DocumentoFooterProp
                     textAlign: "left",
                   }}
                 >
-                  Senior Paralegal Casework Hub →
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => onSelectRole("client_applicant")}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    color: "#0D6866",
-                    fontWeight: 550,
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
-                  Client &amp; Applicant Portal →
+                  Client &amp; Applicant Portal Sign In →
                 </button>
               </li>
               <li style={{ marginTop: "6px" }}>
                 <button
                   type="button"
-                  onClick={onOpenApp}
+                  onClick={() => onOpenLogin("firm")}
                   style={{
                     background: "#0D6866",
                     color: "#FFFFFF",
                     border: "none",
-                    padding: "6px 12px",
+                    padding: "8px 14px",
                     borderRadius: "6px",
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor: "pointer",
                   }}
                 >
-                  Launch Full Sandbox
+                  Access Platform Login
                 </button>
               </li>
             </ul>
           </div>
+
 
           {/* Technical Specs */}
           <div>

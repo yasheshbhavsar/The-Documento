@@ -1,16 +1,13 @@
 import React from "react";
 import { DocumentoLogo } from "../common/DocumentoLogo";
-import { UserExperience } from "../../lib/types";
 
 interface DocumentoNavbarProps {
-  onSelectRole: (role: UserExperience) => void;
-  onOpenApp: () => void;
+  onOpenLogin: (portal?: "firm" | "client") => void;
   isLiveBackend?: boolean;
 }
 
 export function DocumentoNavbar({
-  onSelectRole,
-  onOpenApp,
+  onOpenLogin,
   isLiveBackend = true,
 }: DocumentoNavbarProps) {
   return (
@@ -20,9 +17,9 @@ export function DocumentoNavbar({
         position: "sticky",
         top: 0,
         zIndex: 90,
-        background: "rgba(248, 247, 242, 0.92)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
+        background: "rgba(248, 247, 242, 0.94)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
         borderBottom: "1px solid #DCE5E1",
         transition: "all 0.2s ease",
       }}
@@ -39,7 +36,7 @@ export function DocumentoNavbar({
         }}
       >
         {/* Brand */}
-        <div style={{ display: "flex", alignItems: "center", gap: "28px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "32px" }}>
           <a
             href="#hero"
             style={{
@@ -51,14 +48,14 @@ export function DocumentoNavbar({
             <DocumentoLogo size="md" showWordmark showDomain />
           </a>
 
-          {/* Navigation Links */}
+          {/* Navigation Anchors */}
           <nav
             role="navigation"
             aria-label="Main Navigation"
             style={{
               display: "none",
               alignItems: "center",
-              gap: "22px",
+              gap: "24px",
               fontSize: "14px",
               fontWeight: 500,
               color: "#445451",
@@ -121,7 +118,7 @@ export function DocumentoNavbar({
           {/* Health indicator */}
           <div
             style={{
-              display: "inline-flex",
+              display: "none",
               alignItems: "center",
               gap: "6px",
               padding: "4px 10px",
@@ -132,6 +129,7 @@ export function DocumentoNavbar({
               fontWeight: 550,
               color: "#176B50",
             }}
+            className="sm-status-badge"
             title="FastAPI Python engine with isolated tenant boundaries"
           >
             <span
@@ -143,110 +141,74 @@ export function DocumentoNavbar({
                 display: "inline-block",
               }}
             />
-            {isLiveBackend ? "Engine Operational" : "Demo Sandbox"}
+            <span>{isLiveBackend ? "Engine Live" : "Sandbox"}</span>
           </div>
 
-          {/* Quick Role Direct Buttons */}
-          <div
+          {/* Client Portal Link */}
+          <button
+            type="button"
+            onClick={() => onOpenLogin("client")}
             style={{
-              display: "none",
-              alignItems: "center",
-              gap: "4px",
-              background: "#FFFFFF",
-              border: "1px solid #DCE5E1",
+              background: "transparent",
+              border: "none",
+              color: "#445451",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+              padding: "8px 12px",
               borderRadius: "8px",
-              padding: "3px",
+              transition: "all 0.15s ease",
             }}
-            className="lg-role-toggles"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "#063C3D";
+              e.currentTarget.style.background = "#F1F6F4";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "#445451";
+              e.currentTarget.style.background = "transparent";
+            }}
           >
-            <button
-              type="button"
-              onClick={() => onSelectRole("master_admin")}
-              style={{
-                background: "transparent",
-                border: "none",
-                fontSize: "12px",
-                fontWeight: 600,
-                color: "#445451",
-                padding: "5px 10px",
-                borderRadius: "6px",
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#DDEFE8";
-                e.currentTarget.style.color = "#063C3D";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "#445451";
-              }}
-            >
-              Partner
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectRole("case_manager")}
-              style={{
-                background: "transparent",
-                border: "none",
-                fontSize: "12px",
-                fontWeight: 600,
-                color: "#445451",
-                padding: "5px 10px",
-                borderRadius: "6px",
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#DDEFE8";
-                e.currentTarget.style.color = "#063C3D";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "#445451";
-              }}
-            >
-              Paralegal
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectRole("client_applicant")}
-              style={{
-                background: "transparent",
-                border: "none",
-                fontSize: "12px",
-                fontWeight: 600,
-                color: "#445451",
-                padding: "5px 10px",
-                borderRadius: "6px",
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#DDEFE8";
-                e.currentTarget.style.color = "#063C3D";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "#445451";
-              }}
-            >
-              Client
-            </button>
-          </div>
+            Client Portal
+          </button>
+
+          {/* Sign In Button */}
+          <button
+            type="button"
+            onClick={() => onOpenLogin("firm")}
+            style={{
+              background: "#FFFFFF",
+              color: "#063C3D",
+              border: "1px solid #DCE5E1",
+              padding: "8px 16px",
+              borderRadius: "8px",
+              fontWeight: 600,
+              fontSize: "13px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#0D6866";
+              e.currentTarget.style.background = "#F8F7F2";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#DCE5E1";
+              e.currentTarget.style.background = "#FFFFFF";
+            }}
+          >
+            Sign In
+          </button>
 
           {/* Primary CTA Button */}
           <button
             type="button"
-            onClick={onOpenApp}
+            onClick={() => onOpenLogin("firm")}
             style={{
               background: "#0D6866",
               color: "#FFFFFF",
               border: "1px solid #063C3D",
               padding: "8px 18px",
               borderRadius: "8px",
-              fontWeight: 600,
+              fontWeight: 650,
               fontSize: "14px",
               cursor: "pointer",
               display: "inline-flex",
@@ -264,7 +226,7 @@ export function DocumentoNavbar({
               e.currentTarget.style.boxShadow = "0 2px 6px rgba(13, 104, 102, 0.2)";
             }}
           >
-            <span>Open Workspaces</span>
+            <span>Access Portal</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -275,8 +237,8 @@ export function DocumentoNavbar({
         @media (min-width: 768px) {
           .md-nav-links { display: flex !important; }
         }
-        @media (min-width: 1024px) {
-          .lg-role-toggles { display: flex !important; }
+        @media (min-width: 640px) {
+          .sm-status-badge { display: inline-flex !important; }
         }
       `}</style>
     </header>

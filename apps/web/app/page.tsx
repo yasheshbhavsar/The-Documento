@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { UserExperience, RoleCode, ImmigrationCase, ClientProfile, DocumentItem, CaseTask, AIFinding, MessageItem, NotificationItem, InvoiceItem, TeamMemberCapacity, AuditEvent } from "../lib/types";
+import { UserContext, UserExperience, RoleCode, ImmigrationCase, ClientProfile, DocumentItem, CaseTask, AIFinding, MessageItem, NotificationItem, InvoiceItem, TeamMemberCapacity, AuditEvent } from "../lib/types";
 import { api } from "../lib/api";
+import { DEMO_USERS } from "../lib/auth";
 import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
 import { ClientPortal } from "../components/dashboards/ClientPortal";
@@ -13,7 +14,6 @@ import { CaseDetailModal } from "../components/cases/CaseDetailModal";
 import { DocumentUploadModal } from "../components/modals/DocumentUploadModal";
 import { GuidedQuestionnaireModal } from "../components/modals/GuidedQuestionnaireModal";
 import { AlertBanner } from "../components/common/NotificationToast";
-import { DocumentoLogo } from "../components/common/DocumentoLogo";
 import { DocumentoNavbar } from "../components/landing/DocumentoNavbar";
 import { DocumentoHero } from "../components/landing/DocumentoHero";
 import { DocumentoPreview } from "../components/landing/DocumentoPreview";
@@ -21,12 +21,19 @@ import { DocumentoCapabilities } from "../components/landing/DocumentoCapabiliti
 import { DocumentoWorkflow } from "../components/landing/DocumentoWorkflow";
 import { DocumentoTrust } from "../components/landing/DocumentoTrust";
 import { DocumentoFooter } from "../components/landing/DocumentoFooter";
+import { DocumentoLoginModal } from "../components/auth/DocumentoLoginModal";
+import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<"landing" | "workspace">("landing");
-  const [activeExp, setActiveExp] = useState<UserExperience>("master_admin");
+  const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [loginInitialPortal, setLoginInitialPortal] = useState<"firm" | "client">("firm");
   const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false);
   const [bannerAlert, setBannerAlert] = useState<{ type: "success" | "info" | "warning"; message: string } | null>(null);
+
+  // Active role mapping based on authenticated user
+  const activeExp: UserExperience = currentUser ? currentUser.experience : "master_admin";
+  const currentRole: RoleCode = currentUser ? currentUser.role : "master_admin";
 
   // Core domain state
   const [cases, setCases] = useState<ImmigrationCase[]>([]);
@@ -48,15 +55,24 @@ export default function Home() {
   const [selectedCaseForDrawer, setSelectedCaseForDrawer] = useState<ImmigrationCase | null>(null);
   const [selectedCaseForDetailModal, setSelectedCaseForDetailModal] = useState<ImmigrationCase | null>(null);
 
-  // Active role mapping
-  const currentRole: RoleCode =
-    activeExp === "master_admin"
-      ? "master_admin"
-      : activeExp === "case_manager"
-      ? "case_manager"
-      : "retained_client";
+  // Load existing session from storage if present
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("documento_user");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored) as UserContext;
+          if (parsed && parsed.id) {
+            setCurrentUser(parsed);
+          }
+        } catch {
+          // ignore corrupted local storage
+        }
+      }
+    }
+  }, []);
 
-  // Initial data loading
+  // Initial data loading when role changes
   useEffect(() => {
     async function loadData() {
       const isHealthy = await api.checkBackendHealth();
@@ -94,9 +110,52 @@ export default function Home() {
     }
 
     loadData();
-  }, [activeExp]);
+  }, [currentRole]);
 
-  // Handlers
+  // Auth Handlers
+  const handleOpenLogin = (portal: "firm" | "client" = "firm") => {
+    setLoginInitialPortal(portal);
+    setIsLoginModalOpen(true);
+  };
+
+  const handleLoginSuccess = (user: UserContext) => {
+    setCurrentUser(user);
+    setIsLoginModalOpen(false);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("documento_user", JSON.stringify(user));
+    }
+    setBannerAlert({
+      type: "success",
+      message: `Welcome, ${user.full_name}. Authenticated to ${user.organization_name}.`,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("documento_user");
+    }
+    setBannerAlert({
+      type: "info",
+      message: "You have been safely signed out of Documento.",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSwitchRoleInWorkspace = (role: UserExperience) => {
+    const demoUser = DEMO_USERS[role];
+    setCurrentUser(demoUser);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("documento_user", JSON.stringify(demoUser));
+    }
+    setBannerAlert({
+      type: "info",
+      message: `Active persona switched to ${demoUser.full_name} (${role === "master_admin" ? "Managing Partner" : role === "case_manager" ? "Paralegal" : "Client"}).`,
+    });
+  };
+
+  // Domain Handlers
   const handleCaseCreated = (newCase: ImmigrationCase) => {
     setCases((prev) => [newCase, ...prev]);
     setBannerAlert({
@@ -174,97 +233,8 @@ export default function Home() {
     );
   };
 
-  const handleSelectRoleFromLanding = (role: UserExperience) => {
-    setActiveExp(role);
-    setCurrentView("workspace");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleOpenWorkspaces = () => {
-    setCurrentView("workspace");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
   return (
     <div className="min-h-screen" style={{ background: "var(--bg, #F8F7F2)" }}>
-      {/* Documento Top Platform Bar */}
-      <div className="persona-switcher-bar">
-        <div className="persona-title">
-          <DocumentoLogo size="sm" showWordmark={false} />
-          <span style={{ fontWeight: 700, color: "#FFFFFF", letterSpacing: "-0.01em" }}>DOCUMENTO</span>
-          <span style={{ color: "#B9DED4", margin: "0 2px", opacity: 0.5 }}>|</span>
-          <span style={{ fontWeight: 400, color: "#B9DED4", fontSize: "12px" }}>
-            {currentView === "landing" ? "Product Overview & Live Sandbox" : "Active Role Workspace"}
-          </span>
-          <span className="pulse-indicator"></span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {currentView === "workspace" && (
-            <button
-              type="button"
-              onClick={() => setCurrentView("landing")}
-              style={{
-                background: "rgba(255, 255, 255, 0.12)",
-                border: "1px solid rgba(185, 222, 212, 0.25)",
-                color: "#FFFFFF",
-                padding: "5px 12px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <span>← Back to Overview</span>
-            </button>
-          )}
-
-          <div className="persona-pills">
-            <button
-              type="button"
-              className={`persona-pill ${currentView === "landing" ? "active" : ""}`}
-              onClick={() => setCurrentView("landing")}
-            >
-              Landing Overview
-            </button>
-            <button
-              type="button"
-              className={`persona-pill ${currentView === "workspace" && activeExp === "master_admin" ? "active" : ""}`}
-              onClick={() => {
-                setActiveExp("master_admin");
-                setCurrentView("workspace");
-              }}
-            >
-              Partner View
-            </button>
-            <button
-              type="button"
-              className={`persona-pill ${currentView === "workspace" && activeExp === "case_manager" ? "active" : ""}`}
-              onClick={() => {
-                setActiveExp("case_manager");
-                setCurrentView("workspace");
-              }}
-            >
-              Paralegal Hub
-            </button>
-            <button
-              type="button"
-              className={`persona-pill ${currentView === "workspace" && activeExp === "client_applicant" ? "active" : ""}`}
-              onClick={() => {
-                setActiveExp("client_applicant");
-                setCurrentView("workspace");
-              }}
-            >
-              Client Portal
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Global Alert Notification */}
       {bannerAlert && (
         <div style={{ padding: "12px 24px 0 24px" }}>
@@ -276,81 +246,96 @@ export default function Home() {
         </div>
       )}
 
-      {/* VIEW 1: Documento Brand & Product Landing Page */}
-      {currentView === "landing" && (
+      {/* STATE A: PUBLIC LANDING PAGE (Clean, No dev bar) */}
+      {!currentUser && (
         <div>
           <DocumentoNavbar
-            onSelectRole={handleSelectRoleFromLanding}
-            onOpenApp={handleOpenWorkspaces}
+            onOpenLogin={handleOpenLogin}
             isLiveBackend={isLiveBackend}
           />
           <DocumentoHero
-            onOpenApp={handleOpenWorkspaces}
-            onSelectRole={handleSelectRoleFromLanding}
+            onOpenLogin={handleOpenLogin}
           />
           <DocumentoPreview />
           <DocumentoCapabilities />
           <DocumentoWorkflow />
           <DocumentoTrust />
           <DocumentoFooter
-            onSelectRole={handleSelectRoleFromLanding}
-            onOpenApp={handleOpenWorkspaces}
+            onOpenLogin={handleOpenLogin}
+          />
+
+          {/* Top Tier Login Modal */}
+          <DocumentoLoginModal
+            isOpen={isLoginModalOpen}
+            onClose={() => setIsLoginModalOpen(false)}
+            onLoginSuccess={handleLoginSuccess}
+            initialPortal={loginInitialPortal}
           />
         </div>
       )}
 
-      {/* VIEW 2: Interactive Role Workspaces */}
-      {currentView === "workspace" && (
-        <main style={{ padding: "16px 24px 48px 24px" }}>
-          {activeExp === "master_admin" && (
-            <OwnerMasterDashboard
-              cases={cases}
-              clients={clients}
-              auditEvents={auditEvents}
-              invoices={invoices}
-              capacity={capacity}
-              isLiveBackend={isLiveBackend}
-              onOpenCreateCase={() => setIsCreateCaseOpen(true)}
-              onOpenCreateClient={() => setIsCreateClientOpen(true)}
-              onSelectCase={(c) => setSelectedCaseForDrawer(c)}
-            />
-          )}
+      {/* STATE B: AUTHENTICATED ENTERPRISE WORKSPACE */}
+      {currentUser && (
+        <div>
+          <WorkspaceHeader
+            currentUser={currentUser}
+            onLogout={handleLogout}
+            onSwitchRole={handleSwitchRoleInWorkspace}
+            isLiveBackend={isLiveBackend}
+          />
 
-          {activeExp === "case_manager" && (
-            <EmployeeWorkspace
-              cases={cases}
-              clients={clients}
-              documents={documents}
-              tasks={tasks}
-              aiFindings={aiFindings}
-              messages={messages}
-              onToggleTask={handleToggleTask}
-              onSendMessage={handleSendMessage}
-              onSelectCase={(c) => setSelectedCaseForDrawer(c)}
-              onOpenUploadModal={() => setIsUploadModalOpen(true)}
-              onDocumentUpdated={handleDocumentUpdated}
-              onResolveFinding={handleResolveFinding}
-              onDismissFinding={handleDismissFinding}
-              onEscalateFinding={handleEscalateFinding}
-            />
-          )}
+          <main style={{ padding: "16px 24px 48px 24px" }}>
+            {activeExp === "master_admin" && (
+              <OwnerMasterDashboard
+                cases={cases}
+                clients={clients}
+                auditEvents={auditEvents}
+                invoices={invoices}
+                capacity={capacity}
+                isLiveBackend={isLiveBackend}
+                onOpenCreateCase={() => setIsCreateCaseOpen(true)}
+                onOpenCreateClient={() => setIsCreateClientOpen(true)}
+                onSelectCase={(c) => setSelectedCaseForDrawer(c)}
+              />
+            )}
 
-          {activeExp === "client_applicant" && (
-            <ClientPortal
-              myCase={cases[0] || null}
-              documents={documents}
-              messages={messages}
-              notifications={notifications}
-              invoices={invoices}
-              onOpenUploadModal={() => setIsUploadModalOpen(true)}
-              onOpenQuestionnaireModal={() => setIsQuestionnaireOpen(true)}
-              onSendMessage={handleSendMessage}
-              onMarkNotificationRead={handleMarkNotificationRead}
-              onDocumentUpdated={handleDocumentUpdated}
-            />
-          )}
-        </main>
+            {activeExp === "case_manager" && (
+              <EmployeeWorkspace
+                cases={cases}
+                clients={clients}
+                documents={documents}
+                tasks={tasks}
+                aiFindings={aiFindings}
+                messages={messages}
+                onToggleTask={handleToggleTask}
+                onSendMessage={handleSendMessage}
+                onSelectCase={(c) => setSelectedCaseForDrawer(c)}
+                onOpenUploadModal={() => setIsUploadModalOpen(true)}
+                onDocumentUpdated={handleDocumentUpdated}
+                onResolveFinding={handleResolveFinding}
+                onDismissFinding={handleDismissFinding}
+                onEscalateFinding={handleEscalateFinding}
+              />
+            )}
+
+            {activeExp === "client_applicant" && (
+              <ClientPortal
+                myCase={cases[0] || null}
+                documents={documents}
+                messages={messages}
+                notifications={notifications}
+                invoices={invoices}
+                onOpenUploadModal={() => setIsUploadModalOpen(true)}
+                onOpenQuestionnaireModal={() => setIsQuestionnaireOpen(true)}
+                onSendMessage={handleSendMessage}
+                onMarkNotificationRead={handleMarkNotificationRead}
+                onDocumentUpdated={handleDocumentUpdated}
+              />
+            )}
+          </main>
+        </div>
       )}
+
 
       {/* Modals & Drawers */}
       <CreateCaseModal
@@ -370,7 +355,7 @@ export default function Home() {
         isOpen={!!selectedCaseForDrawer}
         onClose={() => setSelectedCaseForDrawer(null)}
         caseItem={selectedCaseForDrawer}
-        onOpenWorkspace={() => setActiveExp("case_manager")}
+        onOpenWorkspace={() => handleSwitchRoleInWorkspace("case_manager")}
         onOpenDetailModal={(c) => setSelectedCaseForDetailModal(c)}
       />
       <CaseDetailModal
