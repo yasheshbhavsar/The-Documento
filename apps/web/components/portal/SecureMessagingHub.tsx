@@ -249,26 +249,38 @@ export function SecureMessagingHub({
   };
 
   return (
-    <div className="flex flex-col h-[740px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+    <div className="flex flex-col h-[740px] bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
       {/* Top Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 backdrop-blur-md">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/70 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+          <div
+            style={{
+              width: "40px",
+              height: "40px",
+              borderRadius: "10px",
+              background: "#0D6866",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#FFFFFF",
+              boxShadow: "0 2px 6px rgba(13, 104, 102, 0.25)",
+            }}
+          >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
             </svg>
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               Attorney Communications
               <span className="text-xs text-slate-400 font-normal">| Secure Communications Hub</span>
               {isStaffMode && (
-                <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 border border-amber-300">
                   Staff View (Internal Notes Enabled)
                 </span>
               )}
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-slate-500">
               End-to-end encrypted legal messaging with cryptographic audit trail and internal notes separation
             </p>
           </div>
@@ -277,7 +289,20 @@ export function SecureMessagingHub({
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsCreatingThread(true)}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition-all shadow-md shadow-indigo-600/20"
+            style={{
+              background: "#0D6866",
+              color: "#FFFFFF",
+              fontWeight: 600,
+              fontSize: "12px",
+              borderRadius: "8px",
+              padding: "8px 14px",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              cursor: "pointer",
+              boxShadow: "0 2px 4px rgba(13, 104, 102, 0.2)",
+            }}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -635,11 +660,21 @@ export function SecureMessagingHub({
                       <button
                         type="submit"
                         disabled={!replyText.trim() || sending}
-                        className={`flex items-center gap-2 px-5 py-2 text-xs font-semibold rounded-xl text-white shadow-md active:scale-95 transition-all ${
-                          isInternalNote
-                            ? "bg-amber-600 hover:bg-amber-700 shadow-amber-600/20"
-                            : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20"
-                        } disabled:opacity-50 disabled:pointer-events-none`}
+                        style={{
+                          background: isInternalNote ? "#D97706" : "#0D6866",
+                          color: "#FFFFFF",
+                          fontWeight: 650,
+                          borderRadius: "10px",
+                          padding: "8px 18px",
+                          border: "none",
+                          cursor: !replyText.trim() || sending ? "not-allowed" : "pointer",
+                          opacity: !replyText.trim() || sending ? 0.5 : 1,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          fontSize: "12px",
+                          boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
+                        }}
                       >
                         {sending ? (
                           <span>Sending...</span>

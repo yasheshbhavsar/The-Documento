@@ -284,7 +284,7 @@ export default function Home() {
             isLiveBackend={isLiveBackend}
           />
 
-          <main style={{ padding: "16px 24px 48px 24px" }}>
+          <main style={{ padding: activeExp === "client_applicant" ? 0 : "16px 24px 48px 24px" }}>
             {activeExp === "master_admin" && (
               <OwnerMasterDashboard
                 cases={cases}

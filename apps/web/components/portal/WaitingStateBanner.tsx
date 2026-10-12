@@ -25,11 +25,13 @@ export function WaitingStateBanner({
     if (initialWaitingState) {
       setData(initialWaitingState);
     } else {
-      fetchClientWaitingState(caseId).then((res) => {
-        if (res) setData(res);
-      }).catch(() => {
-        setData(FALLBACK_WAITING_STATE);
-      });
+      fetchClientWaitingState(caseId)
+        .then((res) => {
+          if (res) setData(res);
+        })
+        .catch(() => {
+          setData(FALLBACK_WAITING_STATE);
+        });
     }
   }, [initialWaitingState, caseId]);
 
@@ -52,16 +54,16 @@ export function WaitingStateBanner({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      {/* 1. Primary Immediate Next Action Banner */}
+      {/* 1. Primary Immediate Next Action Card (Light Mode: Teal, Mint & Cream) */}
       {primary_next_action && (
         <div
           data-testid="primary-next-action-card"
           style={{
-            background: "linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)",
-            color: "#ffffff",
+            background: "#F8F7F2",
+            border: "1.5px solid #B9DED4",
+            borderRadius: "14px",
             padding: "20px 24px",
-            borderRadius: "12px",
-            boxShadow: "0 4px 16px rgba(30, 58, 138, 0.25)",
+            boxShadow: "0 2px 10px rgba(6, 60, 61, 0.05)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -71,43 +73,74 @@ export function WaitingStateBanner({
         >
           <div style={{ flex: 1, minWidth: "260px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-              <span style={{ fontSize: "16px" }}>⚡</span>
-              <strong style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.85 }}>
+              <span style={{ fontSize: "15px" }}>⚡</span>
+              <strong
+                style={{
+                  fontSize: "11px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  color: "#0D6866",
+                  fontWeight: 700,
+                }}
+              >
                 Immediate Next Action Required
               </strong>
               {primary_next_action.due_date && (
                 <span
                   style={{
                     fontSize: "11px",
-                    background: "rgba(255, 255, 255, 0.2)",
+                    fontWeight: 600,
+                    background: "#EAF6F0",
+                    color: "#0D6866",
+                    border: "1px solid #B9DED4",
                     padding: "2px 8px",
-                    borderRadius: "999px",
+                    borderRadius: "6px",
                   }}
                 >
                   Due: {new Date(primary_next_action.due_date).toLocaleDateString()}
                 </span>
               )}
             </div>
-            <h3 style={{ margin: "0 0 6px", fontSize: "18px", fontWeight: 700, color: "#ffffff" }}>
+            <h3
+              style={{
+                margin: "0 0 6px",
+                fontSize: "18px",
+                fontWeight: 700,
+                color: "#063C3D",
+                letterSpacing: "-0.01em",
+              }}
+            >
               {primary_next_action.title}
             </h3>
-            <p style={{ margin: 0, fontSize: "13px", opacity: 0.9, lineHeight: 1.5, maxWidth: "720px" }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "13px",
+                color: "#445451",
+                lineHeight: 1.5,
+                maxWidth: "720px",
+              }}
+            >
               {primary_next_action.description}
             </p>
           </div>
 
           <div style={{ flexShrink: 0 }}>
             <Button
-              variant="secondary"
+              variant="primary"
               size="md"
               data-testid="complete-next-action-btn"
               onClick={() => handleAction(primary_next_action)}
               style={{
-                background: "#ffffff",
-                color: "#1e3a8a",
-                fontWeight: 700,
+                background: "#0D6866",
+                color: "#FFFFFF",
+                fontWeight: 650,
                 border: "none",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                borderRadius: "8px",
+                padding: "10px 18px",
+                boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
             >
               Complete Action →
@@ -128,18 +161,25 @@ export function WaitingStateBanner({
         <div
           data-testid="waiting-on-client-box"
           style={{
-            background: "var(--surface, #ffffff)",
-            border: "1px solid var(--border, #e2e8f0)",
-            borderTop: "4px solid var(--accent, #3b82f6)",
+            background: "#FFFFFF",
+            border: "1px solid #DCE5E1",
+            borderTop: "3.5px solid #0D6866",
             borderRadius: "10px",
             padding: "16px 20px",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+            boxShadow: "0 2px 6px rgba(6, 60, 61, 0.04)",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "12px",
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "18px" }}>👤</span>
-              <strong style={{ fontSize: "14px", color: "var(--text, #0f172a)" }}>
+              <span style={{ fontSize: "16px" }}>👤</span>
+              <strong style={{ fontSize: "14px", color: "#063C3D", fontWeight: 700 }}>
                 Waiting on You (Client)
               </strong>
             </div>
@@ -149,8 +189,8 @@ export function WaitingStateBanner({
           </div>
 
           {waiting_on_client.length === 0 ? (
-            <p style={{ margin: 0, fontSize: "13px", color: "var(--muted, #64748b)" }}>
-              ✓ All required items submitted. Nothing currently pending on your end!
+            <p style={{ margin: 0, fontSize: "13px", color: "#176B50" }}>
+              ✓ All required evidentiary items submitted. Nothing currently pending on your end!
             </p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -160,21 +200,28 @@ export function WaitingStateBanner({
                   onClick={() => handleAction(item)}
                   style={{
                     padding: "10px 12px",
-                    background: "var(--surface-subtle, #f8fafc)",
-                    border: "1px solid var(--border, #e2e8f0)",
-                    borderRadius: "6px",
+                    background: "#F8F7F2",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "8px",
                     cursor: "pointer",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
                     gap: "10px",
+                    transition: "border-color 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "#0D6866";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "#DCE5E1";
                   }}
                 >
                   <div>
-                    <strong style={{ fontSize: "13px", display: "block", color: "var(--text, #0f172a)" }}>
+                    <strong style={{ fontSize: "13px", display: "block", color: "#172322" }}>
                       {item.title}
                     </strong>
-                    <span style={{ fontSize: "12px", color: "var(--muted, #64748b)" }}>
+                    <span style={{ fontSize: "12px", color: "#445451" }}>
                       {item.description}
                     </span>
                   </div>
@@ -191,18 +238,25 @@ export function WaitingStateBanner({
         <div
           data-testid="waiting-on-firm-box"
           style={{
-            background: "var(--surface, #ffffff)",
-            border: "1px solid var(--border, #e2e8f0)",
-            borderTop: "4px solid #10b981",
+            background: "#FFFFFF",
+            border: "1px solid #DCE5E1",
+            borderTop: "3.5px solid #176B50",
             borderRadius: "10px",
             padding: "16px 20px",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+            boxShadow: "0 2px 6px rgba(6, 60, 61, 0.04)",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "12px",
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "18px" }}>⚖️</span>
-              <strong style={{ fontSize: "14px", color: "var(--text, #0f172a)" }}>
+              <span style={{ fontSize: "16px" }}>⚖️</span>
+              <strong style={{ fontSize: "14px", color: "#063C3D", fontWeight: 700 }}>
                 Waiting on the Firm (In Progress)
               </strong>
             </div>
@@ -217,9 +271,9 @@ export function WaitingStateBanner({
                 key={item.id}
                 style={{
                   padding: "10px 12px",
-                  background: "var(--surface-subtle, #f8fafc)",
-                  border: "1px solid var(--border, #e2e8f0)",
-                  borderRadius: "6px",
+                  background: "#F8F7F2",
+                  border: "1px solid #DCE5E1",
+                  borderRadius: "8px",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
@@ -227,10 +281,10 @@ export function WaitingStateBanner({
                 }}
               >
                 <div>
-                  <strong style={{ fontSize: "13px", display: "block", color: "var(--text, #0f172a)" }}>
+                  <strong style={{ fontSize: "13px", display: "block", color: "#172322" }}>
                     {item.title}
                   </strong>
-                  <span style={{ fontSize: "12px", color: "var(--muted, #64748b)" }}>
+                  <span style={{ fontSize: "12px", color: "#445451" }}>
                     {item.description}
                   </span>
                 </div>
@@ -243,23 +297,24 @@ export function WaitingStateBanner({
         </div>
       </div>
 
-      {/* 3. Filing Readiness Meter */}
+      {/* 3. Filing Readiness Meter with Legal Precision Disclaimer */}
       <div
         style={{
-          background: "var(--surface, #ffffff)",
-          border: "1px solid var(--border, #e2e8f0)",
-          borderRadius: "8px",
-          padding: "14px 20px",
+          background: "#FFFFFF",
+          border: "1px solid #DCE5E1",
+          borderRadius: "10px",
+          padding: "16px 20px",
           display: "flex",
           flexDirection: "column",
           gap: "8px",
+          boxShadow: "0 1px 3px rgba(6, 60, 61, 0.03)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
-          <span style={{ fontWeight: 600, color: "var(--text, #0f172a)" }}>
-            Petition Filing & Onboarding Readiness
+          <span style={{ fontWeight: 650, color: "#063C3D" }}>
+            Petition Filing &amp; Onboarding Readiness
           </span>
-          <strong style={{ color: "var(--accent, #3b82f6)" }}>
+          <strong style={{ color: "#0D6866" }}>
             {profile_completeness_percentage}% Ready
           </strong>
         </div>
@@ -267,7 +322,7 @@ export function WaitingStateBanner({
           style={{
             width: "100%",
             height: "8px",
-            backgroundColor: "#e2e8f0",
+            backgroundColor: "#E7EFEB",
             borderRadius: "4px",
             overflow: "hidden",
           }}
@@ -276,10 +331,13 @@ export function WaitingStateBanner({
             style={{
               width: `${profile_completeness_percentage}%`,
               height: "100%",
-              background: "linear-gradient(90deg, #3b82f6 0%, #10b981 100%)",
+              background: "linear-gradient(90deg, #0D6866 0%, #2A9288 100%)",
               transition: "width 0.5s ease",
             }}
           />
+        </div>
+        <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "2px", lineHeight: 1.4 }}>
+          * Workflow progress measures procedural evidentiary milestone completion and does not predict USCIS processing times, statutory eligibility, or petition adjudication outcome.
         </div>
       </div>
     </div>
