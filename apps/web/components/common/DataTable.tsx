@@ -25,6 +25,7 @@ export interface DataTableProps<T> {
   emptyTitle?: string;
   emptyDescription?: string;
   actions?: React.ReactNode;
+  hideSearch?: boolean;
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -39,6 +40,7 @@ export function DataTable<T extends Record<string, any>>({
   emptyTitle = "No records found",
   emptyDescription = "No data matches your current search or filter criteria.",
   actions,
+  hideSearch = false,
 }: DataTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
@@ -114,53 +116,56 @@ export function DataTable<T extends Record<string, any>>({
       }}
     >
       {/* Controls Bar: Search, Filter, Actions */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: "12px",
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "flex", gap: "10px", alignItems: "center", flex: 1, minWidth: "260px" }}>
-          {/* Search Input */}
-          <div style={{ position: "relative", flex: 1, maxWidth: "340px" }}>
-            <input
-              type="text"
-              placeholder={searchPlaceholder}
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              aria-label={searchPlaceholder}
-              style={{
-                width: "100%",
-                padding: "8px 12px 8px 34px",
-                fontSize: "13px",
-                border: "1px solid var(--border, #DCE5E1)",
-                borderRadius: "var(--radius-sm, 8px)",
-                background: "var(--surface, #ffffff)",
-                color: "var(--text, #172322)",
-                outline: "none",
-              }}
-            />
-            <span
-              style={{
-                position: "absolute",
-                left: "10px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                fontSize: "14px",
-                color: "var(--quiet, #6E7F7C)",
-                pointerEvents: "none",
-              }}
-              aria-hidden="true"
-            >
-              🔍
-            </span>
-          </div>
+      {(!hideSearch || filterOptions || actions) && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flex: 1, minWidth: "260px" }}>
+            {/* Search Input */}
+            {!hideSearch && (
+              <div style={{ position: "relative", flex: 1, maxWidth: "340px" }}>
+                <input
+                  type="text"
+                  placeholder={searchPlaceholder}
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  aria-label={searchPlaceholder}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px 8px 34px",
+                    fontSize: "13px",
+                    border: "1px solid var(--border, #DCE5E1)",
+                    borderRadius: "var(--radius-sm, 8px)",
+                    background: "var(--surface, #ffffff)",
+                    color: "var(--text, #172322)",
+                    outline: "none",
+                  }}
+                />
+                <span
+                  style={{
+                    position: "absolute",
+                    left: "10px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    fontSize: "14px",
+                    color: "var(--quiet, #6E7F7C)",
+                    pointerEvents: "none",
+                  }}
+                  aria-hidden="true"
+                >
+                  🔍
+                </span>
+              </div>
+            )}
 
           {/* Filter dropdown */}
           {filterOptions && (
@@ -194,6 +199,7 @@ export function DataTable<T extends Record<string, any>>({
 
         {actions && <div style={{ display: "flex", gap: "8px" }}>{actions}</div>}
       </div>
+    )}
 
       {/* Table Container */}
       <div

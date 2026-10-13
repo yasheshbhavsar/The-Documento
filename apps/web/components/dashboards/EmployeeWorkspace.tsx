@@ -1050,33 +1050,72 @@ export function EmployeeWorkspace({
             </Button>
           }
         >
-          {/* Document Filters & Search */}
-          <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap", alignItems: "center" }}>
-            <input
-              type="text"
-              placeholder="Search evidence by title or category..."
-              value={docSearch}
-              onChange={(e) => setDocSearch(e.target.value)}
-              style={{
-                flex: "1 1 240px",
-                padding: "8px 12px",
-                borderRadius: "8px",
-                border: "1px solid var(--border, #DCE5E1)",
-                background: "var(--surface, #FFFFFF)",
-                color: "var(--text, #172322)",
-                fontSize: "12px",
-              }}
-            />
+          {/* Document Filters & Search Toolbar */}
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              marginBottom: "16px",
+              flexWrap: "wrap",
+              alignItems: "center",
+              background: "#F8F7F2",
+              padding: "12px 14px",
+              borderRadius: "10px",
+              border: "1px solid #DCE5E1",
+            }}
+          >
+            <div style={{ position: "relative", flex: "1 1 260px" }}>
+              <input
+                type="text"
+                placeholder="Search evidence by title or category..."
+                value={docSearch}
+                onChange={(e) => setDocSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  paddingLeft: "34px",
+                  paddingRight: "12px",
+                  paddingTop: "8px",
+                  paddingBottom: "8px",
+                  borderRadius: "8px",
+                  border: "1px solid #DCE5E1",
+                  background: "#FFFFFF",
+                  color: "#172322",
+                  fontSize: "12px",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+              <svg
+                width="15"
+                height="15"
+                style={{
+                  position: "absolute",
+                  left: "11px",
+                  top: "10px",
+                  color: "#6E7F7C",
+                  pointerEvents: "none",
+                }}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+
             <select
               value={docCategoryFilter}
               onChange={(e) => setDocCategoryFilter(e.target.value)}
+              aria-label="Filter by category"
               style={{
                 padding: "8px 12px",
                 borderRadius: "8px",
-                border: "1px solid var(--border, #DCE5E1)",
-                background: "var(--surface, #FFFFFF)",
-                color: "var(--text, #172322)",
+                border: "1px solid #DCE5E1",
+                background: "#FFFFFF",
+                color: "#172322",
                 fontSize: "12px",
+                cursor: "pointer",
+                outline: "none",
               }}
             >
               <option value="all">All Categories (12)</option>
@@ -1092,16 +1131,20 @@ export function EmployeeWorkspace({
               <option value="translations_certifications">Translations</option>
               <option value="supporting_evidence">Other Supporting</option>
             </select>
+
             <select
               value={docStatusFilter}
               onChange={(e) => setDocStatusFilter(e.target.value)}
+              aria-label="Filter by verification status"
               style={{
                 padding: "8px 12px",
                 borderRadius: "8px",
-                border: "1px solid var(--border, #DCE5E1)",
-                background: "var(--surface, #FFFFFF)",
-                color: "var(--text, #172322)",
+                border: "1px solid #DCE5E1",
+                background: "#FFFFFF",
+                color: "#172322",
                 fontSize: "12px",
+                cursor: "pointer",
+                outline: "none",
               }}
             >
               <option value="all">All Verification Statuses</option>
@@ -1110,21 +1153,87 @@ export function EmployeeWorkspace({
               <option value="under_review">Under Review</option>
               <option value="rejected">Rejected</option>
             </select>
+
+            {(docSearch || docCategoryFilter !== "all" || docStatusFilter !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDocSearch("");
+                  setDocCategoryFilter("all");
+                  setDocStatusFilter("all");
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#0D6866",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: "6px 8px",
+                  textDecoration: "underline",
+                }}
+              >
+                Reset Filters
+              </button>
+            )}
           </div>
 
           <DataTable
+            hideSearch={true}
             columns={[
               {
                 key: "title",
                 header: "Evidence Document",
                 render: (d) => (
-                  <div>
-                    <strong style={{ display: "block", color: "var(--text, #f8fafc)" }}>{d.title}</strong>
-                    <div style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "2px" }}>
-                      <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "999px", background: "#1e293b", color: "#94a3b8" }}>
-                        v{d.version || 1} {d.is_current_version ? "(Current)" : "(Superseded)"}
-                      </span>
-                      <span style={{ fontSize: "11px", color: "var(--muted, #64748b)" }}>{d.file_size || "1.5 MB"}</span>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                    <div
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "8px",
+                        background: "#F1F6F4",
+                        border: "1px solid #DCE5E1",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#0D6866",
+                        fontSize: "15px",
+                        flexShrink: 0,
+                        marginTop: "1px",
+                      }}
+                    >
+                      📄
+                    </div>
+                    <div>
+                      <strong
+                        style={{
+                          display: "block",
+                          color: "#063C3D",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          lineHeight: "1.3",
+                        }}
+                      >
+                        {d.title}
+                      </strong>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                            background: d.is_current_version ? "#EAF6F0" : "#F1F5F9",
+                            color: d.is_current_version ? "#0D6866" : "#64748B",
+                            border: d.is_current_version ? "1px solid #B9DED4" : "1px solid #CBD5E1",
+                          }}
+                        >
+                          v{d.version || 1} {d.is_current_version ? "(Current)" : "(Superseded)"}
+                        </span>
+                        <span style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 500 }}>
+                          {d.file_size || "1.5 MB"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ),
@@ -1132,11 +1241,58 @@ export function EmployeeWorkspace({
               {
                 key: "category",
                 header: "Category",
-                render: (d) => (
-                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "6px", background: "#1e1b4b", color: "#a5b4fc" }}>
-                    {(d.category || "").replace(/_/g, " ")}
-                  </span>
-                ),
+                render: (d) => {
+                  const cat = (d.category || "").toLowerCase();
+                  let catBg = "#F1F5F9";
+                  let catColor = "#475569";
+                  let catBorder = "#E2E8F0";
+
+                  if (cat.includes("identity") || cat.includes("passport")) {
+                    catBg = "#E0F2FE";
+                    catColor = "#0369A1";
+                    catBorder = "#BAE6FD";
+                  } else if (cat.includes("education") || cat.includes("diploma") || cat.includes("degree")) {
+                    catBg = "#F3E8FF";
+                    catColor = "#6B21A8";
+                    catBorder = "#E9D5FF";
+                  } else if (cat.includes("employment") || cat.includes("work") || cat.includes("experience")) {
+                    catBg = "#FEF3C7";
+                    catColor = "#92400E";
+                    catBorder = "#FDE68A";
+                  } else if (cat.includes("financial") || cat.includes("bank") || cat.includes("tax")) {
+                    catBg = "#DCFCE7";
+                    catColor = "#166534";
+                    catBorder = "#BBF7D0";
+                  } else if (cat.includes("visa") || cat.includes("permit") || cat.includes("residence")) {
+                    catBg = "#EAF6F0";
+                    catColor = "#0D6866";
+                    catBorder = "#B9DED4";
+                  } else if (cat.includes("police") || cat.includes("medical") || cat.includes("clearance")) {
+                    catBg = "#FEE2E2";
+                    catColor = "#991B1B";
+                    catBorder = "#FECACA";
+                  }
+
+                  return (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 650,
+                        padding: "3px 10px",
+                        borderRadius: "6px",
+                        background: catBg,
+                        color: catColor,
+                        border: `1px solid ${catBorder}`,
+                        whiteSpace: "nowrap",
+                        textTransform: "capitalize",
+                        letterSpacing: "0.01em",
+                        display: "inline-block",
+                      }}
+                    >
+                      {(d.category || "General").replace(/_/g, " ")}
+                    </span>
+                  );
+                },
               },
               {
                 key: "processing_status",
@@ -1156,8 +1312,8 @@ export function EmployeeWorkspace({
                 render: (d) => {
                   const vStatus = d.verification_status || (d.status === "verified" ? "verified" : "unverified");
                   return (
-                    <Badge variant={vStatus === "verified" ? "success" : vStatus === "rejected" ? "action" : "review"}>
-                      {vStatus === "verified" ? "✓ VERIFIED" : vStatus.toUpperCase()}
+                    <Badge variant={vStatus === "verified" ? "success" : vStatus === "rejected" ? "action" : vStatus === "under_review" ? "warning" : "review"}>
+                      {vStatus === "verified" ? "✓ VERIFIED" : vStatus.replace(/_/g, " ").toUpperCase()}
                     </Badge>
                   );
                 },
@@ -1166,8 +1322,23 @@ export function EmployeeWorkspace({
                 key: "extracted_fields",
                 header: "Extracted Provenance",
                 render: (d) => (
-                  <span style={{ fontSize: "11px", color: "var(--accent, #38bdf8)", fontWeight: 500 }}>
-                    {d.extracted_fields?.length || 0} fields
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 650,
+                      color: "#063C3D",
+                      background: "#F8F7F2",
+                      border: "1px solid #DCE5E1",
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontFamily: "monospace",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <span style={{ color: "#0D6866" }}>⚡</span>
+                    <span>{d.extracted_fields?.length || 0} fields</span>
                   </span>
                 ),
               },
@@ -1175,7 +1346,18 @@ export function EmployeeWorkspace({
                 key: "sha256_hash",
                 header: "SHA-256 Fingerprint",
                 render: (d) => (
-                  <code style={{ fontSize: "10px", color: "var(--quiet, #64748b)" }}>
+                  <code
+                    style={{
+                      fontSize: "11px",
+                      color: "#6E7F7C",
+                      background: "#F8F7F2",
+                      padding: "3px 6px",
+                      borderRadius: "4px",
+                      border: "1px solid #EAEFEA",
+                      fontFamily: "monospace",
+                      letterSpacing: "0.02em",
+                    }}
+                  >
                     {d.sha256_hash ? `${d.sha256_hash.slice(0, 14)}...` : "N/A"}
                   </code>
                 ),
@@ -1184,9 +1366,34 @@ export function EmployeeWorkspace({
                 key: "actions",
                 header: "Action",
                 render: (d) => (
-                  <Button variant="primary" size="sm" onClick={() => setSelectedDocForInspection(d)}>
-                    ⚡ Review OCR Dossier
-                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDocForInspection(d)}
+                    style={{
+                      background: "#0D6866",
+                      color: "#FFFFFF",
+                      fontSize: "12px",
+                      fontWeight: 650,
+                      borderRadius: "8px",
+                      padding: "7px 14px",
+                      border: "none",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      boxShadow: "0 2px 4px rgba(13, 104, 102, 0.18)",
+                      whiteSpace: "nowrap",
+                      transition: "background 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "#063C3D";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "#0D6866";
+                    }}
+                  >
+                    <span>⚡ Review OCR Dossier</span>
+                  </button>
                 ),
               },
             ]}
