@@ -222,31 +222,31 @@ export function CaseRequirementEvaluationView({
             gap: "14px",
             padding: "12px 16px",
             borderRadius: "8px",
-            background: "rgba(30, 41, 59, 0.6)",
-            border: "1px solid var(--border, #334155)",
+            background: "var(--surface-subtle, #F1F6F4)",
+            border: "1px solid var(--border, #DCE5E1)",
             marginBottom: "16px",
             fontSize: "12px",
             alignItems: "center",
           }}
         >
           <div>
-            <span style={{ color: "var(--muted, #94a3b8)", display: "block" }}>Active Case:</span>
-            <strong style={{ color: "var(--text, #f8fafc)" }}>
+            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Active Case:</span>
+            <strong style={{ color: "var(--text, #172322)" }}>
               {currentCase?.case_number || "CASE-US-8841"} ({currentCase?.jurisdiction || "US"} {currentCase?.visa_category || "EB-1A"})
             </strong>
           </div>
-          <div style={{ borderLeft: "1px solid #334155", paddingLeft: "14px" }}>
-            <span style={{ color: "var(--muted, #94a3b8)", display: "block" }}>Rule Set:</span>
-            <span style={{ color: "#38bdf8", fontWeight: 600 }}>
+          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "14px" }}>
+            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Rule Set:</span>
+            <span style={{ color: "#0D6866", fontWeight: 600 }}>
               {evaluation?.results?.rule_set_id || "US-USCIS-EB1A"}
             </span>
           </div>
-          <div style={{ borderLeft: "1px solid #334155", paddingLeft: "14px" }}>
-            <span style={{ color: "var(--muted, #94a3b8)", display: "block" }}>Codified Version:</span>
+          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "14px" }}>
+            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Codified Version:</span>
             <span
               style={{
-                background: "rgba(56, 189, 248, 0.15)",
-                color: "#38bdf8",
+                background: "#DDEFE8",
+                color: "#063C3D",
                 padding: "2px 8px",
                 borderRadius: "999px",
                 fontWeight: 600,
@@ -256,15 +256,15 @@ export function CaseRequirementEvaluationView({
               v{evaluation?.version_number || "1.0.0"} (Published)
             </span>
           </div>
-          <div style={{ borderLeft: "1px solid #334155", paddingLeft: "14px" }}>
-            <span style={{ color: "var(--muted, #94a3b8)", display: "block" }}>Evaluated At:</span>
-            <span style={{ color: "var(--text, #f8fafc)" }}>
+          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "14px" }}>
+            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Evaluated At:</span>
+            <span style={{ color: "var(--text, #172322)" }}>
               {evaluation?.evaluated_at ? new Date(evaluation.evaluated_at).toLocaleString() : "Just now"}
             </span>
           </div>
-          <div style={{ borderLeft: "1px solid #334155", paddingLeft: "14px" }}>
-            <span style={{ color: "var(--muted, #94a3b8)", display: "block" }}>Execution Safety:</span>
-            <span style={{ color: "#10b981", fontWeight: 600 }}>
+          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "14px" }}>
+            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Execution Safety:</span>
+            <span style={{ color: "#176B50", fontWeight: 600 }}>
               🛡️ AST Constrained (Zero DB Python)
             </span>
           </div>

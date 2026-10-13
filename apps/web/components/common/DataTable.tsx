@@ -139,10 +139,10 @@ export function DataTable<T extends Record<string, any>>({
                 width: "100%",
                 padding: "8px 12px 8px 34px",
                 fontSize: "13px",
-                border: "1px solid var(--border, #e2e8f0)",
+                border: "1px solid var(--border, #DCE5E1)",
                 borderRadius: "var(--radius-sm, 8px)",
                 background: "var(--surface, #ffffff)",
-                color: "var(--text, #0f172a)",
+                color: "var(--text, #172322)",
                 outline: "none",
               }}
             />
@@ -153,7 +153,7 @@ export function DataTable<T extends Record<string, any>>({
                 top: "50%",
                 transform: "translateY(-50%)",
                 fontSize: "14px",
-                color: "var(--quiet, #64748b)",
+                color: "var(--quiet, #6E7F7C)",
                 pointerEvents: "none",
               }}
               aria-hidden="true"
@@ -215,15 +215,23 @@ export function DataTable<T extends Record<string, any>>({
             }}
           >
             <thead>
-              <tr style={{ background: "var(--surface-subtle, #f1f5f9)", borderBottom: "1px solid var(--border, #e2e8f0)" }}>
+              <tr style={{ background: "var(--surface-subtle, #F1F6F4)", borderBottom: "1px solid var(--border, #DCE5E1)" }}>
                 {columns.map((col) => (
                   <th
                     key={col.key}
                     scope="col"
+                    tabIndex={col.sortable ? 0 : undefined}
+                    aria-sort={sortKey === col.key ? (sortDirection === "asc" ? "ascending" : "descending") : undefined}
+                    onKeyDown={(e) => {
+                      if (col.sortable && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        handleSort(col.key);
+                      }
+                    }}
                     style={{
                       padding: "12px 16px",
                       fontWeight: 700,
-                      color: "var(--muted, #475569)",
+                      color: "var(--muted, #445451)",
                       fontSize: "12px",
                       textTransform: "uppercase",
                       letterSpacing: "0.04em",
@@ -250,14 +258,21 @@ export function DataTable<T extends Record<string, any>>({
                 paginatedData.map((row, idx) => (
                   <tr
                     key={keyExtractor(row)}
+                    tabIndex={onRowClick ? 0 : undefined}
                     onClick={() => onRowClick && onRowClick(row)}
+                    onKeyDown={(e) => {
+                      if (onRowClick && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        onRowClick(row);
+                      }
+                    }}
                     style={{
-                      borderBottom: idx === paginatedData.length - 1 ? "none" : "1px solid var(--border, #e2e8f0)",
+                      borderBottom: idx === paginatedData.length - 1 ? "none" : "1px solid var(--border, #DCE5E1)",
                       cursor: onRowClick ? "pointer" : "default",
                       transition: "background-color 0.1s ease",
                     }}
                     onMouseEnter={(e) => {
-                      if (onRowClick) e.currentTarget.style.backgroundColor = "var(--surface-subtle, #f8fafc)";
+                      if (onRowClick) e.currentTarget.style.backgroundColor = "var(--surface-subtle, #F8F7F2)";
                     }}
                     onMouseLeave={(e) => {
                       if (onRowClick) e.currentTarget.style.backgroundColor = "transparent";
@@ -268,7 +283,7 @@ export function DataTable<T extends Record<string, any>>({
                         key={col.key}
                         style={{
                           padding: "12px 16px",
-                          color: "var(--text, #0f172a)",
+                          color: "var(--text, #172322)",
                           verticalAlign: "middle",
                         }}
                       >
@@ -298,13 +313,13 @@ export function DataTable<T extends Record<string, any>>({
         <div
           style={{
             padding: "12px 16px",
-            borderTop: "1px solid var(--border, #e2e8f0)",
-            background: "var(--surface-subtle, #f1f5f9)",
+            borderTop: "1px solid var(--border, #DCE5E1)",
+            background: "var(--surface-subtle, #F1F6F4)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             fontSize: "12px",
-            color: "var(--muted, #475569)",
+            color: "var(--muted, #445451)",
           }}
         >
           <div>

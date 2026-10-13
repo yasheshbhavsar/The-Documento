@@ -14,12 +14,15 @@
     "react-dom": "latest"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "jsdom": "^30.1.2",
+    "postcss": "^8.5.30",
+    "tailwindcss": "^4.3.3",
     "typescript": "latest",
     "vitest": "^5.0.3"
   }

@@ -17,9 +17,13 @@ import { AlertBanner } from "../components/common/NotificationToast";
 import { DocumentoNavbar } from "../components/landing/DocumentoNavbar";
 import { DocumentoHero } from "../components/landing/DocumentoHero";
 import { DocumentoPreview } from "../components/landing/DocumentoPreview";
-import { DocumentoCapabilities } from "../components/landing/DocumentoCapabilities";
+import { DocumentoCoverageExplorer } from "../components/landing/DocumentoCoverageExplorer";
+import { DocumentoProblemSolution } from "../components/landing/DocumentoProblemSolution";
 import { DocumentoWorkflow } from "../components/landing/DocumentoWorkflow";
+import { DocumentoInteractiveTools } from "../components/landing/DocumentoInteractiveTools";
+import { DocumentoCapabilities } from "../components/landing/DocumentoCapabilities";
 import { DocumentoTrust } from "../components/landing/DocumentoTrust";
+import { DocumentoFAQ } from "../components/landing/DocumentoFAQ";
 import { DocumentoFooter } from "../components/landing/DocumentoFooter";
 import { DocumentoLoginModal } from "../components/auth/DocumentoLoginModal";
 import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
@@ -150,11 +154,17 @@ export default function Home() {
     if (typeof window !== "undefined") {
       localStorage.setItem("documento_user", JSON.stringify(demoUser));
     }
-    setBannerAlert({
-      type: "info",
-      message: `Active persona switched to ${demoUser.full_name} (${role === "master_admin" ? "Managing Partner" : role === "case_manager" ? "Paralegal" : "Client"}).`,
-    });
+    setBannerAlert(null);
   };
+
+  // Auto-dismiss transient banner alerts after 4 seconds
+  useEffect(() => {
+    if (!bannerAlert) return;
+    const timer = setTimeout(() => {
+      setBannerAlert(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [bannerAlert]);
 
   // Domain Handlers
   const handleCaseCreated = (newCase: ImmigrationCase) => {
@@ -236,9 +246,18 @@ export default function Home() {
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg, #F8F7F2)" }}>
-      {/* Global Alert Notification */}
+      {/* Global Alert Notification (Floating Toast Notification) */}
       {bannerAlert && (
-        <div style={{ padding: "12px 24px 0 24px" }}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            zIndex: 9999,
+            maxWidth: "420px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)",
+          }}
+        >
           <AlertBanner
             type={bannerAlert.type}
             message={bannerAlert.message}
@@ -258,9 +277,15 @@ export default function Home() {
             onOpenLogin={handleOpenLogin}
           />
           <DocumentoPreview />
-          <DocumentoCapabilities />
+          <DocumentoCoverageExplorer />
+          <DocumentoProblemSolution />
           <DocumentoWorkflow />
+          <DocumentoInteractiveTools
+            onOpenLogin={handleOpenLogin}
+          />
+          <DocumentoCapabilities />
           <DocumentoTrust />
+          <DocumentoFAQ />
           <DocumentoFooter
             onOpenLogin={handleOpenLogin}
           />
@@ -285,7 +310,7 @@ export default function Home() {
             isLiveBackend={isLiveBackend}
           />
 
-          <main style={{ padding: activeExp === "client_applicant" ? 0 : "16px 24px 48px 24px" }}>
+          <main style={{ padding: 0 }}>
             {activeExp === "master_admin" && (
               <OwnerMasterDashboard
                 cases={cases}

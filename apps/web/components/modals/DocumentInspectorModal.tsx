@@ -8,6 +8,7 @@ import {
   RoleCode,
 } from "../../lib/types";
 import { api } from "../../lib/api";
+import { DocumentDossierWorkbench } from "../documents/DocumentDossierWorkbench";
 
 interface DocumentInspectorModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface DocumentInspectorModalProps {
   document: DocumentItem | null;
   onDocumentUpdated: (doc: DocumentItem) => void;
   activeRole?: RoleCode;
+  defaultViewMode?: "workbench" | "matrix";
 }
 
 export function DocumentInspectorModal({
@@ -23,7 +25,9 @@ export function DocumentInspectorModal({
   document: doc,
   onDocumentUpdated,
   activeRole = "case_manager",
+  defaultViewMode = "matrix",
 }: DocumentInspectorModalProps) {
+  const [viewMode, setViewMode] = useState<"workbench" | "matrix">(defaultViewMode);
   const [activeTab, setActiveTab] = useState<"fields" | "preview" | "verification" | "versions">("fields");
   const [selectedFieldForEdit, setSelectedFieldForEdit] = useState<DocumentExtractedField | null>(null);
   const [correctedValue, setCorrectedValue] = useState("");
@@ -145,8 +149,48 @@ export function DocumentInspectorModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Document Dossier & Provenance`} maxWidth="xl">
-      <div className="space-y-6">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={viewMode === "workbench" ? "Document Dossier & Forensic OCR Workbench" : "Document Dossier & Provenance"}
+      maxWidth="2xl"
+    >
+      <div className="space-y-4">
+        {/* View Mode Switcher Header */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded-lg border border-slate-800">
+            <button
+              onClick={() => setViewMode("workbench")}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                viewMode === "workbench"
+                  ? "bg-[#0D6866] text-white font-semibold shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              ⚡ Side-by-Side OCR Bounding Box Workbench
+            </button>
+            <button
+              onClick={() => setViewMode("matrix")}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                viewMode === "matrix"
+                  ? "bg-[#0D6866] text-white font-semibold shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              ▦ Tabular Data Matrix
+            </button>
+          </div>
+        </div>
+
+        {viewMode === "workbench" ? (
+          <DocumentDossierWorkbench
+            document={doc}
+            onDocumentUpdated={onDocumentUpdated}
+            onClose={onClose}
+            activeRole={activeRole}
+          />
+        ) : (
+          <div className="space-y-6">
         {/* Header Metadata Bar */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -765,6 +809,8 @@ export function DocumentInspectorModal({
             Close Dossier
           </Button>
         </div>
+      </div>
+        )}
       </div>
     </Modal>
   );

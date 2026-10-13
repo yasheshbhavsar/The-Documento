@@ -32,6 +32,17 @@ export const AIFindingInspectorModal: React.FC<AIFindingInspectorModalProps> = (
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !finding) return null;
 
   const handleCopyQuestion = () => {
@@ -131,6 +142,9 @@ export const AIFindingInspectorModal: React.FC<AIFindingInspectorModalProps> = (
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ai-finding-inspector-title"
         style={{
           background: "var(--surface, #ffffff)",
           borderRadius: "12px",
@@ -150,7 +164,7 @@ export const AIFindingInspectorModal: React.FC<AIFindingInspectorModalProps> = (
           style={{
             padding: "20px 24px",
             borderBottom: "1px solid var(--border, #e2e8f0)",
-            background: "var(--surface-subtle, #f8fafc)",
+            background: "var(--surface-subtle, #F1F6F4)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-start",
@@ -197,7 +211,7 @@ export const AIFindingInspectorModal: React.FC<AIFindingInspectorModalProps> = (
                 {finding.status.replace("_", " ").toUpperCase()}
               </Badge>
             </div>
-            <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--text, #0f172a)" }}>
+            <h2 id="ai-finding-inspector-title" style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--text, #172322)" }}>
               {finding.title}
             </h2>
           </div>

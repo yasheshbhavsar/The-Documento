@@ -89,7 +89,7 @@ export function Drawer({
         <div
           style={{
             padding: "20px 24px",
-            borderBottom: "1px solid var(--border, #e2e8f0)",
+            borderBottom: "1px solid var(--border, #DCE5E1)",
             display: "flex",
             alignItems: "flex-start",
             justifyContent: "space-between",
@@ -105,7 +105,7 @@ export function Drawer({
                   margin: 0,
                   fontSize: "18px",
                   fontWeight: 700,
-                  color: "var(--text, #0f172a)",
+                  color: "var(--text, #172322)",
                   letterSpacing: "-0.01em",
                 }}
               >
@@ -118,7 +118,7 @@ export function Drawer({
                 style={{
                   margin: "4px 0 0",
                   fontSize: "13px",
-                  color: "var(--muted, #475569)",
+                  color: "var(--muted, #6E7F7C)",
                 }}
               >
                 {subtitle}
@@ -132,7 +132,7 @@ export function Drawer({
             style={{
               background: "transparent",
               border: "none",
-              color: "var(--quiet, #64748b)",
+              color: "var(--quiet, #6E7F7C)",
               fontSize: "18px",
               cursor: "pointer",
               padding: "4px 8px",
@@ -149,7 +149,7 @@ export function Drawer({
             padding: "24px",
             overflowY: "auto",
             flex: 1,
-            background: "var(--bg, #f8fafc)",
+            background: "var(--bg, #F8F7F2)",
           }}
         >
           {children}
@@ -160,7 +160,7 @@ export function Drawer({
           <div
             style={{
               padding: "16px 24px",
-              borderTop: "1px solid var(--border, #e2e8f0)",
+              borderTop: "1px solid var(--border, #DCE5E1)",
               background: "var(--surface, #ffffff)",
               display: "flex",
               justifyContent: "flex-end",

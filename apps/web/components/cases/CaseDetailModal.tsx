@@ -11,8 +11,11 @@ import {
   ClientDependant,
   RoleCode,
   CaseStage,
+  AIFinding,
 } from "../../lib/types";
-import { api } from "../../lib/api";
+import { api, FIXTURE_AI_FINDINGS } from "../../lib/api";
+import { CaseMilestoneTimeline } from "./CaseMilestoneTimeline";
+import { CaseDiscrepancyAlertCenter } from "./CaseDiscrepancyAlertCenter";
 
 interface CaseDetailModalProps {
   isOpen: boolean;
@@ -54,6 +57,7 @@ export function CaseDetailModal({
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [dependants, setDependants] = useState<ClientDependant[]>([]);
   const [auditEvents, setAuditEvents] = useState<any[]>([]);
+  const [findings, setFindings] = useState<AIFinding[]>([]);
 
   // Action forms
   const [newStage, setNewStage] = useState<CaseStage>(caseItem?.status || "intake");
@@ -199,10 +203,81 @@ export function CaseDetailModal({
         { action: "case.created", occurred_at: "2026-08-10T10:00:00Z", actor: "system", detail: "Case registered" },
         { action: "case.status_changed", occurred_at: "2026-09-01T15:00:00Z", actor: "sarah.jenkins@lex.com", detail: "Moved to processing" },
       ]);
+
+      // Load AI findings & discrepancies
+      api.getAIFindings(caseItem.id)
+        .then((res) => {
+          if (res?.data && res.data.length > 0) {
+            setFindings(res.data);
+          } else {
+            setFindings(FIXTURE_AI_FINDINGS);
+          }
+        })
+        .catch(() => setFindings(FIXTURE_AI_FINDINGS));
     }
   }, [caseItem, isClient]);
 
   if (!isOpen || !currentCase) return null;
+
+  // Handle discrepancy resolution
+  const handleResolveFinding = async (findingId: string, note: string) => {
+    try {
+      await api.resolveFinding(currentCase.id, findingId, note);
+    } catch {
+      // Offline fallback
+    }
+    setFindings((prev) =>
+      prev.map((f) =>
+        f.id === findingId
+          ? {
+              ...f,
+              status: "resolved",
+              resolution_action: "resolve",
+              resolution_history: [
+                ...(f.resolution_history || []),
+                {
+                  timestamp: new Date().toISOString(),
+                  action: "resolve",
+                  reviewer_email: "attorney@lexai.com",
+                  note,
+                },
+              ],
+            }
+          : f
+      )
+    );
+    setActionSuccess("Cross-document discrepancy resolved with recorded affidavit.");
+  };
+
+  // Handle discrepancy escalation
+  const handleEscalateFinding = async (findingId: string, note: string) => {
+    try {
+      await api.escalateFinding(currentCase.id, findingId, note);
+    } catch {
+      // Offline fallback
+    }
+    setFindings((prev) =>
+      prev.map((f) =>
+        f.id === findingId
+          ? {
+              ...f,
+              severity: "critical",
+              resolution_action: "escalate",
+              resolution_history: [
+                ...(f.resolution_history || []),
+                {
+                  timestamp: new Date().toISOString(),
+                  action: "escalate",
+                  reviewer_email: "attorney@lexai.com",
+                  note,
+                },
+              ],
+            }
+          : f
+      )
+    );
+    setActionSuccess("Discrepancy escalated to senior counsel for legal disposition.");
+  };
 
   // Handle stage transition
   const handleTransitionStage = async () => {
@@ -378,6 +453,7 @@ export function CaseDetailModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      maxWidth="2xl"
       title={`${currentCase.case_number}: ${currentCase.title}`}
       subtitle={`Principal Client: ${currentCase.client_name} • Destination: ${currentCase.jurisdiction} (${currentCase.visa_category})`}
       footer={
@@ -516,12 +592,13 @@ export function CaseDetailModal({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
+              aria-current={activeTab === tab.id ? "true" : undefined}
               style={{
                 padding: "8px 12px",
                 border: "none",
                 background: "transparent",
-                borderBottom: activeTab === tab.id ? "2px solid var(--accent, #0284c7)" : "2px solid transparent",
-                color: activeTab === tab.id ? "var(--accent, #0284c7)" : "var(--muted, #64748b)",
+                borderBottom: activeTab === tab.id ? "2px solid var(--accent, #0D6866)" : "2px solid transparent",
+                color: activeTab === tab.id ? "var(--accent, #0D6866)" : "var(--muted, #6E7F7C)",
                 fontWeight: activeTab === tab.id ? 700 : 500,
                 cursor: "pointer",
                 fontSize: "13px",
@@ -535,41 +612,51 @@ export function CaseDetailModal({
 
         {/* 1. OVERVIEW TAB */}
         {activeTab === "overview" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-            <div
-              style={{
-                padding: "16px",
-                border: "1px solid var(--border, #e2e8f0)",
-                borderRadius: "8px",
-                background: "var(--surface, #ffffff)",
-              }}
-            >
-              <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", color: "var(--text)" }}>Case & Pathway Specifications</h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px" }}>
-                <div><strong>Case Identifier:</strong> {currentCase.case_number}</div>
-                <div><strong>Destination Jurisdiction:</strong> {currentCase.jurisdiction}</div>
-                <div><strong>Immigration Pathway:</strong> {currentCase.visa_category}</div>
-                <div><strong>Priority Date:</strong> {currentCase.priority_date || "2026-08-10 (Direct Filing)"}</div>
-                <div><strong>Statutory Deadline:</strong> {currentCase.deadline || "2026-11-15"}</div>
-                <div><strong>Filing Readiness Score:</strong> {currentCase.readiness_score || 82}% Complete</div>
-              </div>
-            </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            {/* Cross-Document Discrepancy & Consistency Alert Center */}
+            <CaseDiscrepancyAlertCenter
+              caseId={currentCase.id}
+              findings={findings}
+              onResolveFinding={handleResolveFinding}
+              onEscalateFinding={handleEscalateFinding}
+            />
 
-            <div
-              style={{
-                padding: "16px",
-                border: "1px solid var(--border, #e2e8f0)",
-                borderRadius: "8px",
-                background: "var(--surface, #ffffff)",
-              }}
-            >
-              <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", color: "var(--text)" }}>Case Staffing & Assignments</h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px" }}>
-                <div><strong>Assigned Case Manager:</strong> {currentCase.assigned_manager || "Sarah Jenkins, Esq."}</div>
-                <div><strong>Senior Legal Reviewer:</strong> {currentCase.reviewer_name || "Elena Vance (Managing Partner)"}</div>
-                <div><strong>Lead Petition Drafter:</strong> David Cho (Associate Paralegal)</div>
-                <div style={{ marginTop: "10px", fontSize: "12px", color: "var(--muted)" }}>
-                  Staff assignments govern object-level editing permissions and workload allocation.
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: "16px" }}>
+              <div
+                style={{
+                  padding: "16px",
+                  border: "1px solid var(--border, #e2e8f0)",
+                  borderRadius: "8px",
+                  background: "var(--surface, #ffffff)",
+                }}
+              >
+                <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", color: "var(--text)" }}>Case & Pathway Specifications</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px" }}>
+                  <div><strong>Case Identifier:</strong> {currentCase.case_number}</div>
+                  <div><strong>Destination Jurisdiction:</strong> {currentCase.jurisdiction}</div>
+                  <div><strong>Immigration Pathway:</strong> {currentCase.visa_category}</div>
+                  <div><strong>Priority Date:</strong> {currentCase.priority_date || "2026-08-10 (Direct Filing)"}</div>
+                  <div><strong>Statutory Deadline:</strong> {currentCase.deadline || "2026-11-15"}</div>
+                  <div><strong>Filing Readiness Score:</strong> {currentCase.readiness_score || 82}% Complete</div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: "16px",
+                  border: "1px solid var(--border, #e2e8f0)",
+                  borderRadius: "8px",
+                  background: "var(--surface, #ffffff)",
+                }}
+              >
+                <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", color: "var(--text)" }}>Case Staffing & Assignments</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px" }}>
+                  <div><strong>Assigned Case Manager:</strong> {currentCase.assigned_manager || "Sarah Jenkins, Esq."}</div>
+                  <div><strong>Senior Legal Reviewer:</strong> {currentCase.reviewer_name || "Elena Vance (Managing Partner)"}</div>
+                  <div><strong>Lead Petition Drafter:</strong> David Cho (Associate Paralegal)</div>
+                  <div style={{ marginTop: "10px", fontSize: "12px", color: "var(--muted)" }}>
+                    Staff assignments govern object-level editing permissions and workload allocation.
+                  </div>
                 </div>
               </div>
             </div>
@@ -578,92 +665,18 @@ export function CaseDetailModal({
 
         {/* 2. MILESTONES TAB */}
         {activeTab === "milestones" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {milestones.map((m) => (
-                <div
-                  key={m.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "12px 14px",
-                    border: "1px solid var(--border, #e2e8f0)",
-                    borderRadius: "6px",
-                    background: m.status === "completed" ? "var(--surface-subtle, #f8fafc)" : "var(--surface, #ffffff)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    {!isClient && (
-                      <input
-                        type="checkbox"
-                        checked={m.status === "completed"}
-                        onChange={() => handleToggleMilestone(m)}
-                        aria-label={`Mark milestone ${m.title} complete`}
-                        style={{ cursor: "pointer", width: "16px", height: "16px" }}
-                      />
-                    )}
-                    <div>
-                      <strong style={{ fontSize: "13px", textDecoration: m.status === "completed" ? "line-through" : "none" }}>
-                        {m.title}
-                      </strong>
-                      <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
-                        Stage: <span style={{ textTransform: "capitalize" }}>{m.stage}</span> • Target Date: {m.target_date.split("T")[0]}
-                      </div>
-                    </div>
-                  </div>
-                  <Badge variant={m.status === "completed" ? "success" : "review"}>
-                    {m.status.toUpperCase()}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-
-            {!isClient && (
-              <form
-                onSubmit={handleAddMilestone}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr auto",
-                  gap: "10px",
-                  padding: "14px",
-                  background: "var(--surface-subtle, #f8fafc)",
-                  borderRadius: "8px",
-                  border: "1px dashed var(--border, #cbd5e1)",
-                  alignItems: "flex-end",
-                }}
-              >
-                <TextInput
-                  label="Milestone Title"
-                  value={newMsTitle}
-                  onChange={(e) => setNewMsTitle(e.target.value)}
-                  placeholder="e.g. Sworn translation dossier finalized"
-                  required
-                />
-                <TextInput
-                  label="Target Date"
-                  type="date"
-                  value={newMsDate}
-                  onChange={(e) => setNewMsDate(e.target.value)}
-                  required
-                />
-                <SelectInput
-                  label="Workflow Stage"
-                  value={newMsStage}
-                  onChange={(e) => setNewMsStage(e.target.value)}
-                  options={[
-                    { label: "Intake", value: "intake" },
-                    { label: "Processing", value: "processing" },
-                    { label: "Internal Review", value: "internal_review" },
-                    { label: "Submission", value: "submitted" },
-                  ]}
-                />
-                <Button variant="primary" type="submit" size="sm">
-                  + Add Milestone
-                </Button>
-              </form>
-            )}
-          </div>
+          <CaseMilestoneTimeline
+            milestones={milestones}
+            onToggleMilestone={handleToggleMilestone}
+            onAddMilestone={handleAddMilestone}
+            newMsTitle={newMsTitle}
+            setNewMsTitle={setNewMsTitle}
+            newMsDate={newMsDate}
+            setNewMsDate={setNewMsDate}
+            newMsStage={newMsStage}
+            setNewMsStage={setNewMsStage}
+            isClient={isClient}
+          />
         )}
 
         {/* 3. TASKS TAB */}

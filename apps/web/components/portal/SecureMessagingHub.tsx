@@ -266,7 +266,7 @@ export function SecureMessagingHub({
               boxShadow: "0 2px 6px rgba(13, 104, 102, 0.25)",
             }}
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg width="20" height="20" className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
             </svg>
           </div>
@@ -304,7 +304,7 @@ export function SecureMessagingHub({
               boxShadow: "0 2px 4px rgba(13, 104, 102, 0.2)",
             }}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg width="16" height="16" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             <span>New Thread</span>
@@ -326,7 +326,7 @@ export function SecureMessagingHub({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-[#DCE5E1] bg-white text-[#172322] focus:outline-none focus:ring-1 focus:ring-[#0D6866] focus:border-[#0D6866]"
               />
-              <svg className="w-4 h-4 text-[#6E7F7C] absolute left-2.5 top-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg width="16" height="16" className="w-4 h-4 text-[#6E7F7C] absolute left-2.5 top-2 pointer-events-none shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
@@ -549,7 +549,7 @@ export function SecureMessagingHub({
                                         : "bg-[#F1F6F4] text-[#0D6866] hover:bg-[#EAF6F0] border border-[#B9DED4]"
                                     }`}
                                   >
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                                     </svg>
                                     <span>{docId}</span>
@@ -689,7 +689,7 @@ export function SecureMessagingHub({
                         ) : (
                           <>
                             <span>{isInternalNote ? "Post Internal Note" : "Send"}</span>
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg width="14" height="14" className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                             </svg>
                           </>
@@ -703,7 +703,7 @@ export function SecureMessagingHub({
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-[#6E7F7C]">
               <div className="w-16 h-16 rounded-full bg-[#EAF6F0] flex items-center justify-center mb-3">
-                <svg className="w-8 h-8 text-[#0D6866]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg width="32" height="32" className="w-8 h-8 text-[#0D6866] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>

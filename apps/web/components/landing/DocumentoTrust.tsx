@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 
 export function DocumentoTrust() {
@@ -12,24 +14,25 @@ export function DocumentoTrust() {
     >
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         {/* Section Header */}
-        <div style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 54px auto" }}>
+        <div style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto 50px auto" }}>
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              padding: "4px 12px",
+              padding: "4px 14px",
               borderRadius: "20px",
               background: "#DDEFE8",
               border: "1px solid #B9DED4",
               fontSize: "12px",
               fontWeight: 600,
               color: "#063C3D",
-              marginBottom: "14px",
+              marginBottom: "16px",
             }}
           >
-            <span>Traceability, Privacy &amp; Human Oversight</span>
+            <span>Transparency, Privacy &amp; Legal Governance</span>
           </div>
+
           <h2
             style={{
               fontSize: "clamp(28px, 4vw, 42px)",
@@ -37,23 +40,25 @@ export function DocumentoTrust() {
               color: "#063C3D",
               lineHeight: 1.2,
               letterSpacing: "-0.025em",
-              margin: "0 0 14px 0",
+              margin: "0 0 16px 0",
               fontFamily: "var(--font-display, Inter, sans-serif)",
             }}
           >
             Built for qualified legal judgment, not unverified automation.
           </h2>
+
           <p style={{ fontSize: "16px", color: "#445451", lineHeight: 1.6, margin: 0 }}>
-            Immigration law has life-altering consequences. Documento guarantees that AI serves strictly as an accountable paralegal assistant under attorney direction.
+            Immigration law carries life-altering consequences. Documento guarantees that software serves strictly as an accountable evidence organizer under human attorney direction.
           </p>
         </div>
 
-        {/* 4 Pillars of Trust */}
+        {/* 4 Pillars of Architecture & Trust */}
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: "24px",
+            marginBottom: "48px",
           }}
         >
           {/* Pillar 1 */}
@@ -193,6 +198,64 @@ export function DocumentoTrust() {
             <p style={{ fontSize: "13px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
               Requirement criteria are linked to official USCIS policy manual editions and regulatory updates with effective date tracking, preventing reliance on obsolete statutory guidelines.
             </p>
+          </div>
+        </div>
+
+        {/* Clear Transparency Box: What Documento Does vs What Documento Does NOT Do */}
+        <div
+          style={{
+            background: "#F8F7F2",
+            border: "1px solid #DCE5E1",
+            borderRadius: "16px",
+            padding: "32px",
+            boxShadow: "0 4px 20px rgba(6, 60, 61, 0.04)",
+          }}
+        >
+          <div style={{ textAlign: "center", marginBottom: "24px" }}>
+            <h3 style={{ fontSize: "20px", fontWeight: 750, color: "#063C3D", margin: "0 0 8px 0" }}>
+              Our Clear Boundaries: What Documento Does &amp; Does Not Do
+            </h3>
+            <p style={{ fontSize: "14px", color: "#445451", margin: 0 }}>
+              Transparency is the cornerstone of responsible immigration technology.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
+              gap: "24px",
+            }}
+          >
+            {/* What Documento Does */}
+            <div style={{ background: "#FFFFFF", borderRadius: "12px", border: "1px solid #B9DED4", padding: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+                <span style={{ color: "#176B50", fontWeight: 700, fontSize: "16px" }}>✓</span>
+                <span style={{ fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>What Documento Does</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px", color: "#445451" }}>
+                <div>• Organizes case files into an encrypted, SHA-256 verified exhibit vault</div>
+                <div>• Evaluates uploaded evidence against published government criteria checklists</div>
+                <div>• Flags date variances and potential discrepancies across exhibits for review</div>
+                <div>• Provides dual waiting-state transparency between legal staff and applicants</div>
+                <div>• Generates sequential exhibit tabs (Exhibits A-1 to E-12) and indexed catalogs</div>
+              </div>
+            </div>
+
+            {/* What Documento Does NOT Do */}
+            <div style={{ background: "#FFFFFF", borderRadius: "12px", border: "1px solid #F5D3D1", padding: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+                <span style={{ color: "#B42318", fontWeight: 700, fontSize: "16px" }}>✕</span>
+                <span style={{ fontSize: "15px", fontWeight: 700, color: "#912018" }}>What Documento Does NOT Do</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px", color: "#5F3735" }}>
+                <div>• Does NOT provide legal advice, statutory opinions, or legal representation</div>
+                <div>• Does NOT guarantee visa approval, interview waivers, or processing timelines</div>
+                <div>• Does NOT file petitions with USCIS or foreign embassies without attorney authorization</div>
+                <div>• Does NOT fabricate AI claims or allow unreviewed AI output into filings</div>
+                <div>• Does NOT share client case records across organizational tenant boundaries</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

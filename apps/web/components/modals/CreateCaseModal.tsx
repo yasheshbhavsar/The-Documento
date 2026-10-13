@@ -154,7 +154,7 @@ export function CreateCaseModal({
           required
         />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: "12px" }}>
           <SelectInput
             label="Immigration Jurisdiction"
             options={jurisdictionOptions}

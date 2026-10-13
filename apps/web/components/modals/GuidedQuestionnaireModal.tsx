@@ -73,6 +73,11 @@ export function GuidedQuestionnaireModal({
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {/* Step Progress Bar */}
         <div
+          role="progressbar"
+          aria-valuenow={step}
+          aria-valuemin={1}
+          aria-valuemax={totalSteps}
+          aria-label="Questionnaire step progress"
           style={{
             display: "flex",
             gap: "6px",

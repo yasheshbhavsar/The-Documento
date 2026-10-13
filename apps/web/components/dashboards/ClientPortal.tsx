@@ -253,6 +253,7 @@ export function ClientPortal({
               <button
                 key={item.key}
                 type="button"
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => handleNavClick(item.key)}
                 style={{
                   position: "relative",
@@ -413,6 +414,8 @@ export function ClientPortal({
           </span>
           <button
             type="button"
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="applicant-mobile-sections-menu"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             style={{
               padding: "6px 12px",
@@ -428,6 +431,71 @@ export function ClientPortal({
             ☰ Switch Section
           </button>
         </div>
+
+        {isMobileMenuOpen && (
+          <div
+            id="applicant-mobile-sections-menu"
+            role="menu"
+            aria-label="Applicant Portal Mobile Navigation"
+            style={{
+              marginBottom: "16px",
+              background: "#FFFFFF",
+              border: "1px solid #B9DED4",
+              borderRadius: "10px",
+              padding: "8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
+              boxShadow: "0 4px 12px rgba(6, 60, 61, 0.08)",
+            }}
+          >
+            {navItems.map((item) => {
+              const isActive = activeTab === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleNavClick(item.key)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: "6px",
+                    border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
+                    background: isActive ? "#EAF6F0" : "transparent",
+                    color: isActive ? "#0D6866" : "#445451",
+                    fontSize: "13px",
+                    fontWeight: isActive ? 650 : 500,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </span>
+                  {item.count !== null && item.count > 0 && (
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        padding: "2px 6px",
+                        borderRadius: "10px",
+                        background: isActive ? "#0D6866" : "#F1F6F4",
+                        color: isActive ? "#FFFFFF" : "#445451",
+                      }}
+                    >
+                      {item.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* =========================================================================
             TAB 1: OVERVIEW DASHBOARD
@@ -1236,6 +1304,7 @@ export function ClientPortal({
             setSelectedDocForInspection(updated);
           }}
           activeRole="retained_client"
+          defaultViewMode="workbench"
         />
 
         {/* Guided Client Onboarding Wizard Modal */}

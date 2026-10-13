@@ -177,16 +177,16 @@ export function ClientOnboardingWizard({
 
   if (submitted) {
     return (
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 text-center max-w-xl mx-auto shadow-2xl animate-fade-in">
-        <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 flex items-center justify-center mx-auto mb-4 text-emerald-600 dark:text-emerald-400">
-          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto shadow-2xl animate-fade-in">
+        <div className="w-16 h-16 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center mx-auto mb-4 text-emerald-600">
+          <svg width="32" height="32" className="w-8 h-8 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+        <h3 className="text-xl font-bold text-slate-900 mb-2">
           Onboarding Completed Successfully!
         </h3>
-        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-6">
+        <p className="text-xs text-slate-600 leading-relaxed mb-6">
           Your profile, statutory consents, family authorizations, and evidentiary intake responses have been securely transmitted to your legal team. Your case dashboard is now active.
         </p>
         <div className="flex justify-center gap-3">
@@ -206,24 +206,25 @@ export function ClientOnboardingWizard({
 
   return (
     <div
-      className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden ${
+      className={`bg-white rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden ${
         isModal ? "w-full max-w-3xl max-h-[90vh]" : "w-full"
       }`}
     >
       {/* Top Header */}
-      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/80 backdrop-blur-md flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             Client Portal Onboarding & Intake
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-slate-500">
             Secure client account activation, legal consents, family authorization, and statutory questionnaire
           </p>
         </div>
         {onClose && (
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg leading-none p-1"
+            aria-label="Close onboarding modal"
+            className="text-slate-400 hover:text-slate-600 text-lg leading-none p-1"
           >
             ×
           </button>
@@ -231,7 +232,11 @@ export function ClientOnboardingWizard({
       </div>
 
       {/* Stepper Navigation */}
-      <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-100/40 dark:bg-slate-950/40 overflow-x-auto">
+      <div
+        role="tablist"
+        aria-label="Onboarding intake steps"
+        className="px-6 py-3 border-b border-slate-200 bg-slate-100/40 overflow-x-auto"
+      >
         <div className="flex items-center justify-between min-w-[550px]">
           {steps.map((step) => {
             const isActive = step.number === currentStep;
@@ -241,6 +246,8 @@ export function ClientOnboardingWizard({
               <button
                 key={step.number}
                 type="button"
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => setCurrentStep(step.number)}
                 className="flex items-center gap-2 group focus:outline-none"
               >
@@ -249,8 +256,8 @@ export function ClientOnboardingWizard({
                     isCompleted
                       ? "bg-emerald-600 text-white"
                       : isActive
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-300 dark:ring-indigo-800"
-                      : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-300"
+                      : "bg-slate-200 text-slate-600"
                   }`}
                 >
                   {isCompleted ? "✓" : step.number}
@@ -258,16 +265,16 @@ export function ClientOnboardingWizard({
                 <span
                   className={`text-xs font-semibold whitespace-nowrap ${
                     isActive
-                      ? "text-indigo-600 dark:text-indigo-400"
+                      ? "text-indigo-600"
                       : isCompleted
-                      ? "text-slate-700 dark:text-slate-300"
+                      ? "text-slate-700"
                       : "text-slate-400"
                   }`}
                 >
                   {step.label}
                 </span>
                 {step.number < steps.length && (
-                  <div className="w-8 h-0.5 bg-slate-200 dark:bg-slate-800 mx-1" />
+                  <div className="w-8 h-0.5 bg-slate-200 mx-1" />
                 )}
               </button>
             );
@@ -280,17 +287,17 @@ export function ClientOnboardingWizard({
         {/* STEP 1: Consents & Privacy */}
         {currentStep === 1 && (
           <div className="space-y-4 animate-fade-in">
-            <div className="p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60">
-              <h4 className="font-bold text-xs text-blue-900 dark:text-blue-300 mb-1">
+            <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200">
+              <h4 className="font-bold text-xs text-blue-900 mb-1">
                 Legal Notice & Representation Disclosures
               </h4>
-              <p className="text-xs text-blue-800 dark:text-blue-300/90 leading-relaxed">
+              <p className="text-xs text-blue-800 leading-relaxed">
                 Before commencing casework, professional ethics and federal immigration regulations require informed consent regarding legal representation, data storage, and electronic communication.
               </p>
             </div>
 
             <div className="space-y-3">
-              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors">
+              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50:bg-slate-800/50 cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   checked={consents.representation_g28}
@@ -298,16 +305,16 @@ export function ClientOnboardingWizard({
                   className="mt-0.5 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
                 />
                 <div>
-                  <div className="font-semibold text-xs text-slate-900 dark:text-white">
+                  <div className="font-semibold text-xs text-slate-900">
                     Form G-28 Notice of Entry of Appearance & Legal Representation
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                  <div className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
                     I authorize Sarah Jenkins, Esq. and the retaining law firm to represent my petition before the United States Citizenship and Immigration Services (USCIS) and Department of Homeland Security (DHS).
                   </div>
                 </div>
               </label>
 
-              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors">
+              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50:bg-slate-800/50 cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   checked={consents.data_processing_gdpr}
@@ -315,16 +322,16 @@ export function ClientOnboardingWizard({
                   className="mt-0.5 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
                 />
                 <div>
-                  <div className="font-semibold text-xs text-slate-900 dark:text-white">
+                  <div className="font-semibold text-xs text-slate-900">
                     Data Processing, Privacy & Cryptographic Verification Consent
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                  <div className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
                     I consent to the secure storage of my biometric, identity, and evidentiary records under 256-bit AES encryption with immutable SHA-256 integrity verification.
                   </div>
                 </div>
               </label>
 
-              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors">
+              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50:bg-slate-800/50 cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   checked={consents.communication_consent}
@@ -332,16 +339,16 @@ export function ClientOnboardingWizard({
                   className="mt-0.5 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
                 />
                 <div>
-                  <div className="font-semibold text-xs text-slate-900 dark:text-white">
+                  <div className="font-semibold text-xs text-slate-900">
                     Electronic Notice & Portal Communication Agreement
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                  <div className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
                     I agree to receive case status updates, document requests, and filings through this authenticated client portal. Sensitive PII is automatically redacted in push notification previews.
                   </div>
                 </div>
               </label>
 
-              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors">
+              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50:bg-slate-800/50 cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   checked={consents.electronic_signatures}
@@ -349,10 +356,10 @@ export function ClientOnboardingWizard({
                   className="mt-0.5 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
                 />
                 <div>
-                  <div className="font-semibold text-xs text-slate-900 dark:text-white">
+                  <div className="font-semibold text-xs text-slate-900">
                     US E-SIGN Act & Uniform Electronic Transactions Agreement
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                  <div className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
                     I agree that electronic signatures applied to questionnaire submissions and petition intake exhibits have the same legal validity as handwritten wet signatures.
                   </div>
                 </div>
@@ -366,67 +373,67 @@ export function ClientOnboardingWizard({
           <div className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Legal First Name (Given Name)
                 </label>
                 <input
                   type="text"
                   value={profile.first_name || ""}
                   onChange={(e) => setProfile({ ...profile, first_name: e.target.value })}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Legal Last Name (Surname)
                 </label>
                 <input
                   type="text"
                   value={profile.last_name || ""}
                   onChange={(e) => setProfile({ ...profile, last_name: e.target.value })}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Primary Email Address
                 </label>
                 <input
                   type="email"
                   value={profile.email || ""}
                   onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Mobile Telephone (SMS Notifications)
                 </label>
                 <input
                   type="tel"
                   value={profile.phone || ""}
                   onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Date of Birth (YYYY-MM-DD)
                 </label>
                 <input
                   type="date"
                   value={profile.date_of_birth ? profile.date_of_birth.substring(0, 10) : ""}
                   onChange={(e) => setProfile({ ...profile, date_of_birth: e.target.value })}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Nationality / Country of Citizenship (ISO-3)
                 </label>
                 <input
@@ -434,12 +441,12 @@ export function ClientOnboardingWizard({
                   maxLength={3}
                   value={profile.nationality || "USA"}
                   onChange={(e) => setProfile({ ...profile, nationality: e.target.value.toUpperCase() })}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 uppercase font-mono"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 uppercase font-mono"
                 />
               </div>
 
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Current Passport Number (Cryptographically Hashed & Salted)
                 </label>
                 <div className="flex gap-2">
@@ -447,9 +454,9 @@ export function ClientOnboardingWizard({
                     type="text"
                     value={passportNumber}
                     onChange={(e) => setPassportNumber(e.target.value)}
-                    className="flex-1 text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
+                    className="flex-1 text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 font-mono"
                   />
-                  <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+                  <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-700 text-xs font-semibold">
                     <span>🔒</span> Verified
                   </div>
                 </div>
@@ -464,12 +471,12 @@ export function ClientOnboardingWizard({
         {/* STEP 3: Family & Dependants */}
         {currentStep === 3 && (
           <div className="space-y-4 animate-fade-in">
-            <div className="p-4 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/60 flex items-start justify-between">
+            <div className="p-4 rounded-xl bg-purple-50/70 border border-purple-200 flex items-start justify-between">
               <div>
-                <h4 className="font-bold text-xs text-purple-900 dark:text-purple-300 mb-1">
+                <h4 className="font-bold text-xs text-purple-900 mb-1">
                   Authorized Family Dependants (I-140 / I-485 Derivative Applicants)
                 </h4>
-                <p className="text-xs text-purple-800 dark:text-purple-300/90 leading-relaxed max-w-xl">
+                <p className="text-xs text-purple-800 leading-relaxed max-w-xl">
                   Add spouses and children who will accompany your petition. Explicitly toggle whether each family member is authorized to access case records and receive independent portal credentials.
                 </p>
               </div>
@@ -487,14 +494,14 @@ export function ClientOnboardingWizard({
               {dependants.map((dep) => (
                 <div
                   key={dep.id}
-                  className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 shadow-sm"
+                  className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white shadow-sm"
                 >
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-slate-900 dark:text-white">
+                      <span className="font-bold text-xs text-slate-900">
                         {dep.first_name} {dep.last_name}
                       </span>
-                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600">
                         {dep.relationship_type}
                       </span>
                       <span className="text-[10px] font-mono text-slate-400">
@@ -517,7 +524,7 @@ export function ClientOnboardingWizard({
                       <span
                         className={
                           dep.is_authorized_to_view_case
-                            ? "text-indigo-600 dark:text-indigo-400"
+                            ? "text-indigo-600"
                             : "text-slate-400"
                         }
                       >
@@ -541,9 +548,9 @@ export function ClientOnboardingWizard({
             {showAddDepForm && (
               <form
                 onSubmit={handleAddDependant}
-                className="p-4 rounded-xl border border-dashed border-purple-300 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/20 space-y-3"
+                className="p-4 rounded-xl border border-dashed border-purple-300 bg-purple-50/40 space-y-3"
               >
-                <div className="font-semibold text-xs text-purple-900 dark:text-purple-300">
+                <div className="font-semibold text-xs text-purple-900">
                   New Family Member Details
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -553,7 +560,7 @@ export function ClientOnboardingWizard({
                     placeholder="First Name"
                     value={newDepFirstName}
                     onChange={(e) => setNewDepFirstName(e.target.value)}
-                    className="text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                    className="text-xs p-2 rounded-lg border border-slate-200 bg-white"
                   />
                   <input
                     type="text"
@@ -561,12 +568,12 @@ export function ClientOnboardingWizard({
                     placeholder="Last Name"
                     value={newDepLastName}
                     onChange={(e) => setNewDepLastName(e.target.value)}
-                    className="text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                    className="text-xs p-2 rounded-lg border border-slate-200 bg-white"
                   />
                   <select
                     value={newDepRel}
                     onChange={(e) => setNewDepRel(e.target.value)}
-                    className="text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                    className="text-xs p-2 rounded-lg border border-slate-200 bg-white"
                   >
                     <option value="spouse">Spouse</option>
                     <option value="child">Child</option>
@@ -578,7 +585,7 @@ export function ClientOnboardingWizard({
                     placeholder="Email Address"
                     value={newDepEmail}
                     onChange={(e) => setNewDepEmail(e.target.value)}
-                    className="text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                    className="text-xs p-2 rounded-lg border border-slate-200 bg-white"
                   />
                 </div>
                 <div className="flex items-center justify-between pt-1">
@@ -615,74 +622,74 @@ export function ClientOnboardingWizard({
         {/* STEP 4: Guided Questionnaire */}
         {currentStep === 4 && (
           <div className="space-y-4 animate-fade-in">
-            <div className="p-4 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60">
-              <h4 className="font-bold text-xs text-amber-900 dark:text-amber-300 mb-1">
+            <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200">
+              <h4 className="font-bold text-xs text-amber-900 mb-1">
                 Statutory Criteria & Extraordinary Ability Intake
               </h4>
-              <p className="text-xs text-amber-800 dark:text-amber-300/90 leading-relaxed">
+              <p className="text-xs text-amber-800 leading-relaxed">
                 Provide accurate career achievements. Responses are directly referenced by legal counsel during Form I-140 petition drafting and Kazarian evidentiary synthesis.
               </p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Current Employer or Institutional Affiliation *
                 </label>
                 <input
                   type="text"
                   value={responses.current_employer || ""}
                   onChange={(e) => setResponses({ ...responses, current_employer: e.target.value })}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Current Professional Title *
                 </label>
                 <input
                   type="text"
                   value={responses.job_title || ""}
                   onChange={(e) => setResponses({ ...responses, job_title: e.target.value })}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Specific Field of Extraordinary Ability *
                 </label>
                 <input
                   type="text"
                   value={responses.field_of_expertise || ""}
                   onChange={(e) => setResponses({ ...responses, field_of_expertise: e.target.value })}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Total Peer-Reviewed Articles Published
                   </label>
                   <input
                     type="number"
                     value={responses.total_articles_count || 0}
                     onChange={(e) => setResponses({ ...responses, total_articles_count: parseInt(e.target.value) || 0 })}
-                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Google Scholar / Scopus Profile URL
                   </label>
                   <input
                     type="url"
                     value={responses.google_scholar_link || ""}
                     onChange={(e) => setResponses({ ...responses, google_scholar_link: e.target.value })}
-                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-white text-slate-900"
                   />
                 </div>
               </div>
@@ -693,54 +700,54 @@ export function ClientOnboardingWizard({
         {/* STEP 5: Review & Submit */}
         {currentStep === 5 && (
           <div className="space-y-4 animate-fade-in">
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
-              <h4 className="font-bold text-xs text-slate-900 dark:text-white">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <h4 className="font-bold text-xs text-slate-900">
                 Onboarding Summary Verification
               </h4>
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <span className="text-slate-500 block text-[11px]">Principal Applicant</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  <span className="font-semibold text-slate-800">
                     {profile.first_name} {profile.last_name}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Nationality</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">
+                  <span className="font-semibold text-slate-800 font-mono">
                     {profile.nationality} (Passport Verified)
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Authorized Dependants</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  <span className="font-semibold text-slate-800">
                     {dependants.length} family member(s)
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Statutory Consents</span>
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span className="font-semibold text-emerald-600">
                     4 of 4 Signed Electronically
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20">
+            <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300">
+                <span className="text-xs font-bold text-indigo-900">
                   Profile & Intake Completeness Score
                 </span>
-                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                <span className="text-xs font-bold text-indigo-600">
                   92% Ready
                 </span>
               </div>
-              <div className="w-full bg-indigo-200/50 dark:bg-indigo-900/50 rounded-full h-2">
+              <div className="w-full bg-indigo-200/50 rounded-full h-2">
                 <div
                   className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
                   style={{ width: "92%" }}
                 />
               </div>
-              <p className="text-[11px] text-indigo-700 dark:text-indigo-300/80 mt-2">
+              <p className="text-[11px] text-indigo-700 mt-2">
                 Once submitted, your case manager will review your biographical answers and initiate the formal EB-1A evidence gathering phase.
               </p>
             </div>
@@ -749,12 +756,12 @@ export function ClientOnboardingWizard({
       </div>
 
       {/* Footer Navigation Bar */}
-      <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 flex items-center justify-between">
+      <div className="px-6 py-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between">
         <button
           type="button"
           disabled={currentStep === 1}
           onClick={() => setCurrentStep(currentStep - 1)}
-          className="px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          className="px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:bg-slate-200/60:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
         >
           ← Back
         </button>
@@ -803,7 +810,7 @@ export function ClientOnboardingWizard({
               ) : (
                 <>
                   <span>Complete Onboarding &amp; Activate Portal</span>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg width="16" height="16" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </>

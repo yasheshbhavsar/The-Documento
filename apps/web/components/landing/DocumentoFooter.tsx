@@ -1,6 +1,7 @@
+"use client";
+
 import React from "react";
 import { DocumentoLogo } from "../common/DocumentoLogo";
-import { UserExperience } from "../../lib/types";
 
 interface DocumentoFooterProps {
   onOpenLogin: (portal?: "firm" | "client") => void;
@@ -22,12 +23,12 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: "40px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "36px",
             marginBottom: "48px",
           }}
         >
-          {/* Brand & Purpose */}
+          {/* Brand & Mission */}
           <div style={{ maxWidth: "340px" }}>
             <DocumentoLogo size="lg" showWordmark showDomain />
             <p
@@ -38,24 +39,39 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                 margin: "18px 0 0 0",
               }}
             >
-              Clarity through organized documents, requirements, deadlines, and case workflows for immigration law firms and applicants.
+              Clarity through organized evidence, declarative statutory requirements, and unified case pipelines for immigration law firms and applicants.
             </p>
           </div>
 
-          {/* Product Links */}
+          {/* Product & Explorers */}
           <div>
             <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginBottom: "16px" }}>
-              Product &amp; Workflow
+              Explore Platform
             </div>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", fontSize: "14px" }}>
-              <li>
-                <a href="#hero" style={{ color: "#445451", textDecoration: "none" }}>
-                  Overview
-                </a>
-              </li>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
               <li>
                 <a href="#preview" style={{ color: "#445451", textDecoration: "none" }}>
                   Interactive Case Preview
+                </a>
+              </li>
+              <li>
+                <a href="#coverage" style={{ color: "#445451", textDecoration: "none" }}>
+                  Visa &amp; Jurisdiction Coverage
+                </a>
+              </li>
+              <li>
+                <a href="#comparison" style={{ color: "#445451", textDecoration: "none" }}>
+                  Problem vs. Solution Matrix
+                </a>
+              </li>
+              <li>
+                <a href="#workflow" style={{ color: "#445451", textDecoration: "none" }}>
+                  6-Stage Casework Journey
+                </a>
+              </li>
+              <li>
+                <a href="#pathway-finder" style={{ color: "#445451", textDecoration: "none" }}>
+                  Case Fit Matcher
                 </a>
               </li>
               <li>
@@ -64,24 +80,19 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                 </a>
               </li>
               <li>
-                <a href="#workflow" style={{ color: "#445451", textDecoration: "none" }}>
-                  4-Step Workflow
-                </a>
-              </li>
-              <li>
-                <a href="#trust" style={{ color: "#445451", textDecoration: "none" }}>
-                  Human Oversight
+                <a href="#faq" style={{ color: "#445451", textDecoration: "none" }}>
+                  Frequently Asked Questions
                 </a>
               </li>
             </ul>
           </div>
 
-          {/* Role Workspaces */}
+          {/* Secure Portals & Access */}
           <div>
             <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginBottom: "16px" }}>
               Secure Portals
             </div>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", fontSize: "14px" }}>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px" }}>
               <li>
                 <button
                   type="button"
@@ -91,7 +102,7 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                     border: "none",
                     padding: 0,
                     color: "#0D6866",
-                    fontWeight: 550,
+                    fontWeight: 600,
                     cursor: "pointer",
                     textAlign: "left",
                   }}
@@ -108,7 +119,7 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                     border: "none",
                     padding: 0,
                     color: "#0D6866",
-                    fontWeight: 550,
+                    fontWeight: 600,
                     cursor: "pointer",
                     textAlign: "left",
                   }}
@@ -116,7 +127,7 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                   Client &amp; Applicant Portal Sign In →
                 </button>
               </li>
-              <li style={{ marginTop: "6px" }}>
+              <li style={{ marginTop: "4px" }}>
                 <button
                   type="button"
                   onClick={() => onOpenLogin("firm")}
@@ -124,31 +135,33 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                     background: "#0D6866",
                     color: "#FFFFFF",
                     border: "none",
-                    padding: "8px 14px",
+                    padding: "8px 16px",
                     borderRadius: "6px",
                     fontSize: "12px",
-                    fontWeight: 600,
+                    fontWeight: 650,
                     cursor: "pointer",
                   }}
                 >
-                  Access Platform Login
+                  Launch Workspace
                 </button>
               </li>
             </ul>
           </div>
 
-
-          {/* Technical Specs */}
+          {/* Platform Security & Architecture */}
           <div>
             <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginBottom: "16px" }}>
-              Platform Reliability
+              Integrity &amp; Security
             </div>
             <div style={{ fontSize: "13px", color: "#445451", lineHeight: 1.6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
                 <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#176B50" }} />
-                <span style={{ fontWeight: 600, color: "#063C3D" }}>Python FastAPI &amp; PostgreSQL</span>
+                <span style={{ fontWeight: 600, color: "#063C3D" }}>100% SHA-256 Provenance</span>
               </div>
               <div>Multi-tenant schema boundaries with strict row-level isolation.</div>
+              <div style={{ marginTop: "8px" }}>
+                Encryption: TLS 1.3 in transit • AES-256 at rest.
+              </div>
               <div style={{ marginTop: "10px", fontSize: "12px", color: "#6E7F7C" }}>
                 Canonical domain: <strong>thedocumento.com</strong>
               </div>
@@ -156,7 +169,7 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
           </div>
         </div>
 
-        {/* Legal Disclaimer Box */}
+        {/* Legal Boundaries & Regulatory Disclaimer */}
         <div
           style={{
             borderTop: "1px solid #DCE5E1",
@@ -167,10 +180,10 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
             lineHeight: 1.6,
           }}
         >
-          <strong>Legal Disclaimer:</strong> Documento is immigration case management and evidence intelligence technology. Documento is not an immigration law firm, does not provide legal advice, and is not affiliated with or endorsed by USCIS, the U.S. Department of Homeland Security, the Department of State, or any other government authority. Consequential legal conclusions and petition filings require the evaluation and signature of a licensed immigration attorney or accredited representative.
+          <strong>Legal Disclaimer:</strong> Documento is immigration casework and evidence intelligence software. Documento is not an immigration law firm, does not provide legal advice, representation, or opinions, and is not affiliated with or endorsed by USCIS, the Department of Homeland Security, the UK Home Office, IRCC, or any government authority. Immigration requirements differ by country, visa category, and individual circumstances; final adjudicative decisions rest solely with sovereign government authorities. Consequential petition filings require the evaluation and signature of a licensed immigration attorney or accredited representative.
         </div>
 
-        {/* Bottom Copyright */}
+        {/* Bottom Copyright & Standards */}
         <div
           style={{
             display: "flex",

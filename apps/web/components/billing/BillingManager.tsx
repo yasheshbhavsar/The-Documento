@@ -469,7 +469,7 @@ export function BillingManager({
       )}
 
       {/* Sub-Navigation Tabs */}
-      <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--border, #e2e8f0)", paddingBottom: "8px" }}>
+      <div role="tablist" aria-label="Billing navigation sections" style={{ display: "flex", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid var(--border, #e2e8f0)", paddingBottom: "8px" }}>
         <Button
           id="tab-btn-invoices"
           variant={activeSubTab === "invoices" ? "primary" : "ghost"}

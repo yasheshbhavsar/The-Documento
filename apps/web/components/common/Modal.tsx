@@ -8,7 +8,7 @@ export interface ModalProps {
   subtitle?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  maxWidth?: "sm" | "md" | "lg" | "xl";
+  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "full";
 }
 
 export function Modal({
@@ -52,6 +52,8 @@ export function Modal({
     md: "560px",
     lg: "740px",
     xl: "960px",
+    "2xl": "1280px",
+    full: "96vw",
   };
 
   return (
@@ -80,7 +82,7 @@ export function Modal({
         tabIndex={-1}
         style={{
           background: "var(--surface, #ffffff)",
-          border: "1px solid var(--border, #e2e8f0)",
+          border: "1px solid var(--border, #DCE5E1)",
           borderRadius: "var(--radius, 12px)",
           boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
           width: "100%",
@@ -96,7 +98,7 @@ export function Modal({
         <div
           style={{
             padding: "20px 24px",
-            borderBottom: "1px solid var(--border, #e2e8f0)",
+            borderBottom: "1px solid var(--border, #DCE5E1)",
             display: "flex",
             alignItems: "flex-start",
             justifyContent: "space-between",
@@ -110,7 +112,7 @@ export function Modal({
                 margin: 0,
                 fontSize: "18px",
                 fontWeight: 700,
-                color: "var(--text, #0f172a)",
+                color: "var(--text, #172322)",
                 letterSpacing: "-0.01em",
               }}
             >
@@ -121,7 +123,7 @@ export function Modal({
                 style={{
                   margin: "4px 0 0",
                   fontSize: "13px",
-                  color: "var(--muted, #475569)",
+                  color: "var(--muted, #6E7F7C)",
                 }}
               >
                 {subtitle}
@@ -135,7 +137,7 @@ export function Modal({
             style={{
               background: "transparent",
               border: "none",
-              color: "var(--quiet, #64748b)",
+              color: "var(--quiet, #6E7F7C)",
               fontSize: "18px",
               cursor: "pointer",
               padding: "4px 8px",
@@ -162,8 +164,8 @@ export function Modal({
           <div
             style={{
               padding: "16px 24px",
-              borderTop: "1px solid var(--border, #e2e8f0)",
-              background: "var(--surface-subtle, #f1f5f9)",
+              borderTop: "1px solid var(--border, #DCE5E1)",
+              background: "var(--surface-subtle, #F1F6F4)",
               display: "flex",
               justifyContent: "flex-end",
               gap: "10px",

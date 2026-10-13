@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+@import "tailwindcss";
 
 :root {
   /* Documento Brand Palette (Light Theme Only) */
@@ -73,6 +74,12 @@ html, body {
 
 button, a, input, select, textarea {
   font: inherit;
+}
+
+svg {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
 }
 
 /* WCAG 2.2 AA Focus Visibility */
@@ -780,5 +787,17 @@ a {
   color: var(--accent, #1d4ed8);
   background: var(--accent-soft, #eff6ff);
 }
+
+@media (max-width: 768px) {
+  .documento-applicant-sidebar,
+  .documento-firm-sidebar {
+    display: none !important;
+  }
+  .documento-applicant-mobile-bar,
+  .documento-firm-mobile-bar {
+    display: flex !important;
+  }
+}
+
 
 

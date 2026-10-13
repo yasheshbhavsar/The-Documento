@@ -24,10 +24,10 @@ export function Card({
       className={`card-container ${className}`}
       style={{
         background: "var(--surface, #ffffff)",
-        border: "1px solid var(--border, #e2e8f0)",
+        border: "1px solid var(--border, #DCE5E1)",
         borderRadius: "var(--radius, 12px)",
         padding: "20px",
-        boxShadow: "var(--shadow, 0 1px 3px rgba(15, 23, 42, 0.05))",
+        boxShadow: "var(--shadow, 0 1px 3px rgba(6, 60, 61, 0.05))",
         display: "flex",
         flexDirection: "column",
         gap: "14px",
@@ -41,7 +41,7 @@ export function Card({
             alignItems: "flex-start",
             justifyContent: "space-between",
             gap: "12px",
-            borderBottom: "1px solid var(--surface-subtle, #f1f5f9)",
+            borderBottom: "1px solid var(--surface-subtle, #F1F6F4)",
             paddingBottom: "12px",
           }}
         >
@@ -53,7 +53,7 @@ export function Card({
                     margin: 0,
                     fontSize: "16px",
                     fontWeight: 700,
-                    color: "var(--text, #0f172a)",
+                    color: "var(--text, #172322)",
                     letterSpacing: "-0.01em",
                   }}
                 >
@@ -67,7 +67,7 @@ export function Card({
                 style={{
                   margin: "4px 0 0",
                   fontSize: "13px",
-                  color: "var(--muted, #475569)",
+                  color: "var(--muted, #6E7F7C)",
                 }}
               >
                 {subtitle}

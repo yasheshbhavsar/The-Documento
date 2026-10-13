@@ -40,6 +40,7 @@ import { ConfigurableFormViewer } from "../forms/ConfigurableFormViewer";
 import { DeterministicReadinessChecklist } from "../packages/DeterministicReadinessChecklist";
 import { PackageBuilderView } from "../packages/PackageBuilderView";
 import { PackageApprovalWorkflowModal } from "../packages/PackageApprovalWorkflowModal";
+import { CaseDiscrepancyAlertCenter } from "../cases/CaseDiscrepancyAlertCenter";
 
 interface EmployeeWorkspaceProps {
   cases: ImmigrationCase[];
@@ -346,58 +347,504 @@ export function EmployeeWorkspace({
     },
   ];
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const navItems = [
+    { key: "my_work", label: "My Work", icon: "💼", count: null },
+    { key: "assigned_cases", label: "Assigned Cases", icon: "📁", count: cases.length },
+    { key: "team_queues", label: "Team Queues", icon: "⏳", count: null },
+    { key: "clients", label: "Client Directory", icon: "👤", count: clients.length },
+    { key: "documents", label: "Requirements & Evidence", icon: "📄", count: documents.length },
+    { key: "ai_findings", label: "AI Findings", icon: "🤖", count: aiFindings.length },
+    { key: "tasks", label: "Tasks", icon: "✓", count: tasks.filter((t) => !t.is_completed).length },
+    { key: "messages", label: "Client Messages", icon: "💬", count: messages.length },
+    { key: "client_requests", label: "Document Requests", icon: "📥", count: null },
+    { key: "form_prep", label: "Form Preparation", icon: "📝", count: null },
+    { key: "package_review", label: "Package Review", icon: "📦", count: null },
+    { key: "rules_requirements", label: "Case Requirements", icon: "⚖️", count: null },
+    { key: "rules_admin", label: "Rule Registry & Pilot", icon: "📜", count: null },
+  ] as const;
+
+  const activeTabInfo = {
+    my_work: {
+      title: "Casework & Evidence Hub",
+      subtitle: "Personal Workload, Evidentiary Reviews & Priority Action Items • Vanguard Immigration Law Group LLP",
+    },
+    assigned_cases: {
+      title: "Assigned Cases",
+      subtitle: `Active Caseload Oversight (${cases.length} active petitions assigned for preparation)`,
+    },
+    team_queues: {
+      title: "Team Queues",
+      subtitle: "Multi-Caseworker Escalations, Attorney Signoffs & SLA Filing Deadlines",
+    },
+    clients: {
+      title: "Client Directory",
+      subtitle: `Retained Petitioners & Beneficiaries (${clients.length} profiles under representation)`,
+    },
+    documents: {
+      title: "Requirements & Evidence",
+      subtitle: `Evidentiary Document Verification Matrix (${documents.length} uploaded records)`,
+    },
+    ai_findings: {
+      title: "AI Findings",
+      subtitle: `Grounded Evidentiary Gap Analysis (${aiFindings.length} analytical checks requiring disposition)`,
+    },
+    tasks: {
+      title: "Tasks & Deadlines",
+      subtitle: `Immediate Action Items & Filing Clocks (${tasks.filter((t) => !t.is_completed).length} open)`,
+    },
+    messages: {
+      title: "Client Messages",
+      subtitle: `Direct Secure Attorney-Client Communications (${messages.length} messages in thread)`,
+    },
+    client_requests: {
+      title: "Document Requests",
+      subtitle: "Targeted Evidentiary Solicitations & Formal Applicant Requests",
+    },
+    form_prep: {
+      title: "Form Preparation",
+      subtitle: "USCIS Form Field Verification, Canonical Data Mapping & Attorney Review",
+    },
+    package_review: {
+      title: "Package Review",
+      subtitle: "Deterministic Case Readiness Checklist, Cryptographic Merkle Assembly & Export",
+    },
+    rules_requirements: {
+      title: "Case Requirements",
+      subtitle: "Statutory Criteria Evaluation, Cazarian Two-Part Analysis & Evidence Mapping",
+    },
+    rules_admin: {
+      title: "Rule Registry & Pilot",
+      subtitle: "Administrative Law Authority Management, Regulatory Snapshots & Rules Engine",
+    },
+  }[activeTab];
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      {/* Workspace Sub-Navigation */}
-      <div
+    <div
+      id="employee-workspace"
+      style={{
+        display: "flex",
+        minHeight: "calc(100vh - 58px)",
+        background: "#F8F7F2",
+        color: "#172322",
+      }}
+    >
+      {/* =========================================================================
+          1. RESPONSIVE SIDEBAR NAVIGATION (Desktop: 270px; Mobile: Collapsible)
+          ========================================================================= */}
+      <aside
+        aria-label="Lead Paralegal Navigation Sidebar"
         style={{
+          width: "270px",
+          background: "#FFFFFF",
+          borderRight: "1px solid #DCE5E1",
           display: "flex",
-          borderBottom: "1px solid var(--border, #e2e8f0)",
-          paddingBottom: "8px",
-          gap: "8px",
-          overflowX: "auto",
+          flexDirection: "column",
+          flexShrink: 0,
+          position: "sticky",
+          top: "58px",
+          height: "calc(100vh - 58px)",
+          overflowY: "auto",
+          boxShadow: "1px 0 3px rgba(6, 60, 61, 0.03)",
+        }}
+        className="documento-firm-sidebar"
+      >
+        {/* Active Casework Summary Card */}
+        <div
+          style={{
+            padding: "20px 18px 16px 18px",
+            borderBottom: "1px solid #DCE5E1",
+          }}
+        >
+          <div
+            style={{
+              background: "#F8F7F2",
+              border: "1px solid #B9DED4",
+              borderRadius: "10px",
+              padding: "12px 14px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#063C3D",
+                  fontFamily: "monospace",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                Case #{selectedCaseForWorkspace?.case_number || "CASE-US-8841"}
+              </span>
+              <span
+                style={{
+                  background: "#EAF6F0",
+                  color: "#176B50",
+                  fontSize: "10px",
+                  fontWeight: 650,
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                  border: "1px solid #B9DED4",
+                }}
+              >
+                Active
+              </span>
+            </div>
+            <div style={{ fontSize: "12px", fontWeight: 650, color: "#172322", lineHeight: 1.3 }}>
+              {selectedCaseForWorkspace?.visa_category || "EB-1A Extraordinary Ability"}
+            </div>
+            <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>
+              Stage: {selectedCaseForWorkspace?.status ? selectedCaseForWorkspace.status.toUpperCase() : "Evidence Gathering"}
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation Items List */}
+        <nav
+          aria-label="Casework Navigation"
+          style={{
+            flex: 1,
+            padding: "16px 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "10px",
+              fontWeight: 700,
+              color: "#6E7F7C",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              padding: "4px 10px 8px 10px",
+            }}
+          >
+            Casework Sections
+          </div>
+
+          {navItems.map((item) => {
+            const isActive = activeTab === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                aria-current={isActive ? "page" : undefined}
+                onClick={() => {
+                  setActiveTab(item.key as typeof activeTab);
+                  setIsMobileMenuOpen(false);
+                }}
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  padding: "9px 12px 9px 14px",
+                  borderRadius: "8px",
+                  border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
+                  background: isActive ? "#EAF6F0" : "transparent",
+                  color: isActive ? "#0D6866" : "#445451",
+                  fontSize: "13px",
+                  fontWeight: isActive ? 650 : 500,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "all 0.15s ease",
+                  overflow: "hidden",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = "#F8F7F2";
+                    e.currentTarget.style.color = "#063C3D";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "#445451";
+                  }
+                }}
+              >
+                {isActive && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: "6px",
+                      bottom: "6px",
+                      width: "3.5px",
+                      borderRadius: "0 2px 2px 0",
+                      background: "#0D6866",
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
+                <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span>{item.icon}</span>
+                  <span>{item.label}</span>
+                </span>
+                {item.count !== null && item.count !== undefined && item.count > 0 && (
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      padding: "2px 6px",
+                      borderRadius: "10px",
+                      background: isActive ? "#0D6866" : "#F1F6F4",
+                      color: isActive ? "#FFFFFF" : "#445451",
+                      border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
+                    }}
+                  >
+                    {item.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Assigned Paralegal Footer Card */}
+        <div
+          style={{
+            padding: "14px 16px",
+            borderTop: "1px solid #DCE5E1",
+            background: "#FAFAF7",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div
+              style={{
+                width: "32px",
+                height: "32px",
+                borderRadius: "50%",
+                background: "#0D6866",
+                color: "#FFFFFF",
+                fontSize: "12px",
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                border: "1px solid #B9DED4",
+              }}
+            >
+              MV
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "12px", fontWeight: 650, color: "#063C3D", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                Marcus Vance
+              </div>
+              <div style={{ fontSize: "11px", color: "#6E7F7C", lineHeight: 1.2 }}>
+                Lead Paralegal
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "case-01")}
+            style={{
+              width: "100%",
+              marginTop: "10px",
+              padding: "6px 10px",
+              borderRadius: "6px",
+              border: "1px solid #B9DED4",
+              background: "#FFFFFF",
+              color: "#0D6866",
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            + Upload Evidentiary File
+          </button>
+        </div>
+      </aside>
+
+      {/* =========================================================================
+          2. MAIN CONTENT AREA (Clean SaaS Grid Layout)
+          ========================================================================= */}
+      <main
+        style={{
+          flex: 1,
+          padding: "24px 32px 64px 32px",
+          maxWidth: "1320px",
+          margin: "0 auto",
+          width: "100%",
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
+          gap: "20px",
         }}
       >
-        <Button variant={activeTab === "my_work" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("my_work")}>
-          💼 My Work
-        </Button>
-        <Button variant={activeTab === "assigned_cases" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("assigned_cases")}>
-          📁 Assigned Cases ({cases.length})
-        </Button>
-        <Button variant={activeTab === "team_queues" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("team_queues")}>
-          ⏳ Team Queues
-        </Button>
-        <Button variant={activeTab === "clients" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("clients")}>
-          👤 Client Directory ({clients.length})
-        </Button>
-        <Button variant={activeTab === "documents" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("documents")}>
-          📄 Requirements & Evidence ({documents.length})
-        </Button>
-        <Button variant={activeTab === "ai_findings" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("ai_findings")}>
-          🤖 AI Findings ({aiFindings.length})
-        </Button>
-        <Button variant={activeTab === "tasks" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("tasks")}>
-          ✓ Tasks ({tasks.filter((t) => !t.is_completed).length})
-        </Button>
-        <Button variant={activeTab === "messages" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("messages")}>
-          💬 Client Messages ({messages.length})
-        </Button>
-        <Button variant={activeTab === "client_requests" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("client_requests")}>
-          📥 Document Requests
-        </Button>
-        <Button variant={activeTab === "form_prep" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("form_prep")}>
-          📝 Form Preparation
-        </Button>
-        <Button variant={activeTab === "package_review" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("package_review")}>
-          📦 Package Review
-        </Button>
-        <Button variant={activeTab === "rules_requirements" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("rules_requirements")}>
-          ⚖️ Case Requirements
-        </Button>
-        <Button variant={activeTab === "rules_admin" ? "primary" : "ghost"} size="sm" onClick={() => setActiveTab("rules_admin")}>
-          📜 Rule Registry & Pilot
-        </Button>
-      </div>
+        {/* Mobile Navigation Drawer Toggle if on narrow screen */}
+        <div
+          style={{
+            display: "none",
+            marginBottom: "8px",
+            background: "#FFFFFF",
+            padding: "10px 16px",
+            borderRadius: "10px",
+            border: "1px solid #DCE5E1",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+          className="documento-firm-mobile-bar"
+        >
+          <span style={{ fontSize: "13px", fontWeight: 650, color: "#063C3D" }}>
+            Section: {navItems.find((n) => n.key === activeTab)?.label}
+          </span>
+          <button
+            type="button"
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="employee-mobile-sections-menu"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            style={{
+              padding: "6px 12px",
+              background: "#EAF6F0",
+              color: "#0D6866",
+              border: "1px solid #B9DED4",
+              borderRadius: "6px",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            ☰ Switch Section
+          </button>
+        </div>
+
+        {isMobileMenuOpen && (
+          <div
+            id="employee-mobile-sections-menu"
+            role="menu"
+            aria-label="Employee Mobile Navigation"
+            style={{
+              marginBottom: "16px",
+              background: "#FFFFFF",
+              border: "1px solid #B9DED4",
+              borderRadius: "10px",
+              padding: "8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
+              boxShadow: "0 4px 12px rgba(6, 60, 61, 0.08)",
+            }}
+          >
+            {navItems.map((item) => {
+              const isActive = activeTab === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActiveTab(item.key as typeof activeTab);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: "6px",
+                    border: "none",
+                    background: isActive ? "#EAF6F0" : "transparent",
+                    color: isActive ? "#0D6866" : "#445451",
+                    fontSize: "13px",
+                    fontWeight: isActive ? 650 : 500,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </span>
+                  {item.count !== null && item.count !== undefined && item.count > 0 && (
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        padding: "2px 6px",
+                        borderRadius: "10px",
+                        background: isActive ? "#0D6866" : "#F1F6F4",
+                        color: isActive ? "#FFFFFF" : "#445451",
+                      }}
+                    >
+                      {item.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Header Action Bar */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            gap: "16px",
+            background: "#FFFFFF",
+            border: "1px solid #DCE5E1",
+            borderRadius: "12px",
+            padding: "20px 24px",
+            boxShadow: "0 1px 3px rgba(6, 60, 61, 0.04)",
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <h1
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 750,
+                  color: "#063C3D",
+                  margin: 0,
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                {activeTabInfo.title}
+              </h1>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 650,
+                  padding: "3px 8px",
+                  borderRadius: "6px",
+                  background: "#EAF6F0",
+                  color: "#176B50",
+                  border: "1px solid #B9DED4",
+                }}
+              >
+                Lead Paralegal Hub
+              </span>
+            </div>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#6E7F7C",
+                margin: "6px 0 0 0",
+              }}
+            >
+              {activeTabInfo.subtitle}
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <Button variant="secondary" size="sm" onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "case-01")}>
+              + Upload Document
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleAssemblePackage}>
+              Assemble Package
+            </Button>
+          </div>
+        </div>
 
       {/* 1. MY WORK DASHBOARD */}
       {activeTab === "my_work" && (
@@ -433,7 +880,7 @@ export function EmployeeWorkspace({
           </div>
 
           {/* Quick Tasks & Priority Caseload side by side */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "20px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: "20px" }}>
             <Card title="Immediate Tasks & Filing Deadlines" subtitle="Check off completed evidentiary reviews.">
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {tasks.map((task) => (
@@ -513,14 +960,30 @@ export function EmployeeWorkspace({
 
       {/* 2. ASSIGNED CASES */}
       {activeTab === "assigned_cases" && (
-        <Card title="My Assigned Immigration Petitions" subtitle="Caseworker queue with object-level authorization applied.">
-          <DataTable
-            columns={caseColumns}
-            data={cases}
-            keyExtractor={(c) => c.id}
-            searchPlaceholder="Search assigned cases..."
-          />
-        </Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {/* Active Case Consistency & Discrepancy Alert Focus */}
+          {selectedCaseForWorkspace && (
+            <CaseDiscrepancyAlertCenter
+              caseId={selectedCaseForWorkspace.id}
+              findings={localFindingsState}
+              onResolveFinding={handleResolveFindingAction}
+              onEscalateFinding={handleEscalateFindingAction}
+              onInspectDocument={(docId) => {
+                const doc = documents.find((d) => d.id === docId);
+                if (doc) setSelectedDocForInspection(doc);
+              }}
+            />
+          )}
+
+          <Card title="My Assigned Immigration Petitions" subtitle="Caseworker queue with object-level authorization applied.">
+            <DataTable
+              columns={caseColumns}
+              data={cases}
+              keyExtractor={(c) => c.id}
+              searchPlaceholder="Search assigned cases..."
+            />
+          </Card>
+        </div>
       )}
 
       {/* 3. TEAM QUEUES */}
@@ -721,8 +1184,8 @@ export function EmployeeWorkspace({
                 key: "actions",
                 header: "Action",
                 render: (d) => (
-                  <Button variant="outline" size="sm" onClick={() => setSelectedDocForInspection(d)}>
-                    Inspect Dossier
+                  <Button variant="primary" size="sm" onClick={() => setSelectedDocForInspection(d)}>
+                    ⚡ Review OCR Dossier
                   </Button>
                 ),
               },
@@ -1170,6 +1633,7 @@ export function EmployeeWorkspace({
       {activeTab === "rules_admin" && (
         <RuleAdministrationHub isLiveBackend={false} />
       )}
+    </main>
 
       {/* Document Dossier Inspector Modal */}
       <DocumentInspectorModal
@@ -1181,6 +1645,7 @@ export function EmployeeWorkspace({
           setSelectedDocForInspection(updated);
         }}
         activeRole="case_manager"
+        defaultViewMode="workbench"
       />
 
       {/* Phase 5 AI Finding Inspector Modal */}

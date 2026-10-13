@@ -29,7 +29,7 @@ export function TextInput({
           style={{
             fontSize: "13px",
             fontWeight: 650,
-            color: "var(--text, #0f172a)",
+            color: "var(--text, #172322)",
           }}
         >
           {label} {required && <span style={{ color: "var(--critical, #b91c1c)" }}>*</span>}
@@ -42,10 +42,10 @@ export function TextInput({
         style={{
           padding: "8px 12px",
           fontSize: "14px",
-          border: `1px solid ${error ? "var(--critical, #b91c1c)" : "var(--border, #e2e8f0)"}`,
+          border: `1px solid ${error ? "var(--critical, #b91c1c)" : "var(--border, #DCE5E1)"}`,
           borderRadius: "var(--radius-sm, 8px)",
           background: "var(--surface, #ffffff)",
-          color: "var(--text, #0f172a)",
+          color: "var(--text, #172322)",
           outline: "none",
           transition: "border-color 0.15s ease",
           ...style,
@@ -99,7 +99,7 @@ export function SelectInput({
           style={{
             fontSize: "13px",
             fontWeight: 650,
-            color: "var(--text, #0f172a)",
+            color: "var(--text, #172322)",
           }}
         >
           {label} {required && <span style={{ color: "var(--critical, #b91c1c)" }}>*</span>}
@@ -112,10 +112,10 @@ export function SelectInput({
         style={{
           padding: "8px 12px",
           fontSize: "14px",
-          border: `1px solid ${error ? "var(--critical, #b91c1c)" : "var(--border, #e2e8f0)"}`,
+          border: `1px solid ${error ? "var(--critical, #b91c1c)" : "var(--border, #DCE5E1)"}`,
           borderRadius: "var(--radius-sm, 8px)",
           background: "var(--surface, #ffffff)",
-          color: "var(--text, #0f172a)",
+          color: "var(--text, #172322)",
           outline: "none",
           cursor: "pointer",
           ...style,
@@ -160,7 +160,7 @@ export function TextareaInput({
       {label && (
         <label
           htmlFor={inputId}
-          style={{ fontSize: "13px", fontWeight: 650, color: "var(--text, #0f172a)" }}
+          style={{ fontSize: "13px", fontWeight: 650, color: "var(--text, #172322)" }}
         >
           {label} {required && <span style={{ color: "var(--critical, #b91c1c)" }}>*</span>}
         </label>
@@ -171,10 +171,10 @@ export function TextareaInput({
         style={{
           padding: "8px 12px",
           fontSize: "14px",
-          border: `1px solid ${error ? "var(--critical, #b91c1c)" : "var(--border, #e2e8f0)"}`,
+          border: `1px solid ${error ? "var(--critical, #b91c1c)" : "var(--border, #DCE5E1)"}`,
           borderRadius: "var(--radius-sm, 8px)",
           background: "var(--surface, #ffffff)",
-          color: "var(--text, #0f172a)",
+          color: "var(--text, #172322)",
           minHeight: "80px",
           outline: "none",
           fontFamily: "inherit",
@@ -218,7 +218,7 @@ export function CheckboxInput({ label, description, id, ...props }: CheckboxProp
       <div>
         <label
           htmlFor={inputId}
-          style={{ fontSize: "13px", fontWeight: 600, color: "var(--text, #0f172a)", cursor: "pointer" }}
+          style={{ fontSize: "13px", fontWeight: 600, color: "var(--text, #172322)", cursor: "pointer" }}
         >
           {label}
         </label>

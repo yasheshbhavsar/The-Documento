@@ -198,7 +198,7 @@ export function CreateClientModal({
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: "12px" }}>
           <TextInput
             label="First Name"
             placeholder="e.g. Marcus"
@@ -225,7 +225,7 @@ export function CreateClientModal({
           required
         />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: "12px" }}>
           <TextInput
             label="Phone Number"
             type="tel"
@@ -254,8 +254,8 @@ export function CreateClientModal({
         <div
           style={{
             padding: "10px 12px",
-            background: "var(--surface-subtle, #f8fafc)",
-            border: "1px solid var(--border, #e2e8f0)",
+            background: "var(--surface-subtle, #F1F6F4)",
+            border: "1px solid var(--border, #DCE5E1)",
             borderRadius: "6px",
             display: "flex",
             flexDirection: "column",
@@ -316,7 +316,7 @@ export function CreateClientModal({
                   { label: "Dependent", value: "dependent" },
                 ]}
               />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: "10px" }}>
                 <TextInput label="Dependant First Name" value={depFn} onChange={(e) => setDepFn(e.target.value)} />
                 <TextInput label="Dependant Last Name" value={depLn} onChange={(e) => setDepLn(e.target.value)} />
               </div>

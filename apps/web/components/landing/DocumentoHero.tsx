@@ -1,3 +1,7 @@
+"use client";
+
+import React from "react";
+
 interface DocumentoHeroProps {
   onOpenLogin: (portal?: "firm" | "client") => void;
 }
@@ -8,13 +12,13 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
       id="hero"
       style={{
         position: "relative",
-        padding: "64px 24px 72px 24px",
+        padding: "72px 24px 80px 24px",
         background: "linear-gradient(180deg, #F8F7F2 0%, #FFFFFF 100%)",
         borderBottom: "1px solid #DCE5E1",
         overflow: "hidden",
       }}
     >
-      {/* Subtle organic decorative glow in pale seafoam */}
+      {/* Organic decorative ambient glows in pale seafoam & mint */}
       <div
         style={{
           position: "absolute",
@@ -50,7 +54,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
           zIndex: 1,
         }}
       >
-        <div style={{ maxWidth: "860px", margin: "0 auto", textAlign: "center" }}>
+        <div style={{ maxWidth: "880px", margin: "0 auto", textAlign: "center" }}>
           {/* Eyebrow Badge */}
           <div
             style={{
@@ -63,7 +67,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               border: "1px solid #B9DED4",
               color: "#063C3D",
               fontSize: "13px",
-              fontWeight: 600,
+              fontWeight: 650,
               letterSpacing: "-0.01em",
               marginBottom: "24px",
               boxShadow: "0 1px 3px rgba(6, 60, 61, 0.05)",
@@ -88,7 +92,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               lineHeight: 1.1,
               letterSpacing: "-0.035em",
               color: "#063C3D",
-              margin: "0 0 22px 0",
+              margin: "0 0 24px 0",
               fontFamily: "var(--font-display, Inter, sans-serif)",
             }}
           >
@@ -106,21 +110,21 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
             </span>
           </h1>
 
-          {/* Subheading */}
+          {/* Subheading emphasizing reduced administrative burden, organized evidence, and coordination */}
           <p
             style={{
               fontSize: "clamp(16px, 2.2vw, 20px)",
               lineHeight: 1.6,
               color: "#445451",
               margin: "0 auto 36px auto",
-              maxWidth: "720px",
+              maxWidth: "760px",
               fontWeight: 400,
             }}
           >
-            Bring documents, requirements, deadlines, and case progress into one intelligent workspace built for immigration teams and the people they serve.
+            Eliminate administrative paperwork chaos. Documento organizes evidentiary exhibits, maps statutory requirements, tracks procedural filing clocks, and unifies applicants with their legal counsel in one transparent workspace.
           </p>
 
-          {/* CTAs */}
+          {/* Prominent Primary Calls to Action */}
           <div
             style={{
               display: "flex",
@@ -128,7 +132,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               justifyContent: "center",
               flexWrap: "wrap",
               gap: "14px",
-              marginBottom: "32px",
+              marginBottom: "24px",
             }}
           >
             <button
@@ -160,14 +164,14 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
                 e.currentTarget.style.boxShadow = "0 4px 14px rgba(13, 104, 102, 0.25)";
               }}
             >
-              <span>Access Workspaces</span>
+              <span>Get Started</span>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
 
             <a
-              href="#preview"
+              href="#workflow"
               style={{
                 background: "#FFFFFF",
                 color: "#063C3D",
@@ -196,22 +200,83 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
                 <circle cx="12" cy="12" r="10" />
                 <polygon points="10 8 16 12 10 16 10 8" fill="#0D6866" stroke="none" />
               </svg>
-              <span>View Case Pipeline Preview</span>
+              <span>Explore How It Works</span>
             </a>
+
+            <a
+              href="#preview"
+              style={{
+                background: "transparent",
+                color: "#0D6866",
+                border: "1px solid transparent",
+                padding: "14px 20px",
+                borderRadius: "10px",
+                fontWeight: 600,
+                fontSize: "15px",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#DDEFE8";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <span>Test Interactive Demo ↓</span>
+            </a>
+          </div>
+
+          {/* Quick Scope & Trust Verification Bar */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexWrap: "wrap",
+              gap: "16px",
+              fontSize: "13px",
+              color: "#6E7F7C",
+              marginBottom: "8px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
+              <span><strong>3 Verified Jurisdictions</strong> (US, UK, Canada)</span>
+            </div>
+            <span>•</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
+              <span><strong>6 Operational Pathways</strong></span>
+            </div>
+            <span>•</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
+              <span><strong>100% SHA-256 Provenance</strong></span>
+            </div>
+            <span>•</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
+              <span><strong>Mandatory Attorney Sign-Off</strong></span>
+            </div>
           </div>
         </div>
 
-        {/* Hero Visual Banner: Case Evidence & Verification Strip */}
+        {/* Hero Visual Banner: 3 Core Pillars */}
         <div
           style={{
-            marginTop: "54px",
+            marginTop: "52px",
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: "16px",
           }}
         >
           {/* Card 1 */}
-          <div
+          <a
+            href="#preview"
             style={{
               background: "#FFFFFF",
               border: "1px solid #DCE5E1",
@@ -221,6 +286,17 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               display: "flex",
               alignItems: "flex-start",
               gap: "14px",
+              textDecoration: "none",
+              color: "inherit",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#0D6866";
+              e.currentTarget.style.transform = "translateY(-2px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#DCE5E1";
+              e.currentTarget.style.transform = "translateY(0)";
             }}
           >
             <div
@@ -241,7 +317,6 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
                 <polyline points="14 2 14 8 20 8" />
                 <line x1="16" y1="13" x2="8" y2="13" />
                 <line x1="16" y1="17" x2="8" y2="17" />
-                <polyline points="10 9 9 9 8 9" />
               </svg>
             </div>
             <div>
@@ -252,10 +327,11 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
                 Every data extraction and timeline fact is anchored to exact source exhibit pages with cryptographic SHA-256 hashes.
               </div>
             </div>
-          </div>
+          </a>
 
           {/* Card 2 */}
-          <div
+          <a
+            href="#coverage"
             style={{
               background: "#FFFFFF",
               border: "1px solid #DCE5E1",
@@ -265,6 +341,17 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               display: "flex",
               alignItems: "flex-start",
               gap: "14px",
+              textDecoration: "none",
+              color: "inherit",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#0D6866";
+              e.currentTarget.style.transform = "translateY(-2px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#DCE5E1";
+              e.currentTarget.style.transform = "translateY(0)";
             }}
           >
             <div
@@ -287,16 +374,17 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
             </div>
             <div>
               <div style={{ fontSize: "14px", fontWeight: 650, color: "#063C3D", marginBottom: "4px" }}>
-                Versioned Legal Rules
+                Versioned Statutory Rules
               </div>
               <div style={{ fontSize: "13px", color: "#445451", lineHeight: 1.45 }}>
-                Evaluate evidence against authoritative USCIS policy memos, statutory criteria, and filing requirements with audit diffs.
+                Evaluate evidence against authoritative USCIS policy memos, statutory criteria, and filing guidelines with audit diffs.
               </div>
             </div>
-          </div>
+          </a>
 
           {/* Card 3 */}
-          <div
+          <a
+            href="#trust"
             style={{
               background: "#FFFFFF",
               border: "1px solid #DCE5E1",
@@ -306,6 +394,17 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               display: "flex",
               alignItems: "flex-start",
               gap: "14px",
+              textDecoration: "none",
+              color: "inherit",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#0D6866";
+              e.currentTarget.style.transform = "translateY(-2px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#DCE5E1";
+              e.currentTarget.style.transform = "translateY(0)";
             }}
           >
             <div
@@ -333,7 +432,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
                 AI findings serve as assistive suggestions. Consequential petition filings require licensed attorney adjudication.
               </div>
             </div>
-          </div>
+          </a>
         </div>
       </div>
     </section>

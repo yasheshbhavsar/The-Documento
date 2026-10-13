@@ -18,6 +18,17 @@ export const EvidenceSummaryModal: React.FC<EvidenceSummaryModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
 
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !summary) return null;
 
   const handleCopyMarkdown = () => {
@@ -47,6 +58,9 @@ export const EvidenceSummaryModal: React.FC<EvidenceSummaryModalProps> = ({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="evidence-summary-modal-title"
         style={{
           background: "var(--surface, #ffffff)",
           borderRadius: "12px",
@@ -66,7 +80,7 @@ export const EvidenceSummaryModal: React.FC<EvidenceSummaryModalProps> = ({
           style={{
             padding: "20px 24px",
             borderBottom: "1px solid var(--border, #e2e8f0)",
-            background: "var(--surface-subtle, #f8fafc)",
+            background: "var(--surface-subtle, #F1F6F4)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -79,7 +93,7 @@ export const EvidenceSummaryModal: React.FC<EvidenceSummaryModalProps> = ({
                 Case: {summary.case_number}
               </span>
             </div>
-            <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>
+            <h2 id="evidence-summary-modal-title" style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--text, #172322)" }}>
               Evidence-Backed Case Brief — {summary.applicant_name}
             </h2>
           </div>

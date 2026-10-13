@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { DocumentoLogo } from "../common/DocumentoLogo";
 import { UserContext, UserExperience } from "../../lib/types";
 
@@ -16,6 +16,27 @@ export function WorkspaceHeader({
   isLiveBackend = true,
 }: WorkspaceHeaderProps) {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isProfileMenuOpen]);
 
   const getInitials = (name: string) => {
     return name
@@ -117,9 +138,14 @@ export function WorkspaceHeader({
         </div>
 
         {/* User Profile Dropdown Button */}
-        <div style={{ position: "relative" }}>
+        <div ref={profileMenuRef} style={{ position: "relative" }}>
           <button
             type="button"
+            id="workspace-user-menu-button"
+            aria-haspopup="menu"
+            aria-expanded={isProfileMenuOpen}
+            aria-controls="workspace-user-menu"
+            aria-label={`${currentUser.full_name} - User profile and persona switch menu`}
             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
             style={{
               background: "rgba(255, 255, 255, 0.1)",
@@ -174,6 +200,9 @@ export function WorkspaceHeader({
           {/* Profile Dropdown Menu */}
           {isProfileMenuOpen && (
             <div
+              id="workspace-user-menu"
+              role="menu"
+              aria-labelledby="workspace-user-menu-button"
               style={{
                 position: "absolute",
                 top: "calc(100% + 8px)",

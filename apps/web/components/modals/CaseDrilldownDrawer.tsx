@@ -112,10 +112,15 @@ export function CaseDrilldownDrawer({
             </span>
           </div>
           <div
+            role="progressbar"
+            aria-valuenow={caseItem.readiness_score}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Filing Package Readiness Score"
             style={{
               width: "100%",
               height: "8px",
-              backgroundColor: "var(--surface-subtle, #f1f5f9)",
+              backgroundColor: "var(--surface-subtle, #F1F6F4)",
               borderRadius: "4px",
               overflow: "hidden",
             }}
@@ -124,12 +129,12 @@ export function CaseDrilldownDrawer({
               style={{
                 width: `${caseItem.readiness_score}%`,
                 height: "100%",
-                backgroundColor: caseItem.readiness_score > 80 ? "var(--success, #15803d)" : "var(--accent, #1d4ed8)",
+                backgroundColor: caseItem.readiness_score > 80 ? "var(--success, #176B50)" : "var(--accent, #0D6866)",
                 transition: "width 0.4s ease",
               }}
             />
           </div>
-          <small style={{ display: "block", marginTop: "6px", color: "var(--quiet, #64748b)" }}>
+          <small style={{ display: "block", marginTop: "6px", color: "var(--quiet, #6E7F7C)" }}>
             Calculated across statutory evidentiary criteria and mandatory identity records.
           </small>
         </div>
@@ -138,11 +143,11 @@ export function CaseDrilldownDrawer({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 160px), 1fr))",
             gap: "14px",
             background: "var(--surface, #ffffff)",
             padding: "16px",
-            border: "1px solid var(--border, #e2e8f0)",
+            border: "1px solid var(--border, #DCE5E1)",
             borderRadius: "8px",
             fontSize: "13px",
           }}

@@ -153,7 +153,7 @@ export function WaitingStateBanner({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
           gap: "16px",
         }}
       >
@@ -197,7 +197,15 @@ export function WaitingStateBanner({
               {waiting_on_client.map((item) => (
                 <div
                   key={item.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => handleAction(item)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleAction(item);
+                    }
+                  }}
                   style={{
                     padding: "10px 12px",
                     background: "#F8F7F2",
@@ -319,6 +327,11 @@ export function WaitingStateBanner({
           </strong>
         </div>
         <div
+          role="progressbar"
+          aria-valuenow={profile_completeness_percentage}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Petition Filing and Onboarding Readiness"
           style={{
             width: "100%",
             height: "8px",
