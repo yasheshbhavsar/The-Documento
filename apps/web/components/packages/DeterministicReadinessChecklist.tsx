@@ -18,28 +18,77 @@ export const DeterministicReadinessChecklist: React.FC<DeterministicReadinessChe
     switch (item.status) {
       case "passed":
         return (
-          <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span
+            style={{
+              padding: "4px 12px",
+              fontSize: "12px",
+              fontWeight: 700,
+              borderRadius: "999px",
+              background: "#ECFDF5",
+              color: "#065F46",
+              border: "1px solid #A7F3D0",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <span style={{ width: "8px", height: "8px", borderRadius: "999px", background: "#10B981" }} />
             Passed
           </span>
         );
       case "warning":
         return (
-          <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span
+            style={{
+              padding: "4px 12px",
+              fontSize: "12px",
+              fontWeight: 700,
+              borderRadius: "999px",
+              background: "#FFFBEB",
+              color: "#92400E",
+              border: "1px solid #FDE68A",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <span style={{ width: "8px", height: "8px", borderRadius: "999px", background: "#F59E0B" }} />
             Warning
           </span>
         );
       case "failed":
         return (
-          <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 border border-red-200 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
+          <span
+            style={{
+              padding: "4px 12px",
+              fontSize: "12px",
+              fontWeight: 700,
+              borderRadius: "999px",
+              background: "#FEF2F2",
+              color: "#991B1B",
+              border: "1px solid #FECACA",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <span style={{ width: "8px", height: "8px", borderRadius: "999px", background: "#EF4444" }} />
             {item.is_blocking ? "Blocking Failure" : "Action Needed"}
           </span>
         );
       default:
         return (
-          <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+          <span
+            style={{
+              padding: "4px 12px",
+              fontSize: "12px",
+              fontWeight: 700,
+              borderRadius: "999px",
+              background: "#F3F4F6",
+              color: "#4B5563",
+              border: "1px solid #E5E7EB",
+            }}
+          >
             N/A
           </span>
         );
@@ -47,34 +96,90 @@ export const DeterministicReadinessChecklist: React.FC<DeterministicReadinessChe
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" data-testid="readiness-checklist">
+    <div
+      data-testid="readiness-checklist"
+      style={{
+        background: "#FFFFFF",
+        borderRadius: "14px",
+        border: "1px solid #DCE5E1",
+        boxShadow: "0 6px 24px rgba(6, 60, 61, 0.06)",
+        overflow: "hidden",
+        fontFamily: "inherit",
+      }}
+    >
       {/* Top Banner with Strict Regulatory Disclaimer */}
-      <div style={{ padding: "24px", background: "#063C3D", color: "#FFFFFF" }}>
+      <div
+        style={{
+          padding: "24px 28px",
+          background: "linear-gradient(135deg, #063C3D 0%, #084B4C 100%)",
+          color: "#FFFFFF",
+          borderBottom: "1px solid rgba(185, 222, 212, 0.2)",
+        }}
+      >
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              gap: "16px",
+            }}
+          >
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#B9DED4", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "11px",
+                  color: "#B9DED4",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
                 <span>Case: {checklist.case_number}</span>
                 <span>•</span>
                 <span>Evaluated: {new Date(checklist.evaluated_at).toLocaleString()}</span>
               </div>
-              <h2 style={{ fontSize: "20px", fontWeight: 700, margin: "4px 0 0 0", color: "#FFFFFF" }}>Deterministic Case Readiness Checklist</h2>
-              <p style={{ fontSize: "12px", color: "#DDEFE8", margin: "4px 0 0 0", maxWidth: "600px" }}>
+              <h2
+                style={{
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  margin: "6px 0 0 0",
+                  color: "#FFFFFF",
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                Deterministic Case Readiness Checklist
+              </h2>
+              <p style={{ fontSize: "12px", color: "#DDEFE8", margin: "4px 0 0 0", maxWidth: "620px", lineHeight: "1.5" }}>
                 Internal checklist auditing 10 statutory and procedural dimensions required prior to submission package assembly.
               </p>
             </div>
 
             {/* Assembly Status & Action */}
-            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "12px", color: "#B9DED4" }}>Package Assembly Readiness</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  textAlign: "right",
+                  background: "rgba(255, 255, 255, 0.08)",
+                  padding: "10px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                }}
+              >
+                <div style={{ fontSize: "11px", color: "#B9DED4", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Package Assembly Readiness
+                </div>
                 <div style={{ fontSize: "15px", fontWeight: 700, marginTop: "2px" }}>
                   {checklist.is_ready_for_package_assembly ? (
-                    <span style={{ color: "#B9DED4", display: "flex", alignItems: "center", gap: "4px", justifyContent: "flex-end" }}>
+                    <span style={{ color: "#34D399", display: "flex", alignItems: "center", gap: "6px", justifyContent: "flex-end" }}>
                       ✓ Clear for Assembly
                     </span>
                   ) : (
-                    <span style={{ color: "#FCA5A5", display: "flex", alignItems: "center", gap: "4px", justifyContent: "flex-end" }}>
+                    <span style={{ color: "#FCA5A5", display: "flex", alignItems: "center", gap: "6px", justifyContent: "flex-end" }}>
                       ✕ Blocked by {checklist.blocking_failures_count} Check(s)
                     </span>
                   )}
@@ -87,7 +192,7 @@ export const DeterministicReadinessChecklist: React.FC<DeterministicReadinessChe
                   disabled={!checklist.is_ready_for_package_assembly || isLoading}
                   onClick={onAssemblePackage}
                   style={{
-                    padding: "10px 18px",
+                    padding: "11px 20px",
                     fontSize: "12px",
                     fontWeight: 700,
                     borderRadius: "8px",
@@ -95,7 +200,7 @@ export const DeterministicReadinessChecklist: React.FC<DeterministicReadinessChe
                     cursor: checklist.is_ready_for_package_assembly && !isLoading ? "pointer" : "not-allowed",
                     background: checklist.is_ready_for_package_assembly ? "#0D6866" : "rgba(255, 255, 255, 0.15)",
                     color: "#FFFFFF",
-                    boxShadow: "0 1px 3px rgba(6, 60, 61, 0.2)",
+                    boxShadow: "0 2px 8px rgba(6, 60, 61, 0.25)",
                     transition: "all 0.15s ease",
                   }}
                 >
@@ -106,8 +211,22 @@ export const DeterministicReadinessChecklist: React.FC<DeterministicReadinessChe
           </div>
 
           {/* Regulatory Ethics Disclaimer Box */}
-          <div style={{ marginTop: "12px", padding: "12px 16px", background: "rgba(13, 104, 102, 0.4)", borderRadius: "8px", border: "1px solid rgba(185, 222, 212, 0.25)", fontSize: "12px", display: "flex", alignItems: "flex-start", gap: "10px", color: "#F8F7F2" }}>
-            <span style={{ fontSize: "16px" }}>🛡️</span>
+          <div
+            style={{
+              marginTop: "8px",
+              padding: "12px 18px",
+              background: "rgba(13, 104, 102, 0.45)",
+              borderRadius: "10px",
+              border: "1px solid rgba(185, 222, 212, 0.3)",
+              fontSize: "12px",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "10px",
+              color: "#F8F7F2",
+              lineHeight: "1.5",
+            }}
+          >
+            <span style={{ fontSize: "16px", marginTop: "1px" }}>🛡️</span>
             <div>
               <strong style={{ color: "#FFFFFF" }}>Regulatory Disclaimer: </strong>
               {checklist.prohibition_disclaimer ||
@@ -118,55 +237,122 @@ export const DeterministicReadinessChecklist: React.FC<DeterministicReadinessChe
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-slate-200 divide-x divide-slate-200 bg-slate-50/50">
-        <div className="p-4 text-center">
-          <div className="text-xs text-slate-500">Evaluated Checks</div>
-          <div className="text-xl font-bold text-slate-800 mt-0.5">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          borderBottom: "1px solid #E2E8E4",
+          background: "#F8F9F8",
+        }}
+      >
+        <div style={{ padding: "18px 24px", textAlign: "center", borderRight: "1px solid #E2E8E4" }}>
+          <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Evaluated Checks
+          </div>
+          <div style={{ fontSize: "22px", fontWeight: 800, color: "#172322", marginTop: "4px" }}>
             {checklist.total_checks_evaluated} / 10
           </div>
         </div>
-        <div className="p-4 text-center">
-          <div className="text-xs text-slate-500">Passed Checks</div>
-          <div className="text-xl font-bold text-emerald-600 mt-0.5">
+        <div style={{ padding: "18px 24px", textAlign: "center", borderRight: "1px solid #E2E8E4" }}>
+          <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Passed Checks
+          </div>
+          <div style={{ fontSize: "22px", fontWeight: 800, color: "#059669", marginTop: "4px" }}>
             {checklist.passed_checks_count}
           </div>
         </div>
-        <div className="p-4 text-center">
-          <div className="text-xs text-slate-500">Warnings / Open Items</div>
-          <div className="text-xl font-bold text-amber-600 mt-0.5">
+        <div style={{ padding: "18px 24px", textAlign: "center", borderRight: "1px solid #E2E8E4" }}>
+          <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Warnings / Open Items
+          </div>
+          <div style={{ fontSize: "22px", fontWeight: 800, color: "#D97706", marginTop: "4px" }}>
             {checklist.warnings_count}
           </div>
         </div>
-        <div className="p-4 text-center">
-          <div className="text-xs text-slate-500">Blocking Failures</div>
-          <div className={`text-xl font-bold mt-0.5 ${checklist.blocking_failures_count > 0 ? "text-red-600" : "text-emerald-600"}`}>
+        <div style={{ padding: "18px 24px", textAlign: "center" }}>
+          <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Blocking Failures
+          </div>
+          <div
+            style={{
+              fontSize: "22px",
+              fontWeight: 800,
+              color: checklist.blocking_failures_count > 0 ? "#DC2626" : "#059669",
+              marginTop: "4px",
+            }}
+          >
             {checklist.blocking_failures_count}
           </div>
         </div>
       </div>
 
       {/* The 10 Checklist Items */}
-      <div className="p-6 divide-y divide-slate-100">
+      <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: "10px", background: "#FFFFFF" }}>
         {checklist.checks.map((item, idx) => (
-          <div key={item.code} className="py-4 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+          <div
+            key={item.code}
+            style={{
+              padding: "16px 20px",
+              borderRadius: "12px",
+              background: item.status === "failed" ? "#FFF8F8" : item.status === "warning" ? "#FFFDF5" : "#FAFAF8",
+              border: item.status === "failed" ? "1.5px solid #FECACA" : item.status === "warning" ? "1.5px solid #FDE68A" : "1px solid #E5E7EB",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "14px",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", flex: 1, minWidth: "280px" }}>
+              <span
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  borderRadius: "999px",
+                  background: item.status === "passed" ? "#EAF6F0" : item.status === "warning" ? "#FEF3C7" : "#FEE2E2",
+                  color: item.status === "passed" ? "#063C3D" : item.status === "warning" ? "#92400E" : "#991B1B",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  marginTop: "2px",
+                }}
+              >
                 {idx + 1}
               </span>
               <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-bold text-slate-900">{item.name}</h4>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <h4 style={{ fontSize: "14px", fontWeight: 700, color: "#172322", margin: 0 }}>
+                    {item.name}
+                  </h4>
                   {item.is_blocking && item.status !== "passed" && (
-                    <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        color: "#DC2626",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        background: "#FEE2E2",
+                        padding: "2px 8px",
+                        borderRadius: "4px",
+                        border: "1px solid #FCA5A5",
+                      }}
+                    >
                       Blocking
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-600 mt-0.5">{item.summary}</p>
+                <p style={{ fontSize: "12px", color: "#6E7F7C", margin: "4px 0 0 0", lineHeight: "1.4" }}>
+                  {item.summary}
+                </p>
               </div>
             </div>
 
-            <div className="shrink-0 flex items-center gap-3 pl-9 md:pl-0">
+            <div style={{ flexShrink: 0 }}>
               {getStatusBadge(item)}
             </div>
           </div>

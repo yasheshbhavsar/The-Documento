@@ -51,57 +51,124 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
   });
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" data-testid="package-builder-view">
-      {/* Top Header */}
-      <div style={{ padding: "24px", background: "#063C3D", color: "#FFFFFF", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 700, background: "rgba(185, 222, 212, 0.2)", color: "#B9DED4", borderRadius: "4px", border: "1px solid rgba(185, 222, 212, 0.3)" }}>
+    <div
+      data-testid="package-builder-view"
+      style={{
+        background: "#FFFFFF",
+        borderRadius: "14px",
+        border: "1px solid #DCE5E1",
+        boxShadow: "0 6px 24px rgba(6, 60, 61, 0.06)",
+        overflow: "hidden",
+        fontFamily: "inherit",
+      }}
+    >
+      {/* Top Executive Header */}
+      <div
+        style={{
+          padding: "24px 28px",
+          background: "linear-gradient(135deg, #063C3D 0%, #084B4C 100%)",
+          color: "#FFFFFF",
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "20px",
+          borderBottom: "1px solid rgba(185, 222, 212, 0.2)",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: "280px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <span
+              style={{
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontWeight: 700,
+                background: "rgba(185, 222, 212, 0.2)",
+                color: "#B9DED4",
+                borderRadius: "6px",
+                border: "1px solid rgba(185, 222, 212, 0.35)",
+              }}
+            >
               {packageItem.version_number}
             </span>
             <span
               style={{
-                padding: "2px 8px",
+                padding: "4px 10px",
                 fontSize: "11px",
                 fontWeight: 700,
-                borderRadius: "4px",
+                borderRadius: "6px",
                 textTransform: "uppercase",
+                letterSpacing: "0.04em",
                 background: packageItem.status === "approved" ? "rgba(23, 107, 80, 0.3)" : "rgba(217, 119, 6, 0.2)",
                 color: packageItem.status === "approved" ? "#B9DED4" : "#FDE68A",
-                border: `1px solid ${packageItem.status === "approved" ? "rgba(185, 222, 212, 0.4)" : "rgba(253, 230, 138, 0.4)"}`,
+                border: `1px solid ${
+                  packageItem.status === "approved" ? "rgba(185, 222, 212, 0.4)" : "rgba(253, 230, 138, 0.4)"
+                }`,
               }}
             >
               Status: {packageItem.status.replace(/_/g, " ")}
             </span>
           </div>
-          <h2 style={{ fontSize: "20px", fontWeight: 700, margin: "8px 0 0 0", color: "#FFFFFF" }}>{packageItem.name}</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "6px", fontSize: "12px", color: "#B9DED4", fontFamily: "monospace" }}>
+
+          <h2
+            style={{
+              fontSize: "20px",
+              fontWeight: 700,
+              margin: "10px 0 4px 0",
+              color: "#FFFFFF",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {packageItem.name}
+          </h2>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "6px",
+              fontSize: "12px",
+              color: "#B9DED4",
+              fontFamily: "ui-monospace, monospace",
+              flexWrap: "wrap",
+            }}
+          >
             <span>Root Merkle Hash:</span>
-            <span style={{ color: "#DDEFE8", background: "rgba(13, 104, 102, 0.5)", padding: "2px 8px", borderRadius: "4px" }} title={packageItem.package_hash}>
+            <span
+              style={{
+                color: "#EAF6F0",
+                background: "rgba(13, 104, 102, 0.6)",
+                padding: "2px 8px",
+                borderRadius: "6px",
+                border: "1px solid rgba(185, 222, 212, 0.25)",
+              }}
+              title={packageItem.package_hash}
+            >
               {packageItem.package_hash}
             </span>
           </div>
         </div>
 
         {/* Action Controls */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
           {onOpenApprovalWorkflow && (
             <button
               type="button"
               onClick={onOpenApprovalWorkflow}
               style={{
-                padding: "8px 16px",
+                padding: "10px 18px",
                 fontSize: "12px",
                 fontWeight: 700,
                 color: "#FFFFFF",
                 background: "#0D6866",
                 borderRadius: "8px",
-                border: "1px solid #063C3D",
+                border: "1px solid rgba(185, 222, 212, 0.3)",
                 cursor: "pointer",
-                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.2)",
+                boxShadow: "0 2px 8px rgba(6, 60, 61, 0.25)",
                 display: "flex",
                 alignItems: "center",
-                gap: "6px",
+                gap: "8px",
                 transition: "all 0.15s ease",
               }}
             >
@@ -114,17 +181,17 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
               type="button"
               onClick={onExportPackage}
               style={{
-                padding: "8px 16px",
+                padding: "10px 18px",
                 fontSize: "12px",
                 fontWeight: 700,
                 color: "#FFFFFF",
-                background: "rgba(255, 255, 255, 0.12)",
+                background: "rgba(255, 255, 255, 0.14)",
                 borderRadius: "8px",
                 border: "1px solid rgba(185, 222, 212, 0.3)",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                gap: "6px",
+                gap: "8px",
                 transition: "all 0.15s ease",
               }}
             >
@@ -135,45 +202,104 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
       </div>
 
       {/* Package Segregation Filter Toolbar */}
-      <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div
+        style={{
+          padding: "16px 24px",
+          background: "#F8F9F8",
+          borderBottom: "1px solid #E2E8E4",
+          display: "flex",
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "14px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
           {/* Segregation Mode Toggle */}
-          <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-slate-300 shadow-2xs">
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "12px",
+              fontWeight: 600,
+              color: "#172322",
+              cursor: "pointer",
+              background: "#FFFFFF",
+              padding: "8px 14px",
+              borderRadius: "8px",
+              border: "1.5px solid #DCE5E1",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+            }}
+          >
             <input
               type="checkbox"
               checked={excludeInternalOnly}
               onChange={(e) => setExcludeInternalOnly(e.target.checked)}
-              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              style={{ width: "16px", height: "16px", accentColor: "#0D6866", cursor: "pointer" }}
             />
             <span>Submission-Ready Mode (Excludes 09_Internal_Review)</span>
           </label>
 
-          <span className="text-xs text-slate-400">|</span>
+          <span style={{ color: "#D1D5DB" }}>|</span>
 
           {/* Counts */}
-          <span className="text-xs text-slate-500">
-            Showing <strong className="text-slate-800">{filteredItems.length}</strong> of{" "}
-            <strong>{items.length}</strong> files ({manifest?.internal_items_count || 1} internal confidential)
+          <span style={{ fontSize: "12px", color: "#6E7F7C" }}>
+            Showing <strong style={{ color: "#172322" }}>{filteredItems.length}</strong> of{" "}
+            <strong style={{ color: "#172322" }}>{items.length}</strong> files ({manifest?.internal_items_count || 1} internal confidential)
           </span>
         </div>
 
         {/* Search */}
-        <div className="w-full md:w-64">
+        <div style={{ minWidth: "260px" }}>
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search manifest by name, hash, requirement..."
-            className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white"
+            style={{
+              width: "100%",
+              fontSize: "12px",
+              padding: "9px 14px",
+              borderRadius: "8px",
+              border: "1.5px solid #DCE5E1",
+              background: "#FFFFFF",
+              color: "#172322",
+              outline: "none",
+            }}
           />
         </div>
       </div>
 
       {/* Main Folder Explorer + Manifest Table */}
-      <div className="flex flex-col md:flex-row min-h-[480px]">
+      <div style={{ display: "flex", flexDirection: "row", minHeight: "520px", background: "#FFFFFF" }}>
         {/* Left: Folder Category Sidebar */}
-        <div className="w-full md:w-64 border-r border-slate-200 bg-slate-50/50 p-3 space-y-1">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-3 py-1">
+        <div
+          style={{
+            width: "290px",
+            minWidth: "290px",
+            maxWidth: "290px",
+            borderRight: "1px solid #E2E8E4",
+            background: "#F8F9F8",
+            padding: "16px 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "5px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              color: "#6E7F7C",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              padding: "6px 10px 10px 10px",
+              borderBottom: "1px solid #E5EBE8",
+              marginBottom: "4px",
+            }}
+          >
             Package Folders
           </div>
           {folders.map((folder) => {
@@ -189,20 +315,42 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
                 key={folder.code}
                 type="button"
                 onClick={() => setSelectedFolder(folder.code)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition flex items-center justify-between ${
-                  isSelected
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  lineHeight: "1.35",
+                  fontWeight: isSelected ? 700 : 500,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
+                  transition: "all 0.15s ease",
+                  background: isSelected ? "#EAF6F0" : "transparent",
+                  color: isSelected ? "#063C3D" : "#374151",
+                  border: isSelected ? "1.5px solid #0D6866" : "1.5px solid transparent",
+                  boxShadow: isSelected ? "0 1px 4px rgba(13, 104, 102, 0.08)" : "none",
+                }}
               >
-                <div className="flex items-center gap-2 truncate">
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
                   <span>{isInternal ? "🔒" : "📁"}</span>
-                  <span className="truncate">{folder.label}</span>
+                  <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                    {folder.label}
+                  </span>
                 </div>
                 <span
-                  className={`px-1.5 py-0.5 text-[10px] rounded font-bold ${
-                    isSelected ? "bg-blue-700 text-white" : "bg-slate-200 text-slate-600"
-                  }`}
+                  style={{
+                    padding: "2px 8px",
+                    fontSize: "10px",
+                    borderRadius: "999px",
+                    fontWeight: 700,
+                    flexShrink: 0,
+                    background: isSelected ? "#0D6866" : "#E2E8E4",
+                    color: isSelected ? "#FFFFFF" : "#4B5563",
+                  }}
                 >
                   {countInFolder}
                 </span>
@@ -212,22 +360,34 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
         </div>
 
         {/* Right: Manifest Items Table */}
-        <div className="flex-1 overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+        <div style={{ flex: 1, overflowX: "auto", background: "#FFFFFF" }}>
+          <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse", fontSize: "12px" }}>
             <thead>
-              <tr className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                <th className="p-3">File Name & Version</th>
-                <th className="p-3">Folder Path</th>
-                <th className="p-3">Requirement</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">SHA-256 Hash</th>
-                <th className="p-3 text-right">Size</th>
+              <tr style={{ background: "#F8F9F8", color: "#6E7F7C", borderBottom: "1.5px solid #E2E8E4" }}>
+                <th style={{ padding: "14px 18px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  File Name & Version
+                </th>
+                <th style={{ padding: "14px 18px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Folder Path
+                </th>
+                <th style={{ padding: "14px 18px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Requirement
+                </th>
+                <th style={{ padding: "14px 18px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Status
+                </th>
+                <th style={{ padding: "14px 18px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  SHA-256 Hash
+                </th>
+                <th style={{ padding: "14px 18px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "right" }}>
+                  Size
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
+                  <td colSpan={6} style={{ padding: "48px 24px", textAlign: "center", color: "#6E7F7C" }}>
                     No files found in selected folder or matching filters.
                   </td>
                 </tr>
@@ -235,48 +395,107 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
                 filteredItems.map((item, idx) => (
                   <tr
                     key={idx}
-                    className={`hover:bg-slate-50 transition ${
-                      item.is_internal_only ? "bg-amber-50/30" : ""
-                    }`}
+                    style={{
+                      borderBottom: "1px solid #F0F4F2",
+                      background: item.is_internal_only ? "#FFFBF0" : "#FFFFFF",
+                      transition: "background 0.15s ease",
+                    }}
                   >
-                    <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">{item.is_internal_only ? "🔒" : "📄"}</span>
+                    <td style={{ padding: "14px 18px" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <span style={{ fontSize: "16px", marginTop: "2px" }}>
+                          {item.is_internal_only ? "🔒" : "📄"}
+                        </span>
                         <div>
-                          <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                            {item.file_name}
-                            <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200">
+                          <div style={{ fontWeight: 700, color: "#172322", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <span>{item.file_name}</span>
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                background: "#F1F5F4",
+                                color: "#4B5563",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                border: "1px solid #DCE5E1",
+                              }}
+                            >
                               v{item.version}
                             </span>
                             {item.is_internal_only && (
-                              <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-300">
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 800,
+                                  background: "#FEF3C7",
+                                  color: "#92400E",
+                                  padding: "2px 8px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #FCD34D",
+                                }}
+                              >
                                 INTERNAL ONLY
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-slate-400 capitalize">
+                          <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "3px", textTransform: "capitalize" }}>
                             Category: {item.document_category.replace(/_/g, " ")} • {item.page_count} page(s)
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="p-3 text-slate-600 font-mono text-[11px] truncate max-w-xs">
+                    <td style={{ padding: "14px 18px", color: "#4B5563", fontFamily: "ui-monospace, monospace", fontSize: "11px", maxWidth: "220px", wordBreak: "break-all" }}>
                       {item.folder_path}
                     </td>
-                    <td className="p-3 text-slate-700 font-mono text-[11px]">
-                      {item.related_requirement_code}
+                    <td style={{ padding: "14px 18px" }}>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#063C3D",
+                          background: "#EAF6F0",
+                          padding: "3px 8px",
+                          borderRadius: "4px",
+                          border: "1px solid #B9DED4",
+                          fontFamily: "ui-monospace, monospace",
+                          display: "inline-block",
+                        }}
+                      >
+                        {item.related_requirement_code}
+                      </span>
                     </td>
-                    <td className="p-3">
-                      <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase">
+                    <td style={{ padding: "14px 18px" }}>
+                      <span
+                        style={{
+                          padding: "3px 10px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          borderRadius: "999px",
+                          background: "#ECFDF5",
+                          color: "#065F46",
+                          border: "1px solid #A7F3D0",
+                          textTransform: "uppercase",
+                          display: "inline-block",
+                        }}
+                      >
                         {item.review_status}
                       </span>
                     </td>
-                    <td className="p-3 text-slate-500 font-mono text-[11px]">
-                      <span className="truncate inline-block max-w-[120px]" title={item.sha256_hash}>
+                    <td style={{ padding: "14px 18px", color: "#6E7F7C", fontFamily: "ui-monospace, monospace", fontSize: "11px" }}>
+                      <span
+                        style={{
+                          maxWidth: "130px",
+                          display: "inline-block",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={item.sha256_hash}
+                      >
                         {item.sha256_hash.slice(0, 12)}...
                       </span>
                     </td>
-                    <td className="p-3 text-right font-medium text-slate-600">
+                    <td style={{ padding: "14px 18px", textAlign: "right", fontWeight: 700, color: "#374151" }}>
                       {item.file_size}
                     </td>
                   </tr>

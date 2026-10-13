@@ -152,51 +152,43 @@ export function RuleAdministrationHub({
       url: newSourceUrl,
       scope_limitations: newSourceScope,
     }, userRole);
-    onNotification?.(`Official government source '${res.data.title}' registered with scope boundaries.`, "success");
-    setIsRegisterSourceModalOpen(false);
-    loadSources();
+    if (res.data) {
+      setSources([res.data, ...sources]);
+      setSelectedSource(res.data);
+      setIsRegisterSourceModalOpen(false);
+      onNotification?.(`Registered official government source: ${res.data.title}`, "success");
+      setNewSourceTitle("");
+      setNewSourceUrl("");
+      setNewSourceScope("");
+    }
   };
 
   const handleCaptureSnapshot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSource || !newSnapshotContent) return;
-    await api.captureSourceSnapshot(selectedSource.id, {
+    const res = await api.captureSourceSnapshot(selectedSource.id, {
       raw_content: newSnapshotContent,
       publication_date: newSnapshotPubDate || undefined,
       effective_date: newSnapshotEffDate || undefined,
     }, userRole);
-    onNotification?.(`Snapshot captured for '${selectedSource.authority}' with SHA-256 integrity hash.`, "success");
-    setIsSnapshotModalOpen(false);
-    loadSnapshots(selectedSource.id);
+    if (res.data) {
+      setSnapshots([res.data, ...snapshots]);
+      setIsSnapshotModalOpen(false);
+      onNotification?.("Cryptographic SHA-256 source content snapshot recorded.", "success");
+      setNewSnapshotContent("");
+      setNewSnapshotPubDate("");
+      setNewSnapshotEffDate("");
+    }
   };
 
   const handleCompareSnapshots = async () => {
-    if (!selectedSource || snapshots.length < 2) {
-      onNotification?.("Need at least 2 snapshots to perform comparison.", "info");
+    if (snapshots.length < 2) {
+      onNotification?.("At least 2 snapshots are required to compute a cryptographic diff.", "info");
       return;
     }
-    const fromId = snapshots[snapshots.length - 1].id;
-    const toId = snapshots[0].id;
-    const res = await api.compareSourceSnapshots(selectedSource.id, fromId, toId, userRole);
+    const res = await api.compareSourceSnapshots(selectedSource?.id || snapshots[0].source_id, snapshots[1].id, snapshots[0].id, userRole);
     setDiffResult(res.data);
     setIsDiffModalOpen(true);
-  };
-
-  const handleTransitionVersion = async (targetStatus: string) => {
-    if (!selectedVersion) return;
-    try {
-      const res = await api.transitionVersionStatus(
-        selectedVersion.id,
-        targetStatus,
-        `Transitioned via specialist administration hub by ${DEMO_USERS[userRole]?.name || userRole}`,
-        userRole
-      );
-      setSelectedVersion(res.data);
-      if (selectedRuleSet) loadVersions(selectedRuleSet.id);
-      onNotification?.(`Version ${res.data.version_number} successfully moved to status: ${targetStatus}`, "success");
-    } catch (err: any) {
-      onNotification?.(err?.message || "Failed to update version status (check separation of duty permissions)", "error");
-    }
   };
 
   const handleCreateNewVersion = async (e: React.FormEvent) => {
@@ -206,30 +198,58 @@ export function RuleAdministrationHub({
       version_number: newVersionNumber,
       change_summary: newVersionSummary,
     }, userRole);
-    onNotification?.(`Draft version ${res.data.version_number} created for ${selectedRuleSet.name}.`, "success");
-    setIsNewVersionModalOpen(false);
-    loadVersions(selectedRuleSet.id);
+    if (res.data) {
+      setVersions([res.data, ...versions]);
+      setSelectedVersion(res.data);
+      setIsNewVersionModalOpen(false);
+      onNotification?.(`Drafted new rule version v${res.data.version_number}`, "success");
+      setNewVersionNumber("");
+      setNewVersionSummary("");
+    }
+  };
+
+  const handleTransitionVersion = async (targetStatus: string) => {
+    if (!selectedVersion) return;
+    const res = await api.transitionVersionStatus(
+      selectedVersion.id,
+      targetStatus,
+      `Administrative transition to ${targetStatus}`,
+      userRole
+    );
+    if (res.data) {
+      setSelectedVersion(res.data);
+      setVersions(versions.map(v => (v.id === res.data.id ? res.data : v)));
+      onNotification?.(`Version v${res.data.version_number} transition: ${targetStatus.toUpperCase()}`, "success");
+    }
   };
 
   const handleAddRequirement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVersion || !newReqCode || !newReqTitle) return;
-    await api.createVersionRequirement(selectedVersion.id, {
+    const res = await api.createVersionRequirement(selectedVersion.id, {
       code: newReqCode,
       title: newReqTitle,
       description: newReqDesc,
       category: newReqCategory,
-      statutory_citation: newReqCitation || undefined,
+      statutory_citation: newReqCitation,
       is_mandatory: newReqMandatory,
       requires_human_review: newReqHumanReview,
-      review_guidance: newReqGuidance || undefined,
-      accepted_evidence_types: [{ category: newReqEvidenceCategory, min_count: 1 }],
-      validation_rules: [{ check: "min_pages", min_pages: 1 }],
-      blocking_dependencies: newReqCategory === "regulatory_criteria" ? ["EB1A-MAND-ID"] : [],
+      review_guidance: newReqGuidance,
+      accepted_evidence_types: [newReqEvidenceCategory],
+      validation_rules: [{ check: "doc_present", field_name: newReqEvidenceCategory }],
+      blocking_dependencies: [],
+      priority: 1,
     }, userRole);
-    onNotification?.(`Requirement ${newReqCode} added to version ${selectedVersion.version_number}.`, "success");
-    setIsAddRequirementModalOpen(false);
-    loadRequirements(selectedVersion.id);
+    if (res.data) {
+      setRequirements([...requirements, res.data]);
+      setIsAddRequirementModalOpen(false);
+      onNotification?.(`Added declarative requirement: ${res.data.code}`, "success");
+      setNewReqCode("");
+      setNewReqTitle("");
+      setNewReqDesc("");
+      setNewReqCitation("");
+      setNewReqGuidance("");
+    }
   };
 
   const handleRunRegression = async () => {
@@ -238,7 +258,7 @@ export function RuleAdministrationHub({
     try {
       const res = await api.testVersionRegression(selectedVersion.id, userRole);
       setRegressionResult(res.data);
-      onNotification?.("Automated regression test suite executed cleanly.", "success");
+      onNotification?.("Automated Regression Suite execution completed.", "success");
     } finally {
       setIsLoading(false);
     }
@@ -274,78 +294,191 @@ export function RuleAdministrationHub({
   });
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner / Pilot Launcher */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-blue-900/40 via-indigo-900/30 to-purple-900/40 border border-blue-500/30 backdrop-blur-md">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xl font-bold text-white tracking-tight">Immigration Rules & Requirement Engine</span>
-            <Badge variant="info">Phase 6 Subsystem</Badge>
-            <Badge variant="success">US EB-1A Pilot Active</Badge>
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      {/* Top Executive Banner */}
+      <div
+        style={{
+          padding: "24px 28px",
+          borderRadius: "14px",
+          background: "linear-gradient(135deg, #063C3D 0%, #084B4C 100%)",
+          color: "#FFFFFF",
+          border: "1px solid rgba(185, 222, 212, 0.25)",
+          boxShadow: "0 6px 24px rgba(6, 60, 61, 0.06)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "18px",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: "280px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "8px" }}>
+            <span style={{ fontSize: "18px", fontWeight: 800, color: "#FFFFFF", letterSpacing: "-0.01em" }}>
+              Immigration Rules & Requirement Engine
+            </span>
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                padding: "3px 10px",
+                borderRadius: "6px",
+                background: "rgba(185, 222, 212, 0.18)",
+                color: "#B9DED4",
+                border: "1px solid rgba(185, 222, 212, 0.35)",
+              }}
+            >
+              Phase 6 Subsystem
+            </span>
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                padding: "3px 10px",
+                borderRadius: "6px",
+                background: "#D1FAE5",
+                color: "#065F46",
+                border: "1px solid #6EE7B7",
+              }}
+            >
+              US EB-1A Pilot Active
+            </span>
           </div>
-          <p className="text-sm text-slate-300 max-w-2xl">
+          <p style={{ fontSize: "12px", color: "#DDEFE8", margin: 0, maxWidth: "680px", lineHeight: "1.5" }}>
             Configurable, versioned rules engine with official government provenance (USCIS, US DOS, IRCC, UKVI, DHA, BAMF).
             Evaluates statutory mandates with declarative logic without hardcoding frontend rules.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <button
+            type="button"
             onClick={handleSeedEB1APilot}
             disabled={isLoading}
-            className="border-indigo-400/40 text-indigo-300 hover:bg-indigo-950/60"
+            style={{
+              padding: "9px 16px",
+              fontSize: "12px",
+              fontWeight: 700,
+              borderRadius: "8px",
+              cursor: isLoading ? "not-allowed" : "pointer",
+              background: "rgba(255, 255, 255, 0.12)",
+              color: "#FFFFFF",
+              border: "1px solid rgba(185, 222, 212, 0.35)",
+              transition: "all 0.15s ease",
+            }}
           >
             ✦ Re-seed US EB-1A Pilot
-          </Button>
-          <Button
-            variant="primary"
+          </button>
+          <button
+            type="button"
             onClick={() => setIsRegisterSourceModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/20"
+            style={{
+              padding: "9px 18px",
+              fontSize: "12px",
+              fontWeight: 700,
+              borderRadius: "8px",
+              cursor: "pointer",
+              background: "#0D6866",
+              color: "#FFFFFF",
+              border: "none",
+              boxShadow: "0 2px 8px rgba(6, 60, 61, 0.25)",
+              transition: "all 0.15s ease",
+            }}
           >
             + Register Official Source
-          </Button>
+          </button>
         </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-slate-700/60 gap-6 text-sm font-medium">
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          borderBottom: "1.5px solid #E2E8E4",
+          paddingBottom: "8px",
+          flexWrap: "wrap",
+        }}
+      >
         <button
+          type="button"
           onClick={() => setActiveTab("sources")}
-          className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "sources"
-              ? "border-blue-500 text-blue-400 font-semibold"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
+          style={{
+            padding: "9px 16px",
+            fontSize: "13px",
+            fontWeight: activeTab === "sources" ? 700 : 500,
+            borderRadius: "8px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: activeTab === "sources" ? "#EAF6F0" : "transparent",
+            color: activeTab === "sources" ? "#063C3D" : "#6E7F7C",
+            border: activeTab === "sources" ? "1.5px solid #0D6866" : "1.5px solid transparent",
+            boxShadow: activeTab === "sources" ? "0 2px 6px rgba(13, 104, 102, 0.08)" : "none",
+            transition: "all 0.15s ease",
+          }}
         >
           <span>🏛️</span> Official Sources & Snapshots ({sources.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("rulesets")}
-          className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "rulesets"
-              ? "border-blue-500 text-blue-400 font-semibold"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
+          style={{
+            padding: "9px 16px",
+            fontSize: "13px",
+            fontWeight: activeTab === "rulesets" ? 700 : 500,
+            borderRadius: "8px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: activeTab === "rulesets" ? "#EAF6F0" : "transparent",
+            color: activeTab === "rulesets" ? "#063C3D" : "#6E7F7C",
+            border: activeTab === "rulesets" ? "1.5px solid #0D6866" : "1.5px solid transparent",
+            boxShadow: activeTab === "rulesets" ? "0 2px 6px rgba(13, 104, 102, 0.08)" : "none",
+            transition: "all 0.15s ease",
+          }}
         >
           <span>📜</span> Rule Sets & Version Lifecycle ({ruleSets.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("requirements")}
-          className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "requirements"
-              ? "border-blue-500 text-blue-400 font-semibold"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
+          style={{
+            padding: "9px 16px",
+            fontSize: "13px",
+            fontWeight: activeTab === "requirements" ? 700 : 500,
+            borderRadius: "8px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: activeTab === "requirements" ? "#EAF6F0" : "transparent",
+            color: activeTab === "requirements" ? "#063C3D" : "#6E7F7C",
+            border: activeTab === "requirements" ? "1.5px solid #0D6866" : "1.5px solid transparent",
+            boxShadow: activeTab === "requirements" ? "0 2px 6px rgba(13, 104, 102, 0.08)" : "none",
+            transition: "all 0.15s ease",
+          }}
         >
           <span>⚙️</span> Declarative Requirements ({requirements.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("regression")}
-          className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "regression"
-              ? "border-blue-500 text-blue-400 font-semibold"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
+          style={{
+            padding: "9px 16px",
+            fontSize: "13px",
+            fontWeight: activeTab === "regression" ? 700 : 500,
+            borderRadius: "8px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: activeTab === "regression" ? "#EAF6F0" : "transparent",
+            color: activeTab === "regression" ? "#063C3D" : "#6E7F7C",
+            border: activeTab === "regression" ? "1.5px solid #0D6866" : "1.5px solid transparent",
+            boxShadow: activeTab === "regression" ? "0 2px 6px rgba(13, 104, 102, 0.08)" : "none",
+            transition: "all 0.15s ease",
+          }}
         >
           <span>🛡️</span> Regression Testing & Impact Analyzer
         </button>
@@ -355,34 +488,57 @@ export function RuleAdministrationHub({
       {/* TAB 1: OFFICIAL SOURCES & SNAPSHOTS */}
       {/* ============================================================== */}
       {activeTab === "sources" && (
-        <div className="space-y-6">
+        <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
           {/* Jurisdiction Filters */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Filter Authority Jurisdiction:
-              {["ALL", "US", "CA", "GB", "AU", "DE"].map(j => (
-                <button
-                  key={j}
-                  onClick={() => setSelectedJurisdiction(j)}
-                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                    selectedJurisdiction === j
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-                  }`}
-                >
-                  {j}
-                </button>
-              ))}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "14px",
+              padding: "12px 18px",
+              background: "#F8FAF9",
+              border: "1px solid #DCE5E1",
+              borderRadius: "10px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6E7F7C" }}>
+                Filter Authority Jurisdiction:
+              </span>
+              <div style={{ display: "flex", gap: "6px" }}>
+                {["ALL", "US", "CA", "GB", "AU", "DE"].map((j) => (
+                  <button
+                    key={j}
+                    type="button"
+                    onClick={() => setSelectedJurisdiction(j)}
+                    style={{
+                      padding: "4px 12px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: selectedJurisdiction === j ? 700 : 600,
+                      cursor: "pointer",
+                      background: selectedJurisdiction === j ? "#0D6866" : "#FFFFFF",
+                      color: selectedJurisdiction === j ? "#FFFFFF" : "#4B5563",
+                      border: selectedJurisdiction === j ? "1px solid #0D6866" : "1px solid #DCE5E1",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    {j}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="text-xs text-slate-400">
-              Showing {filteredSources.length} registered government authority URLs
+            <div style={{ fontSize: "12px", color: "#6E7F7C", fontWeight: 500 }}>
+              Showing <strong style={{ color: "#172322" }}>{filteredSources.length}</strong> registered government authority URLs
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px", alignItems: "start" }}>
             {/* Sources List */}
-            <div className="lg:col-span-1 space-y-3">
-              {filteredSources.map(s => {
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {filteredSources.map((s) => {
                 const isSelected = selectedSource?.id === s.id;
                 return (
                   <div
@@ -391,31 +547,67 @@ export function RuleAdministrationHub({
                       setSelectedSource(s);
                       loadSnapshots(s.id);
                     }}
-                    className={`p-4 rounded-xl border transition-all cursor-pointer ${
-                      isSelected
-                        ? "bg-slate-800/90 border-blue-500 shadow-md ring-1 ring-blue-500/30"
-                        : "bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-850"
-                    }`}
+                    style={{
+                      padding: "16px 18px",
+                      borderRadius: "12px",
+                      background: isSelected ? "#EAF6F0" : "#FFFFFF",
+                      border: isSelected ? "1.5px solid #0D6866" : "1px solid #DCE5E1",
+                      boxShadow: isSelected ? "0 4px 12px rgba(13, 104, 102, 0.08)" : "0 1px 3px rgba(0,0,0,0.02)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 text-xs font-bold bg-blue-900/50 text-blue-300 rounded border border-blue-700/40">
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            background: "#EAF6F0",
+                            color: "#063C3D",
+                            border: "1px solid #B9DED4",
+                            borderRadius: "4px",
+                          }}
+                        >
                           {s.jurisdiction}
                         </span>
-                        <span className="text-xs font-semibold text-slate-300">{s.authority}</span>
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#172322" }}>
+                          {s.authority}
+                        </span>
                       </div>
-                      <Badge variant="neutral">{s.snapshots_count} Snapshots</Badge>
+                      <span
+                        style={{
+                          padding: "2px 8px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          borderRadius: "999px",
+                          background: "#F1F5F4",
+                          color: "#4B5563",
+                          border: "1px solid #DCE5E1",
+                        }}
+                      >
+                        • {s.snapshots_count} Snapshots
+                      </span>
                     </div>
-                    <h4 className="text-sm font-semibold text-white line-clamp-2 mb-1.5">{s.title}</h4>
-                    <p className="text-xs text-slate-400 line-clamp-2 mb-2">{s.scope_limitations}</p>
-                    <div className="text-[11px] text-slate-500 flex items-center justify-between">
-                      <span>Last checked: {s.last_retrieved_at ? new Date(s.last_retrieved_at).toLocaleDateString() : "Never"}</span>
+
+                    <h4 style={{ fontSize: "14px", fontWeight: 700, color: "#172322", margin: "0 0 6px 0", lineHeight: "1.4" }}>
+                      {s.title}
+                    </h4>
+                    <p style={{ fontSize: "12px", color: "#6E7F7C", margin: "0 0 10px 0", lineHeight: "1.4" }}>
+                      {s.scope_limitations}
+                    </p>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "#6E7F7C", borderTop: "1px solid #E5EBE8", paddingTop: "8px" }}>
+                      <span>
+                        Last checked: {s.last_retrieved_at ? new Date(s.last_retrieved_at).toLocaleDateString() : "Never"}
+                      </span>
                       <a
                         href={s.url}
                         target="_blank"
                         rel="noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        className="text-blue-400 hover:underline flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ color: "#0D6866", fontWeight: 700, textDecoration: "none" }}
                       >
                         Official URL ↗
                       </a>
@@ -427,19 +619,33 @@ export function RuleAdministrationHub({
 
             {/* Selected Source Details & Snapshots */}
             {selectedSource ? (
-              <div className="lg:col-span-2 space-y-5">
-                <Card className="bg-slate-900/80 border-slate-800 p-5">
-                  <div className="flex items-start justify-between gap-4 mb-4">
+              <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+                <Card style={{ background: "#FFFFFF", padding: "20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "14px" }}>
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs px-2 py-0.5 rounded font-bold bg-blue-950 text-blue-300 border border-blue-800">
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            padding: "2px 8px",
+                            borderRadius: "4px",
+                            background: "#EAF6F0",
+                            color: "#063C3D",
+                            border: "1px solid #B9DED4",
+                          }}
+                        >
                           {selectedSource.jurisdiction} Authority
                         </span>
-                        <span className="text-sm font-medium text-slate-300">{selectedSource.authority}</span>
+                        <span style={{ fontSize: "13px", fontWeight: 700, color: "#172322" }}>
+                          {selectedSource.authority}
+                        </span>
                       </div>
-                      <h3 className="text-lg font-bold text-white">{selectedSource.title}</h3>
+                      <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#172322", margin: 0 }}>
+                        {selectedSource.title}
+                      </h3>
                     </div>
-                    <div className="flex gap-2">
+                    <div style={{ display: "flex", gap: "8px" }}>
                       <Button
                         size="sm"
                         variant="outline"
@@ -458,62 +664,114 @@ export function RuleAdministrationHub({
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800/80 mb-4">
-                    <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider block mb-1">
+                  <div
+                    style={{
+                      padding: "14px 16px",
+                      borderRadius: "10px",
+                      background: "#FFFBEB",
+                      border: "1px solid #FCD34D",
+                      marginBottom: "14px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#92400E",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        display: "block",
+                        marginBottom: "4px",
+                      }}
+                    >
                       Legal Scope & Limitations (Authoritative Boundaries)
                     </span>
-                    <p className="text-xs text-slate-300 leading-relaxed">{selectedSource.scope_limitations}</p>
+                    <p style={{ fontSize: "12px", color: "#78350F", margin: 0, lineHeight: "1.5" }}>
+                      {selectedSource.scope_limitations}
+                    </p>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs text-slate-400 border-t border-slate-800/80 pt-3">
-                    <div className="flex items-center gap-2">
-                      <span>Government Canonical URL:</span>
-                      <a href={selectedSource.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline font-mono">
-                        {selectedSource.url}
-                      </a>
-                    </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#6E7F7C", borderTop: "1px solid #E2E8E4", paddingTop: "12px" }}>
+                    <span>Government Canonical URL:</span>
+                    <a
+                      href={selectedSource.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: "#0D6866", fontFamily: "ui-monospace, monospace", textDecoration: "none", fontWeight: 600 }}
+                    >
+                      {selectedSource.url}
+                    </a>
                   </div>
                 </Card>
 
                 {/* Snapshots History Table */}
-                <Card className="bg-slate-900/80 border-slate-800 p-5">
-                  <h4 className="text-sm font-bold text-white mb-3 flex items-center justify-between">
-                    <span>Cryptographic Source Snapshot Provenance</span>
-                    <span className="text-xs text-slate-400 font-normal">{snapshots.length} Historical Snapshots</span>
-                  </h4>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-800/60 text-slate-300 font-semibold border-b border-slate-700/60">
-                        <tr>
-                          <th className="py-2 px-3">Retrieval Timestamp</th>
-                          <th className="py-2 px-3">Publication Date</th>
-                          <th className="py-2 px-3">Effective Date</th>
-                          <th className="py-2 px-3">SHA-256 Hash</th>
-                          <th className="py-2 px-3">Actions</th>
+                <Card style={{ background: "#FFFFFF", padding: "20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                    <h4 style={{ fontSize: "15px", fontWeight: 700, color: "#172322", margin: 0 }}>
+                      Cryptographic Source Snapshot Provenance
+                    </h4>
+                    <span style={{ fontSize: "12px", color: "#6E7F7C" }}>
+                      {snapshots.length} Historical Snapshots
+                    </span>
+                  </div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse", fontSize: "12px" }}>
+                      <thead>
+                        <tr style={{ background: "#F8FAF9", color: "#6E7F7C", borderBottom: "1.5px solid #E2E8E4" }}>
+                          <th style={{ padding: "10px 14px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>Retrieval Timestamp</th>
+                          <th style={{ padding: "10px 14px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>Publication Date</th>
+                          <th style={{ padding: "10px 14px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>Effective Date</th>
+                          <th style={{ padding: "10px 14px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>SHA-256 Hash</th>
+                          <th style={{ padding: "10px 14px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800">
+                      <tbody>
                         {snapshots.map((snap, idx) => (
-                          <tr key={snap.id} className="hover:bg-slate-800/40">
-                            <td className="py-2.5 px-3 text-slate-200">
+                          <tr key={snap.id} style={{ borderBottom: "1px solid #F0F4F2" }}>
+                            <td style={{ padding: "12px 14px", color: "#172322", fontWeight: 600 }}>
                               {new Date(snap.retrieval_timestamp).toLocaleString()}
-                              {idx === 0 && <span className="ml-2 text-[10px] bg-green-900/40 text-green-300 px-1.5 py-0.5 rounded border border-green-700/30">Latest</span>}
+                              {idx === 0 && (
+                                <span
+                                  style={{
+                                    marginLeft: "8px",
+                                    fontSize: "10px",
+                                    fontWeight: 700,
+                                    background: "#ECFDF5",
+                                    color: "#065F46",
+                                    border: "1px solid #A7F3D0",
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                  }}
+                                >
+                                  Latest
+                                </span>
+                              )}
                             </td>
-                            <td className="py-2.5 px-3 text-slate-300">
+                            <td style={{ padding: "12px 14px", color: "#4B5563" }}>
                               {snap.publication_date ? new Date(snap.publication_date).toLocaleDateString() : "Undated"}
                             </td>
-                            <td className="py-2.5 px-3 text-slate-300">
+                            <td style={{ padding: "12px 14px", color: "#4B5563" }}>
                               {snap.effective_date ? new Date(snap.effective_date).toLocaleDateString() : "Immediate"}
                             </td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
+                            <td style={{ padding: "12px 14px", fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#6E7F7C" }}>
                               {snap.content_hash.slice(0, 16)}...
                             </td>
-                            <td className="py-2.5 px-3">
+                            <td style={{ padding: "12px 14px" }}>
                               <button
+                                type="button"
                                 onClick={() => {
                                   alert(`Full Snapshot Content:\n\n${snap.raw_content}`);
                                 }}
-                                className="text-blue-400 hover:text-blue-300 font-medium"
+                                style={{
+                                  padding: "4px 10px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  color: "#0D6866",
+                                  background: "#EAF6F0",
+                                  border: "1px solid #B9DED4",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                }}
                               >
                                 View Text
                               </button>
@@ -526,7 +784,16 @@ export function RuleAdministrationHub({
                 </Card>
               </div>
             ) : (
-              <div className="lg:col-span-2 flex items-center justify-center p-12 text-slate-500 border border-dashed border-slate-800 rounded-xl">
+              <div
+                style={{
+                  padding: "48px 24px",
+                  textAlign: "center",
+                  color: "#6E7F7C",
+                  border: "1.5px dashed #DCE5E1",
+                  borderRadius: "12px",
+                  background: "#F8FAF9",
+                }}
+              >
                 Select an official source to inspect legal scope and snapshot provenance
               </div>
             )}
@@ -538,163 +805,201 @@ export function RuleAdministrationHub({
       {/* TAB 2: RULE SETS & VERSION LIFECYCLE */}
       {/* ============================================================== */}
       {activeTab === "rulesets" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Rule Sets Selector */}
-            <div className="lg:col-span-1 space-y-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold uppercase text-slate-400">Configured Immigration Pathways</span>
-                <Badge variant="info">{ruleSets.length} Sets</Badge>
-              </div>
-              {ruleSets.map(rs => {
-                const isSelected = selectedRuleSet?.id === rs.id;
-                return (
-                  <div
-                    key={rs.id}
-                    onClick={() => {
-                      setSelectedRuleSet(rs);
-                      loadVersions(rs.id);
-                    }}
-                    className={`p-4 rounded-xl border transition-all cursor-pointer ${
-                      isSelected
-                        ? "bg-slate-800/90 border-indigo-500 shadow-md ring-1 ring-indigo-500/30"
-                        : "bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-850"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-mono text-xs px-2 py-0.5 bg-indigo-900/40 text-indigo-300 border border-indigo-800 rounded">
-                        {rs.code}
-                      </span>
-                      <span className="text-xs font-bold text-slate-400">{rs.jurisdiction} · {rs.program_pathway}</span>
-                    </div>
-                    <h4 className="text-sm font-semibold text-white mb-1">{rs.name}</h4>
-                    <p className="text-xs text-slate-400 line-clamp-2">{rs.description}</p>
-                  </div>
-                );
-              })}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px", alignItems: "start" }}>
+          {/* Rule Sets Selector */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6E7F7C" }}>
+                Configured Immigration Pathways
+              </span>
+              <span style={{ fontSize: "11px", fontWeight: 700, background: "#EAF6F0", color: "#063C3D", border: "1px solid #B9DED4", padding: "2px 8px", borderRadius: "999px" }}>
+                {ruleSets.length} Sets
+              </span>
             </div>
-
-            {/* Version Lifecycle Administration */}
-            {selectedRuleSet && (
-              <div className="lg:col-span-2 space-y-5">
-                <Card className="bg-slate-900/80 border-slate-800 p-5">
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge variant="info">{selectedRuleSet.jurisdiction}</Badge>
-                        <span className="text-xs text-slate-400">Pathway: {selectedRuleSet.program_pathway}</span>
-                        <span className="text-xs text-slate-400 font-mono">({selectedRuleSet.code})</span>
-                      </div>
-                      <h3 className="text-lg font-bold text-white">{selectedRuleSet.name}</h3>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => setIsNewVersionModalOpen(true)}
+            {ruleSets.map((rs) => {
+              const isSelected = selectedRuleSet?.id === rs.id;
+              return (
+                <div
+                  key={rs.id}
+                  onClick={() => {
+                    setSelectedRuleSet(rs);
+                    loadVersions(rs.id);
+                  }}
+                  style={{
+                    padding: "16px 18px",
+                    borderRadius: "12px",
+                    background: isSelected ? "#EAF6F0" : "#FFFFFF",
+                    border: isSelected ? "1.5px solid #0D6866" : "1px solid #DCE5E1",
+                    boxShadow: isSelected ? "0 4px 12px rgba(13, 104, 102, 0.08)" : "0 1px 3px rgba(0,0,0,0.02)",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <span
+                      style={{
+                        fontFamily: "ui-monospace, monospace",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        background: "#EAF6F0",
+                        color: "#063C3D",
+                        border: "1px solid #B9DED4",
+                        borderRadius: "4px",
+                      }}
                     >
-                      + Draft New Version
-                    </Button>
-                  </div>
-
-                  {/* Version List */}
-                  <div className="space-y-3 mb-5">
-                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
-                      Version History & Administrative Lifecycle
+                      {rs.code}
                     </span>
-                    {versions.map(v => {
-                      const isSelectedVer = selectedVersion?.id === v.id;
-                      const getStatusBadge = (st: string) => {
-                        switch (st) {
-                          case "published": return <Badge variant="success">Published (Active)</Badge>;
-                          case "validated": return <Badge variant="info">Validated</Badge>;
-                          case "under_review": return <Badge variant="warning">Under Review</Badge>;
-                          case "draft": return <Badge variant="neutral">Draft</Badge>;
-                          case "superseded": return <Badge variant="critical">Superseded</Badge>;
-                          default: return <Badge variant="neutral">{st}</Badge>;
-                        }
-                      };
-
-                      return (
-                        <div
-                          key={v.id}
-                          onClick={() => {
-                            setSelectedVersion(v);
-                            loadRequirements(v.id);
-                          }}
-                          className={`p-3.5 rounded-lg border transition-all cursor-pointer ${
-                            isSelectedVer
-                              ? "bg-slate-800 border-blue-500/80"
-                              : "bg-slate-950/60 border-slate-800/80 hover:bg-slate-900"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2.5">
-                              <span className="text-sm font-bold text-white font-mono">v{v.version_number}</span>
-                              {getStatusBadge(v.status)}
-                              <span className="text-xs text-slate-400">({v.requirements_count} Requirements)</span>
-                            </div>
-                            <span className="text-xs text-slate-400">Created {new Date(v.created_at).toLocaleDateString()}</span>
-                          </div>
-                          <p className="text-xs text-slate-300 mb-2">{v.change_summary || "Standard baseline revision"}</p>
-
-                          {/* Lifecycle Controls */}
-                          {isSelectedVer && (
-                            <div className="flex items-center justify-between pt-2 border-t border-slate-700/60 text-xs">
-                              <span className="text-slate-400">
-                                Administrative Actions (Separation of Duty Protected):
-                              </span>
-                              <div className="flex items-center gap-2">
-                                {v.status === "draft" && (
-                                  <Button size="sm" variant="outline" onClick={() => handleTransitionVersion("under_review")}>
-                                    Submit for Review →
-                                  </Button>
-                                )}
-                                {v.status === "under_review" && (
-                                  <Button size="sm" variant="outline" onClick={() => handleTransitionVersion("validated")}>
-                                    ✓ Validate Version
-                                  </Button>
-                                )}
-                                {v.status === "validated" && (
-                                  <Button size="sm" variant="primary" onClick={() => handleTransitionVersion("published")}>
-                                    🚀 Publish Version
-                                  </Button>
-                                )}
-                                {v.status === "published" && (
-                                  <Button size="sm" variant="outline" onClick={() => handleTransitionVersion("suspended")}>
-                                    Suspend
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#6E7F7C" }}>
+                      {rs.jurisdiction} · {rs.program_pathway}
+                    </span>
                   </div>
-
-                  {/* Audit & Approval History */}
-                  {selectedVersion && selectedVersion.approval_history && selectedVersion.approval_history.length > 0 && (
-                    <div className="p-3.5 rounded-lg bg-slate-950/80 border border-slate-800">
-                      <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-2">
-                        Approval & Publication Traceability Log (v{selectedVersion.version_number})
-                      </span>
-                      <div className="space-y-1.5 text-xs">
-                        {selectedVersion.approval_history.map((h, i) => (
-                          <div key={i} className="flex items-center justify-between text-slate-400">
-                            <div className="flex items-center gap-2">
-                              <span className="text-blue-400 font-mono">[{h.action || h.stage}]</span>
-                              <span className="text-slate-300">{h.comments || "Approved"}</span>
-                            </div>
-                            <span>{new Date(h.timestamp).toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              </div>
-            )}
+                  <h4 style={{ fontSize: "14px", fontWeight: 700, color: "#172322", margin: "0 0 4px 0" }}>
+                    {rs.name}
+                  </h4>
+                  <p style={{ fontSize: "12px", color: "#6E7F7C", margin: 0, lineHeight: "1.4" }}>
+                    {rs.description}
+                  </p>
+                </div>
+              );
+            })}
           </div>
+
+          {/* Version Lifecycle Administration */}
+          {selectedRuleSet && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+              <Card style={{ background: "#FFFFFF", padding: "20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                      <span style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 700, background: "#EAF6F0", color: "#063C3D", border: "1px solid #B9DED4", borderRadius: "4px" }}>
+                        {selectedRuleSet.jurisdiction}
+                      </span>
+                      <span style={{ fontSize: "12px", color: "#6E7F7C" }}>Pathway: {selectedRuleSet.program_pathway}</span>
+                      <span style={{ fontSize: "11px", color: "#6E7F7C", fontFamily: "ui-monospace, monospace" }}>({selectedRuleSet.code})</span>
+                    </div>
+                    <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#172322", margin: 0 }}>
+                      {selectedRuleSet.name}
+                    </h3>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => setIsNewVersionModalOpen(true)}
+                  >
+                    + Draft New Version
+                  </Button>
+                </div>
+
+                {/* Version List */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6E7F7C" }}>
+                    Version History & Administrative Lifecycle
+                  </span>
+                  {versions.map((v) => {
+                    const isSelectedVer = selectedVersion?.id === v.id;
+                    const getStatusBadge = (st: string) => {
+                      switch (st) {
+                        case "published": return <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 700, background: "#ECFDF5", color: "#065F46", border: "1px solid #A7F3D0" }}>PUBLISHED (Active)</span>;
+                        case "validated": return <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 700, background: "#EFF6FF", color: "#1E40AF", border: "1px solid #BFDBFE" }}>VALIDATED</span>;
+                        case "under_review": return <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 700, background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}>UNDER REVIEW</span>;
+                        case "draft": return <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 700, background: "#F3F4F6", color: "#374151", border: "1px solid #E5E7EB" }}>DRAFT</span>;
+                        case "superseded": return <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 700, background: "#FEF2F2", color: "#991B1B", border: "1px solid #FECACA" }}>SUPERSEDED</span>;
+                        default: return <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 700, background: "#F3F4F6", color: "#374151" }}>{st.toUpperCase()}</span>;
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => {
+                          setSelectedVersion(v);
+                          loadRequirements(v.id);
+                        }}
+                        style={{
+                          padding: "14px 16px",
+                          borderRadius: "10px",
+                          background: isSelectedVer ? "#EAF6F0" : "#FAFAF8",
+                          border: isSelectedVer ? "1.5px solid #0D6866" : "1px solid #E2E8E4",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "14px", fontWeight: 800, color: "#172322", fontFamily: "ui-monospace, monospace" }}>
+                              v{v.version_number}
+                            </span>
+                            {getStatusBadge(v.status)}
+                            <span style={{ fontSize: "12px", color: "#6E7F7C" }}>({v.requirements_count} Requirements)</span>
+                          </div>
+                          <span style={{ fontSize: "11px", color: "#6E7F7C" }}>
+                            Created {new Date(v.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: "12px", color: "#4B5563", margin: "0 0 10px 0" }}>
+                          {v.change_summary || "Standard baseline revision"}
+                        </p>
+
+                        {/* Lifecycle Controls */}
+                        {isSelectedVer && (
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "10px", borderTop: "1px solid #DCE5E1", fontSize: "12px" }}>
+                            <span style={{ color: "#6E7F7C", fontSize: "11px" }}>
+                              Administrative Actions (Separation of Duty Protected):
+                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              {v.status === "draft" && (
+                                <Button size="sm" variant="outline" onClick={() => handleTransitionVersion("under_review")}>
+                                  Submit for Review →
+                                </Button>
+                              )}
+                              {v.status === "under_review" && (
+                                <Button size="sm" variant="outline" onClick={() => handleTransitionVersion("validated")}>
+                                  ✓ Validate Version
+                                </Button>
+                              )}
+                              {v.status === "validated" && (
+                                <Button size="sm" variant="primary" onClick={() => handleTransitionVersion("published")}>
+                                  🚀 Publish Version
+                                </Button>
+                              )}
+                              {v.status === "published" && (
+                                <Button size="sm" variant="outline" onClick={() => handleTransitionVersion("suspended")}>
+                                  Suspend
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Audit & Approval History */}
+                {selectedVersion && selectedVersion.approval_history && selectedVersion.approval_history.length > 0 && (
+                  <div style={{ padding: "14px 16px", borderRadius: "10px", background: "#F8FAF9", border: "1px solid #E2E8E4" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6E7F7C", display: "block", marginBottom: "8px" }}>
+                      Approval & Publication Traceability Log (v{selectedVersion.version_number})
+                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px" }}>
+                      {selectedVersion.approval_history.map((h, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "#4B5563" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ color: "#0D6866", fontFamily: "ui-monospace, monospace", fontWeight: 700 }}>
+                              [{h.action || h.stage}]
+                            </span>
+                            <span style={{ color: "#172322" }}>{h.comments || "Approved"}</span>
+                          </div>
+                          <span style={{ fontSize: "11px", color: "#6E7F7C" }}>{new Date(h.timestamp).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
         </div>
       )}
 
@@ -702,77 +1007,103 @@ export function RuleAdministrationHub({
       {/* TAB 3: DECLARATIVE REQUIREMENTS */}
       {/* ============================================================== */}
       {activeTab === "requirements" && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
+        <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", background: "#F8FAF9", padding: "16px 20px", borderRadius: "12px", border: "1px solid #DCE5E1" }}>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#172322", margin: "0 0 4px 0", display: "flex", alignItems: "center", gap: "8px" }}>
                 <span>Declarative Requirements for {selectedRuleSet?.name || "Pathway"}</span>
-                {selectedVersion && <Badge variant="info">v{selectedVersion.version_number}</Badge>}
+                {selectedVersion && (
+                  <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, background: "#EAF6F0", color: "#063C3D", border: "1px solid #B9DED4" }}>
+                    v{selectedVersion.version_number}
+                  </span>
+                )}
               </h3>
-              <p className="text-xs text-slate-400">
+              <p style={{ fontSize: "12px", color: "#6E7F7C", margin: 0 }}>
                 Purely declarative rules evaluated by constrained AST engine. No arbitrary database code execution.
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="primary"
-                onClick={() => setIsAddRequirementModalOpen(true)}
-              >
-                + Add Declarative Requirement
-              </Button>
-            </div>
+            <Button
+              variant="primary"
+              onClick={() => setIsAddRequirementModalOpen(true)}
+            >
+              + Add Declarative Requirement
+            </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
-            {requirements.map(req => (
-              <Card key={req.id} className="bg-slate-900/80 border-slate-800 p-4">
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-2.5">
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {requirements.map((req) => (
+              <Card key={req.id} style={{ background: "#FFFFFF", padding: "18px 20px", border: "1px solid #DCE5E1", borderRadius: "12px", boxShadow: "0 2px 8px rgba(6, 60, 61, 0.04)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px", marginBottom: "8px" }}>
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-900/40 text-blue-300 border border-blue-800 font-bold">
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+                      <span
+                        style={{
+                          fontFamily: "ui-monospace, monospace",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: "4px",
+                          background: "#EAF6F0",
+                          color: "#063C3D",
+                          border: "1px solid #B9DED4",
+                        }}
+                      >
                         {req.code}
                       </span>
-                      <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold uppercase">
+                      <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px", background: "#F1F5F4", color: "#4B5563", textTransform: "uppercase" }}>
                         {req.category}
                       </span>
                       {req.is_mandatory ? (
-                        <span className="text-xs px-2 py-0.5 rounded bg-red-900/30 text-red-300 border border-red-800/40 font-semibold">
+                        <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px", background: "#FEE2E2", color: "#991B1B", border: "1px solid #FCA5A5" }}>
                           Mandatory
                         </span>
                       ) : (
-                        <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-semibold">
+                        <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px", background: "#F3E8FF", color: "#6B21A8", border: "1px solid #D8B4FE" }}>
                           Discretionary Prongs
                         </span>
                       )}
                       {req.statutory_citation && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-amber-950/40 text-amber-300 border border-amber-800/40 font-serif">
+                        <span style={{ fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "4px", background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}>
                           § {req.statutory_citation}
                         </span>
                       )}
                     </div>
-                    <h4 className="text-sm font-bold text-white">{req.title}</h4>
+                    <h4 style={{ fontSize: "15px", fontWeight: 800, color: "#172322", margin: 0 }}>{req.title}</h4>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400 font-medium">Priority: {req.priority}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Priority: {req.priority}</span>
                     {req.requires_human_review && (
-                      <Badge variant="warning">Requires Human Sign-off</Badge>
+                      <span style={{ fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "999px", background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}>
+                        Requires Human Sign-off
+                      </span>
                     )}
                   </div>
                 </div>
 
-                <p className="text-xs text-slate-300 mb-3">{req.description}</p>
+                <p style={{ fontSize: "13px", color: "#4B5563", margin: "0 0 12px 0", lineHeight: "1.5" }}>{req.description}</p>
 
                 {/* Evidence & Validation Details */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs bg-slate-950/60 p-3 rounded-lg border border-slate-800">
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "14px",
+                    background: "#F8FAF9",
+                    border: "1px solid #E2E8E4",
+                    padding: "14px 16px",
+                    borderRadius: "10px",
+                    fontSize: "12px",
+                  }}
+                >
                   <div>
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                    <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#6E7F7C", display: "block", marginBottom: "6px" }}>
                       Accepted Evidence
                     </span>
-                    <div className="flex flex-wrap gap-1">
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                       {req.accepted_evidence_types.map((ev: any, idx: number) => {
                         const name = typeof ev === "string" ? ev : ev.category;
                         return (
-                          <span key={idx} className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[11px]">
+                          <span key={idx} style={{ padding: "3px 8px", borderRadius: "4px", background: "#EFF6FF", color: "#1E40AF", border: "1px solid #BFDBFE", fontFamily: "ui-monospace, monospace", fontSize: "11px" }}>
                             {name}
                           </span>
                         );
@@ -781,43 +1112,43 @@ export function RuleAdministrationHub({
                   </div>
 
                   <div>
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                    <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#6E7F7C", display: "block", marginBottom: "6px" }}>
                       Declarative Validation Rules
                     </span>
                     {req.validation_rules.length > 0 ? (
-                      <div className="space-y-0.5">
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                         {req.validation_rules.map((vr: any, idx: number) => (
-                          <span key={idx} className="block text-slate-300 font-mono text-[11px]">
+                          <span key={idx} style={{ color: "#374151", fontFamily: "ui-monospace, monospace", fontSize: "11px" }}>
                             • {vr.check}: {vr.field_name || vr.min_confidence || vr.min_pages || "active"}
                           </span>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-slate-500 italic">None specified</span>
+                      <span style={{ color: "#9CA3AF", fontStyle: "italic" }}>None specified</span>
                     )}
                   </div>
 
                   <div>
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                    <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#6E7F7C", display: "block", marginBottom: "6px" }}>
                       Prerequisite Dependencies
                     </span>
                     {req.blocking_dependencies.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                         {req.blocking_dependencies.map((dep, idx) => (
-                          <span key={idx} className="px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-300 border border-amber-800/40 text-[10px] font-mono">
+                          <span key={idx} style={{ padding: "2px 8px", borderRadius: "4px", background: "#FFF7ED", color: "#9A3412", border: "1px solid #FED7AA", fontSize: "10px", fontFamily: "ui-monospace, monospace", fontWeight: 700 }}>
                             Prereq: {dep}
                           </span>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-slate-500 italic">Independent criterion</span>
+                      <span style={{ color: "#9CA3AF", fontStyle: "italic" }}>Independent criterion</span>
                     )}
                   </div>
                 </div>
 
                 {req.review_guidance && (
-                  <div className="mt-2.5 text-xs text-amber-300/80 bg-amber-950/20 px-3 py-1.5 rounded border border-amber-800/20">
-                    <span className="font-semibold text-amber-400">Caseworker Guidance:</span> {req.review_guidance}
+                  <div style={{ marginTop: "10px", fontSize: "12px", color: "#92400E", background: "#FFFBEB", border: "1px solid #FDE68A", padding: "8px 14px", borderRadius: "6px" }}>
+                    <strong>Caseworker Guidance:</strong> {req.review_guidance}
                   </div>
                 )}
               </Card>
@@ -830,108 +1161,128 @@ export function RuleAdministrationHub({
       {/* TAB 4: REGRESSION TESTING & IMPACT ANALYZER */}
       {/* ============================================================== */}
       {activeTab === "regression" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Regression Suite Runner */}
-            <Card className="bg-slate-900/80 border-slate-800 p-5">
-              <h3 className="text-base font-bold text-white mb-2 flex items-center justify-between">
-                <span>Automated Rule Version Regression Test Suite</span>
-                {selectedVersion && <Badge variant="info">v{selectedVersion.version_number}</Badge>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px" }}>
+          {/* Regression Suite Runner */}
+          <Card style={{ background: "#FFFFFF", padding: "22px", border: "1px solid #DCE5E1", borderRadius: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#172322", margin: 0 }}>
+                Automated Rule Version Regression Test Suite
               </h3>
-              <p className="text-xs text-slate-400 mb-4">
-                Validates structural integrity of the declarative rules: checks for circular blocking deadlocks,
-                verifies operator AST safety, and validates linked official source snapshots.
-              </p>
-
-              <Button
-                variant="primary"
-                onClick={handleRunRegression}
-                disabled={isLoading || !selectedVersion}
-                className="w-full mb-4"
-              >
-                ▶ Run Automated Regression Suite
-              </Button>
-
-              {regressionResult && (
-                <div className="space-y-3 pt-3 border-t border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300">Test Outcome:</span>
-                    <Badge variant={regressionResult.is_valid ? "success" : "critical"}>
-                      {regressionResult.is_valid ? "✓ ALL CHECKS PASSED" : "FAILED"}
-                    </Badge>
-                  </div>
-                  <div className="p-3 rounded-lg bg-slate-950 text-xs space-y-1.5 border border-slate-800">
-                    {regressionResult.passed_checks.map((chk: string, i: number) => (
-                      <div key={i} className="text-green-400 flex items-center gap-2">
-                        <span>✓</span> <span>{chk}</span>
-                      </div>
-                    ))}
-                    {regressionResult.warnings?.map((w: string, i: number) => (
-                      <div key={i} className="text-amber-400 flex items-center gap-2">
-                        <span>⚠</span> <span>{w}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-slate-300 font-medium">
-                    Recommendation: {regressionResult.recommendation}
-                  </p>
-                </div>
-              )}
-            </Card>
-
-            {/* Affected Cases Impact Analyzer */}
-            <Card className="bg-slate-900/80 border-slate-800 p-5">
-              <h3 className="text-base font-bold text-white mb-2 flex items-center justify-between">
-                <span>Affected Cases Impact Analyzer</span>
-                <span className="text-xs px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-700/40 font-bold">
-                  Zero Silent Overwrites
+              {selectedVersion && (
+                <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, background: "#EAF6F0", color: "#063C3D", border: "1px solid #B9DED4" }}>
+                  v{selectedVersion.version_number}
                 </span>
+              )}
+            </div>
+            <p style={{ fontSize: "12px", color: "#6E7F7C", margin: "0 0 16px 0", lineHeight: "1.5" }}>
+              Validates structural integrity of the declarative rules: checks for circular blocking deadlocks,
+              verifies operator AST safety, and validates linked official source snapshots.
+            </p>
+
+            <Button
+              variant="primary"
+              onClick={handleRunRegression}
+              disabled={isLoading || !selectedVersion}
+              style={{ width: "100%", marginBottom: "16px" }}
+            >
+              ▶ Run Automated Regression Suite
+            </Button>
+
+            {regressionResult && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingTop: "14px", borderTop: "1px solid #E2E8E4" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#172322" }}>Test Outcome:</span>
+                  <span
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      background: regressionResult.is_valid ? "#ECFDF5" : "#FEF2F2",
+                      color: regressionResult.is_valid ? "#065F46" : "#991B1B",
+                      border: regressionResult.is_valid ? "1px solid #A7F3D0" : "1px solid #FECACA",
+                    }}
+                  >
+                    {regressionResult.is_valid ? "✓ ALL CHECKS PASSED" : "FAILED"}
+                  </span>
+                </div>
+                <div style={{ padding: "12px 14px", borderRadius: "8px", background: "#F8FAF9", border: "1px solid #E2E8E4", fontSize: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {regressionResult.passed_checks.map((chk: string, i: number) => (
+                    <div key={i} style={{ color: "#065F46", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>✓</span> <span>{chk}</span>
+                    </div>
+                  ))}
+                  {regressionResult.warnings?.map((w: string, i: number) => (
+                    <div key={i} style={{ color: "#92400E", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>⚠</span> <span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize: "12px", color: "#374151", fontWeight: 600, margin: 0 }}>
+                  Recommendation: {regressionResult.recommendation}
+                </p>
+              </div>
+            )}
+          </Card>
+
+          {/* Affected Cases Impact Analyzer */}
+          <Card style={{ background: "#FFFFFF", padding: "22px", border: "1px solid #DCE5E1", borderRadius: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#172322", margin: 0 }}>
+                Affected Cases Impact Analyzer
               </h3>
-              <p className="text-xs text-slate-400 mb-4">
-                When a published rule changes, scans open cases in this jurisdiction & pathway and creates
-                high-priority review tasks for caseworkers rather than silently rewriting prior legal evaluations.
-              </p>
+              <span style={{ fontSize: "11px", padding: "3px 10px", borderRadius: "6px", background: "#EAF6F0", color: "#063C3D", border: "1px solid #B9DED4", fontWeight: 700 }}>
+                Zero Silent Overwrites
+              </span>
+            </div>
+            <p style={{ fontSize: "12px", color: "#6E7F7C", margin: "0 0 16px 0", lineHeight: "1.5" }}>
+              When a published rule changes, scans open cases in this jurisdiction & pathway and creates
+              high-priority review tasks for caseworkers rather than silently rewriting prior legal evaluations.
+            </p>
 
-              <Button
-                variant="outline"
-                onClick={handleIdentifyAffectedCases}
-                disabled={isLoading || !selectedVersion}
-                className="w-full mb-4 border-purple-500/40 text-purple-300 hover:bg-purple-950/60"
-              >
-                🔍 Identify Affected Open Cases & Queue Tasks
-              </Button>
+            <Button
+              variant="outline"
+              onClick={handleIdentifyAffectedCases}
+              disabled={isLoading || !selectedVersion}
+              style={{ width: "100%", marginBottom: "16px" }}
+            >
+              🔍 Identify Affected Open Cases & Queue Tasks
+            </Button>
 
-              {impactResult && (
-                <div className="space-y-3 pt-3 border-t border-slate-800">
-                  <div className="grid grid-cols-2 gap-3 text-center">
-                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                      <span className="text-xs text-slate-400 block">Open Cases Inspected</span>
-                      <span className="text-lg font-bold text-white">{impactResult.total_open_cases_inspected}</span>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-800/40">
-                      <span className="text-xs text-amber-300 block">Affected Cases Queued</span>
-                      <span className="text-lg font-bold text-amber-400">{impactResult.affected_cases_count}</span>
-                    </div>
+            {impactResult && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", paddingTop: "14px", borderTop: "1px solid #E2E8E4" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", textAlign: "center" }}>
+                  <div style={{ padding: "12px", borderRadius: "8px", background: "#F8FAF9", border: "1px solid #E2E8E4" }}>
+                    <span style={{ fontSize: "11px", color: "#6E7F7C", display: "block", fontWeight: 600 }}>Open Cases Inspected</span>
+                    <span style={{ fontSize: "20px", fontWeight: 800, color: "#172322" }}>{impactResult.total_open_cases_inspected}</span>
                   </div>
+                  <div style={{ padding: "12px", borderRadius: "8px", background: "#FFFBEB", border: "1px solid #FCD34D" }}>
+                    <span style={{ fontSize: "11px", color: "#92400E", display: "block", fontWeight: 700 }}>Affected Cases Queued</span>
+                    <span style={{ fontSize: "20px", fontWeight: 800, color: "#B45309" }}>{impactResult.affected_cases_count}</span>
+                  </div>
+                </div>
 
-                  <div className="p-3 rounded-lg bg-slate-950 text-xs border border-slate-800">
-                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-                      Queued Caseworker Review Tasks
-                    </span>
+                <div style={{ padding: "12px 14px", borderRadius: "8px", background: "#F8FAF9", border: "1px solid #E2E8E4", fontSize: "12px" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#6E7F7C", display: "block", marginBottom: "8px" }}>
+                    Queued Caseworker Review Tasks
+                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     {impactResult.affected_cases.map((ac, idx) => (
-                      <div key={idx} className="flex items-center justify-between py-1.5 border-b border-slate-850 last:border-0">
+                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: idx === impactResult.affected_cases.length - 1 ? "none" : "1px solid #E5EBE8" }}>
                         <div>
-                          <span className="text-white font-medium">{ac.case_number}</span>
-                          <span className="text-slate-400 ml-2">Stage: {ac.current_processing_stage}</span>
+                          <span style={{ color: "#172322", fontWeight: 700 }}>{ac.case_number}</span>
+                          <span style={{ color: "#6E7F7C", marginLeft: "8px" }}>Stage: {ac.current_processing_stage}</span>
                         </div>
-                        <Badge variant="warning">Task Queued</Badge>
+                        <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 700, background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}>
+                          Task Queued
+                        </span>
                       </div>
                     ))}
                   </div>
                 </div>
-              )}
-            </Card>
-          </div>
+              </div>
+            )}
+          </Card>
         </div>
       )}
 
@@ -945,14 +1296,14 @@ export function RuleAdministrationHub({
         onClose={() => setIsRegisterSourceModalOpen(false)}
         title="Register Official Government Source"
       >
-        <form onSubmit={handleRegisterSource} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleRegisterSource} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Jurisdiction Code</label>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Jurisdiction Code</label>
               <select
                 value={newSourceJurisdiction}
                 onChange={e => setNewSourceJurisdiction(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+                style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
               >
                 <option value="US">US (United States)</option>
                 <option value="CA">CA (Canada)</option>
@@ -964,55 +1315,55 @@ export function RuleAdministrationHub({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Government Authority</label>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Government Authority</label>
               <input
                 type="text"
                 value={newSourceAuthority}
                 onChange={e => setNewSourceAuthority(e.target.value)}
                 placeholder="e.g. USCIS, IRCC, UKVI"
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+                style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
                 required
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Source Title</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Source Title</label>
             <input
               type="text"
               value={newSourceTitle}
               onChange={e => setNewSourceTitle(e.target.value)}
               placeholder="e.g. USCIS Policy Manual - Volume 6 Part F"
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Government Official URL</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Government Official URL</label>
             <input
               type="url"
               value={newSourceUrl}
               onChange={e => setNewSourceUrl(e.target.value)}
               placeholder="https://www.uscis.gov/..."
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white font-mono"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322", fontFamily: "ui-monospace, monospace" }}
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Scope & Limitations</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Scope & Limitations</label>
             <textarea
               value={newSourceScope}
               onChange={e => setNewSourceScope(e.target.value)}
               placeholder="Specify pathway scope, exclusions, and statutory limits..."
               rows={3}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
               required
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", paddingTop: "12px", borderTop: "1px solid #E2E8E4" }}>
             <Button variant="outline" type="button" onClick={() => setIsRegisterSourceModalOpen(false)}>
               Cancel
             </Button>
@@ -1029,41 +1380,41 @@ export function RuleAdministrationHub({
         onClose={() => setIsSnapshotModalOpen(false)}
         title={`Capture Source Content Snapshot (${selectedSource?.authority})`}
       >
-        <form onSubmit={handleCaptureSnapshot} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleCaptureSnapshot} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Publication Date</label>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Publication Date</label>
               <input
                 type="date"
                 value={newSnapshotPubDate}
                 onChange={e => setNewSnapshotPubDate(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+                style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Effective Date</label>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Effective Date</label>
               <input
                 type="date"
                 value={newSnapshotEffDate}
                 onChange={e => setNewSnapshotEffDate(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+                style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Raw Content Text / Markdown</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Raw Content Text / Markdown</label>
             <textarea
               value={newSnapshotContent}
               onChange={e => setNewSnapshotContent(e.target.value)}
               placeholder="Paste official policy text or regulatory extract..."
               rows={6}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white font-mono"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "12px", color: "#172322", fontFamily: "ui-monospace, monospace" }}
               required
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", paddingTop: "12px", borderTop: "1px solid #E2E8E4" }}>
             <Button variant="outline" type="button" onClick={() => setIsSnapshotModalOpen(false)}>
               Cancel
             </Button>
@@ -1081,24 +1432,25 @@ export function RuleAdministrationHub({
         title="Visual Snapshot Diff & Revision Comparison"
       >
         {diffResult && (
-          <div className="space-y-4">
-            <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-xs text-slate-300">
-              <span className="font-semibold text-blue-400">Comparison Summary:</span> {diffResult.summary}
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div style={{ padding: "12px 16px", background: "#EFF6FF", borderRadius: "8px", border: "1px solid #BFDBFE", fontSize: "12px", color: "#1E40AF" }}>
+              <span style={{ fontWeight: 800 }}>Comparison Summary:</span> {diffResult.summary}
             </div>
-            <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 font-mono text-xs overflow-x-auto max-h-96">
+            <div style={{ padding: "14px", background: "#F8FAF9", borderRadius: "8px", border: "1px solid #E2E8E4", fontFamily: "ui-monospace, monospace", fontSize: "12px", overflowX: "auto", maxHeight: "380px" }}>
               {diffResult.diff_lines.map((line, idx) => {
-                let color = "text-slate-400";
-                if (line.startsWith("+")) color = "text-green-400 bg-green-950/20";
-                if (line.startsWith("-")) color = "text-red-400 bg-red-950/20";
-                if (line.startsWith("@@")) color = "text-blue-400";
+                let color = "#4B5563";
+                let bg = "transparent";
+                if (line.startsWith("+")) { color = "#065F46"; bg = "#ECFDF5"; }
+                if (line.startsWith("-")) { color = "#991B1B"; bg = "#FEF2F2"; }
+                if (line.startsWith("@@")) { color = "#1E40AF"; bg = "#EFF6FF"; }
                 return (
-                  <div key={idx} className={`${color} py-0.5 whitespace-pre`}>
+                  <div key={idx} style={{ color, background: bg, padding: "2px 6px", borderRadius: "4px", whiteSpace: "pre-wrap", margin: "2px 0" }}>
                     {line}
                   </div>
                 );
               })}
             </div>
-            <div className="flex justify-end">
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <Button variant="outline" onClick={() => setIsDiffModalOpen(false)}>
                 Close Diff
               </Button>
@@ -1113,30 +1465,30 @@ export function RuleAdministrationHub({
         onClose={() => setIsNewVersionModalOpen(false)}
         title={`Draft New Version (${selectedRuleSet?.name})`}
       >
-        <form onSubmit={handleCreateNewVersion} className="space-y-4">
+        <form onSubmit={handleCreateNewVersion} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Version Number</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Version Number</label>
             <input
               type="text"
               value={newVersionNumber}
               onChange={e => setNewVersionNumber(e.target.value)}
               placeholder="e.g. 1.1.0 or 2.0.0"
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white font-mono"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322", fontFamily: "ui-monospace, monospace" }}
               required
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Change Summary</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Change Summary</label>
             <textarea
               value={newVersionSummary}
               onChange={e => setNewVersionSummary(e.target.value)}
               placeholder="Describe amendments, new statutory requirements, or guidance revisions..."
               rows={3}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
               required
             />
           </div>
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", paddingTop: "12px", borderTop: "1px solid #E2E8E4" }}>
             <Button variant="outline" type="button" onClick={() => setIsNewVersionModalOpen(false)}>
               Cancel
             </Button>
@@ -1153,25 +1505,25 @@ export function RuleAdministrationHub({
         onClose={() => setIsAddRequirementModalOpen(false)}
         title="Add Declarative Requirement Definition"
       >
-        <form onSubmit={handleAddRequirement} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleAddRequirement} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Requirement Code</label>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Requirement Code</label>
               <input
                 type="text"
                 value={newReqCode}
                 onChange={e => setNewReqCode(e.target.value)}
                 placeholder="e.g. EB1A-EVID-AWARDS"
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white font-mono"
+                style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322", fontFamily: "ui-monospace, monospace" }}
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Category</label>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Category</label>
               <select
                 value={newReqCategory}
                 onChange={e => setNewReqCategory(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+                style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
               >
                 <option value="regulatory_criteria">Regulatory Criteria (Prongs)</option>
                 <option value="mandatory_identity">Mandatory Identity</option>
@@ -1182,46 +1534,46 @@ export function RuleAdministrationHub({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Requirement Title</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Requirement Title</label>
             <input
               type="text"
               value={newReqTitle}
               onChange={e => setNewReqTitle(e.target.value)}
               placeholder="e.g. Nationally or Internationally Recognized Prizes"
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Statutory Citation</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Statutory Citation</label>
             <input
               type="text"
               value={newReqCitation}
               onChange={e => setNewReqCitation(e.target.value)}
               placeholder="e.g. 8 CFR § 204.5(h)(3)(i)"
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white font-serif"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Description</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Description</label>
             <textarea
               value={newReqDesc}
               onChange={e => setNewReqDesc(e.target.value)}
               placeholder="Evidentiary standard description..."
               rows={2}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Accepted Evidence Type</label>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Accepted Evidence Type</label>
               <select
                 value={newReqEvidenceCategory}
                 onChange={e => setNewReqEvidenceCategory(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white font-mono"
+                style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322", fontFamily: "ui-monospace, monospace" }}
               >
                 <option value="award_certificate">award_certificate</option>
                 <option value="scholarly_article">scholarly_article</option>
@@ -1231,22 +1583,22 @@ export function RuleAdministrationHub({
                 <option value="intent_statement">intent_statement</option>
               </select>
             </div>
-            <div className="flex items-center gap-4 pt-6">
-              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", paddingTop: "24px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#172322", fontWeight: 600, cursor: "pointer" }}>
                 <input
                   type="checkbox"
                   checked={newReqMandatory}
                   onChange={e => setNewReqMandatory(e.target.checked)}
-                  className="rounded text-blue-600 bg-slate-800 border-slate-700"
+                  style={{ width: "16px", height: "16px", accentColor: "#0D6866" }}
                 />
                 Mandatory
               </label>
-              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#172322", fontWeight: 600, cursor: "pointer" }}>
                 <input
                   type="checkbox"
                   checked={newReqHumanReview}
                   onChange={e => setNewReqHumanReview(e.target.checked)}
-                  className="rounded text-blue-600 bg-slate-800 border-slate-700"
+                  style={{ width: "16px", height: "16px", accentColor: "#0D6866" }}
                 />
                 Human Review Gate
               </label>
@@ -1254,17 +1606,17 @@ export function RuleAdministrationHub({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Caseworker Review Guidance</label>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Caseworker Review Guidance</label>
             <input
               type="text"
               value={newReqGuidance}
               onChange={e => setNewReqGuidance(e.target.value)}
               placeholder="e.g. Verify criteria, competitor pool, and direct awardee."
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white"
+              style={{ width: "100%", padding: "8px 12px", background: "#FAFAF8", border: "1.5px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", color: "#172322" }}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", paddingTop: "12px", borderTop: "1px solid #E2E8E4" }}>
             <Button variant="outline" type="button" onClick={() => setIsAddRequirementModalOpen(false)}>
               Cancel
             </Button>

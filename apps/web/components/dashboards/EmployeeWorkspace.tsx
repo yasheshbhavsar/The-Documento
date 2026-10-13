@@ -1759,10 +1759,43 @@ export function EmployeeWorkspace({
       {/* 9. FORM PREPARATION (PHASE 8 CONFIGURABLE FORMS) */}
       {activeTab === "form_prep" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8fafc", padding: "12px 16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-            <div>
-              <span style={{ fontSize: "12px", color: "#64748b" }}>Active Immigration Petition Case:</span>
-              <strong style={{ marginLeft: "8px", fontSize: "13px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+              background: "#FFFFFF",
+              padding: "14px 20px",
+              borderRadius: "12px",
+              border: "1px solid #DCE5E1",
+              boxShadow: "0 2px 8px rgba(6, 60, 61, 0.04)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  color: "#0D6866",
+                  background: "#EAF6F0",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  border: "1px solid #B9DED4",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                <span>📁</span> Active Case
+              </span>
+              <span style={{ fontSize: "12px", color: "#6E7F7C", fontWeight: 500 }}>
+                Active Immigration Petition Case:
+              </span>
+              <strong style={{ fontSize: "13px", color: "#172322", fontWeight: 700 }}>
                 {selectedCaseForWorkspace?.case_number} — {selectedCaseForWorkspace?.title}
               </strong>
             </div>
@@ -1772,7 +1805,18 @@ export function EmployeeWorkspace({
                 const found = cases.find((c) => c.id === e.target.value);
                 if (found) setSelectedCaseForWorkspace(found);
               }}
-              style={{ fontSize: "12px", padding: "6px 10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                padding: "8px 14px",
+                borderRadius: "8px",
+                border: "1.5px solid #DCE5E1",
+                background: "#FAFAF8",
+                color: "#172322",
+                outline: "none",
+                cursor: "pointer",
+                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+              }}
             >
               {cases.map((c) => (
                 <option key={c.id} value={c.id}>

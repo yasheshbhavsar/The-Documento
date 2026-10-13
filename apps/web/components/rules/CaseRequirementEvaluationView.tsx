@@ -177,7 +177,7 @@ export function CaseRequirementEvaluationView({
         title="Immigration Requirements & Rule Engine Evaluation"
         subtitle="Declarative rule evaluation against official statutory and regulatory criteria. Zero hardcoded rules."
         actions={
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             {cases && cases.length > 0 && (
               <select
                 aria-label="Select Target Case"
@@ -188,12 +188,15 @@ export function CaseRequirementEvaluationView({
                   if (found && onSelectCase) onSelectCase(found);
                 }}
                 style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border, #DCE5E1)",
-                  background: "var(--surface, #FFFFFF)",
-                  color: "var(--text, #172322)",
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  border: "1.5px solid #DCE5E1",
+                  background: "#FAFAF8",
+                  color: "#172322",
                   fontSize: "12px",
+                  fontWeight: 600,
+                  outline: "none",
+                  cursor: "pointer",
                 }}
               >
                 {cases.map((c) => (
@@ -219,52 +222,65 @@ export function CaseRequirementEvaluationView({
           style={{
             display: "flex",
             flexWrap: "wrap",
-            gap: "14px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-            background: "var(--surface-subtle, #F1F6F4)",
-            border: "1px solid var(--border, #DCE5E1)",
+            gap: "16px",
+            padding: "14px 18px",
+            borderRadius: "10px",
+            background: "#F8FAF9",
+            border: "1px solid #DCE5E1",
             marginBottom: "16px",
             fontSize: "12px",
             alignItems: "center",
           }}
         >
           <div>
-            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Active Case:</span>
-            <strong style={{ color: "var(--text, #172322)" }}>
+            <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Active Case:
+            </span>
+            <strong style={{ color: "#172322", fontSize: "13px" }}>
               {currentCase?.case_number || "CASE-US-8841"} ({currentCase?.jurisdiction || "US"} {currentCase?.visa_category || "EB-1A"})
             </strong>
           </div>
-          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "14px" }}>
-            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Rule Set:</span>
-            <span style={{ color: "#0D6866", fontWeight: 600 }}>
+          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "16px" }}>
+            <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Rule Set:
+            </span>
+            <span style={{ color: "#0D6866", fontWeight: 700 }}>
               {evaluation?.results?.rule_set_id || "US-USCIS-EB1A"}
             </span>
           </div>
-          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "14px" }}>
-            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Codified Version:</span>
+          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "16px" }}>
+            <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Codified Version:
+            </span>
             <span
               style={{
-                background: "#DDEFE8",
+                background: "#EAF6F0",
                 color: "#063C3D",
-                padding: "2px 8px",
+                padding: "3px 10px",
                 borderRadius: "999px",
-                fontWeight: 600,
+                border: "1px solid #B9DED4",
+                fontWeight: 700,
                 fontSize: "11px",
+                display: "inline-block",
+                marginTop: "1px",
               }}
             >
               v{evaluation?.version_number || "1.0.0"} (Published)
             </span>
           </div>
-          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "14px" }}>
-            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Evaluated At:</span>
-            <span style={{ color: "var(--text, #172322)" }}>
+          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "16px" }}>
+            <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Evaluated At:
+            </span>
+            <span style={{ color: "#172322", fontWeight: 600 }}>
               {evaluation?.evaluated_at ? new Date(evaluation.evaluated_at).toLocaleString() : "Just now"}
             </span>
           </div>
-          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "14px" }}>
-            <span style={{ color: "var(--muted, #6E7F7C)", display: "block" }}>Execution Safety:</span>
-            <span style={{ color: "#176B50", fontWeight: 600 }}>
+          <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "16px" }}>
+            <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Execution Safety:
+            </span>
+            <span style={{ color: "#059669", fontWeight: 700 }}>
               🛡️ AST Constrained (Zero DB Python)
             </span>
           </div>
@@ -273,16 +289,16 @@ export function CaseRequirementEvaluationView({
         {/* Progress & Summary Metrics */}
         {summary && (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text, #f8fafc)" }}>
+                <span style={{ fontSize: "14px", fontWeight: 700, color: "#172322" }}>
                   Overall Evidentiary Fulfillment Rate:
                 </span>
-                <strong style={{ fontSize: "16px", color: evaluation.overall_fulfillment_percentage >= 70 ? "#10b981" : "#f59e0b" }}>
+                <strong style={{ fontSize: "18px", fontWeight: 800, color: evaluation.overall_fulfillment_percentage >= 70 ? "#059669" : "#D97706" }}>
                   {`${evaluation.overall_fulfillment_percentage.toFixed(1)}%`}
                 </strong>
               </div>
-              <span style={{ fontSize: "12px", color: "var(--muted, #94a3b8)" }}>
+              <span style={{ fontSize: "12px", color: "#6E7F7C", fontWeight: 600 }}>
                 {summary.complete} of {summary.applicable} applicable criteria satisfied
               </span>
             </div>
@@ -292,7 +308,7 @@ export function CaseRequirementEvaluationView({
               style={{
                 width: "100%",
                 height: "10px",
-                background: "#1e293b",
+                background: "#E2E8E4",
                 borderRadius: "999px",
                 overflow: "hidden",
                 position: "relative",
@@ -304,10 +320,10 @@ export function CaseRequirementEvaluationView({
                   height: "100%",
                   background:
                     evaluation.overall_fulfillment_percentage >= 80
-                      ? "linear-gradient(90deg, #10b981, #34d399)"
+                      ? "linear-gradient(90deg, #0D6866, #10B981)"
                       : evaluation.overall_fulfillment_percentage >= 50
-                      ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
-                      : "linear-gradient(90deg, #ef4444, #f87171)",
+                      ? "linear-gradient(90deg, #D97706, #F59E0B)"
+                      : "linear-gradient(90deg, #DC2626, #EF4444)",
                   borderRadius: "999px",
                   transition: "width 0.4s ease",
                 }}
@@ -319,87 +335,99 @@ export function CaseRequirementEvaluationView({
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-                gap: "8px",
-                marginTop: "4px",
+                gap: "10px",
+                marginTop: "6px",
               }}
             >
               <div
                 onClick={() => setStatusFilter(statusFilter === "complete" ? "all" : "complete")}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
                   background: statusFilter === "complete" ? "#EAF6F0" : "#FFFFFF",
-                  border: statusFilter === "complete" ? "1px solid #176B50" : "1px solid #DCE5E1",
+                  border: statusFilter === "complete" ? "1.5px solid #059669" : "1px solid #DCE5E1",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
                   cursor: "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#176B50", display: "block" }}>✓ Complete</span>
-                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.complete}</strong>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#065F46", display: "block" }}>✓ Complete</span>
+                <strong style={{ fontSize: "20px", fontWeight: 800, color: "#172322" }}>{summary.complete}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "missing" ? "all" : "missing")}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  background: statusFilter === "missing" ? "#FDF2F2" : "#FFFFFF",
-                  border: statusFilter === "missing" ? "1px solid #A62D35" : "1px solid #DCE5E1",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: statusFilter === "missing" ? "#FEF2F2" : "#FFFFFF",
+                  border: statusFilter === "missing" ? "1.5px solid #DC2626" : "1px solid #DCE5E1",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
                   cursor: "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#A62D35", display: "block" }}>✕ Missing</span>
-                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.missing}</strong>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#991B1B", display: "block" }}>✕ Missing</span>
+                <strong style={{ fontSize: "20px", fontWeight: 800, color: "#172322" }}>{summary.missing}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "needs_review" ? "all" : "needs_review")}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  background: statusFilter === "needs_review" ? "#FEF7EA" : "#FFFFFF",
-                  border: statusFilter === "needs_review" ? "1px solid #8A5A10" : "1px solid #DCE5E1",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: statusFilter === "needs_review" ? "#FFFBEB" : "#FFFFFF",
+                  border: statusFilter === "needs_review" ? "1.5px solid #D97706" : "1px solid #DCE5E1",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
                   cursor: "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#8A5A10", display: "block" }}>⚠ Needs Review</span>
-                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.needs_review}</strong>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#92400E", display: "block" }}>⚠ Needs Review</span>
+                <strong style={{ fontSize: "20px", fontWeight: 800, color: "#172322" }}>{summary.needs_review}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "blocked" ? "all" : "blocked")}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  background: statusFilter === "blocked" ? "#FFF5EB" : "#FFFFFF",
-                  border: statusFilter === "blocked" ? "1px solid #C2410C" : "1px solid #DCE5E1",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: statusFilter === "blocked" ? "#FFF7ED" : "#FFFFFF",
+                  border: statusFilter === "blocked" ? "1.5px solid #EA580C" : "1px solid #DCE5E1",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
                   cursor: "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#C2410C", display: "block" }}>⛔ Blocked</span>
-                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.blocked}</strong>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#9A3412", display: "block" }}>⛔ Blocked</span>
+                <strong style={{ fontSize: "20px", fontWeight: 800, color: "#172322" }}>{summary.blocked}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "expired" ? "all" : "expired")}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
                   background: statusFilter === "expired" ? "#FFF1F2" : "#FFFFFF",
-                  border: statusFilter === "expired" ? "1px solid #BE123C" : "1px solid #DCE5E1",
+                  border: statusFilter === "expired" ? "1.5px solid #BE123C" : "1px solid #DCE5E1",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
                   cursor: "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#BE123C", display: "block" }}>⏱ Expired</span>
-                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.expired}</strong>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#9F1239", display: "block" }}>⏱ Expired</span>
+                <strong style={{ fontSize: "20px", fontWeight: 800, color: "#172322" }}>{summary.expired}</strong>
               </div>
               <div
                 onClick={() => setStatusFilter(statusFilter === "unknown" ? "all" : "unknown")}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  background: statusFilter === "unknown" ? "#F1F6F4" : "#FFFFFF",
-                  border: statusFilter === "unknown" ? "1px solid #6E7F7C" : "1px solid #DCE5E1",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: statusFilter === "unknown" ? "#F8FAF9" : "#FFFFFF",
+                  border: statusFilter === "unknown" ? "1.5px solid #6E7F7C" : "1px solid #DCE5E1",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
                   cursor: "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <span style={{ fontSize: "11px", color: "#6E7F7C", display: "block" }}>? Unknown</span>
-                <strong style={{ fontSize: "18px", color: "#172322" }}>{summary.unknown}</strong>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#4B5563", display: "block" }}>? Unknown</span>
+                <strong style={{ fontSize: "20px", fontWeight: 800, color: "#172322" }}>{summary.unknown}</strong>
               </div>
             </div>
           </div>
@@ -408,24 +436,28 @@ export function CaseRequirementEvaluationView({
         {/* Legal Engineering Callout */}
         <div
           style={{
-            padding: "10px 14px",
-            borderRadius: "6px",
-            background: "rgba(59, 130, 246, 0.1)",
-            border: "1px solid rgba(59, 130, 246, 0.3)",
+            padding: "14px 18px",
+            borderRadius: "10px",
+            background: "#EFF6FF",
+            border: "1.5px solid #BFDBFE",
             fontSize: "12px",
-            color: "#93c5fd",
-            marginBottom: "16px",
+            color: "#1E40AF",
+            marginBottom: "18px",
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             gap: "10px",
+            lineHeight: "1.5",
           }}
         >
-          <span>⚖️</span>
-          <span>
-            <strong>Evidentiary Completion Principle:</strong> A document being present in storage does not
-            automatically satisfy a legal requirement. Evidence completion strictly requires passing declarative
-            field checks, OCR validity thresholds, and required human specialist sign-offs.
-          </span>
+          <span style={{ fontSize: "16px", marginTop: "1px" }}>⚖️</span>
+          <div>
+            <strong style={{ color: "#1E3A8A" }}>Evidentiary Completion Principle: </strong>
+            <span>
+              A document being present in storage does not automatically satisfy a legal requirement. Evidence
+              completion strictly requires passing declarative field checks, OCR validity thresholds, and required
+              human specialist sign-offs.
+            </span>
+          </div>
         </div>
 
         {/* Filter Controls */}
@@ -433,7 +465,7 @@ export function CaseRequirementEvaluationView({
           style={{
             display: "flex",
             gap: "10px",
-            marginBottom: "16px",
+            marginBottom: "18px",
             flexWrap: "wrap",
             alignItems: "center",
           }}
@@ -445,12 +477,13 @@ export function CaseRequirementEvaluationView({
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
               flex: "1 1 240px",
-              padding: "8px 12px",
-              borderRadius: "6px",
-              border: "1px solid var(--border, #DCE5E1)",
-              background: "var(--surface, #FFFFFF)",
-              color: "var(--text, #172322)",
+              padding: "9px 14px",
+              borderRadius: "8px",
+              border: "1.5px solid #DCE5E1",
+              background: "#FAFAF8",
+              color: "#172322",
               fontSize: "12px",
+              outline: "none",
             }}
           />
 
@@ -459,12 +492,15 @@ export function CaseRequirementEvaluationView({
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             style={{
-              padding: "8px 12px",
-              borderRadius: "6px",
-              border: "1px solid var(--border, #DCE5E1)",
-              background: "var(--surface, #FFFFFF)",
-              color: "var(--text, #172322)",
+              padding: "9px 14px",
+              borderRadius: "8px",
+              border: "1.5px solid #DCE5E1",
+              background: "#FAFAF8",
+              color: "#172322",
               fontSize: "12px",
+              fontWeight: 600,
+              outline: "none",
+              cursor: "pointer",
             }}
           >
             <option value="all">All Statuses ({rawRequirements.length})</option>
@@ -483,12 +519,15 @@ export function CaseRequirementEvaluationView({
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               style={{
-                padding: "8px 12px",
-                borderRadius: "6px",
-                border: "1px solid var(--border, #DCE5E1)",
-                background: "var(--surface, #FFFFFF)",
-                color: "var(--text, #172322)",
+                padding: "9px 14px",
+                borderRadius: "8px",
+                border: "1.5px solid #DCE5E1",
+                background: "#FAFAF8",
+                color: "#172322",
                 fontSize: "12px",
+                fontWeight: 600,
+                outline: "none",
+                cursor: "pointer",
               }}
             >
               <option value="all">All Categories</option>
@@ -509,24 +548,25 @@ export function CaseRequirementEvaluationView({
 
         {/* Requirements Evaluation Grid */}
         {isLoading ? (
-          <div style={{ padding: "40px", textAlign: "center", color: "var(--muted, #94a3b8)" }}>
+          <div style={{ padding: "40px", textAlign: "center", color: "#6E7F7C", fontSize: "14px" }}>
             Loading codified rules and evaluating evidence...
           </div>
         ) : filteredRequirements.length === 0 ? (
           <div
             style={{
-              padding: "40px",
+              padding: "48px 24px",
               textAlign: "center",
-              background: "var(--surface-subtle, #F1F6F4)",
-              borderRadius: "8px",
-              border: "1px dashed var(--border, #DCE5E1)",
-              color: "var(--muted, #445451)",
+              background: "#F8FAF9",
+              borderRadius: "12px",
+              border: "1.5px dashed #DCE5E1",
+              color: "#6E7F7C",
+              fontSize: "13px",
             }}
           >
             No requirements match the current filters.
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             {filteredRequirements.map((item) => {
               const isSignedOff = localSignoffs[item.code] || item.human_signoff_completed;
               const displayStatus: RequirementEvaluationStatus =
@@ -536,35 +576,38 @@ export function CaseRequirementEvaluationView({
                 <div
                   key={item.code}
                   style={{
-                    padding: "16px",
-                    borderRadius: "8px",
-                    background: "var(--surface, #FFFFFF)",
+                    padding: "20px",
+                    borderRadius: "12px",
+                    background: "#FFFFFF",
                     border:
                       displayStatus === "complete"
-                        ? "1px solid rgba(23, 107, 80, 0.4)"
+                        ? "1.5px solid #A7F3D0"
                         : displayStatus === "missing"
-                        ? "1px solid rgba(166, 45, 53, 0.4)"
+                        ? "1.5px solid #FECACA"
                         : displayStatus === "needs_review"
-                        ? "1px solid rgba(138, 90, 16, 0.4)"
-                        : "1px solid var(--border, #DCE5E1)",
+                        ? "1.5px solid #FDE68A"
+                        : "1px solid #DCE5E1",
+                    boxShadow: "0 2px 8px rgba(6, 60, 61, 0.04)",
                     display: "flex",
                     flexDirection: "column",
-                    gap: "10px",
+                    gap: "14px",
+                    transition: "all 0.15s ease",
                   }}
                 >
                   {/* Item Header */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: "260px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "6px" }}>
                         <span
                           style={{
-                            fontFamily: "monospace",
-                            fontSize: "12px",
-                            padding: "2px 6px",
-                            borderRadius: "4px",
-                            background: "#1e293b",
-                            color: "#38bdf8",
-                            fontWeight: 600,
+                            fontFamily: "ui-monospace, monospace",
+                            fontSize: "11px",
+                            padding: "3px 8px",
+                            borderRadius: "6px",
+                            background: "#EAF6F0",
+                            color: "#063C3D",
+                            fontWeight: 700,
+                            border: "1px solid #B9DED4",
                           }}
                         >
                           {item.code}
@@ -573,10 +616,12 @@ export function CaseRequirementEvaluationView({
                           <span
                             style={{
                               fontSize: "11px",
-                              padding: "2px 8px",
+                              padding: "3px 10px",
                               borderRadius: "999px",
-                              background: "rgba(148, 163, 184, 0.15)",
-                              color: "#cbd5e1",
+                              background: "#F1F5F4",
+                              color: "#4B5563",
+                              border: "1px solid #DCE5E1",
+                              fontWeight: 600,
                             }}
                           >
                             📖 {item.statutory_citation}
@@ -586,11 +631,14 @@ export function CaseRequirementEvaluationView({
                           <span
                             style={{
                               fontSize: "10px",
-                              padding: "2px 6px",
+                              padding: "2px 8px",
                               borderRadius: "4px",
-                              background: "rgba(239, 68, 68, 0.15)",
-                              color: "#f87171",
+                              background: "#FEE2E2",
+                              color: "#991B1B",
+                              border: "1px solid #FCA5A5",
                               fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.04em",
                             }}
                           >
                             MANDATORY BASELINE
@@ -599,21 +647,26 @@ export function CaseRequirementEvaluationView({
                           <span
                             style={{
                               fontSize: "10px",
-                              padding: "2px 6px",
+                              padding: "2px 8px",
                               borderRadius: "4px",
-                              background: "rgba(168, 85, 247, 0.15)",
-                              color: "#c084fc",
-                              fontWeight: 600,
+                              background: "#F3E8FF",
+                              color: "#6B21A8",
+                              border: "1px solid #D8B4FE",
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.04em",
                             }}
                           >
                             REGULATORY CRITERION (1 OF 10)
                           </span>
                         )}
                       </div>
-                      <strong style={{ fontSize: "14px", color: "#f8fafc" }}>{item.title}</strong>
+                      <strong style={{ fontSize: "15px", fontWeight: 700, color: "#172322", display: "block" }}>
+                        {item.title}
+                      </strong>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       {getStatusBadge(displayStatus)}
                       <Button
                         variant="outline"
@@ -625,21 +678,32 @@ export function CaseRequirementEvaluationView({
                     </div>
                   </div>
 
-                  {/* Evidentiary & Validation Findings */}
+                  {/* Evidentiary & Validation Findings (Executive Card View) */}
                   <div
                     style={{
                       display: "grid",
                       gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                      gap: "10px",
-                      background: "rgba(15, 23, 42, 0.6)",
-                      padding: "10px 12px",
-                      borderRadius: "6px",
+                      gap: "14px",
+                      background: "#F8FAF9",
+                      border: "1px solid #E2E8E4",
+                      padding: "14px 18px",
+                      borderRadius: "10px",
                       fontSize: "12px",
                     }}
                   >
                     {/* Evidence Column */}
                     <div>
-                      <span style={{ color: "var(--muted, #94a3b8)", display: "block", marginBottom: "4px" }}>
+                      <span
+                        style={{
+                          color: "#6E7F7C",
+                          display: "block",
+                          marginBottom: "6px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                        }}
+                      >
                         Evidentiary Matches ({item.evidence_matched.length}):
                       </span>
                       {item.evidence_matched.length > 0 ? (
@@ -648,14 +712,16 @@ export function CaseRequirementEvaluationView({
                             <span
                               key={docId}
                               style={{
-                                padding: "2px 8px",
-                                borderRadius: "4px",
-                                background: "#1e293b",
-                                color: "#38bdf8",
+                                padding: "4px 10px",
+                                borderRadius: "6px",
+                                background: "#EFF6FF",
+                                color: "#1E40AF",
+                                border: "1px solid #BFDBFE",
                                 fontSize: "11px",
+                                fontWeight: 600,
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: "4px",
+                                gap: "5px",
                               }}
                             >
                               📄 {docId} (Verified)
@@ -663,7 +729,7 @@ export function CaseRequirementEvaluationView({
                           ))}
                         </div>
                       ) : (
-                        <span style={{ color: "#f87171" }}>
+                        <span style={{ color: "#DC2626", fontWeight: 600, fontSize: "12px" }}>
                           ✕ No qualifying evidence documents uploaded
                         </span>
                       )}
@@ -671,10 +737,20 @@ export function CaseRequirementEvaluationView({
 
                     {/* Declarative Validation Details */}
                     <div>
-                      <span style={{ color: "var(--muted, #94a3b8)", display: "block", marginBottom: "4px" }}>
+                      <span
+                        style={{
+                          color: "#6E7F7C",
+                          display: "block",
+                          marginBottom: "6px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                        }}
+                      >
                         Declarative AST Checks:
                       </span>
-                      <ul style={{ margin: 0, paddingLeft: "16px", color: "#cbd5e1" }}>
+                      <ul style={{ margin: 0, paddingLeft: "16px", color: "#374151", lineHeight: "1.5" }}>
                         {item.validation_details.map((v, idx) => (
                           <li key={idx}>{v}</li>
                         ))}
@@ -686,11 +762,12 @@ export function CaseRequirementEvaluationView({
                   {item.blocking_reasons.length > 0 && (
                     <div
                       style={{
-                        fontSize: "11px",
-                        color: "#fb923c",
-                        background: "rgba(249, 115, 22, 0.1)",
-                        padding: "6px 10px",
-                        borderRadius: "4px",
+                        fontSize: "12px",
+                        color: "#9A3412",
+                        background: "#FFF7ED",
+                        border: "1px solid #FED7AA",
+                        padding: "8px 14px",
+                        borderRadius: "8px",
                       }}
                     >
                       ⛔ <strong>Blocked:</strong> Prerequisite requirement{" "}
@@ -705,16 +782,18 @@ export function CaseRequirementEvaluationView({
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        padding: "6px 12px",
-                        borderRadius: "4px",
-                        background: isSignedOff ? "rgba(16, 185, 129, 0.1)" : "rgba(245, 158, 11, 0.1)",
-                        border: isSignedOff ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(245, 158, 11, 0.3)",
-                        fontSize: "11px",
+                        padding: "10px 14px",
+                        borderRadius: "8px",
+                        background: isSignedOff ? "#ECFDF5" : "#FFFBEB",
+                        border: isSignedOff ? "1px solid #A7F3D0" : "1px solid #FCD34D",
+                        fontSize: "12px",
+                        flexWrap: "wrap",
+                        gap: "10px",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span>{isSignedOff ? "🛡️" : "👤"}</span>
-                        <span style={{ color: isSignedOff ? "#34d399" : "#fbbf24" }}>
+                        <span style={{ color: isSignedOff ? "#065F46" : "#92400E", fontWeight: 600 }}>
                           {isSignedOff
                             ? "Human Review Complete: Legal specialist verified evidentiary merit under Kazarian Step 2."
                             : "Human Review Required: Official rules require specialist sign-off before completion."}
@@ -745,7 +824,7 @@ export function CaseRequirementEvaluationView({
         title="Rule Version Traceability & Audit History"
         subtitle="Historical case evaluations are permanently preserved when rules change. Zero silent overwrites."
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {evaluationHistory.map((hist, index) => (
             <div
               key={hist.id || index}
@@ -753,16 +832,19 @@ export function CaseRequirementEvaluationView({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                padding: "10px 14px",
-                borderRadius: "6px",
-                background: hist.is_superseded ? "#F8F7F2" : "#EAF6F0",
-                border: hist.is_superseded ? "1px solid #DCE5E1" : "1px solid #B9DED4",
+                flexWrap: "wrap",
+                gap: "12px",
+                padding: "12px 18px",
+                borderRadius: "10px",
+                background: hist.is_superseded ? "#F8FAF9" : "#EAF6F0",
+                border: hist.is_superseded ? "1px solid #DCE5E1" : "1.5px solid #0D6866",
                 fontSize: "12px",
+                transition: "all 0.15s ease",
               }}
             >
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <strong style={{ color: "#172322" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <strong style={{ color: "#172322", fontSize: "13px" }}>
                     Evaluation #{hist.id.slice(0, 8)}
                   </strong>
                   <span
@@ -772,19 +854,20 @@ export function CaseRequirementEvaluationView({
                       background: "#DDEFE8",
                       color: "#063C3D",
                       fontSize: "11px",
+                      fontWeight: 700,
                     }}
                   >
                     Rule Version v{hist.version_number}
                   </span>
                   {hist.is_superseded ? (
-                    <span style={{ color: "#94a3b8", fontSize: "11px" }}>[Superseded]</span>
+                    <span style={{ color: "#6E7F7C", fontSize: "11px", fontWeight: 600 }}>[Superseded]</span>
                   ) : (
-                    <span style={{ color: "#10b981", fontSize: "11px", fontWeight: 700 }}>[Current Active]</span>
+                    <span style={{ color: "#059669", fontSize: "11px", fontWeight: 700 }}>[Current Active]</span>
                   )}
                 </div>
-                <div style={{ color: "var(--muted, #94a3b8)", marginTop: "2px" }}>
+                <div style={{ color: "#4B5563", marginTop: "3px" }}>
                   Evaluated: {new Date(hist.evaluated_at).toLocaleString()} • Fulfillment:{" "}
-                  {hist.overall_fulfillment_percentage.toFixed(1)}% ({hist.status.toUpperCase()})
+                  <strong>{hist.overall_fulfillment_percentage.toFixed(1)}%</strong> ({hist.status.toUpperCase()})
                 </div>
               </div>
               <Button
@@ -807,7 +890,8 @@ export function CaseRequirementEvaluationView({
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0, 0, 0, 0.8)",
+            background: "rgba(6, 60, 61, 0.55)",
+            backdropFilter: "blur(4px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -817,34 +901,48 @@ export function CaseRequirementEvaluationView({
         >
           <div
             style={{
-              background: "var(--surface, #FFFFFF)",
-              border: "1px solid var(--border, #DCE5E1)",
-              borderRadius: "12px",
-              maxWidth: "640px",
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "16px",
+              maxWidth: "660px",
               width: "100%",
-              padding: "24px",
               maxHeight: "90vh",
               overflowY: "auto",
               display: "flex",
               flexDirection: "column",
-              gap: "16px",
-              boxShadow: "0 20px 40px rgba(6, 60, 61, 0.2)",
+              boxShadow: "0 24px 48px rgba(6, 60, 61, 0.25)",
+              overflow: "hidden",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: "20px 24px",
+                background: "linear-gradient(135deg, #063C3D 0%, #084B4C 100%)",
+                color: "#FFFFFF",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: "12px",
+              }}
+            >
               <div>
                 <span
                   style={{
-                    fontFamily: "monospace",
-                    fontSize: "12px",
-                    color: "#38bdf8",
-                    display: "block",
-                    marginBottom: "4px",
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#B9DED4",
+                    background: "rgba(185, 222, 212, 0.2)",
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    display: "inline-block",
+                    marginBottom: "6px",
                   }}
                 >
                   {selectedItemForDetails.code}
                 </span>
-                <h3 style={{ margin: 0, color: "#f8fafc", fontSize: "16px" }}>
+                <h3 style={{ margin: 0, color: "#FFFFFF", fontSize: "16px", fontWeight: 700 }}>
                   {selectedItemForDetails.title}
                 </h3>
               </div>
@@ -853,23 +951,31 @@ export function CaseRequirementEvaluationView({
                 style={{
                   background: "transparent",
                   border: "none",
-                  color: "#94a3b8",
-                  fontSize: "20px",
+                  color: "#B9DED4",
+                  fontSize: "24px",
                   cursor: "pointer",
+                  lineHeight: 1,
                 }}
               >
                 ✕
               </button>
             </div>
 
-            <div style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.6 }}>
-              <div style={{ marginBottom: "12px" }}>
-                <span style={{ color: "var(--muted, #94a3b8)", display: "block" }}>Statutory Citation:</span>
-                <strong>{selectedItemForDetails.statutory_citation || "N/A"}</strong>
+            {/* Modal Body */}
+            <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "16px", fontSize: "12px", color: "#374151", lineHeight: 1.6 }}>
+              <div>
+                <span style={{ color: "#6E7F7C", display: "block", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "2px" }}>
+                  Statutory Citation:
+                </span>
+                <strong style={{ color: "#172322", fontSize: "13px" }}>
+                  {selectedItemForDetails.statutory_citation || "N/A"}
+                </strong>
               </div>
 
-              <div style={{ marginBottom: "12px" }}>
-                <span style={{ color: "var(--muted, #94a3b8)", display: "block" }}>Official Validation Status:</span>
+              <div>
+                <span style={{ color: "#6E7F7C", display: "block", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                  Official Validation Status:
+                </span>
                 {getStatusBadge(
                   (localSignoffs[selectedItemForDetails.code] || selectedItemForDetails.human_signoff_completed) &&
                     selectedItemForDetails.status === "needs_review"
@@ -878,10 +984,12 @@ export function CaseRequirementEvaluationView({
                 )}
               </div>
 
-              <div style={{ marginBottom: "12px" }}>
-                <span style={{ color: "var(--muted, #94a3b8)", display: "block" }}>Declarative Validation Results:</span>
-                <div style={{ background: "#1e293b", padding: "10px", borderRadius: "6px", marginTop: "4px" }}>
-                  <ul style={{ margin: 0, paddingLeft: "16px" }}>
+              <div>
+                <span style={{ color: "#6E7F7C", display: "block", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                  Declarative Validation Results:
+                </span>
+                <div style={{ background: "#F8FAF9", border: "1px solid #E2E8E4", padding: "12px 16px", borderRadius: "8px" }}>
+                  <ul style={{ margin: 0, paddingLeft: "16px", color: "#172322" }}>
                     {selectedItemForDetails.validation_details.map((v, i) => (
                       <li key={i}>{v}</li>
                     ))}
@@ -889,29 +997,42 @@ export function CaseRequirementEvaluationView({
                 </div>
               </div>
 
-              <div style={{ marginBottom: "12px" }}>
-                <span style={{ color: "var(--muted, #94a3b8)", display: "block" }}>Adjudication Notes / Rationale:</span>
+              <div>
+                <span style={{ color: "#6E7F7C", display: "block", fontWeight: 700, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "4px" }}>
+                  Adjudication Notes / Rationale:
+                </span>
                 <textarea
                   placeholder="Enter specialist review findings, Kazarian step 2 assessment, or reason for sign-off..."
                   value={adjudicationNote}
                   onChange={(e) => setAdjudicationNote(e.target.value)}
                   style={{
                     width: "100%",
-                    minHeight: "80px",
-                    marginTop: "6px",
-                    padding: "8px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid #334155",
-                    background: "#1e293b",
-                    color: "#f8fafc",
+                    minHeight: "90px",
+                    marginTop: "4px",
+                    padding: "10px 14px",
+                    borderRadius: "8px",
+                    border: "1.5px solid #DCE5E1",
+                    background: "#FAFAF8",
+                    color: "#172322",
                     fontSize: "12px",
                     fontFamily: "inherit",
+                    outline: "none",
                   }}
                 />
               </div>
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: "16px 24px",
+                background: "#F8FAF9",
+                borderTop: "1px solid #E2E8E4",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
               <Button variant="ghost" size="sm" onClick={() => setSelectedItemForDetails(null)}>
                 Cancel
               </Button>

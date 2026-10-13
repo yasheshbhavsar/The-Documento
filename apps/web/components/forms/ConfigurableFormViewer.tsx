@@ -132,90 +132,266 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
   const isClientRole = userRole === "retained_client" || userRole === "applicant" || userRole === "client";
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" data-testid="configurable-form-viewer">
-      {/* Top Header */}
-      <div className="p-6 bg-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <span className="px-2.5 py-1 text-xs font-semibold uppercase tracking-wider bg-blue-500/20 text-blue-300 rounded border border-blue-400/30">
+    <div
+      data-testid="configurable-form-viewer"
+      style={{
+        background: "#FFFFFF",
+        borderRadius: "14px",
+        border: "1px solid #DCE5E1",
+        boxShadow: "0 6px 24px rgba(6, 60, 61, 0.06)",
+        overflow: "hidden",
+        fontFamily: "inherit",
+      }}
+    >
+      {/* Top Executive Header */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, #063C3D 0%, #084B4C 100%)",
+          color: "#FFFFFF",
+          padding: "24px 28px",
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "20px",
+          borderBottom: "1px solid rgba(185, 222, 212, 0.2)",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: "280px" }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+            <span
+              style={{
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                background: "rgba(185, 222, 212, 0.18)",
+                color: "#B9DED4",
+                borderRadius: "6px",
+                border: "1px solid rgba(185, 222, 212, 0.35)",
+              }}
+            >
               {submission.form_code}
             </span>
-            <span className="px-2.5 py-1 text-xs font-medium bg-slate-800 text-slate-300 rounded">
+            <span
+              style={{
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontWeight: 600,
+                background: "rgba(255, 255, 255, 0.12)",
+                color: "#E2ECE9",
+                borderRadius: "6px",
+              }}
+            >
               Version {submission.version_number}
             </span>
             <span
-              className={`px-2.5 py-1 text-xs font-semibold rounded uppercase ${
-                submission.status === "draft"
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-400/30"
-                  : "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30"
-              }`}
+              style={{
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontWeight: 700,
+                borderRadius: "6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                background: submission.status === "draft" ? "#FEF3C7" : "#D1FAE5",
+                color: submission.status === "draft" ? "#92400E" : "#065F46",
+                border: submission.status === "draft" ? "1px solid #FCD34D" : "1px solid #6EE7B7",
+              }}
             >
               {submission.status}
             </span>
           </div>
-          <h2 className="text-xl font-bold mt-2 text-white">{submission.form_name}</h2>
-          <p className="text-xs text-slate-400 mt-1">
+
+          <h2
+            style={{
+              fontSize: "20px",
+              fontWeight: 700,
+              color: "#FFFFFF",
+              margin: "10px 0 4px 0",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {submission.form_name}
+          </h2>
+          <p style={{ fontSize: "12px", color: "#B9DED4", margin: 0 }}>
             Revisions: #{submission.revision_number} • Evaluated under jurisdiction legal standard
           </p>
         </div>
 
         {/* Completion & Revision Info */}
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <div className="text-xs text-slate-400 mb-1">Answer Completeness</div>
-            <div className="flex items-center gap-2">
-              <div className="w-28 bg-slate-800 rounded-full h-2.5 overflow-hidden">
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "20px" }}>
+          <div
+            style={{
+              textAlign: "right",
+              background: "rgba(255, 255, 255, 0.08)",
+              padding: "10px 16px",
+              borderRadius: "10px",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "11px",
+                color: "#B9DED4",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                marginBottom: "6px",
+              }}
+            >
+              Answer Completeness
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-end" }}>
+              <div
+                style={{
+                  width: "120px",
+                  background: "rgba(255, 255, 255, 0.2)",
+                  borderRadius: "999px",
+                  height: "8px",
+                  overflow: "hidden",
+                }}
+              >
                 <div
-                  className="bg-emerald-500 h-2.5 rounded-full transition-all"
-                  style={{ width: `${submission.completion_percentage}%` }}
+                  style={{
+                    background: "linear-gradient(90deg, #34D399 0%, #10B981 100%)",
+                    height: "8px",
+                    borderRadius: "999px",
+                    width: `${submission.completion_percentage}%`,
+                    transition: "width 0.3s ease",
+                  }}
                 />
               </div>
-              <span className="text-sm font-bold text-white">{submission.completion_percentage}%</span>
+              <span style={{ fontSize: "15px", fontWeight: 800, color: "#FFFFFF" }}>
+                {submission.completion_percentage}%
+              </span>
             </div>
           </div>
+
           <button
             type="button"
             onClick={() => setShowHistoryDrawer(true)}
-            className="px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition"
+            style={{
+              padding: "9px 16px",
+              fontSize: "12px",
+              fontWeight: 600,
+              color: "#FFFFFF",
+              background: "rgba(255, 255, 255, 0.14)",
+              border: "1px solid rgba(255, 255, 255, 0.25)",
+              borderRadius: "8px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              transition: "all 0.15s ease",
+            }}
           >
-            History ({submission.revision_history?.length || 1})
+            <span>📜</span> History ({submission.revision_history?.length || 1})
           </button>
         </div>
       </div>
 
       {/* AI Draft Warning Banner */}
       {submission.has_unconfirmed_ai_fields && (
-        <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-amber-800 text-xs">
-            <span className="font-bold">⚠️ UNCONFIRMED DRAFT ANSWERS:</span>
-            <span>
+        <div
+          style={{
+            padding: "14px 28px",
+            background: "#FFFBEB",
+            borderBottom: "1px solid #FCD34D",
+            borderLeft: "5px solid #F59E0B",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", flex: 1, minWidth: "260px" }}>
+            <span style={{ fontWeight: 800, color: "#92400E", whiteSpace: "nowrap" }}>
+              ⚠️ UNCONFIRMED DRAFT ANSWERS:
+            </span>
+            <span style={{ color: "#78350F", lineHeight: "1.4" }}>
               This form contains auto-populated AI synthesis or OCR extraction drafts. Values must be confirmed by an authorized human prior to final approval.
             </span>
           </div>
-          <span className="text-xs font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              color: "#92400E",
+              background: "#FEF3C7",
+              border: "1px solid #F59E0B",
+              padding: "4px 12px",
+              borderRadius: "999px",
+              whiteSpace: "nowrap",
+            }}
+          >
             Confirmation Required
           </span>
         </div>
       )}
 
+      {/* Feedback Message Notification */}
       {feedbackMsg && (
         <div
-          className={`px-6 py-2.5 text-xs font-medium flex items-center justify-between ${
-            feedbackMsg.type === "success" ? "bg-emerald-50 text-emerald-800 border-b border-emerald-200" : "bg-red-50 text-red-800 border-b border-red-200"
-          }`}
+          style={{
+            padding: "12px 28px",
+            fontSize: "12px",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            background: feedbackMsg.type === "success" ? "#ECFDF5" : "#FEF2F2",
+            color: feedbackMsg.type === "success" ? "#065F46" : "#991B1B",
+            borderBottom: feedbackMsg.type === "success" ? "1px solid #A7F3D0" : "1px solid #FECACA",
+          }}
         >
           <span>{feedbackMsg.text}</span>
-          <button type="button" onClick={() => setFeedbackMsg(null)} className="text-slate-400 hover:text-slate-600 font-bold">
+          <button
+            type="button"
+            onClick={() => setFeedbackMsg(null)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "inherit",
+              cursor: "pointer",
+              fontWeight: "bold",
+              fontSize: "16px",
+            }}
+          >
             ×
           </button>
         </div>
       )}
 
-      {/* Main Body: Sidebar Sections + Form Fields */}
-      <div className="flex flex-col md:flex-row min-h-[500px]">
-        {/* Section Navigation Tabs */}
-        <div className="w-full md:w-64 border-r border-slate-200 bg-slate-50/70 p-3 space-y-1">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-3 py-2">
+      {/* Main Body: Two-Pane Sidebar Sections + Form Fields */}
+      <div style={{ display: "flex", flexDirection: "row", minHeight: "560px", background: "#FFFFFF" }}>
+        {/* Section Navigation Tabs Sidebar */}
+        <div
+          style={{
+            width: "300px",
+            minWidth: "300px",
+            maxWidth: "300px",
+            borderRight: "1px solid #E2E8E4",
+            background: "#F8F9F8",
+            padding: "18px 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              color: "#6E7F7C",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              padding: "6px 12px 10px 12px",
+              borderBottom: "1px solid #E5EBE8",
+              marginBottom: "4px",
+            }}
+          >
             Form Sections
           </div>
           {sections.map((sec, idx) => {
@@ -225,34 +401,81 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                 key={sec.id}
                 type="button"
                 onClick={() => setActiveSectionId(sec.id)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium transition flex items-start gap-2 ${
-                  isActive
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "12px 14px",
+                  borderRadius: "10px",
+                  fontSize: "12px",
+                  lineHeight: "1.4",
+                  fontWeight: isActive ? 700 : 500,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "10px",
+                  transition: "all 0.15s ease",
+                  background: isActive ? "#EAF6F0" : "transparent",
+                  color: isActive ? "#063C3D" : "#374151",
+                  border: isActive ? "1.5px solid #0D6866" : "1.5px solid transparent",
+                  boxShadow: isActive ? "0 2px 8px rgba(13, 104, 102, 0.08)" : "none",
+                }}
               >
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 ${isActive ? "bg-blue-700 text-white" : "bg-slate-200 text-slate-600"}`}>
+                <span
+                  style={{
+                    width: "22px",
+                    height: "22px",
+                    borderRadius: "999px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    flexShrink: 0,
+                    marginTop: "1px",
+                    background: isActive ? "#0D6866" : "#E2E8E4",
+                    color: isActive ? "#FFFFFF" : "#4B5563",
+                  }}
+                >
                   {idx + 1}
                 </span>
-                <span className="line-clamp-2">{sec.title}</span>
+                <span style={{ flex: 1, wordBreak: "break-word" }}>{sec.title}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Form Section Content */}
-        <div className="flex-1 p-6">
+        {/* Form Section Content Pane */}
+        <div style={{ flex: 1, padding: "28px 36px", overflowY: "auto", background: "#FFFFFF" }}>
           {activeSection ? (
             <div>
-              <div className="border-b border-slate-200 pb-4 mb-6">
-                <h3 className="text-base font-bold text-slate-900">{activeSection.title}</h3>
+              {/* Section Header */}
+              <div
+                style={{
+                  borderBottom: "1px solid #E2E8E4",
+                  paddingBottom: "16px",
+                  marginBottom: "24px",
+                }}
+              >
+                <h3
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    color: "#172322",
+                    margin: "0 0 6px 0",
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  {activeSection.title}
+                </h3>
                 {activeSection.description && (
-                  <p className="text-xs text-slate-500 mt-1">{activeSection.description}</p>
+                  <p style={{ fontSize: "13px", color: "#6E7F7C", margin: 0, lineHeight: "1.5" }}>
+                    {activeSection.description}
+                  </p>
                 )}
               </div>
 
               {/* Fields List */}
-              <div className="space-y-6">
+              <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
                 {activeSection.fields.map((field) => {
                   if (!shouldShowField(field)) return null;
 
@@ -264,42 +487,114 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                   return (
                     <div
                       key={field.key}
-                      className={`p-4 rounded-xl border transition ${
-                        field.is_sensitive
-                          ? "border-amber-300 bg-amber-50/40"
-                          : answerRec && !isConfirmed
-                          ? "border-blue-200 bg-blue-50/20"
-                          : "border-slate-200 bg-white"
-                      }`}
                       data-testid={`form-field-${field.key}`}
+                      style={{
+                        borderRadius: "12px",
+                        padding: "18px 20px",
+                        transition: "all 0.15s ease",
+                        background: field.is_sensitive
+                          ? "#FFFBF7"
+                          : answerRec && !isConfirmed
+                          ? "#F8FCFC"
+                          : "#FAFAF8",
+                        border: field.is_sensitive
+                          ? "1.5px solid #FDBA74"
+                          : answerRec && !isConfirmed
+                          ? "1.5px solid #99D5CA"
+                          : "1px solid #E5E7EB",
+                        boxShadow: "0 1px 4px rgba(0, 0, 0, 0.02)",
+                      }}
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                        <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      {/* Field Top Row: Label, Sensitivity Badge, Provenance Pill, and Confirmation Button */}
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "10px",
+                          marginBottom: "8px",
+                        }}
+                      >
+                        <label
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            color: "#172322",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            margin: 0,
+                          }}
+                        >
                           {field.label}
-                          {field.required && <span className="text-red-500 font-bold">*</span>}
+                          {field.required && <span style={{ color: "#DC2626", fontWeight: "bold" }}>*</span>}
                           {field.is_sensitive && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700 rounded border border-red-200">
+                            <span
+                              style={{
+                                padding: "2px 8px",
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                background: "#FEE2E2",
+                                color: "#991B1B",
+                                borderRadius: "4px",
+                                border: "1px solid #FCA5A5",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.03em",
+                              }}
+                            >
                               Sensitive Inadmissibility Field
                             </span>
                           )}
                         </label>
 
-                        {/* Provenance Badge */}
+                        {/* Provenance Badge & Confirmation Status */}
                         {answerRec && (
-                          <div className="flex items-center gap-2">
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                             <span
-                              className={`px-2 py-0.5 text-[10px] font-semibold rounded-full flex items-center gap-1 ${
-                                sourceType === "client_profile"
-                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                                  : sourceType === "document_ocr"
-                                  ? "bg-blue-100 text-blue-800 border border-blue-200"
-                                  : sourceType === "ai_generated"
-                                  ? "bg-amber-100 text-amber-800 border border-amber-200"
-                                  : "bg-slate-100 text-slate-700 border border-slate-200"
-                              }`}
                               title={answerRec.source_label}
+                              style={{
+                                padding: "3px 10px",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                borderRadius: "999px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                background:
+                                  sourceType === "client_profile"
+                                    ? "#ECFDF5"
+                                    : sourceType === "document_ocr"
+                                    ? "#EFF6FF"
+                                    : sourceType === "ai_generated"
+                                    ? "#FFFBEB"
+                                    : "#F3F4F6",
+                                color:
+                                  sourceType === "client_profile"
+                                    ? "#065F46"
+                                    : sourceType === "document_ocr"
+                                    ? "#1E40AF"
+                                    : sourceType === "ai_generated"
+                                    ? "#92400E"
+                                    : "#374151",
+                                border:
+                                  sourceType === "client_profile"
+                                    ? "1px solid #A7F3D0"
+                                    : sourceType === "document_ocr"
+                                    ? "1px solid #BFDBFE"
+                                    : sourceType === "ai_generated"
+                                    ? "1px solid #FDE68A"
+                                    : "1px solid #E5E7EB",
+                              }}
                             >
-                              <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                              <span
+                                style={{
+                                  width: "6px",
+                                  height: "6px",
+                                  borderRadius: "999px",
+                                  background: "currentColor",
+                                }}
+                              />
                               {sourceType === "client_profile" && "Client Profile"}
                               {sourceType === "document_ocr" && "Verified OCR"}
                               {sourceType === "ai_generated" && "AI Draft"}
@@ -308,7 +603,20 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
 
                             {/* Confirmation Status */}
                             {isConfirmed ? (
-                              <span className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1">
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  color: "#059669",
+                                  background: "#D1FAE5",
+                                  border: "1px solid #6EE7B7",
+                                  padding: "3px 10px",
+                                  borderRadius: "999px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
                                 ✓ Confirmed
                               </span>
                             ) : (
@@ -316,7 +624,18 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                                 type="button"
                                 disabled={isSubmitting}
                                 onClick={() => handleConfirmField(field.key)}
-                                className="px-2 py-0.5 text-[10px] font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded transition shadow-xs"
+                                style={{
+                                  padding: "4px 12px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  background: "#0D6866",
+                                  color: "#FFFFFF",
+                                  borderRadius: "6px",
+                                  border: "none",
+                                  cursor: isSubmitting ? "not-allowed" : "pointer",
+                                  boxShadow: "0 1px 3px rgba(13, 104, 102, 0.2)",
+                                  transition: "all 0.15s ease",
+                                }}
                               >
                                 Confirm Field Value
                               </button>
@@ -327,31 +646,73 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
 
                       {/* Source Mapping Label Subtext */}
                       {answerRec?.source_label && (
-                        <p className="text-[11px] text-slate-400 mb-2 font-mono">
-                          Source: {answerRec.source_label}
-                        </p>
+                        <div style={{ marginBottom: "10px" }}>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: "#6E7F7C",
+                              fontFamily: "ui-monospace, monospace",
+                              background: "#F1F5F4",
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                              display: "inline-block",
+                            }}
+                          >
+                            Source: {answerRec.source_label}
+                          </span>
+                        </div>
                       )}
 
                       {/* Input based on Field Type */}
                       {field.field_type === "boolean" ? (
-                        <div className="flex items-center gap-4 mt-1">
-                          <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <div style={{ display: "flex", alignItems: "center", gap: "16px", marginTop: "6px" }}>
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              fontSize: "13px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              padding: "8px 18px",
+                              borderRadius: "8px",
+                              background: currentVal === true ? "#EAF6F0" : "#FFFFFF",
+                              border: currentVal === true ? "1.5px solid #0D6866" : "1px solid #D1D5DB",
+                              color: currentVal === true ? "#063C3D" : "#374151",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
                             <input
                               type="radio"
                               name={field.key}
                               checked={currentVal === true}
                               onChange={() => handleFieldChange(field.key, true)}
-                              className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                              style={{ accentColor: "#0D6866", width: "16px", height: "16px", cursor: "pointer" }}
                             />
                             Yes
                           </label>
-                          <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              fontSize: "13px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              padding: "8px 18px",
+                              borderRadius: "8px",
+                              background: currentVal === false ? "#EAF6F0" : "#FFFFFF",
+                              border: currentVal === false ? "1.5px solid #0D6866" : "1px solid #D1D5DB",
+                              color: currentVal === false ? "#063C3D" : "#374151",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
                             <input
                               type="radio"
                               name={field.key}
                               checked={currentVal === false}
                               onChange={() => handleFieldChange(field.key, false)}
-                              className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                              style={{ accentColor: "#0D6866", width: "16px", height: "16px", cursor: "pointer" }}
                             />
                             No
                           </label>
@@ -360,7 +721,17 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                         <select
                           value={currentVal}
                           onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                          className="w-full text-xs rounded-lg border border-slate-300 p-2.5 bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          style={{
+                            width: "100%",
+                            fontSize: "13px",
+                            borderRadius: "8px",
+                            border: "1.5px solid #D1D5DB",
+                            padding: "10px 14px",
+                            background: "#FFFFFF",
+                            color: "#111827",
+                            outline: "none",
+                            transition: "border-color 0.15s ease",
+                          }}
                         >
                           <option value="">-- Select an option --</option>
                           {field.options?.map((opt) => (
@@ -375,7 +746,18 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                           value={currentVal}
                           onChange={(e) => handleFieldChange(field.key, e.target.value)}
                           placeholder={`Enter ${field.label.toLowerCase()}...`}
-                          className="w-full text-xs rounded-lg border border-slate-300 p-2.5 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          style={{
+                            width: "100%",
+                            fontSize: "13px",
+                            borderRadius: "8px",
+                            border: "1.5px solid #D1D5DB",
+                            padding: "10px 14px",
+                            background: "#FFFFFF",
+                            color: "#111827",
+                            outline: "none",
+                            resize: "vertical",
+                            lineHeight: "1.5",
+                          }}
                         />
                       ) : (
                         <input
@@ -383,7 +765,17 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                           value={currentVal}
                           onChange={(e) => handleFieldChange(field.key, e.target.value)}
                           placeholder={`Enter ${field.label.toLowerCase()}...`}
-                          className="w-full text-xs rounded-lg border border-slate-300 p-2.5 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          style={{
+                            width: "100%",
+                            fontSize: "13px",
+                            borderRadius: "8px",
+                            border: "1.5px solid #D1D5DB",
+                            padding: "10px 14px",
+                            background: "#FFFFFF",
+                            color: "#111827",
+                            outline: "none",
+                            transition: "border-color 0.15s ease",
+                          }}
                         />
                       )}
                     </div>
@@ -393,29 +785,62 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
 
               {/* Special Part 4 Sensitive Field Certification Block */}
               {activeSection.id === "part4_processing" && (
-                <div className="mt-8 p-5 bg-red-50 border border-red-200 rounded-xl" data-testid="sensitive-review-block">
-                  <div className="flex items-start gap-3">
-                    <span className="text-xl">⚖️</span>
-                    <div className="flex-1">
-                      <h4 className="text-sm font-bold text-red-900">
+                <div
+                  data-testid="sensitive-review-block"
+                  style={{
+                    marginTop: "32px",
+                    padding: "24px",
+                    background: "#FEF2F2",
+                    border: "1.5px solid #FCA5A5",
+                    borderRadius: "14px",
+                    boxShadow: "0 4px 14px rgba(220, 38, 38, 0.06)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
+                    <span style={{ fontSize: "24px", lineHeight: "1" }}>⚖️</span>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ fontSize: "15px", fontWeight: 800, color: "#991B1B", margin: 0 }}>
                         Designated Sensitive-Field Legal Review Certification
                       </h4>
-                      <p className="text-xs text-red-700 mt-1">
+                      <p style={{ fontSize: "12px", color: "#7F1D1D", marginTop: "6px", marginBottom: 0, lineHeight: "1.5" }}>
                         Federal immigration regulations require formal attorney or designated specialist signoff certifying that grounds of inadmissibility (removal history, criminal convictions) have been reviewed. Clients are prohibited from self-certifying this requirement.
                       </p>
 
                       {submission.sensitive_fields_reviewed ? (
-                        <div className="mt-3 p-3 bg-white rounded-lg border border-emerald-300 text-xs">
-                          <span className="font-bold text-emerald-800">✓ CERTIFIED BY LEGAL COUNSEL</span>
-                          <p className="text-slate-600 mt-1">Notes: {submission.reviewer_notes || "Statutory grounds reviewed."}</p>
-                          <p className="text-slate-400 text-[10px] mt-0.5">
+                        <div
+                          style={{
+                            marginTop: "16px",
+                            padding: "16px",
+                            background: "#FFFFFF",
+                            borderRadius: "10px",
+                            border: "1.5px solid #6EE7B7",
+                            fontSize: "12px",
+                          }}
+                        >
+                          <span style={{ fontWeight: 800, color: "#065F46", fontSize: "13px" }}>
+                            ✓ CERTIFIED BY LEGAL COUNSEL
+                          </span>
+                          <p style={{ color: "#374151", margin: "6px 0 2px 0" }}>
+                            Notes: {submission.reviewer_notes || "Statutory grounds reviewed."}
+                          </p>
+                          <p style={{ color: "#6B7280", fontSize: "11px", margin: 0 }}>
                             Certified at: {submission.reviewed_at ? new Date(submission.reviewed_at).toLocaleString() : "Confirmed"}
                           </p>
                         </div>
                       ) : (
-                        <div className="mt-4 space-y-3">
+                        <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
                           {isClientRole ? (
-                            <div className="p-3 bg-amber-100/70 border border-amber-300 rounded-lg text-xs text-amber-900">
+                            <div
+                              style={{
+                                padding: "14px 16px",
+                                background: "#FFFBEB",
+                                border: "1px solid #FCD34D",
+                                borderRadius: "10px",
+                                fontSize: "12px",
+                                color: "#92400E",
+                                lineHeight: "1.5",
+                              }}
+                            >
                               ℹ️ You are viewing as a client applicant. Sensitive background certification must be completed by your retained legal counsel prior to formal package filing.
                             </div>
                           ) : (
@@ -425,16 +850,38 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                                 value={sensitiveNotes}
                                 onChange={(e) => setSensitiveNotes(e.target.value)}
                                 placeholder="Enter certified counsel notes verifying review of police clearance, court documents, or no-record declarations..."
-                                className="w-full text-xs p-2.5 rounded-lg border border-red-300 bg-white text-slate-900 focus:ring-2 focus:ring-red-500"
+                                style={{
+                                  width: "100%",
+                                  fontSize: "12px",
+                                  padding: "10px 14px",
+                                  borderRadius: "8px",
+                                  border: "1.5px solid #FCA5A5",
+                                  background: "#FFFFFF",
+                                  color: "#111827",
+                                  outline: "none",
+                                }}
                               />
-                              <button
-                                type="button"
-                                disabled={isSubmitting}
-                                onClick={handleSignoffSensitive}
-                                className="px-4 py-2 text-xs font-bold text-white bg-red-700 hover:bg-red-800 rounded-lg shadow-sm transition"
-                              >
-                                Certify Sensitive Fields Review
-                              </button>
+                              <div>
+                                <button
+                                  type="button"
+                                  disabled={isSubmitting}
+                                  onClick={handleSignoffSensitive}
+                                  style={{
+                                    padding: "10px 20px",
+                                    fontSize: "12px",
+                                    fontWeight: 700,
+                                    color: "#FFFFFF",
+                                    background: "#DC2626",
+                                    borderRadius: "8px",
+                                    border: "none",
+                                    cursor: isSubmitting ? "not-allowed" : "pointer",
+                                    boxShadow: "0 2px 6px rgba(220, 38, 38, 0.25)",
+                                    transition: "all 0.15s ease",
+                                  }}
+                                >
+                                  Certify Sensitive Fields Review
+                                </button>
+                              </div>
                             </>
                           )}
                         </div>
@@ -444,31 +891,65 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                 </div>
               )}
 
-              {/* Action Bar for Section */}
-              <div className="mt-8 pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="w-full sm:w-1/2">
+              {/* Action Bar for Section: Revision reason & Save button */}
+              <div
+                style={{
+                  marginTop: "32px",
+                  paddingTop: "20px",
+                  borderTop: "1.5px solid #E2E8E4",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "16px",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: "280px", maxWidth: "480px" }}>
                   <input
                     type="text"
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
                     placeholder="Revision reason (e.g. Updated client Alien number from historical approval notice)..."
-                    className="w-full text-xs p-2 rounded-lg border border-slate-300"
+                    style={{
+                      width: "100%",
+                      fontSize: "12px",
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      border: "1.5px solid #D1D5DB",
+                      background: "#FAFAF8",
+                      color: "#111827",
+                      outline: "none",
+                    }}
                   />
                 </div>
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                   <button
                     type="button"
                     disabled={isSubmitting}
                     onClick={handleSaveAnswers}
-                    className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition flex items-center gap-2"
+                    style={{
+                      padding: "11px 24px",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      color: "#FFFFFF",
+                      background: "#0D6866",
+                      borderRadius: "8px",
+                      border: "none",
+                      cursor: isSubmitting ? "not-allowed" : "pointer",
+                      boxShadow: "0 2px 8px rgba(13, 104, 102, 0.25)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      transition: "all 0.15s ease",
+                    }}
                   >
-                    Save & Record Revision #{submission.revision_number + 1}
+                    <span>💾</span> Save & Record Revision #{submission.revision_number + 1}
                   </button>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="text-center py-12 text-slate-400 text-sm">
+            <div style={{ textAlign: "center", padding: "48px 0", color: "#6E7F7C", fontSize: "14px" }}>
               No section selected.
             </div>
           )}
@@ -477,35 +958,132 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
 
       {/* Revision History Drawer Modal */}
       {showHistoryDrawer && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">Revision History Log</h3>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(6, 60, 61, 0.5)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              background: "#FFFFFF",
+              borderRadius: "16px",
+              boxShadow: "0 20px 45px rgba(6, 60, 61, 0.25)",
+              maxWidth: "560px",
+              width: "100%",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              border: "1px solid #DCE5E1",
+            }}
+          >
+            <div
+              style={{
+                padding: "20px 24px",
+                background: "#063C3D",
+                color: "#FFFFFF",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0, color: "#FFFFFF" }}>
+                Revision History Log
+              </h3>
               <button
                 type="button"
                 onClick={() => setShowHistoryDrawer(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#B9DED4",
+                  fontSize: "24px",
+                  cursor: "pointer",
+                  lineHeight: 1,
+                }}
               >
                 ×
               </button>
             </div>
-            <div className="p-4 overflow-y-auto space-y-3 flex-1 text-xs">
+            <div
+              style={{
+                padding: "20px 24px",
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                flex: 1,
+                fontSize: "12px",
+              }}
+            >
               {(submission.revision_history || []).map((rev) => (
-                <div key={rev.revision} className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                  <div className="flex items-center justify-between mb-1 font-semibold text-slate-800">
+                <div
+                  key={rev.revision}
+                  style={{
+                    padding: "14px 16px",
+                    background: "#F8FAF9",
+                    border: "1px solid #E2E8E4",
+                    borderRadius: "10px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: "4px",
+                      fontWeight: 700,
+                      color: "#172322",
+                    }}
+                  >
                     <span>Revision #{rev.revision}</span>
-                    <span className="text-[10px] text-slate-400">{new Date(rev.timestamp).toLocaleString()}</span>
+                    <span style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 400 }}>
+                      {new Date(rev.timestamp).toLocaleString()}
+                    </span>
                   </div>
-                  <p className="text-slate-600">{rev.changes_summary}</p>
-                  <p className="text-[10px] text-slate-400 mt-1">Author: {rev.updated_by}</p>
+                  <p style={{ color: "#374151", margin: "4px 0", lineHeight: "1.4" }}>
+                    {rev.changes_summary}
+                  </p>
+                  <p style={{ fontSize: "11px", color: "#6E7F7C", margin: "6px 0 0 0" }}>
+                    Author: {rev.updated_by}
+                  </p>
                 </div>
               ))}
             </div>
-            <div className="p-3 border-t border-slate-200 text-right">
+            <div
+              style={{
+                padding: "14px 24px",
+                borderTop: "1px solid #E2E8E4",
+                background: "#F8FAF9",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
               <button
                 type="button"
                 onClick={() => setShowHistoryDrawer(false)}
-                className="px-4 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700"
+                style={{
+                  padding: "8px 20px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  background: "#E5E7EB",
+                  color: "#374151",
+                  borderRadius: "8px",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "background 0.15s ease",
+                }}
               >
                 Close
               </button>
