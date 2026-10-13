@@ -139,22 +139,58 @@ export function DocumentUploadModal({
         </>
       }
     >
-      <div className="space-y-4">
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {error && (
-          <div className="p-3 bg-red-950/80 border border-red-800 text-red-200 text-xs rounded-lg flex items-center justify-between">
+          <div
+            style={{
+              padding: "10px 14px",
+              background: "#FDF2F2",
+              border: "1px solid #FCA5A5",
+              color: "#A62D35",
+              fontSize: "12px",
+              borderRadius: "8px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
             <span>{error}</span>
-            <button onClick={() => setError(null)} className="font-bold text-red-400 hover:text-red-200">×</button>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              style={{
+                background: "transparent",
+                border: "none",
+                fontWeight: 700,
+                color: "#A62D35",
+                cursor: "pointer",
+                fontSize: "16px",
+                lineHeight: 1,
+              }}
+              aria-label="Dismiss error"
+            >
+              ×
+            </button>
           </div>
         )}
 
         {parentDocumentId && (
-          <div className="p-2.5 bg-indigo-950/70 border border-indigo-800 text-indigo-300 text-xs rounded-lg">
+          <div
+            style={{
+              padding: "10px 14px",
+              background: "#EDF5FB",
+              border: "1px solid #BAE6FD",
+              color: "#0369A1",
+              fontSize: "12px",
+              borderRadius: "8px",
+            }}
+          >
             Uploading as a new revision (superseding previous version).
           </div>
         )}
 
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1">
+          <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "6px" }}>
             Document Category *
           </label>
           <SelectInput
@@ -165,7 +201,7 @@ export function DocumentUploadModal({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1">
+          <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "6px" }}>
             Display Document Title
           </label>
           <input
@@ -173,34 +209,74 @@ export function DocumentUploadModal({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g., US Passport Biodata Page"
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+            style={{
+              width: "100%",
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "8px",
+              padding: "10px 12px",
+              fontSize: "13px",
+              color: "#172322",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
           />
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1">
+          <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "6px" }}>
             Select Document File (PDF, JPEG, PNG, TIFF, WebP — Max 50 MB) *
           </label>
-          <div className="border-2 border-dashed border-slate-700 hover:border-indigo-500/80 rounded-xl p-6 text-center transition-colors bg-slate-900/40">
+          <div
+            style={{
+              border: "2px dashed #B9DED4",
+              background: "#F8F7F2",
+              borderRadius: "12px",
+              padding: "24px",
+              textAlign: "center",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
             <input
               type="file"
               accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp"
               onChange={handleFileChange}
               disabled={isProcessing}
-              className="hidden"
+              style={{ display: "none" }}
               id="file-upload-input"
             />
             <label
               htmlFor="file-upload-input"
-              className="cursor-pointer flex flex-col items-center justify-center space-y-2"
+              style={{
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+              }}
             >
-              <div className="w-10 h-10 rounded-full bg-indigo-950/70 border border-indigo-800 flex items-center justify-center text-indigo-400 text-xl">
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "50%",
+                  background: "#EAF6F0",
+                  border: "1px solid #B9DED4",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#0D6866",
+                  fontSize: "18px",
+                }}
+              >
                 📁
               </div>
-              <span className="text-xs font-medium text-slate-200">
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#063C3D" }}>
                 {selectedFile ? selectedFile.name : "Click to browse or drop document here"}
               </span>
-              <span className="text-[11px] text-slate-500">
+              <span style={{ fontSize: "11px", color: "#6E7F7C" }}>
                 {selectedFile
                   ? `${formatBytes(selectedFile.size)} • Type: ${selectedFile.type || "application/pdf"}`
                   : "PDF, JPEG, PNG, TIFF, or WebP up to 50 MB"}
@@ -210,27 +286,55 @@ export function DocumentUploadModal({
         </div>
 
         {statusMessage && (
-          <div className="p-3 bg-slate-900 border border-slate-800 rounded-lg text-xs space-y-1">
-            <div className="flex items-center gap-2 text-indigo-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+          <div
+            style={{
+              padding: "12px 14px",
+              background: "#EAF6F0",
+              border: "1px solid #B9DED4",
+              borderRadius: "8px",
+              fontSize: "12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#176B50", fontWeight: 600 }}>
+              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#176B50" }} />
               {statusMessage}
             </div>
             {computedHash && (
-              <div className="text-[11px] font-mono text-slate-400 break-all pt-1 border-t border-slate-800">
+              <div
+                style={{
+                  fontSize: "11px",
+                  fontFamily: "monospace",
+                  color: "#445451",
+                  wordBreak: "break-all",
+                  paddingTop: "6px",
+                  marginTop: "6px",
+                  borderTop: "1px solid #B9DED4",
+                }}
+              >
                 SHA-256: {computedHash}
               </div>
             )}
           </div>
         )}
 
-        <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-lg text-[11px] text-slate-400 space-y-1">
-          <div className="font-semibold text-slate-300">Security & Integrity Assurance:</div>
-          <p>
-            • Magic-byte verification ensures zero executable disguises.<br />
-            • Heuristic malware scan prevents corrupted or infected payloads.<br />
-            • Automated PyMuPDF & OCR extraction records full data provenance.<br />
-            • Documents remain isolated to your organization's private cryptographic vault.
-          </p>
+        <div
+          style={{
+            padding: "12px 14px",
+            background: "#F8F7F2",
+            border: "1px solid #DCE5E1",
+            borderRadius: "8px",
+            fontSize: "11px",
+            color: "#445451",
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 650, color: "#063C3D", marginBottom: "4px" }}>
+            Security &amp; Integrity Assurance:
+          </div>
+          <div>• Magic-byte verification ensures zero executable disguises.</div>
+          <div>• Heuristic malware scan prevents corrupted or infected payloads.</div>
+          <div>• Automated PyMuPDF &amp; OCR extraction records full data provenance.</div>
+          <div>• Documents remain isolated to your organization's private cryptographic vault.</div>
         </div>
       </div>
     </Modal>

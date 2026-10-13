@@ -26,8 +26,8 @@ class SimpleRateLimiterMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         client_ip = request.client.host if request.client else "unknown"
-        # Exempt health check, docs, and local test client
-        if request.url.path in ("/api/v1/health", "/docs", "/openapi.json", "/redoc") or client_ip == "testclient":
+        # Exempt health check, root probe, docs, and local test client
+        if request.url.path in ("/", "/api/v1/health", "/docs", "/openapi.json", "/redoc") or client_ip == "testclient":
             return await call_next(request)
         now = time.time()
         

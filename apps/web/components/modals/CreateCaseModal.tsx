@@ -31,8 +31,11 @@ export function CreateCaseModal({
   React.useEffect(() => {
     if (isOpen) {
       setCaseNumber(`CASE-${Math.floor(1000 + Math.random() * 9000)}`);
+      if (!clientId && clients.length > 0) {
+        setClientId(clients[0].id);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, clients, clientId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

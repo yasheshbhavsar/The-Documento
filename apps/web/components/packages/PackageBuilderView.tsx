@@ -53,38 +53,57 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" data-testid="package-builder-view">
       {/* Top Header */}
-      <div className="p-6 bg-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div style={{ padding: "24px", background: "#063C3D", color: "#FFFFFF", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
         <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 text-xs font-semibold bg-blue-500/20 text-blue-300 rounded border border-blue-400/30">
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 700, background: "rgba(185, 222, 212, 0.2)", color: "#B9DED4", borderRadius: "4px", border: "1px solid rgba(185, 222, 212, 0.3)" }}>
               {packageItem.version_number}
             </span>
             <span
-              className={`px-2.5 py-1 text-xs font-semibold rounded uppercase ${
-                packageItem.status === "approved"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30"
-                  : "bg-amber-500/20 text-amber-300 border border-amber-400/30"
-              }`}
+              style={{
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 700,
+                borderRadius: "4px",
+                textTransform: "uppercase",
+                background: packageItem.status === "approved" ? "rgba(23, 107, 80, 0.3)" : "rgba(217, 119, 6, 0.2)",
+                color: packageItem.status === "approved" ? "#B9DED4" : "#FDE68A",
+                border: `1px solid ${packageItem.status === "approved" ? "rgba(185, 222, 212, 0.4)" : "rgba(253, 230, 138, 0.4)"}`,
+              }}
             >
               Status: {packageItem.status.replace(/_/g, " ")}
             </span>
           </div>
-          <h2 className="text-xl font-bold mt-2 text-white">{packageItem.name}</h2>
-          <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400 font-mono">
+          <h2 style={{ fontSize: "20px", fontWeight: 700, margin: "8px 0 0 0", color: "#FFFFFF" }}>{packageItem.name}</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "6px", fontSize: "12px", color: "#B9DED4", fontFamily: "monospace" }}>
             <span>Root Merkle Hash:</span>
-            <span className="text-blue-300 bg-slate-800 px-2 py-0.5 rounded truncate max-w-sm" title={packageItem.package_hash}>
+            <span style={{ color: "#DDEFE8", background: "rgba(13, 104, 102, 0.5)", padding: "2px 8px", borderRadius: "4px" }} title={packageItem.package_hash}>
               {packageItem.package_hash}
             </span>
           </div>
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-3">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           {onOpenApprovalWorkflow && (
             <button
               type="button"
               onClick={onOpenApprovalWorkflow}
-              className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition flex items-center gap-1.5"
+              style={{
+                padding: "8px 16px",
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "#FFFFFF",
+                background: "#0D6866",
+                borderRadius: "8px",
+                border: "1px solid #063C3D",
+                cursor: "pointer",
+                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.2)",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.15s ease",
+              }}
             >
               <span>📋</span> Approval Workflow
             </button>
@@ -94,7 +113,20 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
             <button
               type="button"
               onClick={onExportPackage}
-              className="px-4 py-2 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition flex items-center gap-1.5"
+              style={{
+                padding: "8px 16px",
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "#FFFFFF",
+                background: "rgba(255, 255, 255, 0.12)",
+                borderRadius: "8px",
+                border: "1px solid rgba(185, 222, 212, 0.3)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.15s ease",
+              }}
             >
               <span>📦</span> Export Summary
             </button>

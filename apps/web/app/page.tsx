@@ -58,7 +58,7 @@ export default function Home() {
   // Load existing session from storage if present
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("documento_user");
+      const stored = localStorage.getItem("documento_user") || sessionStorage.getItem("documento_user");
       if (stored) {
         try {
           const parsed = JSON.parse(stored) as UserContext;
@@ -135,6 +135,7 @@ export default function Home() {
     setCurrentUser(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem("documento_user");
+      sessionStorage.removeItem("documento_user");
     }
     setBannerAlert({
       type: "info",

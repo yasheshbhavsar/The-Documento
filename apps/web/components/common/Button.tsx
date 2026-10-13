@@ -27,32 +27,32 @@ export function Button({
     switch (variant) {
       case "primary":
         return {
-          background: "var(--accent, #1d4ed8)",
+          background: "var(--accent, #0D6866)",
           color: "#ffffff",
           border: "1px solid transparent",
-          boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+          boxShadow: "0 1px 2px rgba(6, 60, 61, 0.08)",
         };
       case "secondary":
         return {
-          background: "var(--surface-subtle, #f1f5f9)",
-          color: "var(--text, #0f172a)",
-          border: "1px solid var(--border, #e2e8f0)",
+          background: "var(--surface-subtle, #F1F6F4)",
+          color: "var(--text, #172322)",
+          border: "1px solid var(--border, #DCE5E1)",
         };
       case "outline":
         return {
           background: "transparent",
-          color: "var(--text, #0f172a)",
-          border: "1px solid var(--border-strong, #cbd5e1)",
+          color: "var(--text, #172322)",
+          border: "1px solid var(--border-strong, #BDCDC7)",
         };
       case "ghost":
         return {
           background: "transparent",
-          color: "var(--muted, #475569)",
+          color: "var(--muted, #445451)",
           border: "1px solid transparent",
         };
       case "danger":
         return {
-          background: "var(--critical, #b91c1c)",
+          background: "var(--critical, #A62D35)",
           color: "#ffffff",
           border: "1px solid transparent",
         };

@@ -169,6 +169,12 @@ export function EmployeeWorkspace({
   };
 
   useEffect(() => {
+    if (!selectedCaseForWorkspace && cases.length > 0) {
+      setSelectedCaseForWorkspace(cases[0]);
+    }
+  }, [cases, selectedCaseForWorkspace]);
+
+  useEffect(() => {
     setLocalFindingsState(aiFindings);
   }, [aiFindings]);
 

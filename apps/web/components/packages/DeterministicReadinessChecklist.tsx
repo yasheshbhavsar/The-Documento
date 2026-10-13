@@ -49,61 +49,70 @@ export const DeterministicReadinessChecklist: React.FC<DeterministicReadinessChe
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" data-testid="readiness-checklist">
       {/* Top Banner with Strict Regulatory Disclaimer */}
-      <div className="p-6 bg-slate-900 text-white">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-blue-300 font-semibold uppercase tracking-wider">
-              <span>Case: {checklist.case_number}</span>
-              <span>•</span>
-              <span>Evaluated: {new Date(checklist.evaluated_at).toLocaleString()}</span>
-            </div>
-            <h2 className="text-xl font-bold mt-1 text-white">Deterministic Case Readiness Checklist</h2>
-            <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-              Internal checklist auditing 10 statutory and procedural dimensions required prior to submission package assembly.
-            </p>
-          </div>
-
-          {/* Assembly Status & Action */}
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-xs text-slate-400">Package Assembly Readiness</div>
-              <div className="text-base font-bold mt-0.5">
-                {checklist.is_ready_for_package_assembly ? (
-                  <span className="text-emerald-400 flex items-center gap-1 justify-end">
-                    ✓ Clear for Assembly
-                  </span>
-                ) : (
-                  <span className="text-red-400 flex items-center gap-1 justify-end">
-                    ✕ Blocked by {checklist.blocking_failures_count} Check(s)
-                  </span>
-                )}
+      <div style={{ padding: "24px", background: "#063C3D", color: "#FFFFFF" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#B9DED4", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                <span>Case: {checklist.case_number}</span>
+                <span>•</span>
+                <span>Evaluated: {new Date(checklist.evaluated_at).toLocaleString()}</span>
               </div>
+              <h2 style={{ fontSize: "20px", fontWeight: 700, margin: "4px 0 0 0", color: "#FFFFFF" }}>Deterministic Case Readiness Checklist</h2>
+              <p style={{ fontSize: "12px", color: "#DDEFE8", margin: "4px 0 0 0", maxWidth: "600px" }}>
+                Internal checklist auditing 10 statutory and procedural dimensions required prior to submission package assembly.
+              </p>
             </div>
 
-            {onAssemblePackage && (
-              <button
-                type="button"
-                disabled={!checklist.is_ready_for_package_assembly || isLoading}
-                onClick={onAssemblePackage}
-                className={`px-4 py-2.5 text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-2 ${
-                  checklist.is_ready_for_package_assembly
-                    ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
-                    : "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
-                }`}
-              >
-                {isLoading ? "Assembling..." : "Assemble Filing Package"}
-              </button>
-            )}
-          </div>
-        </div>
+            {/* Assembly Status & Action */}
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: "12px", color: "#B9DED4" }}>Package Assembly Readiness</div>
+                <div style={{ fontSize: "15px", fontWeight: 700, marginTop: "2px" }}>
+                  {checklist.is_ready_for_package_assembly ? (
+                    <span style={{ color: "#B9DED4", display: "flex", alignItems: "center", gap: "4px", justifyContent: "flex-end" }}>
+                      ✓ Clear for Assembly
+                    </span>
+                  ) : (
+                    <span style={{ color: "#FCA5A5", display: "flex", alignItems: "center", gap: "4px", justifyContent: "flex-end" }}>
+                      ✕ Blocked by {checklist.blocking_failures_count} Check(s)
+                    </span>
+                  )}
+                </div>
+              </div>
 
-        {/* Regulatory Ethics Disclaimer Box */}
-        <div className="mt-5 p-3.5 bg-slate-800/80 rounded-lg border border-slate-700 text-xs flex items-start gap-3 text-slate-300">
-          <span className="text-blue-400 text-base">🛡️</span>
-          <div>
-            <span className="font-bold text-white">Regulatory Disclaimer: </span>
-            {checklist.prohibition_disclaimer ||
-              "Readiness means only that the defined internal checks have been evaluated. Under legal ethics guidelines, this software does not calculate or display a probability of government approval."}
+              {onAssemblePackage && (
+                <button
+                  type="button"
+                  disabled={!checklist.is_ready_for_package_assembly || isLoading}
+                  onClick={onAssemblePackage}
+                  style={{
+                    padding: "10px 18px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    borderRadius: "8px",
+                    border: "none",
+                    cursor: checklist.is_ready_for_package_assembly && !isLoading ? "pointer" : "not-allowed",
+                    background: checklist.is_ready_for_package_assembly ? "#0D6866" : "rgba(255, 255, 255, 0.15)",
+                    color: "#FFFFFF",
+                    boxShadow: "0 1px 3px rgba(6, 60, 61, 0.2)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {isLoading ? "Assembling..." : "Assemble Filing Package"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Regulatory Ethics Disclaimer Box */}
+          <div style={{ marginTop: "12px", padding: "12px 16px", background: "rgba(13, 104, 102, 0.4)", borderRadius: "8px", border: "1px solid rgba(185, 222, 212, 0.25)", fontSize: "12px", display: "flex", alignItems: "flex-start", gap: "10px", color: "#F8F7F2" }}>
+            <span style={{ fontSize: "16px" }}>🛡️</span>
+            <div>
+              <strong style={{ color: "#FFFFFF" }}>Regulatory Disclaimer: </strong>
+              {checklist.prohibition_disclaimer ||
+                "Readiness means only that the defined internal checks have been evaluated. Under legal ethics guidelines, this software does not calculate or display a probability of government approval."}
+            </div>
           </div>
         </div>
       </div>

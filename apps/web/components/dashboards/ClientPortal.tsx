@@ -255,14 +255,14 @@ export function ClientPortal({
                 type="button"
                 onClick={() => handleNavClick(item.key)}
                 style={{
+                  position: "relative",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   width: "100%",
-                  padding: "9px 12px",
+                  padding: "9px 12px 9px 14px",
                   borderRadius: "8px",
                   border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
-                  borderLeft: isActive ? "3.5px solid #0D6866" : "1px solid transparent",
                   background: isActive ? "#EAF6F0" : "transparent",
                   color: isActive ? "#0D6866" : "#445451",
                   fontSize: "13px",
@@ -270,6 +270,7 @@ export function ClientPortal({
                   cursor: "pointer",
                   textAlign: "left",
                   transition: "all 0.15s ease",
+                  overflow: "hidden",
                 }}
                 onMouseEnter={(e) => {
                   if (!isActive) {
@@ -284,6 +285,20 @@ export function ClientPortal({
                   }
                 }}
               >
+                {isActive && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: "6px",
+                      bottom: "6px",
+                      width: "3.5px",
+                      borderRadius: "0 2px 2px 0",
+                      background: "#0D6866",
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
                 <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <span>{item.icon}</span>
                   <span>{item.label}</span>

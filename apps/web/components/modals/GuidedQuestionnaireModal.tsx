@@ -86,7 +86,7 @@ export function GuidedQuestionnaireModal({
                 flex: 1,
                 height: "4px",
                 borderRadius: "2px",
-                backgroundColor: i + 1 <= step ? "var(--accent, #1d4ed8)" : "var(--border, #e2e8f0)",
+                backgroundColor: i + 1 <= step ? "var(--accent, #0D6866)" : "var(--border, #DCE5E1)",
                 transition: "background-color 0.2s ease",
               }}
             />

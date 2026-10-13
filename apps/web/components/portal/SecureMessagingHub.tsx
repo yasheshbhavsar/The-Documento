@@ -209,49 +209,49 @@ export function SecureMessagingHub({
   const getThreadTypeBadge = (type: string) => {
     switch (type) {
       case "case_update":
-        return { label: "Case Update", bg: "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800" };
+        return { label: "Case Update", bg: "bg-[#E8F1F5] text-[#1B526B] border-[#BED6E3]" };
       case "document_request":
-        return { label: "Document Request", bg: "bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800" };
+        return { label: "Document Request", bg: "bg-[#F5EFE6] text-[#7A5318] border-[#E8D7C0]" };
       case "client_inquiry":
-        return { label: "Client Inquiry", bg: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800" };
+        return { label: "Client Inquiry", bg: "bg-[#EAF6F0] text-[#0D6866] border-[#B9DED4]" };
       default:
-        return { label: "General", bg: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700" };
+        return { label: "General", bg: "bg-[#F1F6F4] text-[#445451] border-[#DCE5E1]" };
     }
   };
 
   const getDeliveryIndicator = (msg: ThreadMessageItem) => {
     if (msg.delivery_status === "failed") {
       return (
-        <span className="flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400 font-medium" title="Failed to deliver. Provider retry queued.">
+        <span className="flex items-center gap-1 text-[11px] text-red-600 font-medium" title="Failed to deliver. Provider retry queued.">
           <span>⚠️</span> Delivery failed
         </span>
       );
     }
     if (msg.read_at) {
       return (
-        <span className="flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400" title={`Read at ${new Date(msg.read_at).toLocaleTimeString()}`}>
+        <span className="flex items-center gap-1 text-[11px] text-[#0D6866]" title={`Read at ${new Date(msg.read_at).toLocaleTimeString()}`}>
           <span>✓✓</span> Read
         </span>
       );
     }
     if (msg.delivery_status === "delivered" || msg.delivered_at) {
       return (
-        <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400" title="Delivered to recipient mailbox">
+        <span className="flex items-center gap-1 text-[11px] text-[#176B50]" title="Delivered to recipient mailbox">
           <span>✓✓</span> Delivered
         </span>
       );
     }
     return (
-      <span className="flex items-center gap-1 text-[11px] text-slate-400" title="Sent by server">
+      <span className="flex items-center gap-1 text-[11px] text-[#6E7F7C]" title="Sent by server">
         <span>✓</span> Sent
       </span>
     );
   };
 
   return (
-    <div className="flex flex-col h-[740px] bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
+    <div className="flex flex-col h-[740px] bg-white rounded-xl border border-[#DCE5E1] shadow-sm overflow-hidden">
       {/* Top Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/70 backdrop-blur-md">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[#DCE5E1] bg-[#F8F7F2]">
         <div className="flex items-center gap-3">
           <div
             style={{
@@ -271,16 +271,16 @@ export function SecureMessagingHub({
             </svg>
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <h2 className="text-base font-bold text-[#063C3D] flex items-center gap-2">
               Attorney Communications
-              <span className="text-xs text-slate-400 font-normal">| Secure Communications Hub</span>
+              <span className="text-xs text-[#6E7F7C] font-normal">| Secure Communications Hub</span>
               {isStaffMode && (
                 <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 border border-amber-300">
                   Staff View (Internal Notes Enabled)
                 </span>
               )}
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#6E7F7C]">
               End-to-end encrypted legal messaging with cryptographic audit trail and internal notes separation
             </p>
           </div>
@@ -315,18 +315,18 @@ export function SecureMessagingHub({
       {/* Main Body: Threads List + Active Conversation */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Column: Thread List */}
-        <div className="w-80 sm:w-96 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-slate-50/40 dark:bg-slate-900/40">
+        <div className="w-80 sm:w-96 border-r border-[#DCE5E1] flex flex-col bg-[#FAFAF7]">
           {/* Thread Search & Filter Bar */}
-          <div className="p-3 border-b border-slate-200 dark:border-slate-800 space-y-2">
+          <div className="p-3 border-b border-[#DCE5E1] space-y-2 bg-white">
             <div className="relative">
               <input
                 type="text"
                 placeholder="Search subject or case..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-[#DCE5E1] bg-white text-[#172322] focus:outline-none focus:ring-1 focus:ring-[#0D6866] focus:border-[#0D6866]"
               />
-              <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 text-[#6E7F7C] absolute left-2.5 top-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
@@ -336,7 +336,7 @@ export function SecureMessagingHub({
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
                 aria-label="Filter threads by status"
-                className="text-[11px] px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                className="text-[11px] px-2 py-1 rounded border border-[#DCE5E1] bg-white text-[#445451] focus:outline-none focus:ring-1 focus:ring-[#0D6866]"
               >
                 <option value="all">All Statuses</option>
                 <option value="open">Open</option>
@@ -348,7 +348,7 @@ export function SecureMessagingHub({
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
                 aria-label="Filter threads by type"
-                className="text-[11px] px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                className="text-[11px] px-2 py-1 rounded border border-[#DCE5E1] bg-white text-[#445451] focus:outline-none focus:ring-1 focus:ring-[#0D6866]"
               >
                 <option value="all">All Types</option>
                 <option value="client_inquiry">Inquiries</option>
@@ -360,11 +360,11 @@ export function SecureMessagingHub({
           </div>
 
           {/* Threads Scroll Area */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
+          <div className="flex-1 overflow-y-auto divide-y divide-[#EAEFEA]">
             {loading ? (
-              <div className="p-8 text-center text-xs text-slate-400">Loading conversation threads...</div>
+              <div className="p-8 text-center text-xs text-[#6E7F7C]">Loading conversation threads...</div>
             ) : filteredThreads.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-400">No message threads found.</div>
+              <div className="p-8 text-center text-xs text-[#6E7F7C]">No message threads found.</div>
             ) : (
               filteredThreads.map((thread) => {
                 const badge = getThreadTypeBadge(thread.thread_type);
@@ -376,15 +376,15 @@ export function SecureMessagingHub({
                     onClick={() => setActiveThreadId(thread.id)}
                     className={`w-full text-left p-3.5 transition-colors relative flex flex-col gap-1.5 ${
                       isSelected
-                        ? "bg-indigo-50/80 dark:bg-indigo-950/40 border-l-4 border-indigo-600"
-                        : "hover:bg-slate-100/70 dark:hover:bg-slate-800/50"
+                        ? "bg-[#EAF6F0] border-l-[3.5px] border-[#0D6866]"
+                        : "hover:bg-[#F1F6F4]"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badge.bg}`}>
                         {badge.label}
                       </span>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[11px] text-[#6E7F7C]">
                         {new Date(thread.updated_at).toLocaleDateString(undefined, {
                           month: "short",
                           day: "numeric",
@@ -392,21 +392,21 @@ export function SecureMessagingHub({
                       </span>
                     </div>
 
-                    <div className="font-semibold text-xs text-slate-900 dark:text-slate-100 line-clamp-1">
+                    <div className="font-semibold text-xs text-[#063C3D] line-clamp-1">
                       {thread.subject}
                     </div>
 
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2">
+                    <div className="text-[11px] text-[#445451] line-clamp-2">
                       {thread.last_message_preview || "No messages yet"}
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
-                      <span className="font-mono text-[9px] uppercase tracking-wider text-slate-500">
+                    <div className="flex items-center justify-between text-[10px] text-[#6E7F7C] pt-1">
+                      <span className="font-mono text-[9px] uppercase tracking-wider text-[#6E7F7C]">
                         {thread.case_number}
                       </span>
                       <div className="flex items-center gap-1.5">
                         {thread.unread_count > 0 && (
-                          <span className="px-1.5 py-0.2 rounded-full bg-indigo-600 text-white font-bold text-[9px]">
+                          <span className="px-1.5 py-0.2 rounded-full bg-[#0D6866] text-white font-bold text-[9px]">
                             {thread.unread_count} new
                           </span>
                         )}
@@ -421,22 +421,22 @@ export function SecureMessagingHub({
         </div>
 
         {/* Right Column: Active Thread Messages */}
-        <div className="flex-1 flex flex-col bg-white dark:bg-slate-900">
+        <div className="flex-1 flex flex-col bg-white">
           {activeThread ? (
             <>
               {/* Thread Info Bar */}
-              <div className="px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/40 dark:bg-slate-900/40">
+              <div className="px-6 py-3.5 border-b border-[#DCE5E1] flex items-center justify-between bg-white">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                    <h3 className="font-bold text-sm text-[#063C3D]">
                       {activeThread.subject}
                     </h3>
-                    <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+                    <span className="text-[11px] px-2 py-0.5 rounded bg-[#EAF6F0] text-[#0D6866] border border-[#B9DED4] font-mono">
                       {activeThread.case_number}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Thread Status: <span className="capitalize font-medium">{activeThread.status}</span> • Created {new Date(activeThread.created_at).toLocaleDateString()}
+                  <p className="text-xs text-[#6E7F7C] mt-0.5">
+                    Thread Status: <span className="capitalize font-medium text-[#172322]">{activeThread.status}</span> • Created {new Date(activeThread.created_at).toLocaleDateString()}
                   </p>
                 </div>
 
@@ -452,7 +452,7 @@ export function SecureMessagingHub({
                           )
                         );
                       }}
-                      className="px-2.5 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                      className="px-2.5 py-1 text-xs rounded border border-[#DCE5E1] hover:bg-[#F1F6F4] text-[#445451] transition-colors"
                     >
                       {activeThread.status === "resolved" ? "Reopen Thread" : "Mark Resolved"}
                     </button>
@@ -461,11 +461,11 @@ export function SecureMessagingHub({
               </div>
 
               {/* Messages Flow Area */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/20 dark:bg-slate-950/20">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#F8F7F2]">
                 {messagesLoading ? (
-                  <div className="p-8 text-center text-xs text-slate-400">Loading conversation messages...</div>
+                  <div className="p-8 text-center text-xs text-[#6E7F7C]">Loading conversation messages...</div>
                 ) : messages.length === 0 ? (
-                  <div className="p-8 text-center text-xs text-slate-400">No messages in this thread yet.</div>
+                  <div className="p-8 text-center text-xs text-[#6E7F7C]">No messages in this thread yet.</div>
                 ) : (
                   messages.map((msg) => {
                     const isClientSender = msg.sender_role === "client";
@@ -476,38 +476,44 @@ export function SecureMessagingHub({
                       return (
                         <div
                           key={msg.id}
-                          className="mx-auto max-w-2xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-700/80 rounded-xl p-4 shadow-sm"
+                          className="mx-auto max-w-2xl bg-amber-50 border border-amber-300 rounded-xl p-4 shadow-sm"
                         >
-                          <div className="flex items-center justify-between text-xs font-semibold text-amber-900 dark:text-amber-300 mb-1.5">
+                          <div className="flex items-center justify-between text-xs font-semibold text-amber-900 mb-1.5">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-amber-600 dark:text-amber-400">🔒</span>
+                              <span className="text-amber-600">🔒</span>
                               <span>STAFF INTERNAL NOTE — HIDDEN FROM CLIENT</span>
                             </div>
-                            <span className="text-[11px] text-amber-700 dark:text-amber-400 font-normal">
+                            <span className="text-[11px] text-amber-700 font-normal">
                               {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </div>
-                          <p className="text-xs text-amber-950 dark:text-amber-100 whitespace-pre-wrap leading-relaxed">
+                          <p className="text-xs text-amber-950 whitespace-pre-wrap leading-relaxed">
                             {msg.content}
                           </p>
-                          <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800/60 flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-400">
+                          <div className="mt-2 pt-2 border-t border-amber-200 flex items-center justify-between text-[11px] text-amber-700">
                             <span>Author: {msg.sender_name}</span>
-                            <span className="text-[10px] bg-amber-200/60 dark:bg-amber-900/60 px-1.5 py-0.5 rounded font-mono">INTERNAL WORK PRODUCT</span>
+                            <span className="text-[10px] bg-amber-200/80 px-1.5 py-0.5 rounded font-mono">INTERNAL WORK PRODUCT</span>
                           </div>
                         </div>
                       );
                     }
 
+                    const isOutgoing = isStaffMode ? msg.sender_role !== "client" : msg.sender_role === "client";
+
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isClientSender ? "items-start" : "items-end"}`}
+                        className={`flex flex-col ${isOutgoing ? "items-end" : "items-start"}`}
                       >
-                        <div className="flex items-center gap-2 mb-1 text-[11px] text-slate-500 dark:text-slate-400 px-1">
-                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        <div className="flex items-center gap-2 mb-1 text-[11px] text-[#6E7F7C] px-1">
+                          <span className="font-semibold text-[#063C3D]">
                             {msg.sender_name}
                           </span>
-                          <span className="text-[10px] uppercase font-mono px-1 rounded bg-slate-100 dark:bg-slate-800">
+                          <span className={`text-[10px] uppercase font-mono px-1.5 py-0.2 rounded border ${
+                            isOutgoing
+                              ? "bg-[#EAF6F0] text-[#0D6866] border-[#B9DED4]"
+                              : "bg-[#F1F6F4] text-[#445451] border-[#DCE5E1]"
+                          }`}>
                             {msg.sender_role}
                           </span>
                           <span>•</span>
@@ -516,16 +522,18 @@ export function SecureMessagingHub({
 
                         <div
                           className={`max-w-xl rounded-2xl px-4 py-3 text-xs leading-relaxed shadow-sm ${
-                            isClientSender
-                              ? "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-tl-sm"
-                              : "bg-indigo-600 text-white rounded-tr-sm"
+                            isOutgoing
+                              ? "bg-[#0D6866] text-white rounded-tr-sm"
+                              : "bg-white border border-[#DCE5E1] text-[#172322] rounded-tl-sm"
                           }`}
                         >
                           <p className="whitespace-pre-wrap">{msg.content}</p>
 
                           {/* Attachments Section */}
                           {msg.attachment_document_ids && msg.attachment_document_ids.length > 0 && (
-                            <div className="mt-3 pt-2.5 border-t border-white/20 dark:border-slate-700/80 space-y-1.5">
+                            <div className={`mt-3 pt-2.5 border-t space-y-1.5 ${
+                              isOutgoing ? "border-white/20" : "border-[#DCE5E1]"
+                            }`}>
                               <span className="text-[10px] font-semibold uppercase tracking-wider block opacity-80">
                                 Attached Documents ({msg.attachment_document_ids.length})
                               </span>
@@ -536,9 +544,9 @@ export function SecureMessagingHub({
                                     type="button"
                                     onClick={() => onSelectDocument && onSelectDocument(docId)}
                                     className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-mono transition-colors ${
-                                      isClientSender
-                                        ? "bg-slate-100 dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 hover:bg-slate-200"
-                                        : "bg-indigo-700 text-white hover:bg-indigo-800"
+                                      isOutgoing
+                                        ? "bg-white/15 text-white hover:bg-white/25 border border-white/30"
+                                        : "bg-[#F1F6F4] text-[#0D6866] hover:bg-[#EAF6F0] border border-[#B9DED4]"
                                     }`}
                                   >
                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -563,31 +571,31 @@ export function SecureMessagingHub({
               </div>
 
               {/* Message Composer Footer */}
-              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <div className="p-4 border-t border-[#DCE5E1] bg-white">
                 <form onSubmit={handleSendMessage} className="space-y-3">
                   {/* Staff Internal Note Toggle */}
                   {isStaffMode && (
-                    <div className="flex items-center justify-between bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-lg px-3 py-1.5">
+                    <div className="flex items-center justify-between bg-amber-50/80 border border-amber-200 rounded-lg px-3 py-1.5">
                       <div className="flex items-center gap-2">
                         <input
                           type="checkbox"
                           id="internalNoteToggle"
                           checked={isInternalNote}
                           onChange={(e) => setIsInternalNote(e.target.checked)}
-                          className="h-3.5 w-3.5 rounded text-amber-600 focus:ring-amber-500 border-amber-300 dark:border-amber-700"
+                          className="h-3.5 w-3.5 rounded text-amber-600 focus:ring-amber-500 border-amber-300"
                         />
                         <label
                           htmlFor="internalNoteToggle"
-                          className="text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-1 cursor-pointer"
+                          className="text-xs font-semibold text-amber-900 flex items-center gap-1 cursor-pointer"
                         >
                           <span>🔒 Post as Staff-Only Internal Note</span>
-                          <span className="text-[10px] text-amber-700 dark:text-amber-400 font-normal">
+                          <span className="text-[10px] text-amber-700 font-normal">
                             (Completely invisible to client in portal & API responses)
                           </span>
                         </label>
                       </div>
                       {isInternalNote && (
-                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-200/80 dark:bg-amber-900/60 px-2 py-0.5 rounded">
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-200/80 px-2 py-0.5 rounded">
                           INTERNAL ONLY
                         </span>
                       )}
@@ -605,10 +613,10 @@ export function SecureMessagingHub({
                           ? "Write confidential internal case note (lawyer-eyes only)..."
                           : "Type question or update for your legal team..."
                       }
-                      className={`w-full p-3 text-xs rounded-xl border focus:outline-none focus:ring-2 transition-all ${
+                      className={`w-full p-3 text-xs rounded-xl border focus:outline-none focus:ring-1 focus:ring-[#0D6866] focus:border-[#0D6866] transition-all ${
                         isInternalNote
-                          ? "border-amber-300 dark:border-amber-700 bg-amber-50/30 dark:bg-amber-950/20 focus:ring-amber-500 text-slate-900 dark:text-slate-100"
-                          : "border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 focus:ring-indigo-500 text-slate-900 dark:text-slate-100"
+                          ? "border-amber-300 bg-amber-50/40 text-[#172322]"
+                          : "border-[#DCE5E1] bg-[#FAFAF7] text-[#172322] focus:bg-white"
                       }`}
                     />
                   </div>
@@ -616,11 +624,11 @@ export function SecureMessagingHub({
                   {/* Attachments pills */}
                   {attachmentIds.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[10px] font-semibold text-slate-500">Attachments:</span>
+                      <span className="text-[10px] font-semibold text-[#6E7F7C]">Attachments:</span>
                       {attachmentIds.map((id) => (
                         <span
                           key={id}
-                          className="inline-flex items-center gap-1 text-[11px] font-mono bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded-full"
+                          className="inline-flex items-center gap-1 text-[11px] font-mono bg-[#EAF6F0] text-[#0D6866] border border-[#B9DED4] px-2 py-0.5 rounded-full"
                         >
                           <span>{id}</span>
                           <button
@@ -644,12 +652,12 @@ export function SecureMessagingHub({
                           placeholder="Doc ID (e.g. doc-01)"
                           value={newAttachmentInput}
                           onChange={(e) => setNewAttachmentInput(e.target.value)}
-                          className="text-[11px] px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 w-36"
+                          className="text-[11px] px-2.5 py-1 rounded border border-[#DCE5E1] bg-white text-[#172322] focus:outline-none focus:ring-1 focus:ring-[#0D6866] w-36"
                         />
                         <button
                           type="button"
                           onClick={handleAddAttachment}
-                          className="text-[11px] px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-medium"
+                          className="text-[11px] px-2 py-1 rounded bg-[#F1F6F4] hover:bg-[#EAF6F0] text-[#0D6866] border border-[#DCE5E1] font-medium"
                         >
                           + Attach
                         </button>
@@ -693,14 +701,14 @@ export function SecureMessagingHub({
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
-              <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
-                <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-[#6E7F7C]">
+              <div className="w-16 h-16 rounded-full bg-[#EAF6F0] flex items-center justify-center mb-3">
+                <svg className="w-8 h-8 text-[#0D6866]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h4 className="font-semibold text-slate-700 dark:text-slate-300 text-sm">No Thread Selected</h4>
-              <p className="text-xs text-slate-500 max-w-xs mt-1">
+              <h4 className="font-semibold text-[#063C3D] text-sm">No Thread Selected</h4>
+              <p className="text-xs text-[#6E7F7C] max-w-xs mt-1">
                 Choose a conversation from the sidebar or click "New Thread" to start a secure communication.
               </p>
             </div>
@@ -710,15 +718,15 @@ export function SecureMessagingHub({
 
       {/* New Thread Modal */}
       {isCreatingThread && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white border border-[#DCE5E1] rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#DCE5E1] pb-3">
+              <h3 className="font-bold text-sm text-[#063C3D] flex items-center gap-2">
                 <span>Start New Case Message Thread</span>
               </h3>
               <button
                 onClick={() => setIsCreatingThread(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg leading-none"
+                className="text-[#6E7F7C] hover:text-[#172322] text-lg leading-none"
               >
                 ×
               </button>
@@ -726,7 +734,7 @@ export function SecureMessagingHub({
 
             <form onSubmit={handleCreateThread} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-[#063C3D] mb-1">
                   Thread Topic / Subject
                 </label>
                 <input
@@ -735,18 +743,18 @@ export function SecureMessagingHub({
                   placeholder="e.g. Question regarding academic apostille certification"
                   value={newThreadSubject}
                   onChange={(e) => setNewThreadSubject(e.target.value)}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full text-xs p-2.5 rounded-lg border border-[#DCE5E1] bg-[#FAFAF7] text-[#172322] focus:outline-none focus:ring-1 focus:ring-[#0D6866] focus:border-[#0D6866]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-[#063C3D] mb-1">
                   Thread Classification
                 </label>
                 <select
                   value={newThreadType}
                   onChange={(e) => setNewThreadType(e.target.value as any)}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full text-xs p-2.5 rounded-lg border border-[#DCE5E1] bg-[#FAFAF7] text-[#172322] focus:outline-none focus:ring-1 focus:ring-[#0D6866] focus:border-[#0D6866]"
                 >
                   <option value="client_inquiry">Client Inquiry / Question</option>
                   <option value="case_update">Case Filing Progress Update</option>
@@ -756,7 +764,7 @@ export function SecureMessagingHub({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-[#063C3D] mb-1">
                   Opening Message
                 </label>
                 <textarea
@@ -765,7 +773,7 @@ export function SecureMessagingHub({
                   placeholder="Type your initial message to start the thread..."
                   value={newThreadInitialMessage}
                   onChange={(e) => setNewThreadInitialMessage(e.target.value)}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full text-xs p-2.5 rounded-lg border border-[#DCE5E1] bg-[#FAFAF7] text-[#172322] focus:outline-none focus:ring-1 focus:ring-[#0D6866] focus:border-[#0D6866]"
                 />
               </div>
 
@@ -773,13 +781,23 @@ export function SecureMessagingHub({
                 <button
                   type="button"
                   onClick={() => setIsCreatingThread(false)}
-                  className="px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="px-4 py-2 text-xs font-semibold rounded-lg text-[#6E7F7C] hover:bg-[#F1F6F4]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20"
+                  style={{
+                    background: "#0D6866",
+                    color: "#FFFFFF",
+                    fontWeight: 600,
+                    fontSize: "12px",
+                    borderRadius: "8px",
+                    padding: "8px 16px",
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: "0 2px 4px rgba(13, 104, 102, 0.2)",
+                  }}
                 >
                   Create Thread
                 </button>

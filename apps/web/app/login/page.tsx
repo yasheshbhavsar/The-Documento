@@ -66,7 +66,13 @@ export default function LoginPage() {
       const res = authenticateUser(email, portal);
       if (res.success && res.user) {
         if (typeof window !== "undefined") {
-          localStorage.setItem("documento_user", JSON.stringify(res.user));
+          if (rememberMe) {
+            localStorage.setItem("documento_user", JSON.stringify(res.user));
+            sessionStorage.removeItem("documento_user");
+          } else {
+            sessionStorage.setItem("documento_user", JSON.stringify(res.user));
+            localStorage.removeItem("documento_user");
+          }
         }
         router.push("/");
       } else {
