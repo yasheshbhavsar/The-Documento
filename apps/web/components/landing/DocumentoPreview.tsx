@@ -172,7 +172,7 @@ export function DocumentoPreview() {
     >
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         {/* Section Header */}
-        <div style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto 40px auto" }}>
+        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto 40px auto" }}>
           <div
             style={{
               display: "inline-flex",
@@ -212,6 +212,7 @@ export function DocumentoPreview() {
 
         {/* Interactive Mockup Shell Container */}
         <div
+          className="animate-on-scroll delay-150"
           style={{
             background: "#FFFFFF",
             borderRadius: "16px",

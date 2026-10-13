@@ -799,5 +799,44 @@ a {
   }
 }
 
+/* ==========================================================================
+   Animation On Scroll (Landing Page)
+   ========================================================================== */
+@keyframes animationIn {
+  0% {
+    opacity: 0;
+    transform: translateY(28px);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0px);
+  }
+}
 
+.animate-on-scroll {
+  animation: animationIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-play-state: paused !important;
+  will-change: transform, opacity, filter;
+}
 
+.animate-on-scroll.animate {
+  animation-play-state: running !important;
+}
+
+/* Stagger delay utilities */
+.delay-100 { animation-delay: 100ms !important; }
+.delay-150 { animation-delay: 150ms !important; }
+.delay-200 { animation-delay: 200ms !important; }
+.delay-300 { animation-delay: 300ms !important; }
+.delay-400 { animation-delay: 400ms !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-on-scroll {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}

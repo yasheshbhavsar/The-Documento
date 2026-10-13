@@ -175,7 +175,7 @@ export function DocumentoWorkflow() {
     >
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         {/* Section Header */}
-        <div style={{ textAlign: "center", maxWidth: "820px", margin: "0 auto 48px auto" }}>
+        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "820px", margin: "0 auto 48px auto" }}>
           <div
             style={{
               display: "inline-flex",
@@ -215,6 +215,7 @@ export function DocumentoWorkflow() {
 
         {/* 6-Stage Interactive Stepper Header Bar */}
         <div
+          className="animate-on-scroll delay-100"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
@@ -281,6 +282,7 @@ export function DocumentoWorkflow() {
 
         {/* Deep Dive Interactive Stage Detail Card */}
         <div
+          className="animate-on-scroll delay-150"
           style={{
             background: "#FFFFFF",
             border: "1px solid #DCE5E1",

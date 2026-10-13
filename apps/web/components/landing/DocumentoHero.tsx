@@ -54,7 +54,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
           zIndex: 1,
         }}
       >
-        <div style={{ maxWidth: "880px", margin: "0 auto", textAlign: "center" }}>
+        <div className="animate-on-scroll" style={{ maxWidth: "880px", margin: "0 auto", textAlign: "center" }}>
           {/* Eyebrow Badge */}
           <div
             style={{
@@ -277,6 +277,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
           {/* Card 1 */}
           <a
             href="#preview"
+            className="animate-on-scroll delay-100"
             style={{
               background: "#FFFFFF",
               border: "1px solid #DCE5E1",
@@ -332,6 +333,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
           {/* Card 2 */}
           <a
             href="#coverage"
+            className="animate-on-scroll delay-200"
             style={{
               background: "#FFFFFF",
               border: "1px solid #DCE5E1",
@@ -385,6 +387,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
           {/* Card 3 */}
           <a
             href="#trust"
+            className="animate-on-scroll delay-300"
             style={{
               background: "#FFFFFF",
               border: "1px solid #DCE5E1",

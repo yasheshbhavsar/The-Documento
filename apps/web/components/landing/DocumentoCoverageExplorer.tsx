@@ -340,7 +340,7 @@ export function DocumentoCoverageExplorer() {
     >
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         {/* Section Eyebrow & Title */}
-        <div style={{ textAlign: "center", maxWidth: "820px", margin: "0 auto 40px auto" }}>
+        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "820px", margin: "0 auto 40px auto" }}>
           <div
             style={{
               display: "inline-flex",
@@ -418,6 +418,7 @@ export function DocumentoCoverageExplorer() {
 
         {/* Filter Controls Bar */}
         <div
+          className="animate-on-scroll delay-100"
           style={{
             background: "#F8F7F2",
             borderRadius: "14px",
@@ -683,6 +684,7 @@ export function DocumentoCoverageExplorer() {
         {/* Master-Detail Interactive Explorer Layout */}
         {filteredPathways.length > 0 && (
           <div
+            className="animate-on-scroll delay-150"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",

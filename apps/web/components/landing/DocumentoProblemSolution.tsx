@@ -169,7 +169,7 @@ export function DocumentoProblemSolution() {
     >
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         {/* Header */}
-        <div style={{ textAlign: "center", maxWidth: "820px", margin: "0 auto 48px auto" }}>
+        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "820px", margin: "0 auto 48px auto" }}>
           <div
             style={{
               display: "inline-flex",
@@ -305,6 +305,7 @@ export function DocumentoProblemSolution() {
 
             {/* Active Challenge Detailed Comparison Card */}
             <div
+              className="animate-on-scroll delay-150"
               style={{
                 background: "#FFFFFF",
                 borderRadius: "16px",

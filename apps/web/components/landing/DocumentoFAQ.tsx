@@ -94,7 +94,7 @@ export function DocumentoFAQ() {
     >
       <div style={{ maxWidth: "980px", margin: "0 auto" }}>
         {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: "40px" }}>
+        <div className="animate-on-scroll" style={{ textAlign: "center", marginBottom: "40px" }}>
           <div
             style={{
               display: "inline-flex",
@@ -211,7 +211,7 @@ export function DocumentoFAQ() {
         </div>
 
         {/* Accordion Container */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div className="animate-on-scroll delay-150" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {filteredFaqs.length === 0 ? (
             <div
               style={{

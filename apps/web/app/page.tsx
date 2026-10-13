@@ -27,8 +27,12 @@ import { DocumentoFAQ } from "../components/landing/DocumentoFAQ";
 import { DocumentoFooter } from "../components/landing/DocumentoFooter";
 import { DocumentoLoginModal } from "../components/auth/DocumentoLoginModal";
 import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
+import { useAnimationOnScroll } from "../components/landing/useAnimationOnScroll";
 
 export default function Home() {
+  // Initialize on-scroll reveal animations for landing page
+  useAnimationOnScroll(".animate-on-scroll", true);
+
   const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginInitialPortal, setLoginInitialPortal] = useState<"firm" | "client">("firm");

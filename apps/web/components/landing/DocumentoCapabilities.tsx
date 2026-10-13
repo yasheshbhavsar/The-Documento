@@ -93,7 +93,7 @@ export function DocumentoCapabilities() {
     >
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         {/* Section Header */}
-        <div style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 54px auto" }}>
+        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 54px auto" }}>
           <div
             style={{
               display: "inline-flex",
@@ -140,6 +140,9 @@ export function DocumentoCapabilities() {
           {capabilities.map((cap, i) => (
             <div
               key={i}
+              className={`animate-on-scroll ${
+                i % 3 === 0 ? "delay-100" : i % 3 === 1 ? "delay-200" : "delay-300"
+              }`}
               style={{
                 background: "#F8F7F2",
                 border: "1px solid #DCE5E1",

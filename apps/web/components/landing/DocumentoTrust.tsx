@@ -14,7 +14,7 @@ export function DocumentoTrust() {
     >
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         {/* Section Header */}
-        <div style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto 50px auto" }}>
+        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto 50px auto" }}>
           <div
             style={{
               display: "inline-flex",
@@ -63,6 +63,7 @@ export function DocumentoTrust() {
         >
           {/* Pillar 1 */}
           <div
+            className="animate-on-scroll delay-100"
             style={{
               background: "#F8F7F2",
               border: "1px solid #DCE5E1",
@@ -97,6 +98,7 @@ export function DocumentoTrust() {
 
           {/* Pillar 2 */}
           <div
+            className="animate-on-scroll delay-150"
             style={{
               background: "#F8F7F2",
               border: "1px solid #DCE5E1",
@@ -132,6 +134,7 @@ export function DocumentoTrust() {
 
           {/* Pillar 3 */}
           <div
+            className="animate-on-scroll delay-200"
             style={{
               background: "#F8F7F2",
               border: "1px solid #DCE5E1",
@@ -167,6 +170,7 @@ export function DocumentoTrust() {
 
           {/* Pillar 4 */}
           <div
+            className="animate-on-scroll delay-300"
             style={{
               background: "#F8F7F2",
               border: "1px solid #DCE5E1",
@@ -203,6 +207,7 @@ export function DocumentoTrust() {
 
         {/* Clear Transparency Box: What Documento Does vs What Documento Does NOT Do */}
         <div
+          className="animate-on-scroll delay-200"
           style={{
             background: "#F8F7F2",
             border: "1px solid #DCE5E1",

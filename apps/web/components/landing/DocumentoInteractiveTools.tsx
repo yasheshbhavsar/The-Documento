@@ -96,7 +96,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
       >
         <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           {/* Header */}
-          <div style={{ textAlign: "center", maxWidth: "780px", margin: "0 auto 40px auto" }}>
+          <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "780px", margin: "0 auto 40px auto" }}>
             <div
               style={{
                 display: "inline-flex",
@@ -136,6 +136,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
 
           {/* Guided Wizard Container */}
           <div
+            className="animate-on-scroll delay-150"
             style={{
               background: "#FFFFFF",
               borderRadius: "16px",
@@ -438,7 +439,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
       >
         <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
           {/* Header */}
-          <div style={{ textAlign: "center", maxWidth: "780px", margin: "0 auto 40px auto" }}>
+          <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "780px", margin: "0 auto 40px auto" }}>
             <div
               style={{
                 display: "inline-flex",
@@ -536,6 +537,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
           {/* Persona View Content */}
           {activePersonaTab === "applicant" && (
             <div
+              className="animate-on-scroll delay-150"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
@@ -579,6 +581,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
 
           {activePersonaTab === "lawfirm" && (
             <div
+              className="animate-on-scroll delay-150"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
