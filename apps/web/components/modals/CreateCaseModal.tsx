@@ -13,6 +13,47 @@ interface CreateCaseModalProps {
   activeRole?: RoleCode;
 }
 
+export const JURISDICTION_OPTIONS = [
+  { label: "United States (USCIS)", value: "United States (USCIS)" },
+  { label: "Canada (IRCC)", value: "Canada (IRCC)" },
+  { label: "United Kingdom (Home Office)", value: "United Kingdom (Home Office)" },
+  { label: "Australia (Department of Home Affairs)", value: "Australia (Home Affairs)" },
+  { label: "Germany (Federal Foreign Office / BAMF)", value: "Germany (BAMF)" },
+];
+
+export const JURISDICTION_PATHWAYS: Record<string, { label: string; value: string }[]> = {
+  "United States (USCIS)": [
+    { label: "EB-1A Alien of Extraordinary Ability", value: "EB-1A Extraordinary Ability" },
+    { label: "US B-1/B-2 Visitor Visa (Business & Tourism)", value: "US B-1/B-2 Visitor Visa" },
+    { label: "US F-1 Academic Student Visa", value: "US F-1 Academic Student" },
+    { label: "H-1B Specialty Occupation", value: "H-1B Specialty Occupation" },
+    { label: "US H-4 Dependent Visa & EAD", value: "US H-4 Dependent" },
+    { label: "O-1A Nonimmigrant Alien of Extraordinary Ability", value: "O-1A Extraordinary Ability" },
+    { label: "EB-2 National Interest Waiver (NIW)", value: "EB-2 NIW" },
+    { label: "L-1A Intracompany Transferee", value: "L-1A Intracompany Transferee" },
+  ],
+  "Canada (IRCC)": [
+    { label: "Canada Study Permit (SDS & PAL Stream)", value: "Canada Study Permit" },
+    { label: "Canada Visitor Visa (TRV & Super Visa)", value: "Canada Visitor Visa (TRV)" },
+    { label: "Canada Spousal Open Work Permit (SOWP)", value: "Canada Spousal Open Work Permit (SOWP)" },
+    { label: "Canada Express Entry PNP", value: "Express Entry PNP" },
+  ],
+  "United Kingdom (Home Office)": [
+    { label: "UK Standard Visitor Visa (Tourism & Family)", value: "UK Standard Visitor Visa" },
+    { label: "UK Student Visa (CAS & Graduate Route)", value: "UK Student Visa" },
+    { label: "UK Skilled Worker Visa", value: "UK Skilled Worker Visa" },
+    { label: "UK Global Talent Visa", value: "Global Talent Tech Nation" },
+  ],
+  "Australia (Home Affairs)": [
+    { label: "Australia Visitor Visa (Subclass 600)", value: "Australia Visitor Visa (Subclass 600)" },
+    { label: "Australia Student Visa (Subclass 500)", value: "Australia Student Visa (Subclass 500)" },
+    { label: "Australia Global Talent Independent", value: "Australia Global Talent" },
+  ],
+  "Germany (BAMF)": [
+    { label: "Germany Opportunity Card (Chancenkarte)", value: "Germany Opportunity Card (Chancenkarte)" },
+  ],
+};
+
 export function CreateCaseModal({
   isOpen,
   onClose,
@@ -67,6 +108,8 @@ export function CreateCaseModal({
       // Reset form
       setTitle("");
       setCaseNumber(`CASE-${Date.now().toString().slice(-4)}`);
+      setJurisdiction("United States (USCIS)");
+      setVisaCategory("EB-1A Extraordinary Ability");
     } catch (err: any) {
       setError(err?.message || "Failed to create case.");
     } finally {
@@ -79,21 +122,16 @@ export function CreateCaseModal({
     value: c.id,
   }));
 
-  const jurisdictionOptions = [
-    { label: "United States (USCIS)", value: "United States (USCIS)" },
-    { label: "Canada (IRCC)", value: "Canada (IRCC)" },
-    { label: "United Kingdom (Home Office)", value: "United Kingdom (Home Office)" },
-    { label: "Australia (Department of Home Affairs)", value: "Australia (Home Affairs)" },
-  ];
+  const handleJurisdictionChange = (newJur: string) => {
+    setJurisdiction(newJur);
+    const pathways = JURISDICTION_PATHWAYS[newJur] || [];
+    if (pathways.length > 0) {
+      setVisaCategory(pathways[0].value);
+    }
+  };
 
-  const pathwayOptions = [
+  const pathwayOptions = JURISDICTION_PATHWAYS[jurisdiction] || [
     { label: "EB-1A Alien of Extraordinary Ability", value: "EB-1A Extraordinary Ability" },
-    { label: "O-1A Nonimmigrant Alien of Extraordinary Ability", value: "O-1A Extraordinary Ability" },
-    { label: "EB-2 National Interest Waiver (NIW)", value: "EB-2 NIW" },
-    { label: "L-1A Intracompany Transferee Executive", value: "L-1A Intracompany Transferee" },
-    { label: "H-1B Specialty Occupation", value: "H-1B Specialty Occupation" },
-    { label: "UK Global Talent Visa", value: "Global Talent Tech Nation" },
-    { label: "Canada Express Entry PNP", value: "Express Entry PNP" },
   ];
 
   return (
@@ -157,9 +195,9 @@ export function CreateCaseModal({
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: "12px" }}>
           <SelectInput
             label="Immigration Jurisdiction"
-            options={jurisdictionOptions}
+            options={JURISDICTION_OPTIONS}
             value={jurisdiction}
-            onChange={(e) => setJurisdiction(e.target.value)}
+            onChange={(e) => handleJurisdictionChange(e.target.value)}
             required
           />
 

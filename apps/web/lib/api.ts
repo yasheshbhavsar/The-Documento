@@ -1673,85 +1673,470 @@ export const api = {
       // Fallback
     }
 
-    const demoReport: ChecklistAuditReport = {
-      jurisdiction: "US",
-      visa_category: "EB-1A",
-      statutory_framework: "8 CFR § 204.5(h)(3)",
-      items: [
+    const currentCase = localCases.find((c) => c.id === caseId) || FIXTURE_CASES.find((c) => c.id === caseId);
+    const category = (currentCase?.visa_category || "").toLowerCase();
+    const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
+
+    // If case is specifically EB-1A or case-01, preserve exact existing fixture response
+    if (caseId === "case-01" || (!currentCase && !category) || category.includes("eb-1a") || category.includes("extraordinary")) {
+      const demoReport: ChecklistAuditReport = {
+        jurisdiction: currentCase?.jurisdiction || "US",
+        visa_category: "EB-1A",
+        statutory_framework: "8 CFR § 204.5(h)(3)",
+        items: [
+          {
+            id: "item-01",
+            title: "Identity & Travel Document (Passport)",
+            statutory_citation: "8 CFR § 204.5(a)",
+            description: "Unexpired passport biodata showing nationality and identity",
+            is_mandatory: true,
+            status: "satisfied",
+            matched_documents: [{ document_id: "doc-01", title: "US_Passport_Biodata_Elena_Rostova.pdf", verification_status: "verified" }],
+          },
+          {
+            id: "item-02",
+            title: "Curriculum Vitae / Professional Background",
+            statutory_citation: "8 CFR § 204.5(h)(3)",
+            description: "Comprehensive professional record of career trajectory and honors",
+            is_mandatory: true,
+            status: "satisfied",
+            matched_documents: [{ document_id: "doc-03", title: "Employment_Verification_NeuralDynamics.pdf", verification_status: "under_review" }],
+          },
+          {
+            id: "item-03",
+            title: "Evidence of Participation as a Judge / Peer Review",
+            statutory_citation: "8 CFR § 204.5(h)(3)(iv)",
+            description: "Documented evaluation of the work of others in the same or allied field",
+            is_mandatory: false,
+            status: "satisfied",
+            matched_documents: [{ document_id: "doc-04", title: "Peer_Review_Invitation_IEEE.pdf", verification_status: "verified" }],
+          },
+          {
+            id: "item-04",
+            title: "Original Scientific or Scholarly Contributions",
+            statutory_citation: "8 CFR § 204.5(h)(3)(v)",
+            description: "Evidence of major significance in the field (citations, adoption metrics)",
+            is_mandatory: false,
+            status: "satisfied",
+            matched_documents: [{ document_id: "doc-02", title: "Stanford_PhD_Diploma_Certificate.pdf", verification_status: "verified" }],
+          },
+          {
+            id: "item-05",
+            title: "Authorship of Scholarly Articles",
+            statutory_citation: "8 CFR § 204.5(h)(3)(vi)",
+            description: "Published research in international journals or major industry conferences",
+            is_mandatory: false,
+            status: "satisfied",
+            matched_documents: [{ document_id: "doc-02", title: "Stanford_PhD_Diploma_Certificate.pdf", verification_status: "verified" }],
+          },
+          {
+            id: "item-06",
+            title: "Leading or Critical Role in Distinguished Organizations",
+            statutory_citation: "8 CFR § 204.5(h)(3)(viii)",
+            description: "Letters from founders/executives attesting to critical organizational role",
+            is_mandatory: false,
+            status: "missing",
+            matched_documents: [],
+          },
+          {
+            id: "item-07",
+            title: "Published Material About Alien in Major Media",
+            statutory_citation: "8 CFR § 204.5(h)(3)(iii)",
+            description: "Published articles in major newspapers, trade journals, or media outlets",
+            is_mandatory: false,
+            status: "missing",
+            matched_documents: [],
+          },
+        ],
+        fulfillment_percentage: 71.4,
+        total_mandatory: 2,
+        satisfied_mandatory: 2,
+        missing_items: [
+          "Leading or Critical Role in Distinguished Organizations (8 CFR § 204.5(h)(3)(viii))",
+          "Published Material About Alien in Major Media (8 CFR § 204.5(h)(3)(iii))",
+        ],
+      };
+      return { data: demoReport, isLiveBackend: false };
+    }
+
+    // Pathway definitions for statutory checklists
+    let statutoryFramework = "Immigration Statutory Framework";
+    let rawItems: {
+      id: string;
+      title: string;
+      statutory_citation: string;
+      description: string;
+      is_mandatory: boolean;
+      acceptable_categories: string[];
+    }[] = [];
+
+    if (category.includes("study permit") || category.includes("sds") || category.includes("pal")) {
+      statutoryFramework = "IRPA § 30(1); IRPR Part 12 (SOR/2002-227)";
+      rawItems = [
         {
-          id: "item-01",
-          title: "Identity & Travel Document (Passport)",
-          statutory_citation: "8 CFR § 204.5(a)",
-          description: "Unexpired passport biodata showing nationality and identity",
+          id: "item-ca-sp-01",
+          title: "Designated Learning Institution (DLI) Letter of Acceptance (LOA)",
+          statutory_citation: "IRPR § 211.1 - Acceptance at DLI",
+          description: "Unconditional official acceptance letter with DLI number from accredited Canadian institution",
           is_mandatory: true,
-          status: "satisfied",
-          matched_documents: [{ document_id: "doc-01", title: "US_Passport_Biodata_Elena_Rostova.pdf", verification_status: "verified" }],
+          acceptable_categories: ["educational_records", "government_correspondence"],
         },
         {
-          id: "item-02",
-          title: "Curriculum Vitae / Professional Background",
-          statutory_citation: "8 CFR § 204.5(h)(3)",
-          description: "Comprehensive professional record of career trajectory and honors",
+          id: "item-ca-sp-02",
+          title: "Provincial Attestation Letter (PAL 2024 Mandate)",
+          statutory_citation: "IRCC Ministerial Instructions 2024 - Study Cap Quota",
+          description: "Provincial verification confirming study permit allocation under national cap",
           is_mandatory: true,
-          status: "satisfied",
-          matched_documents: [{ document_id: "doc-03", title: "Employment_Verification_NeuralDynamics.pdf", verification_status: "under_review" }],
+          acceptable_categories: ["educational_records", "government_correspondence"],
         },
         {
-          id: "item-03",
-          title: "Evidence of Participation as a Judge / Peer Review",
-          statutory_citation: "8 CFR § 204.5(h)(3)(iv)",
-          description: "Documented evaluation of the work of others in the same or allied field",
-          is_mandatory: false,
-          status: "satisfied",
-          matched_documents: [{ document_id: "doc-04", title: "Peer_Review_Invitation_IEEE.pdf", verification_status: "verified" }],
+          id: "item-ca-sp-03",
+          title: "Guaranteed Investment Certificate (GIC $20,635 Minimum)",
+          statutory_citation: "IRCC Financial Sufficiency Guideline 2024",
+          description: "GIC certificate from CDIC-participating bank (CIBC, Scotiabank, ICICI Canada)",
+          is_mandatory: true,
+          acceptable_categories: ["financial_evidence"],
         },
         {
-          id: "item-04",
-          title: "Original Scientific or Scholarly Contributions",
-          statutory_citation: "8 CFR § 204.5(h)(3)(v)",
-          description: "Evidence of major significance in the field (citations, adoption metrics)",
-          is_mandatory: false,
-          status: "satisfied",
-          matched_documents: [{ document_id: "doc-02", title: "Stanford_PhD_Diploma_Certificate.pdf", verification_status: "verified" }],
+          id: "item-ca-sp-04",
+          title: "SDS Language Proficiency Result (IELTS 6.0+ / PTE 60+)",
+          statutory_citation: "IRCC Student Direct Stream Language Threshold",
+          description: "Standardized language test certificate taken within last 24 months",
+          is_mandatory: true,
+          acceptable_categories: ["educational_records", "supporting_evidence"],
         },
         {
-          id: "item-05",
-          title: "Authorship of Scholarly Articles",
-          statutory_citation: "8 CFR § 204.5(h)(3)(vi)",
-          description: "Published research in international journals or major industry conferences",
-          is_mandatory: false,
-          status: "satisfied",
-          matched_documents: [{ document_id: "doc-02", title: "Stanford_PhD_Diploma_Certificate.pdf", verification_status: "verified" }],
+          id: "item-ca-sp-05",
+          title: "IRCC Upfront Medical Examination (eMedical Sheet)",
+          statutory_citation: "IRPR § 29 - Medical Examination of Foreign Nationals",
+          description: "Panel physician eMedical tracking sheet with UMI/IME barcode",
+          is_mandatory: true,
+          acceptable_categories: ["police_medical"],
         },
         {
-          id: "item-06",
-          title: "Leading or Critical Role in Distinguished Organizations",
-          statutory_citation: "8 CFR § 204.5(h)(3)(viii)",
-          description: "Letters from founders/executives attesting to critical organizational role",
-          is_mandatory: false,
-          status: "missing",
-          matched_documents: [],
+          id: "item-ca-sp-06",
+          title: "Primary Passport & Identity Travel Record",
+          statutory_citation: "IRPR § 52 - Valid Travel Document",
+          description: "Valid international passport biodata with post-study validity",
+          is_mandatory: true,
+          acceptable_categories: ["identity_passport"],
+        },
+      ];
+    } else if (category.includes("visitor") || category.includes("trv") || category.includes("touris") || category.includes("b-1") || category.includes("b-2") || category.includes("b1b2")) {
+      if (category.includes("us") || (currentCase?.jurisdiction || "").includes("United States")) {
+        statutoryFramework = "INA § 101(a)(15)(B); 22 CFR § 41.31; 9 FAM 402.2";
+        rawItems = [
+          {
+            id: "item-us-b1-01",
+            title: "Form DS-160 Nonimmigrant Visa Application Confirmation",
+            statutory_citation: "22 CFR § 41.103 - Online Visa Application",
+            description: "Completed DS-160 confirmation page with CEAC barcode",
+            is_mandatory: true,
+            acceptable_categories: ["government_correspondence", "supporting_evidence"],
+          },
+          {
+            id: "item-us-b1-02",
+            title: "Proof of Financial Solvency (6 Months Liquid Bank Statements)",
+            statutory_citation: "9 FAM 402.2-5 - Ability to Pay Travel Expenses",
+            description: "Continuous bank statements demonstrating funds for travel without unauthorized employment",
+            is_mandatory: true,
+            acceptable_categories: ["financial_evidence"],
+          },
+          {
+            id: "item-us-b1-03",
+            title: "3 Consecutive Years Income Tax Returns (ITR-V / Form 16)",
+            statutory_citation: "INA § 214(b) - Economic Ties to India",
+            description: "Verified Indian Income Tax acknowledgment receipts confirming local economic ties",
+            is_mandatory: true,
+            acceptable_categories: ["financial_evidence", "employment_records"],
+          },
+          {
+            id: "item-us-b1-04",
+            title: "Employer Leave Sanction & No-Objection Certificate (NOC)",
+            statutory_citation: "INA § 214(b) - Employment Ties & Intent to Return",
+            description: "Official employer letter approving leave duration and guaranteeing position upon return",
+            is_mandatory: true,
+            acceptable_categories: ["employment_records"],
+          },
+          {
+            id: "item-us-b1-05",
+            title: "Host Invitation Letter / Travel Itinerary & Form I-134",
+            statutory_citation: "9 FAM 402.2-4 - Temporary Purpose of Travel",
+            description: "Detailed day-by-day travel itinerary or host invitation with affidavit of support",
+            is_mandatory: false,
+            acceptable_categories: ["supporting_evidence", "government_correspondence"],
+          },
+          {
+            id: "item-us-b1-06",
+            title: "Valid International Passport Biodata",
+            statutory_citation: "INA § 221; 8 CFR § 214.1 - Identity & Travel Record",
+            description: "Machine-readable passport valid at least 6 months beyond intended departure",
+            is_mandatory: true,
+            acceptable_categories: ["identity_passport"],
+          },
+        ];
+      } else {
+        statutoryFramework = "IRPA § 22; IRPR § 179 - Temporary Resident Visa";
+        rawItems = [
+          {
+            id: "item-ca-trv-01",
+            title: "Valid Passport Biodata Page",
+            statutory_citation: "IRPR § 52 - Valid Travel Document",
+            description: "Clear scan of passport biographical data page",
+            is_mandatory: true,
+            acceptable_categories: ["identity_passport"],
+          },
+          {
+            id: "item-ca-trv-02",
+            title: "3 Consecutive Years Indian Income Tax Returns (ITR-V)",
+            statutory_citation: "IRPR § 179(b) - Economic Ties to India",
+            description: "Official tax acknowledgment slips showing domestic income stream",
+            is_mandatory: true,
+            acceptable_categories: ["financial_evidence", "employment_records"],
+          },
+          {
+            id: "item-ca-trv-03",
+            title: "6 Months Continuous Bank Account Statements",
+            statutory_citation: "IRPR § 179(b) - Financial Solvency & Sufficiency",
+            description: "Certified bank statements showing consistent balance without sudden unexplained deposits",
+            is_mandatory: true,
+            acceptable_categories: ["financial_evidence"],
+          },
+          {
+            id: "item-ca-trv-04",
+            title: "Employer Leave Sanction & No-Objection Certificate (NOC)",
+            statutory_citation: "IRPR § 179(b) - Ongoing Employment Ties",
+            description: "Signed employer letter authorizing vacation and confirming ongoing position",
+            is_mandatory: true,
+            acceptable_categories: ["employment_records"],
+          },
+          {
+            id: "item-ca-trv-05",
+            title: "CA Net Worth Certificate & Fixed Asset Valuations",
+            statutory_citation: "IRPR § 179(b) - Real Property & Family Ties",
+            description: "Chartered accountant report summarizing domestic immovable properties and assets",
+            is_mandatory: false,
+            acceptable_categories: ["financial_evidence", "supporting_evidence"],
+          },
+          {
+            id: "item-ca-trv-06",
+            title: "Detailed Travel Itinerary & Purpose of Visit Letter",
+            statutory_citation: "IRPR § 179(a) - Genuine Visitor Intent",
+            description: "Flight reservation, accommodation bookings, and personal statement of purpose",
+            is_mandatory: true,
+            acceptable_categories: ["supporting_evidence"],
+          },
+        ];
+      }
+    } else if (category.includes("sowp") || category.includes("spousal")) {
+      statutoryFramework = "IRPR § 205(c)(ii) - LMIA Exemption Code C41/C42";
+      rawItems = [
+        {
+          id: "item-ca-sowp-01",
+          title: "Principal Spouse Valid Canadian Study / Work Permit",
+          statutory_citation: "IRPR § 205(c)(ii) - Qualifying Principal Status",
+          description: "Unexpired Canadian permit copy and proof of full-time enrolment or NOC TEER 0/1/2/3 job",
+          is_mandatory: true,
+          acceptable_categories: ["visas_residence_permits", "government_correspondence"],
         },
         {
-          id: "item-07",
-          title: "Published Material About Alien in Major Media",
-          statutory_citation: "8 CFR § 204.5(h)(3)(iii)",
-          description: "Published articles in major newspapers, trade journals, or media outlets",
-          is_mandatory: false,
-          status: "missing",
-          matched_documents: [],
+          id: "item-ca-sowp-02",
+          title: "Registered Marriage Certificate & Official Wedding Album",
+          statutory_citation: "IRPR § 4 - Genuine Marital Relationship",
+          description: "Civil registration under Hindu Marriage Act / Special Marriage Act with photo evidence",
+          is_mandatory: true,
+          acceptable_categories: ["civil_status"],
         },
-      ],
-      fulfillment_percentage: 71.4,
-      total_mandatory: 2,
-      satisfied_mandatory: 2,
-      missing_items: [
-        "Leading or Critical Role in Distinguished Organizations (8 CFR § 204.5(h)(3)(viii))",
-        "Published Material About Alien in Major Media (8 CFR § 204.5(h)(3)(iii))",
-      ],
+        {
+          id: "item-ca-sowp-03",
+          title: "Proof of Cohabitation & Intermingled Financial Affairs",
+          statutory_citation: "IRPR § 4 - Cohabitation & Joint Affairs",
+          description: "Joint bank accounts, shared rental agreements, or family remittance records",
+          is_mandatory: true,
+          acceptable_categories: ["financial_evidence", "civil_status", "supporting_evidence"],
+        },
+        {
+          id: "item-ca-sowp-04",
+          title: "Police Clearance Certificate (PCC) from Regional Passport Office",
+          statutory_citation: "IRPA § 36 - Criminal Admissibility",
+          description: "Official Indian RPO Police Clearance Certificate issued within 6 months",
+          is_mandatory: true,
+          acceptable_categories: ["police_medical"],
+        },
+        {
+          id: "item-ca-sowp-05",
+          title: "Applicant International Passport Biodata",
+          statutory_citation: "IRPR § 52 - Valid Travel Document",
+          description: "Unexpired passport showing spouse's endorsed name if updated",
+          is_mandatory: true,
+          acceptable_categories: ["identity_passport"],
+        },
+      ];
+    } else if (category.includes("f-1") || category.includes("f1") || (category.includes("student") && (currentCase?.jurisdiction || "").includes("United States"))) {
+      statutoryFramework = "INA § 101(a)(15)(F)(i); 8 CFR § 214.2(f); 22 CFR § 41.61";
+      rawItems = [
+        {
+          id: "item-us-f1-01",
+          title: "Form I-20 Certificate of Eligibility (SEVP Certified)",
+          statutory_citation: "8 CFR § 214.2(f)(1)(i) - SEVP Form I-20",
+          description: "Signed Form I-20 issued by SEVP-approved school certifying admission and program length",
+          is_mandatory: true,
+          acceptable_categories: ["educational_records", "government_correspondence"],
+        },
+        {
+          id: "item-us-f1-02",
+          title: "SEVIS I-901 Fee Payment Receipt ($350)",
+          statutory_citation: "8 CFR § 214.13 - SEVIS Fee Requirement",
+          description: "Official receipt showing payment of mandatory $350 SEVIS fee prior to visa interview",
+          is_mandatory: true,
+          acceptable_categories: ["financial_evidence", "government_correspondence"],
+        },
+        {
+          id: "item-us-f1-03",
+          title: "Liquid Financial Proof (Year 1 Tuition + Living Costs)",
+          statutory_citation: "8 CFR § 214.2(f)(1)(i)(B) - Financial Sufficiency",
+          description: "Liquid savings, fixed deposits, or sanctioned education loan letters covering year 1",
+          is_mandatory: true,
+          acceptable_categories: ["financial_evidence"],
+        },
+        {
+          id: "item-us-f1-04",
+          title: "Parent/Sponsor Affidavit of Support & 3-Year ITRs",
+          statutory_citation: "INA § 214(b) - Verifiable Source of Funds",
+          description: "Notarized sponsor affidavit accompanied by Income Tax Returns and bank proof",
+          is_mandatory: true,
+          acceptable_categories: ["financial_evidence", "supporting_evidence"],
+        },
+        {
+          id: "item-us-f1-05",
+          title: "Academic Degree Transcripts & Standardized Test Scores",
+          statutory_citation: "8 CFR § 214.2(f)(6) - Academic Preparedness",
+          description: "Undergraduate/high school degree transcripts, GRE/GMAT, and TOEFL/IELTS scorecards",
+          is_mandatory: true,
+          acceptable_categories: ["educational_records"],
+        },
+        {
+          id: "item-us-f1-06",
+          title: "Valid Student Passport Biodata",
+          statutory_citation: "INA § 221 - Primary Identity Record",
+          description: "Valid passport with post-graduation validity",
+          is_mandatory: true,
+          acceptable_categories: ["identity_passport"],
+        },
+      ];
+    } else if (category.includes("student") && (category.includes("uk") || (currentCase?.jurisdiction || "").includes("United Kingdom"))) {
+      statutoryFramework = "Immigration Rules Appendix Student; HC 813";
+      rawItems = [
+        {
+          id: "item-uk-stu-01",
+          title: "Confirmation of Acceptance for Studies (CAS) Reference",
+          statutory_citation: "Appendix Student ST 5.1 - Valid CAS",
+          description: "Valid CAS issued by licensed UK student sponsor university",
+          is_mandatory: true,
+          acceptable_categories: ["educational_records", "government_correspondence"],
+        },
+        {
+          id: "item-uk-stu-02",
+          title: "28-Consecutive-Day Maintenance Funds Proof",
+          statutory_citation: "Appendix Student ST 12.3 - Financial Requirement",
+          description: "Bank statements showing required living funds held consecutively for 28 days",
+          is_mandatory: true,
+          acceptable_categories: ["financial_evidence"],
+        },
+        {
+          id: "item-uk-stu-03",
+          title: "UKVI Approved Clinic Tuberculosis (TB) Screening Certificate",
+          statutory_citation: "Appendix T - Tuberculosis Screening for Indian Residents",
+          description: "IOM / UKVI clinic TB chest x-ray clearance certificate",
+          is_mandatory: true,
+          acceptable_categories: ["police_medical"],
+        },
+        {
+          id: "item-uk-stu-04",
+          title: "Academic Qualifications & Certificates Listed on CAS",
+          statutory_citation: "Appendix Student ST 14.1 - Academic Qualifications",
+          description: "Degree diplomas and marksheets assessed by the university sponsor",
+          is_mandatory: true,
+          acceptable_categories: ["educational_records"],
+        },
+        {
+          id: "item-uk-stu-05",
+          title: "Valid International Passport Biodata",
+          statutory_citation: "Appendix Student ST 1.2 - Identity Requirement",
+          description: "Passport biodata page",
+          is_mandatory: true,
+          acceptable_categories: ["identity_passport"],
+        },
+      ];
+    } else {
+      // Default to universal statutory baseline
+      statutoryFramework = "Statutory Immigration Evidentiary Framework";
+      rawItems = [
+        {
+          id: "item-gen-01",
+          title: "Primary Identity & Travel Document (Passport)",
+          statutory_citation: "Universal Passport & Nationality Mandate",
+          description: "Unexpired passport biographical data page showing legal nationality and identity",
+          is_mandatory: true,
+          acceptable_categories: ["identity_passport"],
+        },
+        {
+          id: "item-gen-02",
+          title: "Curriculum Vitae / Professional Background & Qualifications",
+          statutory_citation: "Evidentiary Foundation of Professional Record",
+          description: "Comprehensive professional CV detailing work experience, degrees, and qualifications",
+          is_mandatory: true,
+          acceptable_categories: ["employment_records", "educational_records"],
+        },
+        {
+          id: "item-gen-03",
+          title: "Proof of Financial Sufficiency & Solvency",
+          statutory_citation: "Financial Admissibility Requirement",
+          description: "Recent bank statements, liquid asset proofs, or employment remuneration records",
+          is_mandatory: true,
+          acceptable_categories: ["financial_evidence"],
+        },
+      ];
+    }
+
+    // Match case documents against items
+    const items: ChecklistAuditItem[] = rawItems.map((ri) => {
+      const matched = caseDocs.filter((d) => ri.acceptable_categories.includes(d.category));
+      const isSatisfied = matched.length > 0;
+      return {
+        id: ri.id,
+        title: ri.title,
+        statutory_citation: ri.statutory_citation,
+        description: ri.description,
+        is_mandatory: ri.is_mandatory,
+        status: isSatisfied ? ("satisfied" as const) : ("missing" as const),
+        matched_documents: matched.map((m) => ({
+          document_id: m.id,
+          title: m.title,
+          verification_status: m.verification_status,
+        })),
+      };
+    });
+
+    const totalMandatory = items.filter((i) => i.is_mandatory).length;
+    const satisfiedMandatory = items.filter((i) => i.is_mandatory && i.status === "satisfied").length;
+    const fulfillmentPct = totalMandatory > 0 ? Math.round((satisfiedMandatory / totalMandatory) * 1000) / 10 : 0;
+    const missingItems = items
+      .filter((i) => i.is_mandatory && i.status === "missing")
+      .map((i) => `${i.title} (${i.statutory_citation})`);
+
+    const report: ChecklistAuditReport = {
+      jurisdiction: currentCase?.jurisdiction || "US",
+      visa_category: currentCase?.visa_category || "EB-1A",
+      statutory_framework: statutoryFramework,
+      items,
+      fulfillment_percentage: fulfillmentPct,
+      total_mandatory: totalMandatory,
+      satisfied_mandatory: satisfiedMandatory,
+      missing_items: missingItems,
     };
 
-    return { data: demoReport, isLiveBackend: false };
+    return { data: report, isLiveBackend: false };
   },
 
   async getCaseEvidenceSummary(caseId: string): Promise<ApiResponse<EvidenceBackedSummary>> {
