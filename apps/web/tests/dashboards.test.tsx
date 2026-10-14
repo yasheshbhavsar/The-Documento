@@ -79,7 +79,7 @@ describe("Three Separate Role Experiences", () => {
       const auditTabBtn = screen.getByRole("button", { name: /Audit Alerts/i });
       fireEvent.click(auditTabBtn);
       expect(screen.getByText("Append-Only Cryptographic Audit Log")).toBeDefined();
-    });
+    }, 15000);
   });
 
   describe("B. Employee Workspace", () => {

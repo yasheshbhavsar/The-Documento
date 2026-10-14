@@ -113,28 +113,30 @@ export function DocumentoNavbar({
             style={{
               display: "none",
               alignItems: "center",
-              gap: "6px",
-              padding: "4px 10px",
+              gap: "7px",
+              padding: "5px 12px",
               borderRadius: "20px",
-              background: "#EAF6F0",
-              border: "1px solid #B9DED4",
+              background: "rgba(234, 246, 240, 0.85)",
+              border: "1px solid rgba(185, 222, 212, 0.9)",
               fontSize: "12px",
-              fontWeight: 550,
+              fontWeight: 600,
               color: "#176B50",
+              boxShadow: "0 1px 3px rgba(6, 60, 61, 0.04)",
             }}
             className="sm-status-badge"
-            title="FastAPI Python engine with isolated tenant boundaries"
+            title="FastAPI Python engine with isolated tenant boundaries & RapidOCR intelligence"
           >
             <span
+              className="status-dot-pulse"
               style={{
-                width: "7px",
-                height: "7px",
+                width: "8px",
+                height: "8px",
                 borderRadius: "50%",
                 background: "#176B50",
                 display: "inline-block",
               }}
             />
-            <span>{isLiveBackend ? "Engine Live" : "Sandbox"}</span>
+            <span>{isLiveBackend ? "AI Engine Live" : "Sandbox Mode"}</span>
           </div>
 
           {/* Client Portal Link */}
@@ -148,14 +150,14 @@ export function DocumentoNavbar({
               fontSize: "13px",
               fontWeight: 600,
               cursor: "pointer",
-              padding: "8px 10px",
+              padding: "8px 12px",
               borderRadius: "8px",
-              transition: "all 0.15s ease",
+              transition: "all 0.18s ease",
             }}
             className="xs-portal-btn"
             onMouseEnter={(e) => {
               e.currentTarget.style.color = "#063C3D";
-              e.currentTarget.style.background = "#F1F6F4";
+              e.currentTarget.style.background = "#DDEFE8";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.color = "#445451";
@@ -169,25 +171,18 @@ export function DocumentoNavbar({
           <button
             type="button"
             onClick={() => onOpenLogin("firm")}
-            className="xs-signin-btn"
+            className="xs-signin-btn hover-lift"
             style={{
               background: "#FFFFFF",
               color: "#063C3D",
               border: "1px solid #DCE5E1",
-              padding: "8px 14px",
+              padding: "8px 16px",
               borderRadius: "8px",
               fontWeight: 600,
               fontSize: "13px",
               cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "#0D6866";
-              e.currentTarget.style.background = "#F8F7F2";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "#DCE5E1";
-              e.currentTarget.style.background = "#FFFFFF";
+              boxShadow: "0 1px 2px rgba(6, 60, 61, 0.04)",
+              transition: "all 0.18s ease",
             }}
           >
             Sign In
@@ -197,11 +192,12 @@ export function DocumentoNavbar({
           <button
             type="button"
             onClick={() => onOpenLogin("firm")}
+            className="hover-lift"
             style={{
-              background: "#0D6866",
+              background: "linear-gradient(135deg, #0D6866 0%, #063C3D 100%)",
               color: "#FFFFFF",
               border: "1px solid #063C3D",
-              padding: "8px 16px",
+              padding: "8px 18px",
               borderRadius: "8px",
               fontWeight: 650,
               fontSize: "13px",
@@ -209,16 +205,7 @@ export function DocumentoNavbar({
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
-              boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
-              transition: "all 0.15s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#063C3D";
-              e.currentTarget.style.boxShadow = "0 4px 12px rgba(6, 60, 61, 0.3)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#0D6866";
-              e.currentTarget.style.boxShadow = "0 2px 6px rgba(13, 104, 102, 0.2)";
+              boxShadow: "0 3px 10px rgba(13, 104, 102, 0.28)",
             }}
           >
             <span>Get Started</span>

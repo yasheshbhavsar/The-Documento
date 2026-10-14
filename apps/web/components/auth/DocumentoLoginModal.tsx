@@ -114,9 +114,9 @@ export function DocumentoLoginModal({
         alignItems: "center",
         justifyContent: "center",
         padding: "16px",
-        background: "rgba(6, 60, 61, 0.5)",
-        backdropFilter: "blur(8px)",
-        WebkitBackdropFilter: "blur(8px)",
+        background: "rgba(6, 60, 61, 0.65)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         animation: "fadeIn 0.2s ease",
       }}
       onClick={(e) => {
@@ -124,13 +124,14 @@ export function DocumentoLoginModal({
       }}
     >
       <div
+        className="glass-panel"
         style={{
           width: "100%",
-          maxWidth: "480px",
-          background: "#FFFFFF",
-          borderRadius: "18px",
-          border: "1px solid #DCE5E1",
-          boxShadow: "0 24px 60px rgba(6, 60, 61, 0.18), 0 4px 12px rgba(6, 60, 61, 0.06)",
+          maxWidth: "490px",
+          background: "linear-gradient(180deg, #FFFFFF 0%, #FAFCFB 100%)",
+          borderRadius: "20px",
+          border: "1px solid rgba(185, 222, 212, 0.8)",
+          boxShadow: "0 28px 70px rgba(6, 60, 61, 0.24), 0 8px 24px rgba(6, 60, 61, 0.08)",
           padding: "36px 32px 28px 32px",
           position: "relative",
           maxHeight: "92vh",
@@ -272,87 +273,87 @@ export function DocumentoLoginModal({
             <span>One-Click Demo Personas:</span>
             <span style={{ color: "#6E7F7C", textTransform: "none", fontWeight: 400 }}>Test drive</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
             <button
               type="button"
               onClick={() => handleQuickDemoSelect("master_admin")}
+              className="hover-lift"
               style={{
-                background: "#FFFFFF",
-                border: "1px solid #DCE5E1",
-                borderRadius: "6px",
-                padding: "6px 8px",
+                background: "linear-gradient(180deg, #FFFFFF 0%, #F4FAF7 100%)",
+                border: "1px solid #B9DED4",
+                borderRadius: "8px",
+                padding: "8px 6px",
                 fontSize: "11px",
-                fontWeight: 600,
+                fontWeight: 650,
                 color: "#063C3D",
                 cursor: "pointer",
                 textAlign: "center",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#0D6866";
-                e.currentTarget.style.background = "#DDEFE8";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#DCE5E1";
-                e.currentTarget.style.background = "#FFFFFF";
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "2px",
+                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.05)",
+                transition: "all 0.16s ease",
               }}
               title="Sarah Jenkins, Esq. (Managing Partner)"
             >
-              🏛️ Partner
+              <span style={{ fontSize: "14px" }}>🏛️</span>
+              <span style={{ fontWeight: 700 }}>Partner</span>
+              <span style={{ fontSize: "9px", color: "#6E7F7C", fontWeight: 500 }}>Managing</span>
             </button>
             <button
               type="button"
               onClick={() => handleQuickDemoSelect("case_manager")}
+              className="hover-lift"
               style={{
-                background: "#FFFFFF",
-                border: "1px solid #DCE5E1",
-                borderRadius: "6px",
-                padding: "6px 8px",
+                background: "linear-gradient(180deg, #FFFFFF 0%, #F2F8F8 100%)",
+                border: "1px solid #A2CFC7",
+                borderRadius: "8px",
+                padding: "8px 6px",
                 fontSize: "11px",
-                fontWeight: 600,
-                color: "#063C3D",
+                fontWeight: 650,
+                color: "#0D6866",
                 cursor: "pointer",
                 textAlign: "center",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#0D6866";
-                e.currentTarget.style.background = "#DDEFE8";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#DCE5E1";
-                e.currentTarget.style.background = "#FFFFFF";
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "2px",
+                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.05)",
+                transition: "all 0.16s ease",
               }}
               title="Marcus Vance (Senior Paralegal)"
             >
-              ⚖️ Paralegal
+              <span style={{ fontSize: "14px" }}>⚖️</span>
+              <span style={{ fontWeight: 700 }}>Paralegal</span>
+              <span style={{ fontSize: "9px", color: "#6E7F7C", fontWeight: 500 }}>Casework</span>
             </button>
             <button
               type="button"
               onClick={() => handleQuickDemoSelect("client_applicant")}
+              className="hover-lift"
               style={{
-                background: "#FFFFFF",
-                border: "1px solid #DCE5E1",
-                borderRadius: "6px",
-                padding: "6px 8px",
+                background: "linear-gradient(180deg, #FFFFFF 0%, #F0F6FF 100%)",
+                border: "1px solid #BFDBFE",
+                borderRadius: "8px",
+                padding: "8px 6px",
                 fontSize: "11px",
-                fontWeight: 600,
-                color: "#063C3D",
+                fontWeight: 650,
+                color: "#1E40AF",
                 cursor: "pointer",
                 textAlign: "center",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#0D6866";
-                e.currentTarget.style.background = "#DDEFE8";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#DCE5E1";
-                e.currentTarget.style.background = "#FFFFFF";
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "2px",
+                boxShadow: "0 1px 3px rgba(30, 64, 175, 0.05)",
+                transition: "all 0.16s ease",
               }}
               title="Dr. Aris Thorne (EB-1A Applicant)"
             >
-              👤 Client
+              <span style={{ fontSize: "14px" }}>👤</span>
+              <span style={{ fontWeight: 700 }}>Client</span>
+              <span style={{ fontSize: "9px", color: "#6E7F7C", fontWeight: 500 }}>Applicant</span>
             </button>
           </div>
         </div>

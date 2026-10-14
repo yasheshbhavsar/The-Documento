@@ -125,6 +125,9 @@ class DocumentDetailResponse(DocumentSummaryResponse):
     processing_error: Optional[str] = None
     retry_count: int = 0
     download_url: Optional[str] = None
+    active_run_id: Optional[UUID] = None
+    active_run_stage: Optional[str] = None
+    active_run_progress_percent: Optional[int] = None
 
 
 class ProcessingRunResponse(BaseModel):
@@ -201,7 +204,12 @@ def assert_document_access(auth: AuthContext, doc: Document, db: Session) -> Non
         raise PermissionDeniedError("Retained clients can only access documents linked to their own active petitions.")
 
 
-def _to_detail_response(doc: Document, auth: AuthContext) -> DocumentDetailResponse:
+def _to_detail_response(
+    doc: Document,
+    auth: AuthContext,
+    active_run: Optional[DocumentProcessingRun] = None,
+    db: Optional[Session] = None,
+) -> DocumentDetailResponse:
     download_token = generate_download_token(doc.id, auth.user_id, auth.organization_id)
     fields = [
         ExtractedFieldResponse(
@@ -225,6 +233,30 @@ def _to_detail_response(doc: Document, auth: AuthContext) -> DocumentDetailRespo
         )
         for f in (doc.extracted_fields or [])
     ]
+
+    run_id = None
+    run_stage = None
+    run_progress = None
+    if active_run:
+        run_id = active_run.id
+        run_stage = active_run.stage
+        run_progress = active_run.progress_percent
+    elif db is not None:
+        latest_run = (
+            db.query(DocumentProcessingRun)
+            .filter(DocumentProcessingRun.document_id == doc.id)
+            .order_by(DocumentProcessingRun.created_at.desc())
+            .first()
+        )
+        if latest_run:
+            run_id = latest_run.id
+            run_stage = latest_run.stage
+            run_progress = latest_run.progress_percent
+    elif hasattr(doc, "processing_runs") and doc.processing_runs:
+        latest_run = max(doc.processing_runs, key=lambda r: (r.run_number or 0, r.created_at or datetime.min))
+        run_id = latest_run.id
+        run_stage = latest_run.stage
+        run_progress = latest_run.progress_percent
 
     return DocumentDetailResponse(
         id=doc.id,
@@ -256,6 +288,9 @@ def _to_detail_response(doc: Document, auth: AuthContext) -> DocumentDetailRespo
         processing_error=doc.processing_error,
         retry_count=doc.retry_count,
         download_url=f"/api/v1/documents/{doc.id}/download?token={download_token}",
+        active_run_id=run_id,
+        active_run_stage=run_stage,
+        active_run_progress_percent=run_progress,
     )
 
 
@@ -298,6 +333,7 @@ async def upload_document(
     idempotency_key: Optional[str] = Form(None),
     run_async: bool = Form(False),
     background_tasks: BackgroundTasks = BackgroundTasks(),
+    response: Response = None,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ):
@@ -340,11 +376,13 @@ async def upload_document(
 
     # Process extraction
     if run_async:
+        if response is not None:
+            response.status_code = status.HTTP_202_ACCEPTED
         background_tasks.add_task(process_document_background_task, doc.id)
     else:
         doc = process_document_pipeline(db, doc.id)
 
-    return _to_detail_response(doc, auth)
+    return _to_detail_response(doc, auth, db=db)
 
 
 @router.get("", response_model=list[DocumentSummaryResponse])
@@ -441,7 +479,7 @@ def get_document(
         raise NotFoundError(f"Document {document_id} not found.")
 
     assert_document_access(auth, doc, db)
-    return _to_detail_response(doc, auth)
+    return _to_detail_response(doc, auth, db=db)
 
 
 @router.get("/{document_id}/download")
@@ -561,7 +599,7 @@ def reprocess_document(
     db.commit()
 
     doc = process_document_pipeline(db, doc.id)
-    return _to_detail_response(doc, auth)
+    return _to_detail_response(doc, auth, db=db)
 
 
 @router.get("/{document_id}/runs", response_model=list[ProcessingRunResponse])
@@ -625,7 +663,7 @@ def verify_document(
     db.add(audit)
     db.commit()
     db.refresh(doc)
-    return _to_detail_response(doc, auth)
+    return _to_detail_response(doc, auth, db=db)
 
 
 @router.put("/{document_id}/fields/{field_id}", response_model=ExtractedFieldResponse)

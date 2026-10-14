@@ -30,12 +30,12 @@ RUN groupadd -g 10001 appgroup && \
 # Copy installed dependencies from builder
 COPY --from=builder --chown=appuser:appgroup /root/.local /home/appuser/.local
 ENV PATH=/home/appuser/.local/bin:$PATH
+ENV PYTHONPATH=/app:$PYTHONPATH
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Copy application source code
-COPY --chown=appuser:appgroup backend /app/backend
-COPY --chown=appuser:appgroup alembic.ini /app/backend/alembic.ini
+# Copy application source code into /app/backend
+COPY --chown=appuser:appgroup . /app/backend
 
 USER appuser
 

@@ -224,6 +224,26 @@ export interface DocumentExtractedField {
 export type DocumentProcessingStatus = "pending" | "processing" | "completed" | "failed";
 export type DocumentVerificationStatus = "unverified" | "under_review" | "verified" | "rejected";
 export type DocumentStatus = "verified" | "under_review" | "action_needed" | "missing";
+export type ProcessingStage = "queued" | "preprocessing" | "ocr" | "classification" | "extraction" | "completed" | "failed";
+
+export interface DocumentProcessingRunItem {
+  id: string;
+  organization_id: string;
+  document_id: string;
+  run_number: number;
+  idempotency_key: string;
+  stage: ProcessingStage | string;
+  status: "queued" | "processing" | "completed" | "failed" | "cancelled" | string;
+  trigger_type: "upload" | "reprocess" | "manual_retry" | string;
+  progress_percent: number;
+  error_code?: string;
+  error_message?: string;
+  started_at?: string;
+  completed_at?: string;
+  metrics?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface DocumentVersionItem {
   id: string;
@@ -268,6 +288,9 @@ export interface DocumentItem {
   retry_count?: number;
   download_url?: string;
   tamper_verified?: boolean;
+  active_run_id?: string;
+  active_run_stage?: ProcessingStage | string;
+  active_run_progress_percent?: number;
 }
 
 export interface AuditEvent {

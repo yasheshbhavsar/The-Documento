@@ -1,3 +1,4 @@
+import io
 import uuid
 import pytest
 from fastapi.testclient import TestClient
@@ -261,3 +262,67 @@ def test_reprocess_document_creates_sequential_run(client, db):
     reprocess_run = next(r for r in runs if r["trigger_type"] == "reprocess")
     assert reprocess_run["run_number"] >= 2
     assert reprocess_run["stage"] == "completed"
+
+
+def test_upload_sync_returns_201_with_active_run_metadata(client, db):
+    org, user = _setup_test_entities(db)
+    headers = {
+        "X-Organization-Id": str(org.id),
+        "X-User-Id": str(user.id),
+        "X-User-Role": "admin",
+    }
+    res = client.post(
+        "/api/v1/documents/upload",
+        headers=headers,
+        files={"file": ("sync_test.pdf", io.BytesIO(_sample_pdf_bytes()), "application/pdf")},
+        data={"category": "identity_passport", "title": "Sync Upload Test", "run_async": "false"},
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["processing_status"] == "completed"
+    assert data["active_run_id"] is not None
+    assert data["active_run_stage"] == "completed"
+    assert data["active_run_progress_percent"] == 100
+
+
+def test_upload_async_returns_202_accepted_with_active_run_metadata(client, db):
+    org, user = _setup_test_entities(db)
+    headers = {
+        "X-Organization-Id": str(org.id),
+        "X-User-Id": str(user.id),
+        "X-User-Role": "admin",
+    }
+    res = client.post(
+        "/api/v1/documents/upload",
+        headers=headers,
+        files={"file": ("async_test.pdf", io.BytesIO(_sample_pdf_bytes()), "application/pdf")},
+        data={"category": "identity_passport", "title": "Async Upload Test", "run_async": "true"},
+    )
+    assert res.status_code == 202
+    data = res.json()
+    assert data["active_run_id"] is not None
+    assert data["active_run_stage"] in ("queued", "preprocessing", "ocr", "classification", "extraction", "completed")
+    assert data["active_run_progress_percent"] is not None
+
+
+def test_get_document_dossier_includes_active_run_fields(client, db):
+    org, user = _setup_test_entities(db)
+    doc = process_document_upload(
+        db=db,
+        organization_id=org.id,
+        user_id=user.id,
+        content=_sample_pdf_bytes(),
+        filename="dossier_active_run.pdf",
+    )
+    headers = {
+        "X-Organization-Id": str(org.id),
+        "X-User-Id": str(user.id),
+        "X-User-Role": "admin",
+    }
+    res = client.get(f"/api/v1/documents/{doc.id}", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["id"] == str(doc.id)
+    assert data["active_run_id"] is not None
+    assert data["active_run_stage"] == "queued"
+    assert data["active_run_progress_percent"] == 0

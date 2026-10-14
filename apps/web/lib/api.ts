@@ -8,6 +8,7 @@ import {
   DocumentCategory,
   DocumentExtractedField,
   DocumentVersionItem,
+  DocumentProcessingRunItem,
   CaseTask,
   AIFinding,
   MessageItem,
@@ -1612,6 +1613,46 @@ export const api = {
       },
     ];
     return { data: versions, isLiveBackend: false };
+  },
+
+  async getDocumentRuns(
+    id: string,
+    role: RoleCode = "master_admin"
+  ): Promise<ApiResponse<DocumentProcessingRunItem[]>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/documents/${id}/runs`, {
+        headers: getAuthHeaders(role),
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { data, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+
+    const doc = localDocuments.find((d) => d.id === id);
+    const mockRuns: DocumentProcessingRunItem[] = doc
+      ? [
+          {
+            id: doc.active_run_id || `run-${doc.id}`,
+            organization_id: "org-01",
+            document_id: doc.id,
+            run_number: doc.version || 1,
+            idempotency_key: `mock-run-${doc.id}`,
+            stage: doc.active_run_stage || (doc.processing_status === "completed" ? "completed" : doc.processing_status === "failed" ? "failed" : "extraction"),
+            status: doc.processing_status || "completed",
+            trigger_type: "upload",
+            progress_percent: doc.active_run_progress_percent ?? (doc.processing_status === "completed" ? 100 : doc.processing_status === "failed" ? 45 : 75),
+            metrics: { pages: doc.page_count || 1 },
+            created_at: doc.uploaded_at || new Date().toISOString(),
+            updated_at: doc.uploaded_at || new Date().toISOString(),
+          },
+        ]
+      : [];
+
+    return { data: mockRuns, isLiveBackend: false };
   },
 
   // Tasks

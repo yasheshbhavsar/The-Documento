@@ -5,9 +5,30 @@ import {
   DocumentItem,
   DocumentExtractedField,
   DocumentVersionItem,
+  DocumentProcessingRunItem,
   RoleCode,
 } from "../../lib/types";
 import { api } from "../../lib/api";
+
+export const PIPELINE_STAGES = [
+  { id: "queued", label: "Queued", step: 1 },
+  { id: "preprocessing", label: "Preprocessing", step: 2 },
+  { id: "ocr", label: "OCR Engine", step: 3 },
+  { id: "classification", label: "Classification", step: 4 },
+  { id: "extraction", label: "Extraction", step: 5 },
+  { id: "completed", label: "Completed", step: 6 },
+] as const;
+
+export function getStageIndex(stage?: string | null, status?: string | null): number {
+  if (status === "completed") return 5;
+  if (!stage) {
+    if (status === "failed") return 4;
+    if (status === "processing") return 2;
+    return 0;
+  }
+  const idx = PIPELINE_STAGES.findIndex((s) => s.id === stage.toLowerCase());
+  return idx >= 0 ? idx : 0;
+}
 
 interface DocumentDossierWorkbenchProps {
   document: DocumentItem;
@@ -51,7 +72,13 @@ export function DocumentDossierWorkbench({
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [feedbackToast, setFeedbackToast] = useState<{ message: string; type: "success" | "info" | "error" } | null>(null);
   const [copiedHash, setCopiedHash] = useState(false);
+  const [copiedFieldId, setCopiedFieldId] = useState<string | null>(null);
   const [fieldSearch, setFieldSearch] = useState("");
+
+  // Pipeline runs & live stage tracking
+  const [runs, setRuns] = useState<DocumentProcessingRunItem[]>([]);
+  const [activeRun, setActiveRun] = useState<DocumentProcessingRunItem | null>(null);
+  const [showPipelineDetails, setShowPipelineDetails] = useState<boolean>(true);
 
   const fieldCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -64,6 +91,61 @@ export function DocumentDossierWorkbench({
       return () => clearTimeout(timer);
     }
   }, [feedbackToast]);
+
+  // Fetch processing runs
+  const fetchRuns = async () => {
+    if (!doc.id) return;
+    try {
+      const res = await api.getDocumentRuns(doc.id, activeRole);
+      if (res.data && res.data.length > 0) {
+        setRuns(res.data);
+        setActiveRun(res.data[0]);
+      }
+    } catch {
+      // offline fallback
+    }
+  };
+
+  useEffect(() => {
+    fetchRuns();
+  }, [doc.id, activeRole]);
+
+  // Live polling while document is processing or pending
+  useEffect(() => {
+    const isProcessing =
+      doc.processing_status === "processing" ||
+      doc.processing_status === "pending" ||
+      activeRun?.status === "processing" ||
+      activeRun?.status === "queued";
+
+    if (!isProcessing) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const [runsRes, docRes] = await Promise.all([
+          api.getDocumentRuns(doc.id, activeRole),
+          api.getDocument(doc.id, activeRole),
+        ]);
+        if (runsRes.data && runsRes.data.length > 0) {
+          setRuns(runsRes.data);
+          setActiveRun(runsRes.data[0]);
+        }
+        if (docRes.data) {
+          if (
+            docRes.data.processing_status !== doc.processing_status ||
+            (docRes.data.extracted_fields &&
+              docRes.data.extracted_fields.length !== (doc.extracted_fields?.length || 0))
+          ) {
+            onDocumentUpdated(docRes.data);
+          }
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [doc.id, doc.processing_status, activeRun?.status, activeRole, onDocumentUpdated]);
 
   // Load versions when versions tab is selected
   useEffect(() => {
@@ -93,6 +175,17 @@ export function DocumentDossierWorkbench({
       navigator.clipboard.writeText(doc.sha256_hash);
       setCopiedHash(true);
       setTimeout(() => setCopiedHash(false), 2200);
+    }
+  };
+
+  const handleCopyFieldValue = (field: DocumentExtractedField) => {
+    const val = field.is_manually_corrected
+      ? field.corrected_value
+      : field.normalized_value || field.original_value;
+    if (val) {
+      navigator.clipboard.writeText(val);
+      setCopiedFieldId(field.id);
+      setTimeout(() => setCopiedFieldId(null), 2000);
     }
   };
 
@@ -187,6 +280,7 @@ export function DocumentDossierWorkbench({
     try {
       const res = await api.reprocessDocument(doc.id, activeRole);
       onDocumentUpdated(res.data);
+      await fetchRuns();
       setFeedbackToast({
         message: "Document reprocessed via OCR engine. Existing human edits were preserved.",
         type: "success",
@@ -226,6 +320,10 @@ export function DocumentDossierWorkbench({
   const verifiedCount = fields.filter((f) => f.validation_status === "verified").length;
   const correctedCount = fields.filter((f) => f.is_manually_corrected).length;
   const editingField = fields.find((f) => f.id === editingFieldId);
+
+  const isFailed = doc.processing_status === "failed" || activeRun?.status === "failed";
+  const currentStageIndex = getStageIndex(activeRun?.stage || doc.active_run_stage, doc.processing_status);
+  const progressPercent = activeRun?.progress_percent ?? doc.active_run_progress_percent ?? (doc.processing_status === "completed" ? 100 : isFailed ? 35 : 15);
 
   return (
     <div className="flex flex-col h-full bg-[#071917] text-slate-100 rounded-xl overflow-hidden border border-[#1b3a36] shadow-2xl">
@@ -319,6 +417,144 @@ export function DocumentDossierWorkbench({
         </div>
       )}
 
+      {/* 1.5 LIVE PIPELINE STAGE STEPPER */}
+      <div
+        data-testid="pipeline-stage-stepper"
+        className="px-5 py-3 bg-[#08201d] border-b border-[#1b3a36]"
+      >
+        <div className="flex items-center justify-between gap-3 mb-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-teal-400 font-mono">
+              Intelligence Pipeline
+            </span>
+            <span className="text-slate-500">•</span>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isFailed
+                    ? "bg-rose-400 animate-ping"
+                    : doc.processing_status === "completed"
+                    ? "bg-emerald-400"
+                    : "bg-amber-400 animate-pulse"
+                }`}
+              />
+              <span className="text-xs font-medium text-slate-200">
+                {isFailed
+                  ? "Processing Interrupted"
+                  : doc.processing_status === "completed"
+                  ? "Execution Complete"
+                  : `Processing (${PIPELINE_STAGES[currentStageIndex]?.label || "Running"})`}
+              </span>
+            </div>
+            {activeRun && (
+              <span className="px-2 py-0.5 text-[11px] rounded bg-[#051615] text-teal-300 border border-[#143a36] font-mono">
+                Run #{activeRun.run_number} • {activeRun.trigger_type}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono font-semibold text-emerald-400">
+              {progressPercent}%
+            </span>
+            {isFailed && isStaff && (
+              <button
+                onClick={handleReprocess}
+                disabled={isReprocessing}
+                className="px-2.5 py-1 text-xs bg-rose-600 hover:bg-rose-500 text-white rounded font-medium transition-colors"
+              >
+                {isReprocessing ? "Retrying..." : "Retry Pipeline"}
+              </button>
+            )}
+            <button
+              onClick={() => setShowPipelineDetails((prev) => !prev)}
+              aria-label={showPipelineDetails ? "Collapse pipeline" : "Expand pipeline"}
+              className="text-xs text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-[#0c2e2a]"
+            >
+              {showPipelineDetails ? "▲" : "▼"}
+            </button>
+          </div>
+        </div>
+
+        {/* Progress Bar Track */}
+        <div className="w-full h-1.5 bg-[#051413] rounded-full overflow-hidden mb-3 border border-[#143a36]">
+          <div
+            className={`h-full transition-all duration-500 ease-out ${
+              isFailed
+                ? "bg-rose-500"
+                : "bg-gradient-to-r from-teal-500 via-emerald-400 to-teal-300 shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+            }`}
+            style={{ width: `${Math.min(Math.max(progressPercent, 5), 100)}%` }}
+          />
+        </div>
+
+        {/* Horizontal Stepper Steps */}
+        {showPipelineDetails && (
+          <div className="grid grid-cols-6 gap-2 pt-1">
+            {PIPELINE_STAGES.map((stage, idx) => {
+              const isPast = !isFailed && (doc.processing_status === "completed" || idx < currentStageIndex);
+              const isCurrent = idx === currentStageIndex;
+              const isStageFailed = isCurrent && isFailed;
+
+              return (
+                <div key={stage.id} className="flex flex-col items-center text-center relative group">
+                  {/* Step Circle Indicator */}
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-all duration-300 ${
+                      isPast
+                        ? "bg-emerald-500 text-slate-950 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
+                        : isStageFailed
+                        ? "bg-rose-500 text-white shadow-[0_0_10px_rgba(244,63,94,0.6)] animate-pulse"
+                        : isCurrent
+                        ? "bg-teal-500/20 text-teal-300 border-2 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)] animate-pulse"
+                        : "bg-[#051413] text-slate-500 border border-[#1b3a36]"
+                    }`}
+                  >
+                    {isPast ? "✓" : isStageFailed ? "!" : stage.step}
+                  </div>
+
+                  {/* Step Label */}
+                  <span
+                    className={`mt-1.5 text-[11px] font-medium leading-tight ${
+                      isPast
+                        ? "text-slate-200"
+                        : isStageFailed
+                        ? "text-rose-400 font-bold"
+                        : isCurrent
+                        ? "text-emerald-300 font-bold"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {stage.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Failed Pipeline Alert */}
+        {isFailed && (
+          <div className="mt-3 p-2.5 rounded-lg bg-rose-950/60 border border-rose-800/80 text-rose-200 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-rose-400 font-bold text-sm">⚠️</span>
+              <span>
+                {doc.processing_error || activeRun?.error_message || "Document processing pipeline failed during analysis."}
+              </span>
+            </div>
+            {isStaff && (
+              <button
+                onClick={handleReprocess}
+                disabled={isReprocessing}
+                className="underline hover:text-white font-semibold ml-3"
+              >
+                {isReprocessing ? "Retrying..." : "Retry Now"}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* 2. MAIN DUAL-PANE WORKBENCH */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden min-h-[640px] max-h-[82vh]">
         {/* LEFT COLUMN: INTERACTIVE DOCUMENT SURFACE (54% / 7 cols) */}
@@ -404,7 +640,7 @@ export function DocumentDossierWorkbench({
               className="relative shadow-2xl rounded-lg overflow-hidden bg-white text-slate-900 border border-slate-300"
             >
               {/* CATEGORY-SPECIFIC DOCUMENT BACKGROUND CANVAS */}
-              {doc.category === "identity_passport" ? (
+              {doc.category === "identity_passport" || /passport/i.test(doc.title || "") ? (
                 /* PASSPORT HIGH-FIDELITY VECTOR CANVAS (600x420) */
                 <div className="w-[600px] h-[420px] bg-[#fbf9f4] relative p-6 font-sans text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
                   {/* Subtle Guilloche / Passport Security Watermark */}
@@ -500,7 +736,7 @@ export function DocumentDossierWorkbench({
                     <div>C098124914USA8804128F3105094&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;06</div>
                   </div>
                 </div>
-              ) : doc.category === "educational_records" ? (
+              ) : doc.category === "educational_records" || /degree|diploma|stanford/i.test(doc.title || "") ? (
                 /* DIPLOMA / EDUCATIONAL CERTIFICATE CANVAS (600x440) */
                 <div className="w-[600px] h-[440px] bg-[#fbfaf6] relative p-8 font-serif text-slate-900 border-4 border-[#063C3D] select-none overflow-hidden">
                   {/* Ornate Inner Border */}
@@ -558,6 +794,340 @@ export function DocumentDossierWorkbench({
                     <div className="text-center">
                       <div className="w-28 border-b border-slate-500 mb-1" />
                       <div>Dean of Graduate Studies</div>
+                    </div>
+                  </div>
+                </div>
+              ) : doc.category === "government_correspondence" || /imm|ircc|application|visitor|5257/i.test(doc.title || "") ? (
+                /* IRCC CANADA APPLICATION FORM (IMM 5257) CANVAS (600x420) */
+                <div className="w-[600px] h-[420px] bg-[#ffffff] relative p-5 font-sans text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
+                  <div className="absolute top-2 right-4 flex items-center gap-2">
+                    <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider text-right">
+                      Protected When Completed • IMM 5257 (06-2019) E
+                    </div>
+                    <div className="w-16 h-6 bg-slate-900 flex items-center justify-center text-white font-mono text-[9px] tracking-widest font-bold">
+                      |||||||||||
+                    </div>
+                  </div>
+
+                  <div className="border-b-2 border-slate-900 pb-2 mb-3 pr-24">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">🍁</span>
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-800 leading-tight">
+                          Immigration, Refugees and Citizenship Canada / IRCC
+                        </div>
+                        <div className="text-sm font-extrabold tracking-tight text-slate-900 uppercase">
+                          APPLICATION FOR VISITOR VISA (TEMPORARY RESIDENT VISA)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="bg-slate-100 p-2 rounded border border-slate-300">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-600 mb-1 border-b border-slate-200 pb-0.5">
+                        1. Personal Details / Données Personnelles
+                      </div>
+                      <div className="grid grid-cols-12 gap-2 text-[11px]">
+                        <div className="col-span-6">
+                          <span className="text-[9px] text-slate-500 uppercase block font-semibold">UCI / Client ID</span>
+                          <span className="font-mono font-bold text-slate-900">11-0942-8819</span>
+                        </div>
+                        <div className="col-span-6">
+                          <span className="text-[9px] text-slate-500 uppercase block font-semibold">Family Name & Given Names</span>
+                          <span className="font-mono font-bold text-slate-900">PATEL, PANKAJ KALIDAS</span>
+                        </div>
+                        <div className="col-span-4">
+                          <span className="text-[9px] text-slate-500 uppercase block font-semibold">Date of Birth</span>
+                          <span className="font-mono text-slate-900">1958-11-04</span>
+                        </div>
+                        <div className="col-span-4">
+                          <span className="text-[9px] text-slate-500 uppercase block font-semibold">Citizenship</span>
+                          <span className="font-mono text-slate-900">IND (INDIA)</span>
+                        </div>
+                        <div className="col-span-4">
+                          <span className="text-[9px] text-slate-500 uppercase block font-semibold">Passport No.</span>
+                          <span className="font-mono font-bold text-slate-900">Z4820194</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-100 p-2 rounded border border-slate-300">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-600 mb-1 border-b border-slate-200 pb-0.5">
+                        2. Purpose of Visit / Objet de la Visite (Super Visa Stream)
+                      </div>
+                      <div className="grid grid-cols-12 gap-2 text-[11px]">
+                        <div className="col-span-6">
+                          <span className="text-[9px] text-slate-500 uppercase block font-semibold">Purpose</span>
+                          <span className="font-bold text-teal-900">Super Visa (Parent / Grandparent Stay)</span>
+                        </div>
+                        <div className="col-span-6">
+                          <span className="text-[9px] text-slate-500 uppercase block font-semibold">Intended Duration</span>
+                          <span className="font-mono font-bold text-slate-900">24 Months Multi-Entry</span>
+                        </div>
+                        <div className="col-span-6">
+                          <span className="text-[9px] text-slate-500 uppercase block font-semibold">Host in Canada</span>
+                          <span className="font-mono text-slate-900">KUNAL PANKAJ PATEL (Son, Canadian Citizen)</span>
+                        </div>
+                        <div className="col-span-6">
+                          <span className="text-[9px] text-slate-500 uppercase block font-semibold">Funds Available</span>
+                          <span className="font-mono font-bold text-emerald-800">$558,400 CAD (Certified Net Worth)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-300 text-[10px] text-slate-600">
+                      <span className="font-mono">VALIDATED: 2D Barcode Generated & Form Integrity Certified</span>
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded border border-emerald-300 font-mono">
+                        IRCC COMPLIANT
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : doc.category === "police_medical" || /medical|apollo|x-ray|health/i.test(doc.title || "") ? (
+                /* APPOLLO HOSPITALS eMEDICAL UPFRONT MEDICAL REPORT (600x420) */
+                <div className="w-[600px] h-[420px] bg-[#fcfdfd] relative p-5 font-sans text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
+                  <div className="border-b-2 border-teal-800 pb-2 mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded bg-teal-800 text-white flex items-center justify-center font-bold text-sm">
+                        ✚
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          Apollo Hospitals International • Panel Physician Clinic #10948
+                        </div>
+                        <div className="text-sm font-extrabold text-teal-950 font-display">
+                          eMedical Upfront Medical Examination Information Sheet
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] font-mono text-slate-500">IME: 84920194 • UMI: 938201</div>
+                      <div className="text-[9px] font-bold bg-teal-100 text-teal-900 px-1.5 py-0.5 rounded border border-teal-300 inline-block mt-0.5">
+                        UPFRONT MEDICAL CLEARED
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-3 mb-3">
+                    <div className="col-span-3 flex flex-col items-center justify-center bg-slate-100 border border-slate-300 rounded p-2 text-center">
+                      <div className="w-14 h-14 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-xl text-slate-600">
+                        👤
+                      </div>
+                      <span className="text-[8px] font-mono text-slate-500 mt-1 uppercase">Biometric Match</span>
+                      <span className="text-[9px] font-bold text-slate-800 font-mono">P. K. PATEL</span>
+                    </div>
+                    <div className="col-span-9 bg-slate-50 p-2.5 rounded border border-slate-200 text-xs space-y-1.5">
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                          <span className="text-[9px] text-slate-500 uppercase font-semibold block">Client Name</span>
+                          <span className="font-bold text-slate-900 font-mono">PATEL, PANKAJ KALIDAS</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-500 uppercase font-semibold block">DOB / Gender</span>
+                          <span className="font-mono text-slate-900">04-NOV-1958 • MALE (Age 65)</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                          <span className="text-[9px] text-slate-500 uppercase font-semibold block">Passport Number</span>
+                          <span className="font-mono font-bold text-slate-900">Z4820194 (India)</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-500 uppercase font-semibold block">Visa Stream</span>
+                          <span className="font-mono text-slate-900">Canada Super Visa (Visitor)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded border border-slate-200 overflow-hidden text-[11px] mb-3">
+                    <div className="bg-slate-100 px-3 py-1 font-bold text-[9px] uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                      Diagnostic Panels & Chest Radiography
+                    </div>
+                    <div className="p-2 space-y-1">
+                      <div className="flex justify-between items-center py-0.5 border-b border-slate-100">
+                        <span className="text-slate-700">501 Medical Examination (Physical & Vitals)</span>
+                        <span className="font-bold text-emerald-700 font-mono">NORMAL / NO FINDINGS</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5 border-b border-slate-100">
+                        <span className="text-slate-700">502 Chest X-Ray (Posterior-Anterior View)</span>
+                        <span className="font-bold text-emerald-700 font-mono">NORMAL / NO ACTIVE TB</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5 border-b border-slate-100">
+                        <span className="text-slate-700">707 HIV Serology & 712 Syphilis Test</span>
+                        <span className="font-bold text-emerald-700 font-mono">NON-REACTIVE</span>
+                      </div>
+                      <div className="flex justify-between items-center py-0.5">
+                        <span className="text-slate-700">Serum Creatinine & eGFR Renal Function</span>
+                        <span className="font-bold text-emerald-700 font-mono">1.0 mg/dL / &gt;90 mL/min</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-300 text-xs text-slate-600">
+                    <div>
+                      <span className="text-[10px] block font-semibold text-slate-700">Dr. S. Bhatt, MD — Panel Physician #10948</span>
+                      <span className="text-[9px] font-mono text-slate-500">Electronically submitted via IRCC eMedical Gateway</span>
+                    </div>
+                    <div className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full border border-emerald-300">
+                      ✓ INADMISSIBILITY RISK: NONE (CATEGORY A)
+                    </div>
+                  </div>
+                </div>
+              ) : doc.category === "financial_evidence" || /financial|net worth|ca |bank/i.test(doc.title || "") ? (
+                /* CA NET WORTH CERTIFICATE CANVAS (600x420) */
+                <div className="w-[600px] h-[420px] bg-[#fbfbf8] relative p-5 font-serif text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
+                  <div className="text-center border-b-2 border-slate-800 pb-2 mb-3">
+                    <div className="text-base font-bold tracking-wide text-slate-900 uppercase font-sans">
+                      SHAH & ASSOCIATES
+                    </div>
+                    <div className="text-[10px] uppercase tracking-widest text-slate-600 font-sans">
+                      CHARTERED ACCOUNTANTS • STATUTORY AUDITORS • FRN: 109284W
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center mb-3">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wider text-teal-900 font-sans">
+                        CERTIFICATE OF NET WORTH & ASSET VALUATION
+                      </div>
+                      <div className="text-[10px] text-slate-600 font-sans">
+                        Issued for Immigration / Canada Super Visa Financial Admissibility
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[9px] font-mono text-slate-500 uppercase">ICAI UDIN Generated</div>
+                      <div className="text-[11px] font-mono font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-300">
+                        UDIN: 24109284BKXYZ9821
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-2.5 rounded border border-slate-300 text-xs font-sans mb-3 space-y-1">
+                    <div className="text-[11px] text-slate-700">
+                      This is to certify that we have verified the books of accounts, title deeds, and bank statements of:
+                    </div>
+                    <div className="text-sm font-bold text-slate-900 font-mono">
+                      MR. PANKAJ KALIDAS PATEL
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      Residing at: 14 Anand Society, Race Course Road, Vadodara, Gujarat 390007, India
+                    </div>
+                  </div>
+
+                  <div className="border border-slate-300 rounded overflow-hidden text-xs font-sans mb-3">
+                    <div className="bg-slate-100 grid grid-cols-12 px-2 py-1 font-bold text-[10px] uppercase text-slate-700 border-b border-slate-300">
+                      <span className="col-span-8">Asset Classification</span>
+                      <span className="col-span-4 text-right">Value (INR / CAD)</span>
+                    </div>
+                    <div className="divide-y divide-slate-200 text-[11px]">
+                      <div className="grid grid-cols-12 px-2 py-1 bg-white">
+                        <span className="col-span-8 text-slate-800">Schedule A: Immovable Real Estate (Govt Approved Valuer)</span>
+                        <span className="col-span-4 text-right font-mono font-bold text-slate-900">₹2,65,00,000 (~$431,800 CAD)</span>
+                      </div>
+                      <div className="grid grid-cols-12 px-2 py-1 bg-slate-50">
+                        <span className="col-span-8 text-slate-800">Schedule B: Liquid Bank Balances, FDs & Mutual Funds</span>
+                        <span className="col-span-4 text-right font-mono font-bold text-slate-900">₹77,80,000 (~$126,600 CAD)</span>
+                      </div>
+                      <div className="grid grid-cols-12 px-2 py-1 bg-teal-50 font-bold">
+                        <span className="col-span-8 text-teal-950">TOTAL CERTIFIED NET WORTH</span>
+                        <span className="col-span-4 text-right font-mono text-emerald-800 text-xs">₹3,42,80,000 (~$558,400 CAD)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-end pt-2 border-t border-slate-300 text-xs font-sans text-slate-600">
+                    <div>
+                      <span className="text-[9px] text-slate-500 block">Date: 12 August 2024 • Place: Vadodara</span>
+                      <span className="text-[10px] font-bold text-slate-800">For Shah & Associates, Chartered Accountants</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="w-24 border-b border-slate-500 mb-0.5 ml-auto" />
+                      <div className="text-[10px] font-bold text-slate-800">CA. R. K. Shah, Partner</div>
+                      <div className="text-[9px] font-mono text-slate-500">M. No: 109284 • Firm Reg: 109284W</div>
+                    </div>
+                  </div>
+                </div>
+              ) : doc.category === "insurance_accommodation" || /insurance|manulife|policy/i.test(doc.title || "") ? (
+                /* MANULIFE SUPER VISA INSURANCE CANVAS (600x420) */
+                <div className="w-[600px] h-[420px] bg-[#ffffff] relative p-5 font-sans text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
+                  <div className="border-b-2 border-emerald-700 pb-2 mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 bg-emerald-700 text-white font-bold flex items-center justify-center rounded">
+                        M
+                      </div>
+                      <div>
+                        <div className="text-xs font-extrabold text-emerald-950 tracking-tight">
+                          MANULIFE FINANCIAL
+                        </div>
+                        <div className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold">
+                          Visitors to Canada Emergency Medical Insurance Plan
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-mono font-bold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-300">
+                        POLICY: MNL-SV-2024-99482
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 p-2.5 rounded border border-slate-200 text-xs space-y-1.5 mb-3">
+                    <div className="text-[10px] font-bold uppercase text-slate-600 tracking-wider border-b border-slate-200 pb-0.5">
+                      Policyholder & Term Confirmation
+                    </div>
+                    <div className="grid grid-cols-12 gap-2 text-[11px]">
+                      <div className="col-span-6">
+                        <span className="text-[9px] text-slate-500 uppercase font-semibold block">Primary Insured</span>
+                        <span className="font-mono font-bold text-slate-900">PATEL, PANKAJ KALIDAS (Age 65)</span>
+                      </div>
+                      <div className="col-span-6">
+                        <span className="text-[9px] text-slate-500 uppercase font-semibold block">Effective Coverage Period</span>
+                        <span className="font-mono text-slate-900">365 Days Continuous from Entry</span>
+                      </div>
+                      <div className="col-span-6">
+                        <span className="text-[9px] text-slate-500 uppercase font-semibold block">Maximum Aggregate Benefit</span>
+                        <span className="font-mono font-bold text-emerald-800">$150,000 CAD (Exceeds $100K IRCC Min)</span>
+                      </div>
+                      <div className="col-span-6">
+                        <span className="text-[9px] text-slate-500 uppercase font-semibold block">Deductible Applied</span>
+                        <span className="font-mono font-bold text-slate-900">$0 CAD (Nil Deductible)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border border-slate-200 rounded p-2 text-xs space-y-1 mb-3 bg-white">
+                    <div className="text-[9px] font-bold uppercase text-slate-600 tracking-wider border-b border-slate-200 pb-0.5">
+                      Comprehensive IRCC Super Visa Benefits Checklist
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                      <div className="flex items-center gap-1.5 text-slate-800">
+                        <span className="text-emerald-600 font-bold">✓</span>
+                        <span>Hospital Inpatient Stay & Surgery</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-slate-800">
+                        <span className="text-emerald-600 font-bold">✓</span>
+                        <span>Physician & Specialist Visits</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-slate-800">
+                        <span className="text-emerald-600 font-bold">✓</span>
+                        <span>Emergency Air Ambulance & Repatriation ($50,000)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-slate-800">
+                        <span className="text-emerald-600 font-bold">✓</span>
+                        <span>Prescription Drugs & Diagnostics</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2 bg-emerald-50 rounded border border-emerald-200 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-950 block">IRCC Bill C-242 Regulatory Compliance Certified</span>
+                      <span className="text-[9px] text-emerald-800">Valid with all Canadian Designated Health Underwriters</span>
+                    </div>
+                    <div className="text-[10px] font-mono font-bold text-emerald-900">
+                      PRE-PAID IN FULL
                     </div>
                   </div>
                 </div>
@@ -883,7 +1453,7 @@ export function DocumentDossierWorkbench({
                         </div>
 
                         {/* Provenance Metadata Line */}
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-2.5">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5">
                           <div className="flex items-center gap-2">
                             <span>
                               Page {field.source_page || 1}
@@ -907,25 +1477,65 @@ export function DocumentDossierWorkbench({
                           )}
                         </div>
 
-                        {/* Actions */}
-                        {isStaff && !isEditing && (
-                          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#143330]">
-                            {field.validation_status !== "verified" && (
-                              <button
-                                onClick={() => handleQuickVerifyField(field)}
-                                className="px-2.5 py-1 text-[11px] rounded bg-emerald-950/70 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 transition-colors"
-                              >
-                                ✓ Quick Verify
-                              </button>
-                            )}
+                        {/* Confidence Visual Meter */}
+                        <div className="w-full bg-[#051413] rounded-full h-1 mb-2.5 overflow-hidden border border-[#143330]">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              (field.ocr_confidence || 0.95) >= 0.95
+                                ? "bg-gradient-to-r from-emerald-500 to-teal-300 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                                : (field.ocr_confidence || 0.95) >= 0.8
+                                ? "bg-amber-400"
+                                : "bg-rose-400"
+                            }`}
+                            style={{ width: `${Math.round((field.ocr_confidence || 0.95) * 100)}%` }}
+                          />
+                        </div>
+
+                        {/* Actions Toolbar */}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#143330]">
+                          <div className="flex items-center gap-1.5">
                             <button
-                              onClick={() => handleStartFieldEdit(field)}
-                              className="px-2.5 py-1 text-[11px] rounded bg-[#133c38] hover:bg-[#1a4e49] text-teal-200 border border-[#215751] transition-colors"
+                              type="button"
+                              onClick={() => handleCopyFieldValue(field)}
+                              className="px-2 py-0.5 text-[10px] rounded bg-[#0d2825] hover:bg-[#133c38] text-teal-300 border border-[#1b3a36] transition-colors flex items-center gap-1"
+                              title="Copy normalized legal value"
                             >
-                              Edit
+                              <span>{copiedFieldId === field.id ? "✓" : "📋"}</span>
+                              <span>{copiedFieldId === field.id ? "Copied" : "Copy"}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedFieldId(field.id);
+                                setShowBoundingBoxes(true);
+                              }}
+                              className="px-2 py-0.5 text-[10px] rounded bg-[#0d2825] hover:bg-[#133c38] text-teal-300 border border-[#1b3a36] transition-colors flex items-center gap-1"
+                              title="Locate bounding box on document canvas"
+                            >
+                              <span>🎯</span>
+                              <span>Locate</span>
                             </button>
                           </div>
-                        )}
+
+                          {isStaff && !isEditing && (
+                            <div className="flex items-center gap-1.5">
+                              {field.validation_status !== "verified" && (
+                                <button
+                                  onClick={() => handleQuickVerifyField(field)}
+                                  className="px-2.5 py-1 text-[11px] rounded bg-emerald-950/70 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 transition-colors"
+                                >
+                                  ✓ Quick Verify
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleStartFieldEdit(field)}
+                                className="px-2.5 py-1 text-[11px] rounded bg-[#133c38] hover:bg-[#1a4e49] text-teal-200 border border-[#215751] transition-colors"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          )}
+                        </div>
 
                         {/* Inline Correction Form */}
                         {isEditing && (

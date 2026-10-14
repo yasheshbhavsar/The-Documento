@@ -303,30 +303,35 @@ export function DocumentoPreview() {
                   aria-selected={isSelected}
                   onClick={() => setActiveTab(tab.id as PreviewTab)}
                   style={{
-                    padding: "14px 16px",
+                    padding: "13px 18px",
                     fontSize: "13px",
                     fontWeight: isSelected ? 700 : 550,
-                    color: isSelected ? "#0D6866" : "#445451",
+                    color: isSelected ? "#063C3D" : "#445451",
                     border: "none",
-                    background: "transparent",
+                    background: isSelected ? "rgba(221, 239, 232, 0.45)" : "transparent",
                     borderBottom: isSelected ? "3px solid #0D6866" : "3px solid transparent",
+                    borderTopLeftRadius: "8px",
+                    borderTopRightRadius: "8px",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
                     whiteSpace: "nowrap",
-                    transition: "all 0.15s ease",
+                    transition: "all 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
                   }}
                 >
-                  <span>{tab.label}</span>
+                  <span style={{ letterSpacing: "-0.01em" }}>{tab.label}</span>
                   <span
                     style={{
-                      background: isSelected ? "#DDEFE8" : "#F1F6F4",
-                      color: isSelected ? "#063C3D" : "#6E7F7C",
+                      background: isSelected ? "#063C3D" : "#F1F6F4",
+                      color: isSelected ? "#DDEFE8" : "#6E7F7C",
+                      border: isSelected ? "1px solid #133c38" : "1px solid #E2E8F0",
                       fontSize: "11px",
-                      padding: "2px 6px",
-                      borderRadius: "10px",
-                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: "12px",
+                      fontWeight: 650,
+                      boxShadow: isSelected ? "0 1px 3px rgba(6, 60, 61, 0.15)" : "none",
+                      transition: "all 0.18s ease",
                     }}
                   >
                     {tab.badge}

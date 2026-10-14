@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { DocumentUploadModal } from "../components/modals/DocumentUploadModal";
 import { DocumentInspectorModal } from "../components/modals/DocumentInspectorModal";
+import { DocumentDossierWorkbench } from "../components/documents/DocumentDossierWorkbench";
 import { FIXTURE_DOCUMENTS } from "../lib/api";
 
 describe("Phase 4 — Document Management, OCR & Structured Extraction Workflows", () => {
@@ -154,5 +155,69 @@ describe("Phase 4 — Document Management, OCR & Structured Extraction Workflows
     expect(screen.getByText(/Document revisions and lineage tracking/i)).toBeDefined();
     expect(screen.getByText(/Current Active/i)).toBeDefined();
     expect(screen.getAllByText(/v1/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders live pipeline stage stepper with all 6 stages for completed document", () => {
+    render(
+      <DocumentDossierWorkbench
+        document={samplePassportDoc}
+        onDocumentUpdated={vi.fn()}
+        activeRole="case_manager"
+      />
+    );
+
+    const stepper = screen.getByTestId("pipeline-stage-stepper");
+    expect(stepper).toBeDefined();
+
+    expect(screen.getByText(/Intelligence Pipeline/i)).toBeDefined();
+    expect(screen.getByText(/Execution Complete/i)).toBeDefined();
+    expect(stepper.textContent).toContain("100%");
+
+    expect(screen.getByText("Queued")).toBeDefined();
+    expect(screen.getByText("Preprocessing")).toBeDefined();
+    expect(screen.getByText("OCR Engine")).toBeDefined();
+    expect(screen.getByText("Classification")).toBeDefined();
+    expect(screen.getByText("Extraction")).toBeDefined();
+    expect(screen.getByText("Completed")).toBeDefined();
+  });
+
+  it("renders live pipeline stage stepper in active processing state", () => {
+    const processingDoc = {
+      ...samplePassportDoc,
+      processing_status: "processing" as const,
+      active_run_stage: "ocr",
+      active_run_progress_percent: 45,
+    };
+
+    render(
+      <DocumentDossierWorkbench
+        document={processingDoc}
+        onDocumentUpdated={vi.fn()}
+        activeRole="case_manager"
+      />
+    );
+
+    expect(screen.getByText(/Processing \(OCR Engine\)/i)).toBeDefined();
+    expect(screen.getByText(/45%/i)).toBeDefined();
+  });
+
+  it("renders pipeline stage stepper in failed state with retry button", () => {
+    const failedDoc = {
+      ...samplePassportDoc,
+      processing_status: "failed" as const,
+      processing_error: "Corrupted PDF byte stream encountered at page 1",
+    };
+
+    render(
+      <DocumentDossierWorkbench
+        document={failedDoc}
+        onDocumentUpdated={vi.fn()}
+        activeRole="case_manager"
+      />
+    );
+
+    expect(screen.getByText(/Processing Interrupted/i)).toBeDefined();
+    expect(screen.getByText(/Corrupted PDF byte stream encountered at page 1/i)).toBeDefined();
+    expect(screen.getAllByRole("button", { name: /Retry/i }).length).toBeGreaterThan(0);
   });
 });

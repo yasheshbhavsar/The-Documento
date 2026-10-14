@@ -15,8 +15,18 @@ class Settings(BaseSettings):
     # Private Storage
     object_storage_endpoint: str = "http://localhost:9000"
     object_storage_bucket: str = "ai-immigration"
-    use_local_storage: bool = False
+    object_storage_access_key: str = "minioadmin"
+    object_storage_secret_key: str = "minioadmin"
+    object_storage_region: str = "us-east-1"
+    use_local_storage: bool = True
     document_storage_dir: str = "./storage_data"
+
+    # AI & Multimodal LLM Intelligence
+    ai_provider: str = "gemini"  # gemini, anthropic, mock_fallback
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-3-5-sonnet-20241022"
 
     # Security & Tokens
     jwt_secret_key: str = "local_development_secret_key_change_in_production_min_32_chars"

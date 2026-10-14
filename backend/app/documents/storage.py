@@ -148,7 +148,14 @@ class LocalDocumentStorage(StorageBackend):
 
 
 class S3DocumentStorage(StorageBackend):
-    def __init__(self, endpoint_url: str, bucket_name: str, access_key: str = "", secret_key: str = ""):
+    def __init__(
+        self,
+        endpoint_url: str,
+        bucket_name: str,
+        access_key: str = "",
+        secret_key: str = "",
+        region_name: str = "us-east-1",
+    ):
         import boto3
         from botocore.config import Config
 
@@ -158,6 +165,7 @@ class S3DocumentStorage(StorageBackend):
             endpoint_url=endpoint_url or None,
             aws_access_key_id=access_key or os.environ.get("AWS_ACCESS_KEY_ID", "localadmin"),
             aws_secret_access_key=secret_key or os.environ.get("AWS_SECRET_ACCESS_KEY", "local_dev_only_change_me"),
+            region_name=region_name,
             config=Config(
                 signature_version="s3v4",
                 connect_timeout=1,
@@ -253,14 +261,17 @@ class S3DocumentStorage(StorageBackend):
 def get_storage_backend() -> StorageBackend:
     """Returns configured storage backend, falling back to local isolated storage."""
     settings = get_settings()
-    if os.environ.get("USE_LOCAL_STORAGE", "false").lower() in ("true", "1"):
-        return LocalDocumentStorage()
+    if settings.use_local_storage or os.environ.get("USE_LOCAL_STORAGE", "false").lower() in ("true", "1"):
+        return LocalDocumentStorage(base_dir=settings.document_storage_dir)
     try:
         storage = S3DocumentStorage(
             endpoint_url=settings.object_storage_endpoint,
             bucket_name=settings.object_storage_bucket,
+            access_key=settings.object_storage_access_key,
+            secret_key=settings.object_storage_secret_key,
+            region_name=settings.object_storage_region,
         )
         return storage
     except Exception:
         # Graceful fallback for local development without running MinIO
-        return LocalDocumentStorage()
+        return LocalDocumentStorage(base_dir=settings.document_storage_dir)

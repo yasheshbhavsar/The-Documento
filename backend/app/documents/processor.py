@@ -167,6 +167,9 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
             organization_id=doc.organization_id,
             category=doc.category,
             pages=pages,
+            document_bytes=content,
+            mime_type=doc.mime_type,
+            filename=doc.filename,
         )
 
         for field in new_extracted_fields:
