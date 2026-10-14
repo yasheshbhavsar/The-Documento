@@ -15,7 +15,14 @@ from backend.app.documents.security import (
     MalwareScanner,
 )
 from backend.app.documents.storage import get_storage_backend
-from backend.app.domain.models import Document, DocumentUploadSession, AuditEvent, now_utc
+from backend.app.domain.models import (
+    Document,
+    DocumentUploadSession,
+    AuditEvent,
+    DocumentProcessingRun,
+    OutboxEvent,
+    now_utc,
+)
 
 
 def create_upload_session(
@@ -187,7 +194,52 @@ def process_document_upload(
     )
     db.add(doc)
 
-    # 8. Record audit event
+    # 8. Record initial processing run and transactional outbox event
+    effective_idempotency_key = idempotency_key or f"run-{doc_id}-{uuid.uuid4()}"
+    existing_run = (
+        db.query(DocumentProcessingRun)
+        .filter(
+            DocumentProcessingRun.organization_id == organization_id,
+            DocumentProcessingRun.idempotency_key == effective_idempotency_key,
+        )
+        .first()
+    )
+    if existing_run:
+        effective_idempotency_key = f"{effective_idempotency_key}-v{version}-{uuid.uuid4().hex[:6]}"
+
+    run_id = uuid.uuid4()
+    run = DocumentProcessingRun(
+        id=run_id,
+        organization_id=organization_id,
+        document_id=doc_id,
+        run_number=version,
+        idempotency_key=effective_idempotency_key,
+        stage="queued",
+        status="queued",
+        trigger_type="upload",
+        progress_percent=0,
+        metrics={},
+    )
+    db.add(run)
+
+    outbox_event = OutboxEvent(
+        id=uuid.uuid4(),
+        organization_id=organization_id,
+        event_type="document.processing.requested",
+        aggregate_type="document",
+        aggregate_id=doc_id,
+        payload={
+            "document_id": str(doc_id),
+            "run_id": str(run_id),
+            "organization_id": str(organization_id),
+            "idempotency_key": effective_idempotency_key,
+            "trigger": "upload",
+        },
+        status="pending",
+    )
+    db.add(outbox_event)
+
+    # 9. Record audit event
     audit = AuditEvent(
         organization_id=organization_id,
         actor_id=user_id,

@@ -1,4 +1,5 @@
 import io
+import uuid
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -26,7 +27,10 @@ from backend.app.core.errors import (
     ValidationError,
 )
 from backend.app.db.session import get_db
-from backend.app.documents.processor import process_document_pipeline
+from backend.app.documents.processor import (
+    process_document_pipeline,
+    process_document_background_task,
+)
 from backend.app.documents.storage import get_storage_backend
 from backend.app.documents.upload_service import (
     create_upload_session,
@@ -40,6 +44,8 @@ from backend.app.domain.models import (
     ClientProfile,
     Document,
     DocumentExtractedField,
+    DocumentProcessingRun,
+    OutboxEvent,
     ImmigrationCase,
     now_utc,
 )
@@ -119,6 +125,27 @@ class DocumentDetailResponse(DocumentSummaryResponse):
     processing_error: Optional[str] = None
     retry_count: int = 0
     download_url: Optional[str] = None
+
+
+class ProcessingRunResponse(BaseModel):
+    id: UUID
+    organization_id: UUID
+    document_id: UUID
+    run_number: int
+    idempotency_key: str
+    stage: str
+    status: str
+    trigger_type: str
+    progress_percent: int
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    metrics: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class VerifyDocumentRequest(BaseModel):
@@ -313,7 +340,7 @@ async def upload_document(
 
     # Process extraction
     if run_async:
-        background_tasks.add_task(process_document_pipeline, db, doc.id)
+        background_tasks.add_task(process_document_background_task, doc.id)
     else:
         doc = process_document_pipeline(db, doc.id)
 
@@ -500,8 +527,63 @@ def reprocess_document(
     if auth.is_retained_client():
         raise PermissionDeniedError("Clients cannot trigger technical document reprocessing.")
 
+    # Record new run and outbox event
+    prior_runs_count = db.query(DocumentProcessingRun).filter_by(document_id=doc.id).count()
+    run_id = uuid.uuid4()
+    run = DocumentProcessingRun(
+        id=run_id,
+        organization_id=doc.organization_id,
+        document_id=doc.id,
+        run_number=prior_runs_count + 1,
+        idempotency_key=f"reprocess-{doc.id}-{uuid.uuid4()}",
+        stage="queued",
+        status="queued",
+        trigger_type="reprocess",
+        progress_percent=0,
+    )
+    db.add(run)
+
+    outbox_event = OutboxEvent(
+        id=uuid.uuid4(),
+        organization_id=doc.organization_id,
+        event_type="document.processing.requested",
+        aggregate_type="document",
+        aggregate_id=doc.id,
+        payload={
+            "document_id": str(doc.id),
+            "run_id": str(run_id),
+            "organization_id": str(doc.organization_id),
+            "trigger": "reprocess",
+        },
+        status="pending",
+    )
+    db.add(outbox_event)
+    db.commit()
+
     doc = process_document_pipeline(db, doc.id)
     return _to_detail_response(doc, auth)
+
+
+@router.get("/{document_id}/runs", response_model=list[ProcessingRunResponse])
+def list_document_processing_runs(
+    document_id: UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Returns all processing runs for a document in descending chronological order."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise NotFoundError("Document not found.")
+
+    assert_document_access(auth, doc, db)
+
+    runs = (
+        db.query(DocumentProcessingRun)
+        .filter(DocumentProcessingRun.document_id == document_id)
+        .order_by(DocumentProcessingRun.created_at.desc())
+        .all()
+    )
+    return runs
 
 
 @router.put("/{document_id}/verify", response_model=DocumentDetailResponse)

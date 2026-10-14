@@ -45,6 +45,8 @@ class Organization(Base):
     invoices: Mapped[list["Invoice"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     payment_records: Mapped[list["PaymentRecord"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     settings: Mapped[list["OrganizationSetting"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    processing_runs: Mapped[list["DocumentProcessingRun"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    outbox_events: Mapped[list["OutboxEvent"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
 
 
 class Branch(Base):
@@ -468,6 +470,7 @@ class Document(Base):
     uploaded_by: Mapped[User | None] = relationship(foreign_keys=[uploaded_by_user_id])
     verified_by: Mapped[User | None] = relationship(foreign_keys=[verified_by_user_id])
     extracted_fields: Mapped[list["DocumentExtractedField"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+    processing_runs: Mapped[list["DocumentProcessingRun"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
 
 class DocumentUploadSession(Base):
@@ -526,6 +529,67 @@ class DocumentExtractedField(Base):
 
     document: Mapped[Document] = relationship(back_populates="extracted_fields")
     corrected_by: Mapped[User | None] = relationship(foreign_keys=[corrected_by_user_id])
+
+
+class DocumentProcessingRun(Base):
+    __tablename__ = "document_processing_runs"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "idempotency_key", name="uq_processing_run_org_idempotency"),
+        Index("ix_processing_runs_org_status", "organization_id", "status"),
+        Index("ix_processing_runs_doc_stage", "document_id", "stage"),
+        Index("ix_processing_runs_org_doc", "organization_id", "document_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    run_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)  # queued, preprocessing, ocr, classification, extraction, evaluating, completed, failed
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)  # queued, processing, completed, failed, cancelled
+    trigger_type: Mapped[str] = mapped_column(String(32), default="upload", nullable=False)  # upload, reprocess, manual_retry
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metrics: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="processing_runs")
+    document: Mapped[Document] = relationship(back_populates="processing_runs")
+
+
+class OutboxEvent(Base):
+    __tablename__ = "outbox_events"
+    __table_args__ = (
+        Index("ix_outbox_org_status", "organization_id", "status"),
+        Index("ix_outbox_status_created", "status", "created_at"),
+        Index("ix_outbox_agg", "aggregate_type", "aggregate_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g. document.processing.requested, document.processed
+    aggregate_type: Mapped[str] = mapped_column(String(64), nullable=False)  # document, case, client
+    aggregate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)  # pending, published, failed
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="outbox_events")
 
 
 class CaseAIFinding(Base):

@@ -8,3 +8,25 @@ __pycache__/
 .venv/
 *.pyc
 .DS_Store
+
+# Document Storage & Uploads (prevents newly generated runtime/test files from being tracked)
+storage_data/
+backend/storage_data/
+uploads/
+backend/uploads/
+
+# Logs & Runtime Artifacts
+*.log
+logs/
+backend/logs/
+
+# Test & Coverage Outputs
+.coverage
+htmlcov/
+coverage/
+
+# Local databases & caches
+*.sqlite
+*.sqlite3
+*.db
+

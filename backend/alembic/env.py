@@ -44,7 +44,11 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url") or get_settings().database_url
+    raw_url = config.get_main_option("sqlalchemy.url")
+    if not raw_url or "driver://user:pass" in raw_url:
+        url = get_settings().database_url
+    else:
+        url = raw_url
     context.configure(
         url=url,
         target_metadata=target_metadata,

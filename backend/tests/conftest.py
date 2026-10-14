@@ -19,6 +19,10 @@ TEST_ENGINE = create_engine(
 )
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=TEST_ENGINE)
 
+# Point application SessionLocal to test engine for background tasks and worker tests
+import backend.app.db.session as db_session_module
+db_session_module.SessionLocal = TestSessionLocal
+
 
 @pytest.fixture(scope="session", autouse=True)
 def initialize_database():

@@ -1,10 +1,17 @@
 import logging
+import uuid
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from backend.app.documents.storage import get_storage_backend
-from backend.app.domain.models import Document, DocumentExtractedField, AuditEvent
+from backend.app.domain.models import (
+    Document,
+    DocumentExtractedField,
+    AuditEvent,
+    DocumentProcessingRun,
+    now_utc,
+)
 from backend.app.extraction.classifier import classify_document
 from backend.app.extraction.service import extract_structured_fields
 from backend.app.ocr.engine import OCREngine, detect_language
@@ -15,7 +22,7 @@ logger = logging.getLogger("ai_immigration.documents.processor")
 def process_document_pipeline(db: Session, document_id: UUID) -> Document:
     """
     Executes the full asynchronous document processing and extraction pipeline:
-    1. Status update to 'processing'
+    1. Status update to 'processing' and track DocumentProcessingRun stage
     2. Private storage retrieval with SHA-256 integrity verification
     3. Multi-page text extraction and OCR layout analysis
     4. Language detection
@@ -30,6 +37,37 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
 
     doc.processing_status = "processing"
     doc.processing_error = None
+
+    # Track processing run
+    run = (
+        db.query(DocumentProcessingRun)
+        .filter(
+            DocumentProcessingRun.document_id == doc.id,
+            DocumentProcessingRun.status.in_(["queued", "processing"]),
+        )
+        .order_by(DocumentProcessingRun.created_at.desc())
+        .first()
+    )
+    if not run:
+        run = DocumentProcessingRun(
+            id=uuid.uuid4(),
+            organization_id=doc.organization_id,
+            document_id=doc.id,
+            run_number=doc.version,
+            idempotency_key=f"run-{doc.id}-{uuid.uuid4().hex[:8]}",
+            stage="preprocessing",
+            status="processing",
+            trigger_type="sync_call",
+            progress_percent=10,
+            started_at=now_utc(),
+        )
+        db.add(run)
+    else:
+        run.status = "processing"
+        run.stage = "preprocessing"
+        if not run.started_at:
+            run.started_at = now_utc()
+        run.progress_percent = 10
     db.commit()
 
     try:
@@ -42,6 +80,10 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
         )
 
         # 1. OCR & Layout Extraction
+        run.stage = "ocr"
+        run.progress_percent = 25
+        db.commit()
+
         pages = OCREngine.extract_document(content=content, mime_type=doc.mime_type)
         page_texts = [p.text for p in pages if p.text]
         full_extracted_text = "\n\n".join(page_texts)
@@ -55,6 +97,10 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
         doc.detected_language = detected_lang
 
         # 3. Document Classification
+        run.stage = "classification"
+        run.progress_percent = 50
+        db.commit()
+
         detected_category, class_confidence = classify_document(
             text=full_extracted_text,
             filename=doc.filename,
@@ -95,6 +141,10 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
         }
 
         # 5. Structured Field Extraction & Data Provenance
+        run.stage = "extraction"
+        run.progress_percent = 75
+        db.commit()
+
         # Retain any previously human-corrected fields during reprocessing
         existing_corrected = {
             f.field_name: f
@@ -136,6 +186,19 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
         # 6. Mark Processing Completed
         doc.processing_status = "completed"
 
+        # Update run completion
+        run.stage = "completed"
+        run.status = "completed"
+        run.progress_percent = 100
+        run.completed_at = now_utc()
+        run.metrics = {
+            "page_count": doc.page_count,
+            "detected_language": detected_lang,
+            "classification_confidence": class_confidence,
+            "fields_extracted": len(new_extracted_fields),
+            "ocr_applied": doc.ocr_applied,
+        }
+
         # CRITICAL: verification_status remains decoupled from processing_status!
         # Do not automatically mark verified.
         if doc.verification_status not in ("verified", "rejected"):
@@ -167,6 +230,13 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
         doc.processing_error = str(e)
         doc.retry_count += 1
 
+        if run:
+            run.stage = "failed"
+            run.status = "failed"
+            run.error_code = type(e).__name__
+            run.error_message = str(e)
+            run.completed_at = now_utc()
+
         audit = AuditEvent(
             organization_id=doc.organization_id,
             actor_id=doc.uploaded_by_user_id,
@@ -179,3 +249,18 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
         db.commit()
         db.refresh(doc)
         return doc
+
+
+def process_document_background_task(document_id: UUID) -> None:
+    """
+    Executes the document processing pipeline inside a dedicated session.
+    Safe for FastAPI background_tasks and standalone worker execution,
+    eliminating request-scoped session connection leaks.
+    """
+    from backend.app.db.session import SessionLocal
+
+    session = SessionLocal()
+    try:
+        process_document_pipeline(session, document_id)
+    finally:
+        session.close()
