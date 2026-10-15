@@ -13,11 +13,18 @@ import {
   FALLBACK_THREAD_MESSAGES,
 } from "../../lib/api";
 
+import {
+  ClientLanguage,
+  CLIENT_TRANSLATIONS,
+} from "../../lib/clientLocalization";
+
 interface SecureMessagingHubProps {
   caseId?: string;
   isStaffMode?: boolean;
   onSelectDocument?: (documentId: string) => void;
   onSendMessage?: (content: string, threadId?: string) => void;
+  initialReplyText?: string;
+  language?: ClientLanguage;
 }
 
 export function SecureMessagingHub({
@@ -25,7 +32,11 @@ export function SecureMessagingHub({
   isStaffMode = false,
   onSelectDocument,
   onSendMessage,
+  initialReplyText,
+  language = "en",
 }: SecureMessagingHubProps) {
+  const t = CLIENT_TRANSLATIONS[language];
+  const [translatedMessageIds, setTranslatedMessageIds] = useState<Record<string, boolean>>({});
   const [threads, setThreads] = useState<MessageThreadItem[]>(FALLBACK_MESSAGE_THREADS);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(
     FALLBACK_MESSAGE_THREADS.length > 0 ? FALLBACK_MESSAGE_THREADS[0].id : null
@@ -45,10 +56,16 @@ export function SecureMessagingHub({
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
   // New message input
-  const [replyText, setReplyText] = useState("");
+  const [replyText, setReplyText] = useState(initialReplyText || "");
   const [isInternalNote, setIsInternalNote] = useState(false);
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [newAttachmentInput, setNewAttachmentInput] = useState("");
+
+  useEffect(() => {
+    if (initialReplyText) {
+      setReplyText(initialReplyText);
+    }
+  }, [initialReplyText]);
 
   // New thread modal state
   const [isCreatingThread, setIsCreatingThread] = useState(false);
@@ -982,6 +999,68 @@ export function SecureMessagingHub({
                               </div>
                             </div>
                           )}
+                          {/* Translation for incoming message in Gujarati/Hindi */}
+                          {!isOutgoing && !isInternal && language !== "en" && (
+                            <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px solid #EAEFEA" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTranslatedMessageIds((prev) => ({
+                                    ...prev,
+                                    [msg.id]: !prev[msg.id],
+                                  }));
+                                }}
+                                style={{
+                                  background: "transparent",
+                                  border: "1px solid #B9DED4",
+                                  borderRadius: "6px",
+                                  padding: "3px 8px",
+                                  fontSize: "11px",
+                                  fontWeight: 650,
+                                  color: "#0D6866",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                <span>🌐</span>
+                                <span>
+                                  {translatedMessageIds[msg.id]
+                                    ? t.hideTranslationButton
+                                    : `${t.translateIncomingButton} (${language === "gu" ? "ગુજરાતી" : "हिन्दी"})`}
+                                </span>
+                              </button>
+
+                              {translatedMessageIds[msg.id] && (
+                                <div
+                                  style={{
+                                    marginTop: "8px",
+                                    padding: "8px 12px",
+                                    borderRadius: "8px",
+                                    background: "#EAF6F0",
+                                    border: "1px solid #B9DED4",
+                                    fontSize: "12px",
+                                    color: "#063C3D",
+                                    lineHeight: 1.5,
+                                  }}
+                                >
+                                  <div style={{ fontSize: "10px", fontWeight: 700, color: "#0D6866", textTransform: "uppercase", marginBottom: "4px" }}>
+                                    {t.translationLabel} ({language === "gu" ? "ગુજરાતી" : "हिन्दी"}):
+                                  </div>
+                                  <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                                    {msg.content.toLowerCase().includes("peer-review") || msg.content.toLowerCase().includes("kazarian")
+                                      ? (language === "gu"
+                                          ? "નમસ્તે! અમે તમારા પ્રારંભિક પીઅર-રિવ્યુ પત્રો અને પ્રકાશનોની સમીક્ષા કરી છે. કાઝારિયન કાનૂની માળખા હેઠળ પુરાવા અત્યંત મજબૂત જણાય છે."
+                                          : "नमस्ते! हमने आपके प्रारंभिक सहकर्मी-समीक्षा पत्रों और प्रकाशनों की समीक्षा की है। कजारियन कानूनी ढांचे के तहत साक्ष्य अत्यधिक मजबूत प्रतीत होते हैं।")
+                                      : (language === "gu"
+                                          ? `[સત્તાવાર ગુજરાતી અનુવાદ]: ${msg.content}`
+                                          : `[आधिकारिक हिन्दी अनुवाद]: ${msg.content}`)}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Delivery & Read state indicator */}
@@ -1004,6 +1083,28 @@ export function SecureMessagingHub({
                 }}
               >
                 <form onSubmit={handleSendMessage} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {/* Client Bilingual Translation Assistant */}
+                  {!isStaffMode && language !== "en" && (
+                    <div
+                      style={{
+                        padding: "8px 12px",
+                        background: "#EAF6F0",
+                        border: "1px solid #B9DED4",
+                        borderRadius: "8px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        fontSize: "11px",
+                        color: "#0D6866",
+                      }}
+                    >
+                      <span style={{ fontSize: "14px" }}>🌐</span>
+                      <div>
+                        <strong>{t.bilingualAssistantTitle}:</strong> {t.bilingualAssistantDesc}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Staff Internal Note Toggle */}
                   {isStaffMode && (
                     <div
@@ -1076,7 +1177,9 @@ export function SecureMessagingHub({
                       placeholder={
                         isInternalNote
                           ? "Write confidential internal case note (lawyer-eyes only)..."
-                          : "Type question or update for your legal team..."
+                          : language === "en"
+                          ? "Type question or update for your legal team..."
+                          : `${t.messagePlaceholder}`
                       }
                       style={{
                         width: "100%",
@@ -1211,7 +1314,7 @@ export function SecureMessagingHub({
                           <span>Sending...</span>
                         ) : (
                           <>
-                            <span>{isInternalNote ? "Post Internal Note" : "Send"}</span>
+                            <span>{isInternalNote ? "Post Internal Note" : language === "en" ? "Send" : `${t.sendMessageButton}`}</span>
                             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                             </svg>

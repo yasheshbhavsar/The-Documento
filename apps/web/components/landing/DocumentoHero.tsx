@@ -10,6 +10,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
   return (
     <section
       id="hero"
+      suppressHydrationWarning
       style={{
         position: "relative",
         padding: "72px 24px 80px 24px",
@@ -20,6 +21,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
     >
       {/* Organic decorative ambient glows in pale seafoam & mint */}
       <div
+        suppressHydrationWarning
         style={{
           position: "absolute",
           top: "-15%",
@@ -33,6 +35,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
         }}
       />
       <div
+        suppressHydrationWarning
         style={{
           position: "absolute",
           top: "20%",
@@ -47,6 +50,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
       />
 
       <div
+        suppressHydrationWarning
         style={{
           maxWidth: "1280px",
           margin: "0 auto",
@@ -54,32 +58,15 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
           zIndex: 1,
         }}
       >
-        <div className="animate-on-scroll" style={{ maxWidth: "880px", margin: "0 auto", textAlign: "center" }}>
+        <div className="animate-on-scroll" suppressHydrationWarning style={{ maxWidth: "880px", margin: "0 auto", textAlign: "center" }}>
           {/* Eyebrow Badge */}
           <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "6px 14px",
-              borderRadius: "24px",
-              background: "#DDEFE8",
-              border: "1px solid #B9DED4",
-              color: "#063C3D",
-              fontSize: "13px",
-              fontWeight: 650,
-              letterSpacing: "-0.01em",
-              marginBottom: "24px",
-              boxShadow: "0 1px 3px rgba(6, 60, 61, 0.05)",
-            }}
+            className="documento-hero-badge"
+            suppressHydrationWarning
           >
             <span
-              style={{
-                width: "8px",
-                height: "8px",
-                borderRadius: "50%",
-                background: "#0D6866",
-              }}
+              className="documento-hero-badge-dot"
+              suppressHydrationWarning
             />
             <span>Immigration Case Management &amp; Evidence Intelligence</span>
           </div>

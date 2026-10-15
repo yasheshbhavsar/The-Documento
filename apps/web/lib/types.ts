@@ -563,7 +563,7 @@ export interface RuleRequirement {
   priority: number;
   applicability_conditions: Record<string, any>;
   accepted_evidence_types: Array<string | { category: string; min_count?: number }>;
-  validation_rules: Array<{ check: string; [key: string]: any }>;
+  validation_rules: Array<{ check: string;[key: string]: any }>;
   requires_human_review: boolean;
   review_guidance?: string;
   blocking_dependencies: string[];

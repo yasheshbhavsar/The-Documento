@@ -30,14 +30,14 @@ import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
 import { useAnimationOnScroll } from "../components/landing/useAnimationOnScroll";
 
 export default function Home() {
-  // Initialize on-scroll reveal animations for landing page
-  useAnimationOnScroll(".animate-on-scroll", true);
-
   const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginInitialPortal, setLoginInitialPortal] = useState<"firm" | "client">("firm");
   const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false);
   const [bannerAlert, setBannerAlert] = useState<{ type: "success" | "info" | "warning"; message: string } | null>(null);
+
+  // Initialize on-scroll reveal animations for landing page with currentUser trigger
+  useAnimationOnScroll(".animate-on-scroll", true, currentUser);
 
   // Active role mapping based on authenticated user
   const activeExp: UserExperience = currentUser ? currentUser.experience : "master_admin";
@@ -144,12 +144,22 @@ export default function Home() {
     if (typeof window !== "undefined") {
       localStorage.removeItem("documento_user");
       sessionStorage.removeItem("documento_user");
+      // Instantly reveal landing page elements on next frame upon sign-out
+      requestAnimationFrame(() => {
+        if (typeof (window as any).initInViewAnimations === "function") {
+          (window as any).initInViewAnimations();
+        }
+      });
+      try {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch {
+        window.scrollTo(0, 0);
+      }
     }
     setBannerAlert({
       type: "info",
       message: "You have been safely signed out of Documento.",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleSwitchRoleInWorkspace = (role: UserExperience) => {

@@ -17,6 +17,16 @@ import { SecureMessagingHub } from "../portal/SecureMessagingHub";
 import { ClientOnboardingWizard } from "../portal/ClientOnboardingWizard";
 import { ConfigurableFormViewer } from "../forms/ConfigurableFormViewer";
 import { FALLBACK_FORM_SUBMISSION } from "../../lib/api";
+import { VisaFileUpdatesView, FALLBACK_VISA_FILE_UPDATES } from "../portal/VisaFileUpdatesView";
+import { DirectDocumentUploader } from "../portal/DirectDocumentUploader";
+import { CaseOfficerChatBanner } from "../portal/CaseOfficerChatBanner";
+import {
+  ClientLanguage,
+  CLIENT_TRANSLATIONS,
+  getSavedClientLanguage,
+  saveClientLanguage,
+} from "../../lib/clientLocalization";
+import { ClientLanguageBar } from "../portal/ClientLanguageBar";
 
 interface ClientPortalProps {
   myCase: ImmigrationCase | null;
@@ -43,8 +53,18 @@ export function ClientPortal({
   onMarkNotificationRead,
   onDocumentUpdated,
 }: ClientPortalProps) {
+  const [clientLanguage, setClientLanguage] = useState<ClientLanguage>(getSavedClientLanguage);
+
+  const handleLanguageChange = (newLang: ClientLanguage) => {
+    setClientLanguage(newLang);
+    saveClientLanguage(newLang);
+  };
+
+  const t = CLIENT_TRANSLATIONS[clientLanguage];
+
   const [activeTab, setActiveTab] = useState<
     | "overview"
+    | "updates"
     | "profile"
     | "questionnaire"
     | "forms"
@@ -59,6 +79,7 @@ export function ClientPortal({
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
   const [selectedDocForInspection, setSelectedDocForInspection] = useState<DocumentItem | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [chatPromptText, setChatPromptText] = useState("");
 
   const missingDocs = documents.filter((d) => d.status === "missing" || d.status === "action_needed");
   const unreadCount = notifications.filter((n) => n.status === "unread").length;
@@ -76,64 +97,71 @@ export function ClientPortal({
   const navItems = [
     {
       key: "overview" as const,
-      label: "My Petition Overview",
-      buttonText: "🏠 My Petition Overview",
+      label: t.navOverview,
+      buttonText: `🏠 ${t.navOverview}`,
       icon: "🏠",
       count: null,
     },
     {
+      key: "updates" as const,
+      label: t.navUpdates,
+      buttonText: `📑 ${t.navUpdates} (5)`,
+      icon: "📑",
+      count: 5,
+    },
+    {
       key: "documents" as const,
-      label: "Evidence & Uploads",
-      buttonText: `📄 Evidence & Uploads (${documents.length})`,
+      label: t.navDocuments,
+      buttonText: `📄 ${t.navDocuments} (${documents.length})`,
       icon: "📄",
       count: documents.length,
     },
     {
+      key: "messages" as const,
+      label: t.navMessages,
+      buttonText: `💬 ${t.navMessages} (${messages.length})`,
+      icon: "💬",
+      count: messages.length,
+    },
+    {
       key: "questionnaire" as const,
-      label: "Guided Questionnaire",
-      buttonText: "📝 Guided Questionnaire",
+      label: t.navQuestionnaire,
+      buttonText: `📝 ${t.navQuestionnaire}`,
       icon: "📝",
       count: null,
     },
     {
       key: "forms" as const,
-      label: "Review Application Forms",
-      buttonText: "📋 Review Application Forms",
+      label: t.navForms,
+      buttonText: `📋 ${t.navForms}`,
       icon: "📋",
       count: null,
     },
     {
       key: "milestones" as const,
-      label: "Case Milestones",
-      buttonText: "🏁 Case Milestones",
+      label: t.navMilestones,
+      buttonText: `🏁 ${t.navMilestones}`,
       icon: "🏁",
       count: null,
     },
     {
-      key: "messages" as const,
-      label: "Lawyer Messages",
-      buttonText: `💬 Lawyer Messages (${messages.length})`,
-      icon: "💬",
-      count: messages.length,
-    },
-    {
       key: "profile" as const,
-      label: "Applicant Profile",
-      buttonText: "👤 Applicant Profile",
+      label: t.navProfile,
+      buttonText: `👤 ${t.navProfile}`,
       icon: "👤",
       count: null,
     },
     {
       key: "billing" as const,
-      label: "Retainers & Invoices",
-      buttonText: "💳 Retainers & Invoices",
+      label: t.navBilling,
+      buttonText: `💳 ${t.navBilling}`,
       icon: "💳",
       count: invoices.length,
     },
     {
       key: "settings" as const,
-      label: "Privacy & Security",
-      buttonText: "⚙️ Privacy & Security",
+      label: t.navSettings,
+      buttonText: `⚙️ ${t.navSettings}`,
       icon: "⚙️",
       count: null,
     },
@@ -198,7 +226,7 @@ export function ClientPortal({
                   letterSpacing: "0.02em",
                 }}
               >
-                Case #{myCase?.case_number || "CASE-US-8841"}
+                {t.caseLabel} #{myCase?.case_number || "CASE-US-8841"}
               </span>
               <span
                 style={{
@@ -211,14 +239,14 @@ export function ClientPortal({
                   border: "1px solid #B9DED4",
                 }}
               >
-                Active
+                {t.activeStatus}
               </span>
             </div>
             <div style={{ fontSize: "12px", fontWeight: 650, color: "#172322", lineHeight: 1.3 }}>
               {myCase?.visa_category || "EB-1A Extraordinary Ability"}
             </div>
             <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>
-              Stage: Evidence Gathering
+              {t.stageLabel}
             </div>
           </div>
         </div>
@@ -244,7 +272,7 @@ export function ClientPortal({
               padding: "4px 10px 8px 10px",
             }}
           >
-            Case Sections
+            {t.sectionsHeader}
           </div>
 
           {navItems.map((item) => {
@@ -324,7 +352,7 @@ export function ClientPortal({
           })}
         </nav>
 
-        {/* Assigned Legal Counsel Footer Card */}
+        {/* Assigned Case Processing Officer Footer Card */}
         <div
           style={{
             padding: "14px 16px",
@@ -333,30 +361,48 @@ export function ClientPortal({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "50%",
-                background: "#0D6866",
-                color: "#FFFFFF",
-                fontSize: "12px",
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                border: "1px solid #B9DED4",
-              }}
-            >
-              SJ
+            <div style={{ position: "relative" }}>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "50%",
+                  background: "#0D6866",
+                  color: "#FFFFFF",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  border: "1px solid #B9DED4",
+                }}
+              >
+                SJ
+              </div>
+              <span
+                style={{
+                  position: "absolute",
+                  bottom: "-1px",
+                  right: "-1px",
+                  width: "9px",
+                  height: "9px",
+                  borderRadius: "50%",
+                  backgroundColor: "#22C55E",
+                  border: "1.5px solid #FFFFFF",
+                }}
+                title="Officer Online"
+              />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "12px", fontWeight: 650, color: "#063C3D", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {myCase?.assigned_manager || "Sarah Jenkins, Esq."}
               </div>
-              <div style={{ fontSize: "11px", color: "#6E7F7C", lineHeight: 1.2 }}>
-                Lead Supervising Counsel
+              <div style={{ fontSize: "11px", color: "#0D6866", fontWeight: 650, lineHeight: 1.2 }}>
+                {t.assignedOfficerTitle}
+              </div>
+              <div style={{ fontSize: "10px", color: "#6E7F7C", marginTop: "1px" }}>
+                🟢 {t.onlineNowText}
               </div>
             </div>
           </div>
@@ -366,18 +412,18 @@ export function ClientPortal({
             style={{
               width: "100%",
               marginTop: "10px",
-              padding: "6px 10px",
+              padding: "7px 10px",
               borderRadius: "6px",
               border: "1px solid #B9DED4",
-              background: "#FFFFFF",
+              background: "#EAF6F0",
               color: "#0D6866",
               fontSize: "11px",
-              fontWeight: 600,
+              fontWeight: 650,
               cursor: "pointer",
               transition: "all 0.15s ease",
             }}
           >
-            💬 Message Legal Team
+            💬 {t.chatWithOfficerButton}
           </button>
         </div>
       </aside>
@@ -395,6 +441,12 @@ export function ClientPortal({
           boxSizing: "border-box",
         }}
       >
+        {/* Dedicated Bilingual Language Support Banner for Retained Clients */}
+        <ClientLanguageBar
+          currentLanguage={clientLanguage}
+          onLanguageChange={handleLanguageChange}
+        />
+
         {/* Mobile Navigation Drawer Toggle if on narrow screen */}
         <div
           style={{
@@ -528,7 +580,7 @@ export function ClientPortal({
                       letterSpacing: "-0.02em",
                     }}
                   >
-                    Case Overview
+                    {t.navOverview}
                   </h1>
                   <span
                     style={{
@@ -557,7 +609,40 @@ export function ClientPortal({
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("updates")}
+                  style={{
+                    background: "#063C3D",
+                    color: "#FFFFFF",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "9px 14px",
+                    fontSize: "13px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    boxShadow: "0 2px 5px rgba(6, 60, 61, 0.2)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span>📑 {t.navUpdates}</span>
+                  <span
+                    style={{
+                      background: "#22C55E",
+                      color: "#FFFFFF",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      padding: "1px 6px",
+                      borderRadius: "10px",
+                    }}
+                  >
+                    5
+                  </span>
+                </button>
                 <button
                   type="button"
                   onClick={onOpenUploadModal}
@@ -584,6 +669,26 @@ export function ClientPortal({
                   }}
                 >
                   <span>+ Upload Evidence</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("messages")}
+                  style={{
+                    background: "#EAF6F0",
+                    color: "#0D6866",
+                    border: "1px solid #B9DED4",
+                    borderRadius: "8px",
+                    padding: "9px 14px",
+                    fontSize: "13px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span>💬 Chat with Officer</span>
                 </button>
                 <button
                   type="button"
@@ -746,6 +851,127 @@ export function ClientPortal({
               }}
             />
 
+            {/* Quick Preview of Visa Application File Updates on Overview */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1px solid #B9DED4",
+                borderRadius: "14px",
+                padding: "20px 24px",
+                boxShadow: "0 1px 4px rgba(6, 60, 61, 0.03)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "14px",
+                  paddingBottom: "12px",
+                  borderBottom: "1px solid #DCE5E1",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "16px" }}>📑</span>
+                    <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>
+                      {t.latestUpdatesHeader}
+                    </h3>
+                  </div>
+                  <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
+                    Live synchronization with USCIS Texas Service Center &amp; Vanguard Case Docket.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("updates")}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "6px",
+                    background: "#EAF6F0",
+                    color: "#0D6866",
+                    border: "1px solid #B9DED4",
+                    fontSize: "12px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>{t.viewAllUpdatesButton}</span>
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {FALLBACK_VISA_FILE_UPDATES.slice(0, 2).map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => setActiveTab("updates")}
+                    style={{
+                      padding: "12px 16px",
+                      borderRadius: "10px",
+                      background: "#F8F7F2",
+                      border: "1px solid #DCE5E1",
+                      cursor: "pointer",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "10px",
+                      transition: "all 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "#0D6866";
+                      e.currentTarget.style.background = "#F1F8F6";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "#DCE5E1";
+                      e.currentTarget.style.background = "#F8F7F2";
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: "260px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                        <span
+                          style={{
+                            background: item.statusBadge.bg,
+                            color: item.statusBadge.color,
+                            border: `1px solid ${item.statusBadge.border}`,
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          {item.statusBadge.label}
+                        </span>
+                        <span style={{ fontSize: "11px", fontWeight: 600, color: "#6E7F7C" }}>
+                          {item.relativeTime}
+                        </span>
+                        <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#063C3D" }}>
+                          • {item.officialReference}
+                        </span>
+                      </div>
+                      <strong style={{ fontSize: "13px", color: "#063C3D", display: "block" }}>
+                        {item.title}
+                      </strong>
+                      <span style={{ fontSize: "12px", color: "#445451", display: "block", marginTop: "2px" }}>
+                        {item.summary}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "12px", color: "#0D6866", fontWeight: 650 }}>
+                        View Details →
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Documented Case Progress Stepper */}
             <div
               style={{
@@ -768,7 +994,7 @@ export function ClientPortal({
               >
                 <div>
                   <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>
-                    Procedural Case Milestones &amp; Pipeline
+                    {t.milestonesTitle}
                   </h3>
                   <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
                     Current phase: <strong>Phase 3 of 5 (Evidence Collection &amp; Expert Evaluation)</strong>
@@ -946,10 +1172,31 @@ export function ClientPortal({
         )}
 
         {/* =========================================================================
-            TAB 2: EVIDENCE & UPLOADS
+            TAB: VISA APPLICATION FILE UPDATES
+            ========================================================================= */}
+        {activeTab === "updates" && (
+          <VisaFileUpdatesView
+            myCase={myCase}
+            language={clientLanguage}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+            onOpenUploadModal={onOpenUploadModal}
+          />
+        )}
+
+        {/* =========================================================================
+            TAB 2: UPLOAD DOCUMENTS (Evidence & Uploads)
             ========================================================================= */}
         {activeTab === "documents" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {/* Direct In-Tab Drag-and-Drop Document Uploader */}
+            <DirectDocumentUploader
+              caseId={myCase?.id}
+              language={clientLanguage}
+              onDocumentUploaded={(newDoc) => {
+                onDocumentUpdated?.(newDoc);
+              }}
+            />
+
             <DocumentRequestManager
               caseId={myCase?.id}
               isStaffMode={false}
@@ -1169,13 +1416,24 @@ export function ClientPortal({
         )}
 
         {/* =========================================================================
-            TAB 6: LAWYER MESSAGES
+            TAB 6: CHAT WITH CASE PROCESSING OFFICER (Lawyer Messages)
             ========================================================================= */}
         {activeTab === "messages" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <CaseOfficerChatBanner
+              caseNumber={myCase?.case_number}
+              visaCategory={myCase?.visa_category}
+              language={clientLanguage}
+              onSelectPrompt={(prompt) => {
+                setChatPromptText(prompt);
+              }}
+            />
+
             <SecureMessagingHub
               caseId={myCase?.id}
               isStaffMode={false}
+              language={clientLanguage}
+              initialReplyText={chatPromptText}
               onSendMessage={(content) => onSendMessage?.(content)}
             />
           </div>

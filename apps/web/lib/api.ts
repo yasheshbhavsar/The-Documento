@@ -1026,8 +1026,8 @@ function getAuthHeaders(role: RoleCode): Record<string, string> {
     role === "retained_client" || role === "applicant"
       ? DEMO_USERS.client_applicant
       : role === "master_admin" || role === "company_admin" || role === "organization_admin"
-      ? DEMO_USERS.master_admin
-      : DEMO_USERS.case_manager;
+        ? DEMO_USERS.master_admin
+        : DEMO_USERS.case_manager;
 
   return {
     "X-Organization-Id": DEMO_ORG_ID,
@@ -1635,21 +1635,21 @@ export const api = {
     const doc = localDocuments.find((d) => d.id === id);
     const mockRuns: DocumentProcessingRunItem[] = doc
       ? [
-          {
-            id: doc.active_run_id || `run-${doc.id}`,
-            organization_id: "org-01",
-            document_id: doc.id,
-            run_number: doc.version || 1,
-            idempotency_key: `mock-run-${doc.id}`,
-            stage: doc.active_run_stage || (doc.processing_status === "completed" ? "completed" : doc.processing_status === "failed" ? "failed" : "extraction"),
-            status: doc.processing_status || "completed",
-            trigger_type: "upload",
-            progress_percent: doc.active_run_progress_percent ?? (doc.processing_status === "completed" ? 100 : doc.processing_status === "failed" ? 45 : 75),
-            metrics: { pages: doc.page_count || 1 },
-            created_at: doc.uploaded_at || new Date().toISOString(),
-            updated_at: doc.uploaded_at || new Date().toISOString(),
-          },
-        ]
+        {
+          id: doc.active_run_id || `run-${doc.id}`,
+          organization_id: "org-01",
+          document_id: doc.id,
+          run_number: doc.version || 1,
+          idempotency_key: `mock-run-${doc.id}`,
+          stage: doc.active_run_stage || (doc.processing_status === "completed" ? "completed" : doc.processing_status === "failed" ? "failed" : "extraction"),
+          status: doc.processing_status || "completed",
+          trigger_type: "upload",
+          progress_percent: doc.active_run_progress_percent ?? (doc.processing_status === "completed" ? 100 : doc.processing_status === "failed" ? 45 : 75),
+          metrics: { pages: doc.page_count || 1 },
+          created_at: doc.uploaded_at || new Date().toISOString(),
+          updated_at: doc.uploaded_at || new Date().toISOString(),
+        },
+      ]
       : [];
 
     return { data: mockRuns, isLiveBackend: false };

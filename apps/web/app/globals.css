@@ -817,12 +817,15 @@ a {
 
 .animate-on-scroll {
   animation: animationIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-play-state: paused !important;
+  animation-play-state: paused;
   will-change: transform, opacity, filter;
 }
 
 .animate-on-scroll.animate {
   animation-play-state: running !important;
+  opacity: 1 !important;
+  transform: none !important;
+  filter: none !important;
 }
 
 /* Stagger delay utilities */
@@ -873,6 +876,32 @@ a {
   background: rgba(221, 239, 232, 0.9);
   transform: translateY(-1px);
 }
+
+.documento-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 24px;
+  background-color: var(--brand-seafoam, #DDEFE8);
+  border: 1px solid var(--brand-mint, #B9DED4);
+  color: var(--brand-deep, #063C3D);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(6, 60, 61, 0.05);
+}
+
+.documento-hero-badge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #0D6866;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
 
 /* Luxury Card Hover Lift */
 .hover-lift {
