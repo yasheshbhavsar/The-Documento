@@ -14,7 +14,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import httpx
-import pymupdf
+try:
+    import pymupdf
+except ImportError:
+    pymupdf = None
 
 from backend.app.core.config import get_settings
 
@@ -70,6 +73,9 @@ class GeminiVisionClient(BaseAIClient):
     def _rasterize_pages(self, content: bytes, max_pages: int = 3) -> List[tuple[str, str]]:
         """Converts initial PDF pages to base64 JPEG images for multimodal vision."""
         images: List[tuple[str, str]] = []
+        if pymupdf is None:
+            logger.warning("PyMuPDF is not installed; skipping PDF rasterization")
+            return images
         try:
             doc = pymupdf.open(stream=content, filetype="pdf")
             for page_idx in range(min(len(doc), max_pages)):

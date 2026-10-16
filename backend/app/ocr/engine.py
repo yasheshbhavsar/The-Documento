@@ -3,7 +3,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import pymupdf
+try:
+    import pymupdf
+except ImportError:
+    pymupdf = None
 
 
 @dataclass
