@@ -219,6 +219,8 @@ export interface DocumentExtractedField {
   corrected_at?: string;
   correction_reason?: string;
   correction_history?: FieldCorrectionAudit[];
+  field_value?: string;
+  confidence?: number;
 }
 
 export type DocumentProcessingStatus = "pending" | "processing" | "completed" | "failed";
@@ -274,6 +276,7 @@ export interface DocumentItem {
   verification_status?: DocumentVerificationStatus;
   sha256_hash: string;
   uploaded_at: string;
+  created_at?: string;
   detected_language?: string;
   page_count?: number;
   ocr_applied?: boolean;

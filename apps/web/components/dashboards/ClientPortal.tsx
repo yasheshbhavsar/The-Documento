@@ -901,7 +901,7 @@ export function ClientPortal({
                     gap: "6px",
                   }}
                 >
-                  <span>{t.viewAllUpdatesButton}</span>
+                  <span>{t.viewAllUpdatesButton || t.viewAllUpdatesLink}</span>
                 </button>
               </div>
 

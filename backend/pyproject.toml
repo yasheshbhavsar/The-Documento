@@ -27,10 +27,10 @@ dependencies = [
   "pyjwt>=2.8.0",
   "email-validator>=2.0.0",
   "rapidocr-onnxruntime>=1.2.0",
+  "python-multipart>=0.0.9",
+  "python-dotenv>=1.0.0",
 ]
 
-
-
-
 [tool.pytest.ini_options]
-pythonpath = [".."]
+pythonpath = ["..", "."]
+testpaths = ["tests"]

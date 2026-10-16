@@ -62,6 +62,8 @@ export interface ClientTranslations {
   statusBadgeText: string;
   latestUpdatesHeader: string;
   viewAllUpdatesLink: string;
+  viewAllUpdatesButton: string;
+  milestonesTitle: string;
 
   // Visa File Updates Docket
   docketHeaderTitle: string;
@@ -163,6 +165,8 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     statusBadgeText: "Form I-140 Approved ✓",
     latestUpdatesHeader: "Latest Visa Application File Updates & USCIS Status",
     viewAllUpdatesLink: "View All File Updates →",
+    viewAllUpdatesButton: "View All File Updates →",
+    milestonesTitle: "Immigration Case Milestones & Timeline",
 
     docketHeaderTitle: "Visa Application File Updates & USCIS Docket",
     docketHeaderSubtitle: "Official chronological ledger of USCIS notices, officer filings, biometrics, and statutory decisions.",
@@ -272,6 +276,8 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     statusBadgeText: "ફોર્મ I-140 મંજૂર ✓ (Approved)",
     latestUpdatesHeader: "તાજેતરના વિઝા ફાઇલ અપડેટ્સ અને USCIS સ્થિતિ",
     viewAllUpdatesLink: "બધા વિઝા ફાઇલ અપડેટ્સ જુઓ →",
+    viewAllUpdatesButton: "બધા વિઝા ફાઇલ અપડેટ્સ જુઓ →",
+    milestonesTitle: "કેસના મુખ્ય તબક્કા અને પ્રગતિ (Case Milestones)",
 
     docketHeaderTitle: "વિઝા ફાઇલ અપડેટ્સ અને USCIS સત્તાવાર ડૉકેટ",
     docketHeaderSubtitle: "USCIS નોટિસો, વકીલની રજૂઆતો, બાયોમેટ્રિક્સ અને કાનૂની નિર્ણયોની તારીખવાર સત્તાવાર યાદી.",
@@ -381,6 +387,8 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     statusBadgeText: "फॉर्म I-140 स्वीकृत ✓ (Approved)",
     latestUpdatesHeader: "नवीनतम वीज़ा फ़ाइल अपडेट और USCIS स्थिति",
     viewAllUpdatesLink: "सभी वीज़ा फ़ाइल अपडेट देखें →",
+    viewAllUpdatesButton: "सभी वीज़ा फ़ाइल अपडेट देखें →",
+    milestonesTitle: "केस के महत्वपूर्ण चरण और प्रगति (Case Milestones)",
 
     docketHeaderTitle: "वीज़ा फ़ाइल अपडेट और USCIS आधिकारिक डॉकेट",
     docketHeaderSubtitle: "USCIS नोटिसों, वकील की दाखिलों, बायोमेट्रिक्स और कानूनी निर्णयों की तिथि-वार आधिकारिक सूची।",
