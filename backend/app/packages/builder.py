@@ -13,11 +13,22 @@ from backend.app.domain.models import (
     ImmigrationCase,
     Document,
     FormSubmission,
+    CaseAIFinding,
     User,
     RuleSetVersion,
     now_utc,
 )
+from backend.app.core.errors import (
+    EntityNotFoundError,
+    TenantIsolationError,
+    ValidationError,
+)
 from backend.app.packages.readiness import ReadinessService
+from backend.app.packages.eligibility import (
+    PackageEligibilityPolicy,
+    evaluate_document_for_package,
+    UNRESOLVED_FINDING_STATUSES,
+)
 
 DEFAULT_USCIS_FOLDERS = [
     {"folder_code": "00_Case_Summary", "folder_name": "Case Summary & Exhibits Index", "is_internal_only": False},
@@ -92,15 +103,27 @@ class PackageBuilderService:
         name: str,
         template_id: Optional[uuid.UUID] = None,
         user_id: Optional[uuid.UUID] = None,
+        explicit_document_ids: Optional[List[uuid.UUID]] = None,
+        manual_inclusions: Optional[List[uuid.UUID]] = None,
+        manual_exclusions: Optional[List[uuid.UUID]] = None,
+        override_notes: Optional[str] = None,
+        policy: Optional[PackageEligibilityPolicy] = None,
     ) -> FilingPackage:
         """
-        Assembles a reproducible FilingPackage:
-        - Evaluates deterministic readiness checklist.
-        - Maps documents into folder structure.
-        - Strictly separates internal review documents from submission-ready files.
-        - Generates manifest with document ID, version, file hash, related requirement, and review status.
-        - Calculates package SHA-256 root hash to lock versions and prevent drift.
+        Assembles a reproducible FilingPackage with strict backend eligibility enforcement:
+        - Validates tenant isolation and case association for all selections.
+        - Evaluates candidate documents across 6 distinct dimensions (readability,
+          classification, applicant assignment, consistency, evidentiary sufficiency,
+          human verification).
+        - Rejects unsafe selections containing unresolved anomalies or blockers,
+          even if UI/readiness endpoint is bypassed or explicit IDs are supplied.
+        - Pins exact document versions, SHA-256 file hashes, and folder mappings.
+        - Preserves case.status invariant: package generation NEVER sets case status to 'submitted'.
+        - Generates reproducible Merkle root manifest hash.
         """
+        if policy is None:
+            policy = PackageEligibilityPolicy()
+
         case = db.execute(
             select(ImmigrationCase).where(
                 ImmigrationCase.id == case_id,
@@ -108,28 +131,132 @@ class PackageBuilderService:
             )
         ).scalar_one_or_none()
         if not case:
-            raise ValueError("ImmigrationCase not found")
+            raise EntityNotFoundError("ImmigrationCase", str(case_id))
 
-        # 1. Run readiness check
+        initial_case_status = case.status
+
+        # 1. Cross-Tenant and Wrong-Case Validation for explicit selections
+        explicit_or_manual_ids = []
+        if explicit_document_ids:
+            explicit_or_manual_ids.extend(explicit_document_ids)
+        if manual_inclusions:
+            explicit_or_manual_ids.extend(manual_inclusions)
+
+        for check_id in explicit_or_manual_ids:
+            target_doc = db.execute(select(Document).where(Document.id == check_id)).scalar_one_or_none()
+            if not target_doc:
+                raise EntityNotFoundError("Document", str(check_id))
+            if target_doc.organization_id != organization_id:
+                raise TenantIsolationError(
+                    f"Cross-tenant document access strictly forbidden: document {check_id} does not belong to organization {organization_id}"
+                )
+            if target_doc.case_id != case_id:
+                raise ValidationError(
+                    f"Wrong-case document rejected: document {check_id} belongs to case {target_doc.case_id}, not case {case_id}"
+                )
+
+        # 2. Run readiness check (pathway-aware)
         readiness = ReadinessService.evaluate_case_readiness(db, case_id)
 
-        # 2. Get folder template
+        # 3. Get folder template (pathway-aware)
         if template_id:
             template = db.execute(select(PackageTemplate).where(PackageTemplate.id == template_id)).scalar_one_or_none()
         else:
-            template = PackageBuilderService.ensure_default_templates(db, organization_id)
+            PackageBuilderService.ensure_default_templates(db, organization_id)
+            if case.jurisdiction == "CA":
+                template = db.execute(
+                    select(PackageTemplate).where(
+                        PackageTemplate.organization_id == organization_id,
+                        PackageTemplate.jurisdiction == "CA",
+                    )
+                ).scalars().first()
+            else:
+                template = db.execute(
+                    select(PackageTemplate).where(
+                        PackageTemplate.organization_id == organization_id,
+                        PackageTemplate.jurisdiction == "US",
+                    )
+                ).scalars().first()
 
-        folder_list = template.folder_structure if template else DEFAULT_USCIS_FOLDERS
+        folder_list = template.folder_structure if template else (
+            DEFAULT_CANADA_FOLDERS if case.jurisdiction == "CA" else DEFAULT_USCIS_FOLDERS
+        )
 
-        # 3. Gather verified case documents
-        docs_stmt = select(Document).where(Document.case_id == case_id)
-        docs = db.execute(docs_stmt).scalars().all()
+        # 4. Gather candidate documents
+        if explicit_document_ids:
+            # Explicit selection mode
+            candidate_docs = [
+                db.execute(select(Document).where(Document.id == did)).scalar_one()
+                for did in explicit_document_ids
+            ]
+        else:
+            # Default case document assembly
+            docs_stmt = select(Document).where(
+                Document.case_id == case_id,
+                Document.organization_id == organization_id,
+            ).order_by(Document.created_at.asc())
+            candidate_docs = list(db.execute(docs_stmt).scalars().all())
+
+            # Handle manual inclusions
+            if manual_inclusions:
+                included_existing_ids = {d.id for d in candidate_docs}
+                for inc_id in manual_inclusions:
+                    if inc_id not in included_existing_ids:
+                        inc_doc = db.execute(select(Document).where(Document.id == inc_id)).scalar_one()
+                        candidate_docs.append(inc_doc)
+
+            # Handle manual exclusions
+            if manual_exclusions:
+                excluded_set = set(manual_exclusions)
+                candidate_docs = [d for d in candidate_docs if d.id not in excluded_set]
+
+        # 5. Fetch open findings for case
+        findings_stmt = select(CaseAIFinding).where(
+            CaseAIFinding.case_id == case_id,
+            CaseAIFinding.organization_id == organization_id,
+            CaseAIFinding.status.in_(UNRESOLVED_FINDING_STATUSES),
+        )
+        unresolved_findings = db.execute(findings_stmt).scalars().all()
 
         manifest_items: List[Dict[str, Any]] = []
+        excluded_items: List[Dict[str, Any]] = []
         item_hashes: List[str] = []
 
-        for doc in docs:
-            # Map category to folder
+        # 6. Evaluate every candidate document independently
+        for doc in candidate_docs:
+            eligibility = evaluate_document_for_package(
+                document=doc,
+                case=case,
+                policy=policy,
+                db=db,
+                unresolved_findings=unresolved_findings,
+            )
+
+            # Hard blocker rejection if explicitly requested
+            if not eligibility.eligible:
+                if explicit_document_ids or (manual_inclusions and doc.id in manual_inclusions):
+                    blocker_list = ", ".join(eligibility.blockers)
+                    raise ValidationError(
+                        f"Cannot build package: Unsafe document selection rejected. "
+                        f"Document '{doc.filename or doc.title}' ({doc.id}) has blockers: {blocker_list}. "
+                        f"Hard blockers cannot be bypassed."
+                    )
+                # Automatic assembly excludes document and records exact reason
+                excluded_items.append({
+                    "document_id": str(doc.id),
+                    "version": doc.version or 1,
+                    "version_id": f"{doc.id}:v{doc.version or 1}",
+                    "file_name": doc.filename or f"{doc.title}.pdf",
+                    "document_category": doc.category,
+                    "sha256_hash": doc.sha256_hash,
+                    "blockers": eligibility.blockers,
+                    "warnings": eligibility.warnings,
+                    "exclusion_reasons": eligibility.exclusion_reasons,
+                    "dimensions": eligibility.dimensions,
+                })
+                continue
+
+            # Eligible document: map category to folder
             folder_code = "03_Pathway_Evidence"
             cat = (doc.category or "").lower()
             if cat in ["passport", "visas_residence_permits", "identity_document"]:
@@ -152,6 +279,7 @@ class PackageBuilderService:
             manifest_items.append({
                 "document_id": str(doc.id),
                 "version": doc.version or 1,
+                "version_id": f"{doc.id}:v{doc.version or 1}",
                 "file_name": doc.filename or f"{doc.title}.pdf",
                 "folder_code": folder_code,
                 "folder_path": f"{folder_code}/{doc.filename or doc.title}",
@@ -162,36 +290,65 @@ class PackageBuilderService:
                 "is_internal_only": is_internal,
                 "page_count": doc.page_count or 1,
                 "file_size": f"{round(doc.byte_size / (1024 * 1024), 2)} MB" if getattr(doc, "byte_size", None) else "1.0 MB",
+                "eligibility_dimensions": {
+                    dim: res.get("status") for dim, res in eligibility.dimensions.items()
+                },
             })
 
-        # Add forms to manifest
-        forms_stmt = select(FormSubmission).where(FormSubmission.case_id == case_id)
+        # 7. Add case form submissions
+        forms_stmt = select(FormSubmission).where(
+            FormSubmission.case_id == case_id,
+            FormSubmission.organization_id == organization_id,
+        )
         forms = db.execute(forms_stmt).scalars().all()
         for f in forms:
+            form_code = "USCIS_I140"
+            if f.schema_version and f.schema_version.schema:
+                form_code = f.schema_version.schema.form_code
             form_hash = hashlib.sha256(f"{f.id}-{f.revision_number}".encode()).hexdigest()
             item_hashes.append(form_hash)
             manifest_items.append({
                 "form_submission_id": str(f.id),
                 "version": f.revision_number,
-                "file_name": f"Form_I140_Executed_Rev{f.revision_number}.pdf",
+                "version_id": f"{f.id}:v{f.revision_number}",
+                "file_name": f"Form_{form_code}_Executed_Rev{f.revision_number}.pdf",
                 "folder_code": "02_Application_Forms",
-                "folder_path": f"02_Application_Forms/Form_I140_Executed_Rev{f.revision_number}.pdf",
+                "folder_path": f"02_Application_Forms/Form_{form_code}_Executed_Rev{f.revision_number}.pdf",
                 "document_category": "application_forms",
                 "sha256_hash": form_hash,
                 "review_status": "signed_off" if f.sensitive_fields_reviewed else "pending_review",
-                "related_requirement_code": "USCIS_FORM_I140",
+                "related_requirement_code": form_code,
                 "is_internal_only": False,
                 "page_count": 8,
                 "file_size": "2.4 MB",
             })
 
-        # Compute Root Package Merkle Hash
-        item_hashes.sort()
-        package_root_hash = hashlib.sha256("".join(item_hashes).encode()).hexdigest()
+        # 8. Deterministic item sort & Merkle Root Hash calculation
+        manifest_items.sort(
+            key=lambda i: (
+                i.get("folder_code", ""),
+                i.get("file_name", ""),
+                i.get("document_id") or i.get("form_submission_id", ""),
+            )
+        )
+        excluded_items.sort(
+            key=lambda i: (
+                i.get("file_name", ""),
+                i.get("document_id", ""),
+            )
+        )
 
-        # Build 7-stage approval workflow chain
+        template_ref = str(template.id) if template and getattr(template, "id", None) else "default"
+        merkle_elements = [
+            f"policy:{policy.version}",
+            f"template:{template_ref}",
+            f"jurisdiction:{case.jurisdiction}",
+        ] + sorted(item_hashes)
+        package_root_hash = hashlib.sha256("\n".join(merkle_elements).encode()).hexdigest()
+
+        # 9. 7-stage approval workflow chain
         blocking_count = readiness.get("blocking_items_count", 0)
-        unresolved_findings_count = len(readiness.get("checklist", {}).get("unresolved_findings", {}).get("items", []))
+        unresolved_findings_count = len(unresolved_findings)
 
         approval_chain = [
             {
@@ -238,7 +395,7 @@ class PackageBuilderService:
                 "stage": "final_package_approval",
                 "title": "6. Final Package Approval",
                 "status": "pending",
-                "actor": "Attorney of Record (G-28 Signatory)",
+                "actor": "Attorney of Record (Signatory)",
                 "timestamp": None,
                 "notes": None,
             },
@@ -254,14 +411,34 @@ class PackageBuilderService:
 
         initial_status = "readiness_passed" if blocking_count == 0 else "draft"
 
-        submission_instructions = (
-            "SUBMISSION INSTRUCTIONS FOR USCIS IMMIGRANT PETITION:\n"
-            "1. Assemble package using standard two-hole top punch with exhibit tab dividers.\n"
-            "2. Ensure Form G-28 is placed on top of Form I-140 followed by the formal legal petition brief.\n"
-            "3. Place certified cashier's checks for Form I-140 filing fee and Asylum Program fee securely on front cover.\n"
-            "4. Send via certified trackable courier (FedEx / UPS) to the designated USCIS Lockbox facility according to petitioner state of residence.\n"
-            "NOTE: Automated government portal submission is not permitted. File physically or via verified official USCIS e-filing portal."
-        )
+        # 10. Pathway-aware submission instructions and rule set
+        if case.jurisdiction == "CA":
+            rule_set_version = "IRCC-EE-2026.1"
+            submission_instructions = (
+                "SUBMISSION INSTRUCTIONS FOR IRCC CANADIAN IMMIGRATION:\n"
+                "1. Assemble submission package per IRCC document checklist order.\n"
+                "2. Ensure all certified translations include translator affidavits and certified true copies.\n"
+                "3. Upload via authorized IRCC Authorized Representative portal or file per provincial program instructions.\n"
+                "NOTE: Automated government portal submission is not permitted. File per official IRCC procedures."
+            )
+        elif case.jurisdiction == "GB":
+            rule_set_version = "UKVI-SWV-2026.1"
+            submission_instructions = (
+                "SUBMISSION INSTRUCTIONS FOR UKVI IMMIGRATION APPLICATION:\n"
+                "1. Upload supporting documents to commercial partner portal (VFS Global / TLScontact).\n"
+                "2. Retain original identity documents for physical biometric appointment.\n"
+                "NOTE: Automated government portal submission is disabled."
+            )
+        else:
+            rule_set_version = "USCIS-EB1A-2026.2"
+            submission_instructions = (
+                "SUBMISSION INSTRUCTIONS FOR USCIS IMMIGRANT PETITION:\n"
+                "1. Assemble package using standard two-hole top punch with exhibit tab dividers.\n"
+                "2. Ensure Form G-28 is placed on top of Form I-140 followed by the formal legal petition brief.\n"
+                "3. Place certified cashier's checks for Form I-140 filing fee and Asylum Program fee securely on front cover.\n"
+                "4. Send via certified trackable courier (FedEx / UPS) to the designated USCIS Lockbox facility according to petitioner state of residence.\n"
+                "NOTE: Automated government portal submission is not permitted. File physically or via verified official USCIS e-filing portal."
+            )
 
         manifest = {
             "case_id": str(case_id),
@@ -269,13 +446,21 @@ class PackageBuilderService:
             "package_name": name,
             "version": "v1.0.0",
             "generated_at": now_utc().isoformat(),
-            "rule_set_version": "USCIS-EB1A-2026.2",
+            "rule_set_version": rule_set_version,
+            "policy_version": policy.version,
             "folders": folder_list,
             "items": manifest_items,
+            "excluded_items": excluded_items,
             "items_count": len(manifest_items),
+            "excluded_count": len(excluded_items),
             "external_items_count": sum(1 for i in manifest_items if not i.get("is_internal_only")),
             "internal_items_count": sum(1 for i in manifest_items if i.get("is_internal_only")),
             "package_hash": package_root_hash,
+            "compliance_notice": (
+                "Evaluation performed strictly against internal statutory compliance and evidence sufficiency criteria. "
+                "Probability of approval is never generated or displayed. "
+                "No legal advice is provided or implied."
+            ),
         }
 
         package = FilingPackage(
@@ -293,6 +478,11 @@ class PackageBuilderService:
             submission_instructions=submission_instructions,
         )
         db.add(package)
+
+        # STRICT INVARIANT: Package generation never alters case.status to 'submitted'
+        assert case.status != "submitted" or initial_case_status == "submitted", "Case status must never be mutated to submitted"
+        case.status = initial_case_status
+
         db.commit()
         db.refresh(package)
         return package
@@ -385,3 +575,9 @@ class PackageBuilderService:
             "approval_audit_trail": package.approval_chain_json,
             "disclaimer": "Automated government portal submission is disabled. All submissions must follow verified manual or certified procedures.",
         }
+
+
+# Aliases for architectural flexibility and builder callers
+PackageBuilder = PackageBuilderService
+PackageBuilderService.generate_filing_package = PackageBuilderService.build_filing_package
+

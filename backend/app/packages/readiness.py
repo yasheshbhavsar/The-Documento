@@ -112,7 +112,7 @@ class ReadinessService:
                 "title": f.title,
                 "severity": f.severity,
                 "status": f.status,
-                "citation": f.citation,
+                "citation": getattr(f, "citation", None) or getattr(f, "relevant_requirement", None) or getattr(f, "rule_id", None),
             }
             for f in unresolved_findings_records
         ]
@@ -177,19 +177,20 @@ class ReadinessService:
             for r in outstanding_reqs
         ]
 
-        # 7. Unmet package validation criteria
+        # 7. Unmet package validation criteria (pathway-aware)
         unmet_criteria: List[Dict[str, Any]] = []
-        # Check Form G-28 existence
-        has_g28 = any(
-            "g-28" in (d.title or "").lower() or "g28" in (d.title or "").lower()
-            for d in docs
-        )
-        if not has_g28:
-            unmet_criteria.append({
-                "rule": "MANDATORY_G28",
-                "description": "Form G-28 Notice of Attorney Representation must be attached and signed.",
-                "severity": "blocking",
-            })
+        # Form G-28 is strictly a US-specific representation notice; never universally require it for other pathways
+        if case.jurisdiction == "US":
+            has_g28 = any(
+                "g-28" in (d.title or "").lower() or "g28" in (d.title or "").lower()
+                for d in docs
+            )
+            if not has_g28:
+                unmet_criteria.append({
+                    "rule": "MANDATORY_G28",
+                    "description": "Form G-28 Notice of Attorney Representation must be attached and signed for US petitions.",
+                    "severity": "blocking",
+                })
 
         # Calculate blocking vs warning counts
         blocking_count = (
@@ -254,5 +255,5 @@ class ReadinessService:
                     "items": unmet_criteria,
                 },
             },
-            "compliance_notice": "Evaluation performed strictly against internal statutory and quality criteria. Probability of approval is never generated or displayed.",
+            "compliance_notice": "Evaluation performed strictly against internal statutory and quality criteria. Probability of approval is never generated or displayed. No legal advice is provided or implied.",
         }

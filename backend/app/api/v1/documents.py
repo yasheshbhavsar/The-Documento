@@ -21,6 +21,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.app.core.errors import (
+    AppException,
+    ConflictError,
     NotFoundError,
     PermissionDeniedError,
     TenantIsolationError,
@@ -30,6 +32,17 @@ from backend.app.db.session import get_db
 from backend.app.documents.processor import (
     process_document_pipeline,
     process_document_background_task,
+)
+from backend.app.documents.retention import (
+    purge_document,
+    apply_legal_hold,
+    release_legal_hold,
+    reconcile_divergent_documents,
+    StorageRetentionManager,
+    LegalHoldError,
+    UnresolvedAnomalyError,
+    PurgeIneligibleError,
+    DatabaseReconciliationError,
 )
 from backend.app.documents.storage import get_storage_backend
 from backend.app.documents.upload_service import (
@@ -159,6 +172,39 @@ class VerifyDocumentRequest(BaseModel):
 class CorrectFieldRequest(BaseModel):
     corrected_value: str = Field(..., min_length=1)
     reason: str = Field(..., min_length=3)
+
+
+class PurgeDocumentRequest(BaseModel):
+    reason: str = Field("statutory_retention_expiry", min_length=3, max_length=255)
+    bypass_retention_window: bool = False
+    jurisdiction: str = Field("US", min_length=2, max_length=10)
+
+
+class PurgeDocumentResponse(BaseModel):
+    purged_document_id: str
+    status: str
+    storage_deleted: bool
+    storage_already_missing: bool
+    correlation_id: str
+    reason: str
+    audit_event_id: Optional[str] = None
+
+
+class LegalHoldRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
+class RetentionEvaluationItem(BaseModel):
+    document_id: str
+    title: str
+    case_id: Optional[str] = None
+    created_at: str
+    age_days: float
+    retention_threshold_days: int
+    is_eligible: bool
+    legal_hold: bool
+    blocking_reasons: list[str] = []
+    status: str
 
 
 # --- Authorization Helper ---
@@ -464,6 +510,52 @@ def list_documents(
             updated_at=d.updated_at,
         )
         for d in docs
+    ]
+
+
+@router.get("/retention/evaluations", response_model=list[RetentionEvaluationItem])
+def get_retention_evaluations(
+    jurisdiction: str = Query("US"),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Lists organization documents with their retention and purge eligibility status."""
+    if auth.is_retained_client():
+        raise PermissionDeniedError("Retained clients are not authorized to view retention evaluations.")
+
+    evaluations = StorageRetentionManager.evaluate_expired_documents(
+        db=db,
+        organization_id=auth.organization_id,
+        jurisdiction=jurisdiction,
+    )
+    return [RetentionEvaluationItem(**e) for e in evaluations]
+
+
+@router.post("/retention/reconcile", response_model=list[PurgeDocumentResponse])
+def reconcile_documents_endpoint(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Reconciles documents where storage was purged but database records remained."""
+    if auth.is_retained_client():
+        raise PermissionDeniedError("Retained clients are not authorized to reconcile documents.")
+
+    results = reconcile_divergent_documents(
+        db=db,
+        organization_id=auth.organization_id,
+        actor_id=auth.user_id,
+    )
+    return [
+        PurgeDocumentResponse(
+            purged_document_id=r.get("purged_document_id", ""),
+            status=r.get("status", "unknown"),
+            storage_deleted=r.get("storage_deleted", False),
+            storage_already_missing=r.get("storage_already_missing", True),
+            correlation_id=r.get("correlation_id", "reconcile"),
+            reason=r.get("reason", "reconciliation"),
+            audit_event_id=r.get("audit_event_id"),
+        )
+        for r in results
     ]
 
 
@@ -814,3 +906,82 @@ def get_versions(
         )
         for d in versions
     ]
+
+
+@router.post("/{document_id}/purge", response_model=PurgeDocumentResponse)
+def purge_document_endpoint(
+    document_id: UUID,
+    payload: Optional[PurgeDocumentRequest] = None,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Executes a permanent, audited purge of a document from both object storage and database.
+    Restricted to organization staff and administrators.
+    """
+    if auth.is_retained_client():
+        raise PermissionDeniedError("Retained clients are not authorized to execute purge operations.")
+
+    reason = payload.reason if payload else "statutory_retention_expiry"
+    bypass_retention = payload.bypass_retention_window if payload else False
+    jurisdiction = payload.jurisdiction if payload else "US"
+
+    try:
+        result = purge_document(
+            db=db,
+            document_id=document_id,
+            organization_id=auth.organization_id,
+            actor_id=auth.user_id,
+            reason=reason,
+            jurisdiction=jurisdiction,
+            bypass_retention_window=bypass_retention,
+        )
+        return PurgeDocumentResponse(**result)
+    except (LegalHoldError, UnresolvedAnomalyError) as e:
+        raise ConflictError(str(e))
+    except PurgeIneligibleError as e:
+        raise ValidationError(str(e))
+    except DatabaseReconciliationError as e:
+        raise AppException(message=str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@router.post("/{document_id}/legal-hold", response_model=DocumentDetailResponse)
+def apply_legal_hold_endpoint(
+    document_id: UUID,
+    payload: LegalHoldRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Applies a legal hold to protect a document from any purge or routine destruction."""
+    if auth.is_retained_client():
+        raise PermissionDeniedError("Retained clients are not authorized to apply legal holds.")
+
+    doc = apply_legal_hold(
+        db=db,
+        document_id=document_id,
+        organization_id=auth.organization_id,
+        actor_id=auth.user_id,
+        reason=payload.reason,
+    )
+    return _to_detail_response(doc, auth, db=db)
+
+
+@router.delete("/{document_id}/legal-hold", response_model=DocumentDetailResponse)
+def release_legal_hold_endpoint(
+    document_id: UUID,
+    reason: str = Query("legal_hold_released"),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Releases a legal hold from a document."""
+    if auth.is_retained_client():
+        raise PermissionDeniedError("Retained clients are not authorized to release legal holds.")
+
+    doc = release_legal_hold(
+        db=db,
+        document_id=document_id,
+        organization_id=auth.organization_id,
+        actor_id=auth.user_id,
+        reason=reason,
+    )
+    return _to_detail_response(doc, auth, db=db)

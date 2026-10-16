@@ -65,6 +65,29 @@ class StorageBackend(ABC):
         """Checks if a document exists."""
         pass
 
+    @abstractmethod
+    def delete_file(self, organization_id: UUID, file_id: UUID, filename: str) -> bool:
+        """Deletes a document under strict organization isolation.
+
+        Returns:
+            bool: True if the file was deleted, False if it was already missing (idempotent).
+
+        Raises:
+            StorageError: If an unexpected I/O or network failure occurs during deletion.
+        """
+        pass
+
+    def delete_by_storage_path(self, storage_path: str) -> bool:
+        """Convenience method to delete an artifact given its stored storage_path.
+
+        Returns:
+            bool: True if deleted, False if already missing.
+
+        Raises:
+            StorageError: If deletion encounters an unexpected failure.
+        """
+        raise NotImplementedError("Storage backend must implement delete_by_storage_path")
+
 
 class LocalDocumentStorage(StorageBackend):
     def __init__(self, base_dir: Path | str | None = None):
@@ -145,6 +168,37 @@ class LocalDocumentStorage(StorageBackend):
 
     def exists(self, organization_id: UUID, file_id: UUID, filename: str) -> bool:
         return self._resolve_path(organization_id, file_id, filename).exists()
+
+    def delete_file(self, organization_id: UUID, file_id: UUID, filename: str) -> bool:
+        target_path = self._resolve_path(organization_id, file_id, filename)
+        if not target_path.exists():
+            return False
+        try:
+            target_path.unlink()
+            try:
+                parent_dir = target_path.parent
+                if parent_dir.exists() and not any(parent_dir.iterdir()):
+                    parent_dir.rmdir()
+            except Exception:
+                pass
+            return True
+        except Exception as e:
+            raise StorageError(f"Failed to delete local document {filename}: {e}") from e
+
+    def delete_by_storage_path(self, storage_path: str) -> bool:
+        try:
+            path = Path(storage_path).resolve()
+            if not path.exists():
+                return False
+            path.unlink()
+            try:
+                if path.parent.exists() and not any(path.parent.iterdir()):
+                    path.parent.rmdir()
+            except Exception:
+                pass
+            return True
+        except Exception as e:
+            raise StorageError(f"Failed to delete local document at {storage_path}: {e}") from e
 
 
 class S3DocumentStorage(StorageBackend):
@@ -256,6 +310,45 @@ class S3DocumentStorage(StorageBackend):
             return True
         except Exception:
             return False
+
+    def delete_file(self, organization_id: UUID, file_id: UUID, filename: str) -> bool:
+        key = self._make_key(organization_id, file_id, filename)
+        return self._delete_key(key)
+
+    def delete_by_storage_path(self, storage_path: str) -> bool:
+        if not storage_path or not isinstance(storage_path, str):
+            return False
+        if storage_path.startswith("s3://"):
+            parts = storage_path[5:].split("/", 1)
+            if len(parts) == 2:
+                bucket, key = parts
+                if bucket != self.bucket_name:
+                    raise StorageError(f"Storage path bucket {bucket} does not match configured bucket {self.bucket_name}")
+                return self._delete_key(key)
+            return False
+        elif storage_path.startswith("tenants/"):
+            return self._delete_key(storage_path)
+        return False
+
+    def _delete_key(self, key: str) -> bool:
+        from botocore.exceptions import ClientError
+        exists = False
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+            exists = True
+        except ClientError as e:
+            error_code = str(e.response.get("Error", {}).get("Code", ""))
+            if error_code in ("404", "NoSuchKey", "NotFound"):
+                return False
+            raise StorageError(f"S3 head_object failed for {key}: {e}") from e
+        except Exception as e:
+            raise StorageError(f"S3 check failed for {key}: {e}") from e
+
+        try:
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
+            return True
+        except Exception as e:
+            raise StorageError(f"Failed to delete S3 object {key}: {e}") from e
 
 
 def get_storage_backend() -> StorageBackend:

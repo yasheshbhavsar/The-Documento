@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
-from backend.app.core.errors import EntityNotFoundError, PermissionDeniedError
+from backend.app.core.errors import EntityNotFoundError, PermissionDeniedError, ValidationError, TenantIsolationError
 from backend.app.db.session import get_db
 from backend.app.domain.models import (
     FilingPackage,
@@ -16,6 +16,7 @@ from backend.app.domain.models import (
 )
 from backend.app.packages.readiness import ReadinessService
 from backend.app.packages.builder import PackageBuilderService
+from backend.app.packages.eligibility import preview_package_eligibility
 from backend.app.security.auth import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/packages", tags=["packages"])
@@ -26,6 +27,10 @@ router = APIRouter(prefix="/packages", tags=["packages"])
 class BuildPackageRequest(BaseModel):
     name: str = Field(default="USCIS Immigrant Petition Submission Package", min_length=2, max_length=255)
     template_id: Optional[uuid.UUID] = None
+    explicit_document_ids: Optional[List[uuid.UUID]] = None
+    manual_inclusions: Optional[List[uuid.UUID]] = None
+    manual_exclusions: Optional[List[uuid.UUID]] = None
+    override_notes: Optional[str] = None
 
 
 class AdvanceApprovalRequest(BaseModel):
@@ -64,6 +69,33 @@ def evaluate_case_readiness(
     return report
 
 
+@router.get("/cases/{case_id}/eligibility-preview")
+def preview_case_package_eligibility(
+    case_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """
+    Previews document eligibility across 6 distinct dimensions (readability, classification,
+    applicant assignment, consistency, evidentiary sufficiency, human verification).
+    Provides a clear preview of every included and excluded document with exact reasons for exclusion.
+    """
+    case = db.execute(
+        select(ImmigrationCase).where(
+            ImmigrationCase.id == case_id,
+            ImmigrationCase.organization_id == auth.organization_id,
+        )
+    ).scalar_one_or_none()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", str(case_id))
+
+    return preview_package_eligibility(
+        db=db,
+        case_id=case_id,
+        organization_id=auth.organization_id,
+    )
+
+
 @router.get("/templates")
 def list_package_templates(
     db: Session = Depends(get_db),
@@ -99,10 +131,13 @@ def build_filing_package(
     """
     Assembles an evidence package:
     - Runs readiness checklist.
+    - Evaluates candidate documents across 6 dimensions.
+    - Rejects unsafe selections (unresolved anomalies, unverified documents, etc.).
     - Maps documents into designated folders.
     - Strictly separates internal review documents from submission-ready files.
     - Pins document versions and calculates SHA-256 root manifest hash.
     - Initializes 7-stage approval workflow.
+    - Never changes case.status to submitted.
     """
     case = db.execute(
         select(ImmigrationCase).where(
@@ -113,6 +148,14 @@ def build_filing_package(
     if not case:
         raise EntityNotFoundError("ImmigrationCase", str(case_id))
 
+    # Verify authorization for manual include/exclude overrides
+    has_overrides = bool(
+        payload.manual_inclusions or payload.manual_exclusions or payload.explicit_document_ids or payload.override_notes
+    )
+    if has_overrides:
+        if auth.is_retained_client() or not (auth.is_case_manager() or auth.is_org_admin() or auth.is_senior_reviewer() or auth.has_role(RoleCode.CASE_MANAGER) or auth.has_role(RoleCode.SENIOR_REVIEWER) or auth.has_role("attorney")):
+            raise PermissionDeniedError("Client role is not authorized to specify manual document inclusions or overrides.")
+
     try:
         package = PackageBuilderService.build_filing_package(
             db=db,
@@ -121,9 +164,33 @@ def build_filing_package(
             name=payload.name,
             template_id=payload.template_id,
             user_id=auth.user_id,
+            explicit_document_ids=payload.explicit_document_ids,
+            manual_inclusions=payload.manual_inclusions,
+            manual_exclusions=payload.manual_exclusions,
+            override_notes=payload.override_notes,
         )
+    except (ValidationError, TenantIsolationError, EntityNotFoundError):
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Audit manual overrides if supplied
+    if has_overrides:
+        override_audit = AuditEvent(
+            organization_id=auth.organization_id,
+            actor_id=auth.user_id,
+            action="filing_package.manual_override",
+            object_type="filing_package",
+            object_id=str(package.id),
+            metadata_json={
+                "case_id": str(case_id),
+                "manual_inclusions": [str(d) for d in (payload.manual_inclusions or [])],
+                "manual_exclusions": [str(d) for d in (payload.manual_exclusions or [])],
+                "explicit_document_ids": [str(d) for d in (payload.explicit_document_ids or [])],
+                "override_notes": payload.override_notes,
+            },
+        )
+        db.add(override_audit)
 
     audit = AuditEvent(
         organization_id=auth.organization_id,
@@ -135,6 +202,7 @@ def build_filing_package(
             "case_id": str(case_id),
             "version": package.version_number,
             "items_count": package.manifest_json.get("items_count", 0),
+            "excluded_count": package.manifest_json.get("excluded_count", 0),
             "summary": f"Assembled package {package.name} (hash: {package.package_hash[:8]}...) for case {case.case_number}",
         },
     )

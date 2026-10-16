@@ -69,7 +69,13 @@ class AuthContext:
         return self.has_role(RoleCode.SENIOR_REVIEWER)
 
     def is_retained_client(self) -> bool:
-        return self.has_role(RoleCode.RETAINED_CLIENT) or self.has_role(RoleCode.APPLICANT)
+        return (
+            self.has_role(RoleCode.RETAINED_CLIENT)
+            or self.has_role(RoleCode.APPLICANT)
+            or self.has_role("client")
+            or self.has_role("retained_client")
+            or self.has_role("applicant")
+        )
 
     def is_org_admin(self) -> bool:
         return self.is_company_admin() or self.is_master_admin()
