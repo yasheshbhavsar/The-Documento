@@ -1,8 +1,11 @@
 import json
 import logging
 import sys
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
+
+correlation_id_ctx: ContextVar[str | None] = ContextVar("correlation_id_ctx", default=None)
 
 SENSITIVE_KEYS = {
     "password",
@@ -28,6 +31,11 @@ SENSITIVE_KEYS = {
     "national_id",
     "alien_registration_number",
     "uscis_online_account_number",
+    "aadhaar",
+    "raw_document_content",
+    "extracted_text",
+    "document_bytes",
+    "file_payload",
 }
 
 
@@ -51,10 +59,12 @@ redact_pii = sanitize_dict
 
 class StructuredJsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        cid = getattr(record, "correlation_id", None) or correlation_id_ctx.get()
         log_obj: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
+            "correlation_id": cid,
             "message": record.getMessage(),
         }
 

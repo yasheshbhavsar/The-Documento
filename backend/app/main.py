@@ -9,6 +9,7 @@ from backend.app.core.errors import (
 )
 from backend.app.core.logging import setup_logging
 from backend.app.core.middleware import (
+    CorrelationIdMiddleware,
     SecurityHeadersMiddleware,
     SimpleRateLimiterMiddleware,
 )
@@ -33,6 +34,7 @@ from backend.app.api.v1.packages import router as packages_router
 from backend.app.api.v1.billing import router as billing_router
 from backend.app.api.v1.analytics import router as analytics_router
 from backend.app.api.v1.operations import router as operations_router
+from backend.app.api.v1.firm_config import router as firm_config_router, tenant_firm_config_router
 
 # Initialize structured logging
 setup_logging()
@@ -74,6 +76,7 @@ app.add_middleware(
 )
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SimpleRateLimiterMiddleware, max_requests=settings.rate_limit_per_minute)
+app.add_middleware(CorrelationIdMiddleware)
 
 # Versioned API routes
 app.include_router(health_router, prefix="/api/v1")
@@ -95,6 +98,8 @@ app.include_router(packages_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(operations_router, prefix="/api/v1")
+app.include_router(firm_config_router, prefix="/api/v1")
+app.include_router(tenant_firm_config_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["health"])

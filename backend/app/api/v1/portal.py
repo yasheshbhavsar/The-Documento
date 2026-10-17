@@ -107,6 +107,50 @@ class WaitingStateResponse(BaseModel):
     onboarding_completed: bool
 
 
+# --- Phase 8 Per-Applicant Checklist Schemas ---
+
+class ApplicantChecklistItem(BaseModel):
+    id: str
+    title: str
+    category: str
+    status: str  # "required", "received", "accepted", "rejected", "outstanding"
+    is_mandatory: bool = True
+    document_id: str | None = None
+    filename: str | None = None
+    lifecycle_state: str | None = None
+    structured_reason_code: str | None = None
+    client_explanation: str | None = None
+    submitted_at: datetime | None = None
+
+
+class ApplicantChecklistSection(BaseModel):
+    applicant_id: str
+    applicant_name: str
+    relationship: str
+    required_count: int
+    received_count: int
+    accepted_count: int
+    rejected_count: int
+    outstanding_count: int
+    required_items: list[ApplicantChecklistItem]
+    received_items: list[ApplicantChecklistItem]
+    accepted_items: list[ApplicantChecklistItem]
+    rejected_items: list[ApplicantChecklistItem]
+    outstanding_items: list[ApplicantChecklistItem]
+
+
+class PerApplicantChecklistResponse(BaseModel):
+    case_id: uuid.UUID
+    case_number: str
+    overall_progress_percent: float
+    total_required: int
+    total_received: int
+    total_accepted: int
+    total_rejected: int
+    total_outstanding: int
+    applicants: list[ApplicantChecklistSection]
+
+
 # --- Default Questionnaire Template ---
 
 DEFAULT_EB1A_SECTIONS = [
@@ -787,4 +831,244 @@ def get_waiting_state(
         waiting_on_firm=waiting_on_firm,
         profile_completeness_percentage=min(completeness, 100.0),
         onboarding_completed=len(waiting_on_client) == 0,
+    )
+
+
+# --- Phase 8 Per-Applicant Checklist Endpoint ---
+
+@router.get("/cases/{case_id}/applicant-checklist", response_model=PerApplicantChecklistResponse)
+def get_per_applicant_checklist(
+    case_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Per-applicant checklist: required, received, accepted, rejected/correction-required, outstanding.
+    Categorizes statutory and firm-requested requirements per applicant (primary, spouse, child).
+    """
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+
+    client_user_id = case.client.user_id if case.client else None
+    authorized_deps = [d.user_id for d in case.client.dependants if d.is_authorized_to_view_case and d.user_id] if case.client else []
+    assigned_user_ids = [a.user_id for a in case.assignments]
+    ctx.assert_case_access(
+        case,
+        client_user_id=client_user_id,
+        authorized_dependant_user_ids=authorized_deps,
+        assigned_user_ids=assigned_user_ids,
+    )
+
+    # 1. Fetch case documents & requests
+    docs = db.query(Document).filter(
+        Document.organization_id == ctx.organization_id,
+        Document.case_id == case_id,
+        Document.is_current_version.is_(True),
+    ).all()
+
+    requests = db.query(DocumentRequest).filter(
+        DocumentRequest.organization_id == ctx.organization_id,
+        DocumentRequest.case_id == case_id,
+        DocumentRequest.status != "draft",
+    ).all()
+
+    # 2. Build applicant list
+    applicant_configs = []
+    if case.client:
+        applicant_configs.append({
+            "applicant_id": str(case.client.id),
+            "applicant_name": f"{case.client.first_name} {case.client.last_name}",
+            "relationship": "primary_applicant",
+            "is_primary": True,
+        })
+        for dep in (case.client.dependants or []):
+            applicant_configs.append({
+                "applicant_id": str(dep.id),
+                "applicant_name": f"{dep.first_name} {dep.last_name}",
+                "relationship": dep.relationship_type or "dependant",
+                "is_primary": False,
+            })
+    else:
+        applicant_configs.append({
+            "applicant_id": "primary",
+            "applicant_name": "Primary Applicant",
+            "relationship": "primary_applicant",
+            "is_primary": True,
+        })
+
+    # Standard default baseline items per relationship
+    primary_defaults = [
+        {"id": "req-pass", "title": "Passport Identification (Biographical Page)", "category": "identity_passport"},
+        {"id": "req-cv", "title": "Comprehensive Curriculum Vitae & Bibliography", "category": "employment_records"},
+        {"id": "req-degree", "title": "Terminal Degree Diploma & Transcripts", "category": "educational_records"},
+        {"id": "req-evidence", "title": "Statutory Extraordinary Ability Evidence Portfolio", "category": "supporting_evidence"},
+    ]
+    dep_defaults = [
+        {"id": "req-dep-pass", "title": "Passport Identification Page", "category": "identity_passport"},
+        {"id": "req-dep-vital", "title": "Civil Status Record (Marriage / Birth Certificate)", "category": "civil_status"},
+    ]
+
+    applicants_result: list[ApplicantChecklistSection] = []
+    tot_req = 0
+    tot_rec = 0
+    tot_acc = 0
+    tot_rej = 0
+    tot_out = 0
+
+    for cfg in applicant_configs:
+        is_primary = cfg["is_primary"]
+        app_id = cfg["applicant_id"]
+        app_name = cfg["applicant_name"]
+        rel = cfg["relationship"]
+
+        # Match documents for this applicant
+        app_docs = [
+            d for d in docs
+            if (
+                str(d.client_id) == app_id
+                or str(getattr(d, "applicant_dependant_id", None)) == app_id
+                or (getattr(d, "proposed_applicant_name", None) and app_name.lower() in getattr(d, "proposed_applicant_name", "").lower())
+                or (is_primary and not d.client_id and not getattr(d, "applicant_dependant_id", None))
+            )
+        ]
+
+        # Match requests for this applicant
+        app_reqs = [
+            r for r in requests
+            if (str(r.requested_from_client_id) == app_id or (is_primary and not r.requested_from_client_id))
+        ]
+
+        required_items: list[ApplicantChecklistItem] = []
+        received_items: list[ApplicantChecklistItem] = []
+        accepted_items: list[ApplicantChecklistItem] = []
+        rejected_items: list[ApplicantChecklistItem] = []
+        outstanding_items: list[ApplicantChecklistItem] = []
+
+        # Map document requests
+        for req in app_reqs:
+            item = ApplicantChecklistItem(
+                id=str(req.id),
+                title=req.title,
+                category=req.category or "supporting_evidence",
+                status="required",
+                is_mandatory=getattr(req, "is_mandatory", True),
+            )
+            required_items.append(item)
+            if req.status == "rejected":
+                rej_item = ApplicantChecklistItem(
+                    id=str(req.id),
+                    title=req.title,
+                    category=req.category or "supporting_evidence",
+                    status="rejected",
+                    is_mandatory=getattr(req, "is_mandatory", True),
+                    client_explanation=req.rejection_reason,
+                )
+                rejected_items.append(rej_item)
+                outstanding_items.append(rej_item)
+            elif req.status in ("requested", "pending"):
+                outstanding_items.append(item)
+
+        # Baseline fallback if requests not explicitly entered
+        if not app_reqs:
+            base_items = primary_defaults if is_primary else dep_defaults
+            for b in base_items:
+                it = ApplicantChecklistItem(
+                    id=f"{b['id']}-{app_id}",
+                    title=b["title"],
+                    category=b["category"],
+                    status="required",
+                    is_mandatory=True,
+                )
+                required_items.append(it)
+
+        # Categorize uploaded documents
+        for doc in app_docs:
+            v_status = (doc.verification_status or "").lower()
+            code = None
+            explanation = doc.verification_notes
+            if doc.verification_notes and doc.verification_notes.startswith("[") and "]" in doc.verification_notes:
+                idx = doc.verification_notes.index("]")
+                code = doc.verification_notes[1:idx].strip()
+                explanation = doc.verification_notes[idx + 1:].strip()
+
+            lifecycle = "uploaded"
+            if v_status in ("verified", "accepted"):
+                lifecycle = "accepted"
+            elif v_status in ("rejected", "correction_required"):
+                lifecycle = "rejected"
+            elif v_status == "under_review":
+                lifecycle = "under_review"
+
+            doc_item = ApplicantChecklistItem(
+                id=str(doc.id),
+                title=doc.title or doc.filename,
+                category=doc.category or "supporting_evidence",
+                status=lifecycle,
+                is_mandatory=True,
+                document_id=str(doc.id),
+                filename=doc.filename,
+                lifecycle_state=lifecycle,
+                structured_reason_code=code,
+                client_explanation=explanation,
+                submitted_at=doc.created_at,
+            )
+
+            if lifecycle == "accepted":
+                accepted_items.append(doc_item)
+                received_items.append(doc_item)
+            elif lifecycle == "rejected":
+                rejected_items.append(doc_item)
+                outstanding_items.append(doc_item)
+            else:
+                received_items.append(doc_item)
+
+        # Unfulfilled required items -> outstanding
+        received_categories = {d.category for d in received_items}
+        for req_item in required_items:
+            if req_item.category not in received_categories and req_item.id not in [o.id for o in outstanding_items]:
+                out_item = ApplicantChecklistItem(
+                    id=req_item.id,
+                    title=req_item.title,
+                    category=req_item.category,
+                    status="outstanding",
+                    is_mandatory=req_item.is_mandatory,
+                )
+                outstanding_items.append(out_item)
+
+        sec = ApplicantChecklistSection(
+            applicant_id=app_id,
+            applicant_name=app_name,
+            relationship=rel,
+            required_count=len(required_items),
+            received_count=len(received_items),
+            accepted_count=len(accepted_items),
+            rejected_count=len(rejected_items),
+            outstanding_count=len(outstanding_items),
+            required_items=required_items,
+            received_items=received_items,
+            accepted_items=accepted_items,
+            rejected_items=rejected_items,
+            outstanding_items=outstanding_items,
+        )
+        applicants_result.append(sec)
+
+        tot_req += len(required_items)
+        tot_rec += len(received_items)
+        tot_acc += len(accepted_items)
+        tot_rej += len(rejected_items)
+        tot_out += len(outstanding_items)
+
+    overall_progress = round((tot_acc / max(tot_req, 1)) * 100, 1)
+
+    return PerApplicantChecklistResponse(
+        case_id=case.id,
+        case_number=case.case_number,
+        overall_progress_percent=min(overall_progress, 100.0),
+        total_required=tot_req,
+        total_received=tot_rec,
+        total_accepted=tot_acc,
+        total_rejected=tot_rej,
+        total_outstanding=tot_out,
+        applicants=applicants_result,
     )

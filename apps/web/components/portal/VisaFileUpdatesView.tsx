@@ -788,7 +788,7 @@ export function VisaFileUpdatesView({
                       {item.relativeTime}
                     </span>
                     <span style={{ fontSize: "11px", color: "#BDCDC7" }}>
-                      ({new Date(item.timestamp).toLocaleDateString()})
+                      ({item.timestamp.includes(" • ") ? item.timestamp.split(" • ")[0] : (!isNaN(new Date(item.timestamp).getTime()) ? new Date(item.timestamp).toLocaleDateString() : item.timestamp)})
                     </span>
                   </div>
 

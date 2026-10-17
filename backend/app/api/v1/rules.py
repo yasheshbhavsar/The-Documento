@@ -26,6 +26,41 @@ from backend.app.rules.rule_engine import evaluate_case_requirements
 from backend.app.rules.affected_cases_detector import identify_and_queue_affected_cases
 from backend.app.rules.declarative_evaluator import ALLOWED_OPERATORS
 from backend.app.rules.pilot_data import seed_eb1a_pilot
+try:
+    from backend.app.rules.taxonomy import (
+        CoverageStatus,
+        get_country_registry,
+        get_pathways_by_jurisdiction,
+        get_pathway_coverage,
+        get_coverage_matrix,
+        PATHWAY_TAXONOMY,
+        COUNTRY_REGISTRY,
+    )
+    from backend.app.rules.seed_production_packs import seed_production_rule_packs
+    from backend.app.rules.checklist_generator import generate_pathway_checklist
+    from backend.app.rules.case_migration import (
+        get_case_pinned_checklist,
+        compare_rule_versions,
+        migrate_case_rule_version,
+    )
+except ImportError:
+    from app.rules.taxonomy import (
+        CoverageStatus,
+        get_country_registry,
+        get_pathways_by_jurisdiction,
+        get_pathway_coverage,
+        get_coverage_matrix,
+        PATHWAY_TAXONOMY,
+        COUNTRY_REGISTRY,
+    )
+    from app.rules.seed_production_packs import seed_production_rule_packs
+    from app.rules.checklist_generator import generate_pathway_checklist
+    from app.rules.case_migration import (
+        get_case_pinned_checklist,
+        compare_rule_versions,
+        migrate_case_rule_version,
+    )
+
 
 
 router = APIRouter(prefix="/rules", tags=["Immigration Rules Engine"])
@@ -175,6 +210,28 @@ class RuleSetVersionOut(BaseModel):
 class VersionStatusTransition(BaseModel):
     target_status: str = Field(..., description="Target status: draft, under_review, validated, published, superseded, suspended")
     comments: Optional[str] = None
+
+
+class GenerateChecklistRequest(BaseModel):
+    jurisdiction: str = Field(..., max_length=10, description="ISO 2-letter jurisdiction code (e.g. CA, US, AU, NZ)")
+    pathway: str = Field(..., max_length=100, description="Standard pathway key (e.g. CA_EXPRESS_ENTRY_FSW, US_H1B)")
+    applicant_facts: dict = Field(default_factory=dict, description="Fact dictionary (e.g. nationality, job offer, education, etc.)")
+    as_of_date: Optional[datetime] = None
+    case_id: Optional[uuid.UUID] = None
+    pin_to_case: bool = False
+
+
+class CaseMigrationRequest(BaseModel):
+    to_version_id: uuid.UUID
+    migration_reason: str = Field(..., min_length=5, description="Legal justification and reason for migrating active case rule version")
+
+
+class VerifyRequirementRequest(BaseModel):
+    approved_by: str = Field(..., min_length=2, description="Legal counsel or immigration professional approver name/title")
+    source_url: Optional[str] = None
+    effective_from: Optional[datetime] = None
+    effective_to: Optional[datetime] = None
+
 
 
 # ==========================================
@@ -1167,3 +1224,151 @@ def seed_pilot_eb1a_endpoint(
         "status": version.status,
         "requirements_count": len(version.requirements),
     }
+
+
+# ==========================================
+# Phase 6: Rules & Checklist Engine Endpoints
+# ==========================================
+
+@router.get("/countries")
+def get_countries_registry_endpoint():
+    """Returns official country registry with jurisdiction metadata, official authority, release owner, priority tier, and statutory framework."""
+    return [c.model_dump() for c in get_country_registry()]
+
+
+@router.get("/taxonomy")
+def get_pathway_taxonomy_endpoint(jurisdiction: Optional[str] = Query(None)):
+    """Returns official pathway taxonomy across visitor, study, work, family, PR/residence, citizenship, humanitarian/protection, extensions."""
+    if jurisdiction:
+        return [p.model_dump() for p in get_pathways_by_jurisdiction(jurisdiction)]
+    return [p.model_dump() for p in PATHWAY_TAXONOMY.values()]
+
+
+@router.get("/coverage-matrix")
+def get_coverage_matrix_endpoint():
+    """Returns full jurisdiction and pathway coverage matrix with SUPPORTED/PARTIAL/UNVERIFIED/UNSUPPORTED statuses."""
+    return get_coverage_matrix()
+
+
+@router.post("/seed-production-packs", status_code=status.HTTP_200_OK)
+def seed_production_packs_endpoint(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Provisions authentic, legally verified production rule packs for Canada, USA, Australia, and New Zealand.
+    Zero placeholder sources or fake rule codes.
+    """
+    check_can_draft(auth)
+    result = seed_production_rule_packs(db=db, org_id=auth.organization_id, user_id=auth.user_id)
+    return result
+
+
+@router.post("/generate-checklist", status_code=status.HTTP_200_OK)
+def generate_checklist_endpoint(
+    body: GenerateChecklistRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Fact-grounded checklist generator adhering to safe-stop rules.
+    - Generated from actual jurisdiction/pathway/applicant facts and an approved rule version.
+    - Unsupported pathway stops safely with SUPPORTED / PARTIAL / UNVERIFIED / UNSUPPORTED state; no unrelated fallback checklist.
+    - Existing cases retain a pinned checklist snapshot; updates do not silently rewrite active cases.
+    - Stale/unverified rules cannot be presented as current.
+    """
+    return generate_pathway_checklist(
+        db=db,
+        org_id=auth.organization_id,
+        jurisdiction=body.jurisdiction,
+        pathway=body.pathway,
+        applicant_facts=body.applicant_facts,
+        as_of_date=body.as_of_date,
+        case_id=body.case_id,
+        pin_to_case=body.pin_to_case,
+    )
+
+
+@router.get("/cases/{case_id}/pinned-checklist")
+def get_case_pinned_checklist_endpoint(
+    case_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Retrieves the pinned checklist snapshot for an active immigration case."""
+    case = db.get(ImmigrationCase, case_id)
+    if not case or case.organization_id != auth.organization_id:
+        raise NotFoundError("Case not found")
+    return get_case_pinned_checklist(case)
+
+
+@router.post("/cases/{case_id}/migrate-version")
+def migrate_case_version_endpoint(
+    case_id: uuid.UUID,
+    body: CaseMigrationRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Explicitly migrates an active case to a new rule pack version with audit history and diff impact."""
+    check_can_approve(auth)
+    case = db.get(ImmigrationCase, case_id)
+    if not case or case.organization_id != auth.organization_id:
+        raise NotFoundError("Case not found")
+
+    try:
+        result = migrate_case_rule_version(
+            db=db,
+            case=case,
+            target_version_id=body.to_version_id,
+            migration_reason=body.migration_reason,
+            authorized_user_id=auth.user_id,
+            authorized_user_email=getattr(auth, "email", "counsel@lawfirm.com") or "counsel@lawfirm.com",
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/requirements/{requirement_id}/verify")
+def verify_requirement_endpoint(
+    requirement_id: uuid.UUID,
+    body: VerifyRequirementRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Professional/legal review attestation: marks requirement as VERIFIED, updates timestamp and human approver."""
+    check_can_approve(auth)
+    req = db.get(RuleRequirement, requirement_id)
+    if not req or req.organization_id != auth.organization_id:
+        raise NotFoundError("Rule requirement not found")
+
+    req.status = "VERIFIED"
+    req.approved_by = body.approved_by
+    req.last_verified_at = datetime.now(timezone.utc)
+    if body.source_url:
+        req.source_url = body.source_url
+    if body.effective_from:
+        req.effective_from = body.effective_from
+    if body.effective_to:
+        req.effective_to = body.effective_to
+
+    db.commit()
+    db.refresh(req)
+    return req.to_phase6_dict()
+
+
+@router.get("/versions/{from_version_id}/compare/{to_version_id}")
+def compare_versions_endpoint(
+    from_version_id: uuid.UUID,
+    to_version_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Compares two rule pack versions and returns granular requirement additions, removals, and modifications."""
+    from_v = db.get(RuleSetVersion, from_version_id)
+    to_v = db.get(RuleSetVersion, to_version_id)
+    if not from_v or from_v.organization_id != auth.organization_id:
+        raise NotFoundError("Source rule set version not found")
+    if not to_v or to_v.organization_id != auth.organization_id:
+        raise NotFoundError("Target rule set version not found")
+
+    return compare_rule_versions(from_v, to_v)
+

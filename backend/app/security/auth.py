@@ -63,7 +63,7 @@ class AuthContext:
         return self.is_master_admin() or self.has_role(RoleCode.COMPANY_ADMIN)
 
     def is_case_manager(self) -> bool:
-        return self.has_role(RoleCode.CASE_MANAGER) or self.has_role(RoleCode.CASE_WORKER)
+        return self.has_role(RoleCode.CASE_MANAGER)
 
     def is_senior_reviewer(self) -> bool:
         return self.has_role(RoleCode.SENIOR_REVIEWER)
@@ -84,10 +84,10 @@ class AuthContext:
         return self.is_retained_client()
 
     def assert_organization_access(self, target_org_id: uuid.UUID) -> None:
-        """Enforces tenant isolation boundary. Cross-tenant access is strictly denied."""
+        """Enforces tenant isolation boundary. Cross-tenant access is strictly denied without metadata leakage."""
         if self.organization_id != target_org_id:
             raise TenantIsolationError(
-                f"Cross-tenant access forbidden: authenticated org {self.organization_id} cannot access org {target_org_id}"
+                "Cross-tenant access forbidden: requested resource does not belong to authorized organization"
             )
 
     def assert_case_access(
@@ -102,21 +102,40 @@ class AuthContext:
 
         # Retained clients can only access cases where they are the designated client or authorized dependant
         if self.is_retained_client():
-            is_client = client_user_id is not None and client_user_id == self.user_id
+            eff_client_user_id = client_user_id
+            if eff_client_user_id is None and hasattr(case, "client") and case.client:
+                eff_client_user_id = getattr(case.client, "user_id", None)
+
+            is_client = eff_client_user_id is not None and eff_client_user_id == self.user_id
             is_auth_dep = (
                 authorized_dependant_user_ids is not None
                 and self.user_id in authorized_dependant_user_ids
             )
+            if not is_auth_dep and hasattr(case, "client") and case.client and hasattr(case.client, "dependants"):
+                for dep in (case.client.dependants or []):
+                    if getattr(dep, "is_authorized_to_view_case", False) and getattr(dep, "user_id", None) == self.user_id:
+                        is_auth_dep = True
+                        break
+
             if not (is_client or is_auth_dep):
                 raise PermissionDeniedError(
                     "Retained clients can only access cases where they are the designated applicant or authorized dependant"
                 )
 
-        # Document reviewers are constrained to assigned cases if not admins
-        if self.has_role(RoleCode.DOCUMENT_REVIEWER) and not self.is_company_admin():
+        # Unassigned officers/caseworkers and document reviewers are constrained to assigned cases unless firm managers/admins
+        is_firm_manager = (
+            self.is_org_admin()
+            or self.is_senior_reviewer()
+            or self.is_case_manager()
+            or self.has_permission("case:read:all")
+        )
+        if (
+            self.has_role(RoleCode.CASE_WORKER)
+            or self.has_role(RoleCode.DOCUMENT_REVIEWER)
+        ) and not is_firm_manager:
             if assigned_user_ids is not None and self.user_id not in assigned_user_ids:
                 raise PermissionDeniedError(
-                    "Document reviewer access is restricted to assigned cases"
+                    "Case access is restricted to assigned officers and case managers"
                 )
 
 
@@ -137,8 +156,9 @@ async def get_auth_context(
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1].strip()
 
-    # 2. Check Session Cookie fallback
-    if not token:
+    # 2. Check Session Cookie fallback (only if not explicitly using dev/test simulation headers)
+    has_sim_headers = bool(x_user_id or x_user_role)
+    if not token and not has_sim_headers:
         cookie_val = request.cookies.get(settings.session_cookie_name)
         if cookie_val:
             token = cookie_val
@@ -152,6 +172,19 @@ async def get_auth_context(
             email = payload.get("email", "user@ai-immigration.local")
             roles_list = payload.get("roles", [RoleCode.MASTER_ADMIN.value])
             membership_id = uuid.UUID(payload["membership_id"]) if payload.get("membership_id") else None
+
+            # Verify active user in DB
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user or user.status != "active":
+                raise AuthenticationError("User account is inactive, deactivated, or revoked")
+
+            # Verify active membership in DB if present
+            if membership_id:
+                membership = db.query(OrganizationMembership).filter(
+                    OrganizationMembership.id == membership_id
+                ).first()
+                if not membership or membership.status != "active":
+                    raise AuthenticationError("Organization membership is inactive or revoked")
 
             # Verify active session if session_id is present in payload
             session_id = None
@@ -167,7 +200,7 @@ async def get_auth_context(
                         raise AuthenticationError("Session has been revoked or expired")
                     session_id = s_id
                 except (ValueError, TypeError):
-                    pass
+                    raise AuthenticationError("Invalid session identifier in token")
 
             return AuthContext(
                 user_id=user_id,
@@ -178,9 +211,10 @@ async def get_auth_context(
                 session_id=session_id,
                 subject=f"user:{user_id}",
             )
+        except AuthenticationError:
+            raise
         except Exception as e:
-            if settings.auth_required:
-                raise AuthenticationError(f"Invalid authentication token: {e}")
+            raise AuthenticationError(f"Invalid authentication token: {e}")
 
     # 4. If auth is strictly required and no valid token found
     if settings.auth_required:

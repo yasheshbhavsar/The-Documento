@@ -15,6 +15,7 @@ import {
   FormSubmissionItem,
   PackageReadinessChecklist,
   FilingPackageItem,
+  RouteFindingPayload,
 } from "../../lib/types";
 import {
   api,
@@ -41,6 +42,7 @@ import { DeterministicReadinessChecklist } from "../packages/DeterministicReadin
 import { PackageBuilderView } from "../packages/PackageBuilderView";
 import { PackageApprovalWorkflowModal } from "../packages/PackageApprovalWorkflowModal";
 import { CaseDiscrepancyAlertCenter } from "../cases/CaseDiscrepancyAlertCenter";
+import { ApprovalGatesCard } from "../cases/ApprovalGatesCard";
 
 interface EmployeeWorkspaceProps {
   cases: ImmigrationCase[];
@@ -79,6 +81,8 @@ export function EmployeeWorkspace({
 }: EmployeeWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<
     | "my_work"
+    | "exception_queue"
+    | "all_in_one_workspace"
     | "assigned_cases"
     | "team_queues"
     | "clients"
@@ -95,11 +99,52 @@ export function EmployeeWorkspace({
 
   const [messageInput, setMessageInput] = useState("");
   const [selectedCaseForWorkspace, setSelectedCaseForWorkspace] = useState<ImmigrationCase>(cases[0] || null);
+  const [showAssignedOnly, setShowAssignedOnly] = useState<boolean>(true);
+  const [exceptionCategoryFilter, setExceptionCategoryFilter] = useState<"all" | "blockers" | "documents" | "client_actions" | "deadlines" | "reviews">("all");
   const [formReviewAccepted, setFormReviewAccepted] = useState(false);
   const [selectedDocForInspection, setSelectedDocForInspection] = useState<DocumentItem | null>(null);
   const [docSearch, setDocSearch] = useState("");
   const [docCategoryFilter, setDocCategoryFilter] = useState("all");
   const [docStatusFilter, setDocStatusFilter] = useState("all");
+  const [internalNoteInput, setInternalNoteInput] = useState("");
+  const [internalNotes, setInternalNotes] = useState<
+    Array<{ id: string; author: string; role: string; content: string; timestamp: string }>
+  >([
+    {
+      id: "note-1",
+      author: "Sarah Vance, Esq.",
+      role: "Lead Immigration Attorney",
+      content:
+        "Client has strong citation count (h-index 24) for O-1A / EB-1A. Need to verify that letters from referees are independent and not co-authors.",
+      timestamp: "2026-03-24T14:30:00Z",
+    },
+    {
+      id: "note-2",
+      author: "Marcus Jenkin",
+      role: "Senior Paralegal",
+      content:
+        "Contacted translation agency for Dmitri's marriage cert. Awaiting signed cert of translation by Friday.",
+      timestamp: "2026-03-25T09:15:00Z",
+    },
+  ]);
+  const [allInOneChatMode, setAllInOneChatMode] = useState<"client" | "internal_notes">("client");
+  const [allInOneSubView, setAllInOneSubView] = useState<
+    "all" | "checklist" | "tasks" | "chat" | "package" | "timeline"
+  >("all");
+
+  const visibleCases = showAssignedOnly
+    ? cases.filter((c) => {
+        const mgr = (c.assigned_manager || "").toLowerCase();
+        return (
+          mgr.includes("sarah") ||
+          mgr.includes("vance") ||
+          mgr.includes("jenkin") ||
+          mgr.includes("lead") ||
+          mgr.includes("esq") ||
+          c.id === cases[0]?.id
+        );
+      })
+    : cases;
 
   // Phase 5 State
   const [localFindingsState, setLocalFindingsState] = useState<AIFinding[]>(aiFindings);
@@ -180,9 +225,17 @@ export function EmployeeWorkspace({
   }, [aiFindings]);
 
   useEffect(() => {
+    let isMounted = true;
     const targetCaseId = selectedCaseForWorkspace?.id || "case-01";
-    api.getCaseChecklist(targetCaseId).then((res) => setChecklistReport(res.data));
-    api.getCaseEvidenceSummary(targetCaseId).then((res) => setEvidenceSummary(res.data));
+    api.getCaseChecklist(targetCaseId).then((res) => {
+      if (isMounted && res?.data) setChecklistReport(res.data);
+    });
+    api.getCaseEvidenceSummary(targetCaseId).then((res) => {
+      if (isMounted && res?.data) setEvidenceSummary(res.data);
+    });
+    return () => {
+      isMounted = false;
+    };
   }, [selectedCaseForWorkspace?.id]);
 
   const handleResolveFindingAction = async (findingId: string, note: string) => {
@@ -276,6 +329,32 @@ export function EmployeeWorkspace({
     );
   };
 
+  const handleRouteFindingAction = async (findingId: string, payload: RouteFindingPayload) => {
+    const caseId = selectedCaseForWorkspace?.id || "case-01";
+    await api.routeFinding(caseId, findingId, payload);
+    setLocalFindingsState((prev) =>
+      prev.map((f) =>
+        f.id === findingId
+          ? {
+              ...f,
+              owner_user_id: payload.owner_user_id,
+              due_date: payload.due_date,
+              client_facing_template: payload.client_facing_template || f.client_facing_template,
+              resolution_history: [
+                ...(f.resolution_history || []),
+                {
+                  timestamp: new Date().toISOString(),
+                  action: "routed",
+                  reviewer_email: "attorney@lexai.com",
+                  note: `Routed to ${payload.owner_user_id}: ${payload.note}`,
+                },
+              ],
+            }
+          : f
+      )
+    );
+  };
+
   const handleTriggerAnalysisAction = async () => {
     setIsAnalyzing(true);
     const caseId = selectedCaseForWorkspace?.id || "case-01";
@@ -351,7 +430,9 @@ export function EmployeeWorkspace({
 
   const navItems = [
     { key: "my_work", label: "My Work", icon: "💼", count: null },
-    { key: "assigned_cases", label: "Assigned Cases", icon: "📁", count: cases.length },
+    { key: "exception_queue", label: "Exception-First Queue", icon: "🚨", count: 7 },
+    { key: "all_in_one_workspace", label: "All-in-One Studio", icon: "⚡", count: null },
+    { key: "assigned_cases", label: "Assigned Cases", icon: "📁", count: visibleCases.length },
     { key: "team_queues", label: "Team Queues", icon: "⏳", count: null },
     { key: "clients", label: "Client Directory", icon: "👤", count: clients.length },
     { key: "documents", label: "Requirements & Evidence", icon: "📄", count: documents.length },
@@ -370,9 +451,17 @@ export function EmployeeWorkspace({
       title: "Casework & Evidence Hub",
       subtitle: "Personal Workload, Evidentiary Reviews & Priority Action Items • Vanguard Immigration Law Group LLP",
     },
+    exception_queue: {
+      title: "Exception-First Casework Queue",
+      subtitle: "Prioritized triage sorted by Hard Blockers, Document Anomalies, Client Actions, Filing Deadlines & Pending Reviews",
+    },
+    all_in_one_workspace: {
+      title: "All-in-One Case Studio",
+      subtitle: "Unified workspace integrating Checklist, Tasks, Client Chat, Package Preview & Immutable Case Timeline",
+    },
     assigned_cases: {
       title: "Assigned Cases",
-      subtitle: `Active Caseload Oversight (${cases.length} active petitions assigned for preparation)`,
+      subtitle: `Active Caseload Oversight (${visibleCases.length} active petitions assigned for preparation)`,
     },
     team_queues: {
       title: "Team Queues",
@@ -837,6 +926,45 @@ export function EmployeeWorkspace({
           </div>
 
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showAssignedOnly}
+              onClick={() => setShowAssignedOnly(!showAssignedOnly)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "7px",
+                fontSize: "12px",
+                fontWeight: 650,
+                color: "#063C3D",
+                cursor: "pointer",
+                background: showAssignedOnly ? "#EAF6F0" : "#F4F6F5",
+                border: `1px solid ${showAssignedOnly ? "#B9DED4" : "#D0D9D5"}`,
+                borderRadius: "6px",
+                padding: "6px 12px",
+                userSelect: "none",
+              }}
+            >
+              <span
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  borderRadius: "3px",
+                  border: "1px solid #176B50",
+                  background: showAssignedOnly ? "#176B50" : "#FFF",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#FFF",
+                  fontSize: "10px",
+                  fontWeight: 900,
+                }}
+              >
+                {showAssignedOnly ? "✓" : ""}
+              </span>
+              <span>{showAssignedOnly ? "Show: Assigned Cases Only (Default)" : "Show: All Office Cases"}</span>
+            </button>
             <Button variant="secondary" size="sm" onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "case-01")}>
               + Upload Document
             </Button>
@@ -958,7 +1086,998 @@ export function EmployeeWorkspace({
         </div>
       )}
 
-      {/* 2. ASSIGNED CASES */}
+      {/* 2. EXCEPTION-FIRST QUEUE */}
+      {activeTab === "exception_queue" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* Category Filter Pills */}
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+              background: "#FFFFFF",
+              padding: "12px 16px",
+              borderRadius: "10px",
+              border: "1px solid #DCE5E1",
+            }}
+          >
+            {[
+              { key: "all", label: "All Exceptions", count: 10, icon: "🚨" },
+              { key: "blockers", label: "Hard Blockers", count: 2, icon: "⛔" },
+              { key: "documents", label: "Document Issues", count: 2, icon: "📄" },
+              { key: "client_actions", label: "Client Actions", count: 2, icon: "👤" },
+              { key: "deadlines", label: "Filing Deadlines", count: 2, icon: "⏳" },
+              { key: "reviews", label: "Pending Reviews", count: 2, icon: "⚖️" },
+            ].map((cat) => {
+              const active = exceptionCategoryFilter === cat.key;
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => setExceptionCategoryFilter(cat.key as typeof exceptionCategoryFilter)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "7px 12px",
+                    borderRadius: "20px",
+                    fontSize: "12px",
+                    fontWeight: active ? 700 : 550,
+                    background: active ? "#063C3D" : "#F4F6F5",
+                    color: active ? "#FFFFFF" : "#445451",
+                    border: active ? "1px solid #063C3D" : "1px solid #DCE5E1",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                  <span
+                    style={{
+                      background: active ? "rgba(255,255,255,0.25)" : "#E2E8F0",
+                      color: active ? "#FFFFFF" : "#4A5568",
+                      borderRadius: "10px",
+                      padding: "1px 7px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {cat.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Exception Items List */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {[
+              {
+                id: "exc-01",
+                category: "blockers",
+                title: "Missing Mandatory Regulatory Criteria (O-1A)",
+                caseNumber: "US-O1A-2026-091",
+                clientName: "Dr. Elena Rostova",
+                severity: "critical",
+                description:
+                  "Only 2 of 3 required regulatory criteria documented. Outstanding original contributions letter missing evidence of widespread field adoption.",
+                statutoryCitation: "8 CFR § 204.5(h)(3)",
+                dueBadge: "48h until filing cutoff",
+                actionLabel: "Resolve Blocker",
+                actionType: "blocker",
+              },
+              {
+                id: "exc-02",
+                category: "blockers",
+                title: "Potential J-1 2-Year Foreign Residence Requirement",
+                caseNumber: "EB2-NIW-8821",
+                clientName: "Dmitri Rostov",
+                severity: "critical",
+                description:
+                  "Previous DS-2019 indicates subject to Section 212(e). J-1 waiver approval (Form I-612) or Advisory Opinion not yet uploaded.",
+                statutoryCitation: "INA § 212(e)",
+                dueBadge: "Prerequisite for I-485",
+                actionLabel: "Resolve Blocker",
+                actionType: "blocker",
+              },
+              {
+                id: "exc-03",
+                category: "documents",
+                title: "Passport Identity Page Rejected",
+                caseNumber: "US-O1A-2026-091",
+                clientName: "Dr. Elena Rostova",
+                severity: "high",
+                description:
+                  "Rejected with code [BLURRY_IMAGE]: Machine-readable zone (MRZ) characters 28-44 unreadable due to glare. Replacement requested.",
+                statutoryCitation: "8 CFR § 103.2(b)(1)",
+                dueBadge: "Client re-upload requested",
+                actionLabel: "Inspect Document",
+                actionType: "document",
+                docId: documents[0]?.id || "doc-01",
+              },
+              {
+                id: "exc-04",
+                category: "documents",
+                title: "Birth Certificate Missing Certified Translation",
+                caseNumber: "EB2-NIW-8821",
+                clientName: "Sofia Rostova",
+                severity: "high",
+                description:
+                  "Rejected with code [MISSING_PAGES]: Foreign-language birth certificate uploaded without certified English translator declaration.",
+                statutoryCitation: "8 CFR § 103.2(b)(3)",
+                dueBadge: "Awaiting certified translation",
+                actionLabel: "Inspect Document",
+                actionType: "document",
+                docId: documents[1]?.id || "doc-02",
+              },
+              {
+                id: "exc-05",
+                category: "client_actions",
+                title: "Form I-140 Questionnaire Incomplete (Stalled > 72h)",
+                caseNumber: "US-O1A-2026-091",
+                clientName: "Dr. Elena Rostova",
+                severity: "high",
+                description:
+                  "Client questionnaire progress stalled at 65% for 4 consecutive days. Part 4 (Alien Information) requires completion.",
+                statutoryCitation: "Firm Casework SLA (Stall > 72h)",
+                dueBadge: "Overdue by 2 days",
+                actionLabel: "Send Client Reminder",
+                actionType: "reminder",
+              },
+              {
+                id: "exc-06",
+                category: "client_actions",
+                title: "Dependent Biometrics Declaration Awaiting Confirmation",
+                caseNumber: "EB2-NIW-8821",
+                clientName: "Dmitri Rostov",
+                severity: "medium",
+                description:
+                  "Physical presence history and travel log pending client digital confirmation before Form I-485 filing.",
+                statutoryCitation: "Form I-485 Supplement A",
+                dueBadge: "3 days remaining",
+                actionLabel: "Send Client Reminder",
+                actionType: "reminder",
+              },
+              {
+                id: "exc-07",
+                category: "deadlines",
+                title: "USCIS Premium Processing 15-Day Milestone",
+                caseNumber: "US-O1A-2026-091",
+                clientName: "Dr. Elena Rostova",
+                severity: "critical",
+                description:
+                  "Form I-907 Premium Processing clock reaches Day 12. Complete final evidentiary audit and assemble filing package before Day 14 cutoff.",
+                statutoryCitation: "8 CFR § 106.4",
+                dueBadge: "3 calendar days left",
+                actionLabel: "Review Package",
+                actionType: "package",
+              },
+              {
+                id: "exc-08",
+                category: "deadlines",
+                title: "IRCC Provincial Nominee ITA Acceptance Window",
+                caseNumber: "CA-PR-4019",
+                clientName: "Marcus Vance",
+                severity: "critical",
+                description:
+                  "Express Entry ITA submission window expires in 6 days. Police clearance certificate and proof of funds pending final validation.",
+                statutoryCitation: "IRPA § 10.2",
+                dueBadge: "6 calendar days left",
+                actionLabel: "Send Client Reminder",
+                actionType: "reminder",
+              },
+              {
+                id: "exc-09",
+                category: "reviews",
+                title: "Form I-140 Petition Package Ready for Senior Attorney Sign-Off",
+                caseNumber: "US-O1A-2026-091",
+                clientName: "Dr. Elena Rostova",
+                severity: "high",
+                description:
+                  "Forms I-140 & G-28 fully populated with 100% confirmed fields. Ready for legal partner review and cryptographic package seal.",
+                statutoryCitation: "Firm QC Rule 4.2",
+                dueBadge: "Sign-off queue: #1",
+                actionLabel: "Review Form",
+                actionType: "form",
+              },
+              {
+                id: "exc-10",
+                category: "reviews",
+                title: "Form ETA-9089 Labor Certification Final Verification",
+                caseNumber: "EB2-NIW-8821",
+                clientName: "Dmitri Rostov",
+                severity: "medium",
+                description:
+                  "Prevailing wage determination and SOC classification match verified. Caseworker sign-off pending.",
+                statutoryCitation: "20 CFR § 656.17",
+                dueBadge: "Review queue: #2",
+                actionLabel: "Review Form",
+                actionType: "form",
+              },
+            ]
+              .filter(
+                (item) =>
+                  exceptionCategoryFilter === "all" ||
+                  item.category === exceptionCategoryFilter
+              )
+              .map((item) => {
+                const isCrit = item.severity === "critical";
+                const isHigh = item.severity === "high";
+                const borderLeftColor = isCrit
+                  ? "#DC2626"
+                  : isHigh
+                  ? "#F59E0B"
+                  : "#0284C7";
+
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #DCE5E1",
+                      borderLeft: `5px solid ${borderLeftColor}`,
+                      borderRadius: "10px",
+                      padding: "16px 20px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
+                        gap: "10px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <Badge
+                          variant={
+                            item.category === "blockers"
+                              ? "action"
+                              : item.category === "documents"
+                              ? "warning"
+                              : item.category === "deadlines"
+                              ? "review"
+                              : "neutral"
+                          }
+                          size="sm"
+                        >
+                          {item.category.toUpperCase().replace("_", " ")}
+                        </Badge>
+                        <Badge variant={isCrit ? "action" : isHigh ? "warning" : "info"} size="sm">
+                          {item.severity.toUpperCase()}
+                        </Badge>
+                        <strong style={{ fontSize: "14px", color: "#063C3D" }}>{item.caseNumber}</strong>
+                        <span style={{ fontSize: "13px", color: "#64748B" }}>• {item.clientName}</span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "4px 8px",
+                          borderRadius: "4px",
+                          background: isCrit ? "#FEE2E2" : "#FEF3C7",
+                          color: isCrit ? "#991B1B" : "#92400E",
+                        }}
+                      >
+                        ⚡ {item.dueBadge}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h4 style={{ margin: "0 0 4px 0", fontSize: "15px", color: "#0F172A", fontWeight: 700 }}>
+                        {item.title}
+                      </h4>
+                      <p style={{ margin: "0", fontSize: "13px", color: "#334155", lineHeight: "1.5" }}>
+                        {item.description}
+                      </p>
+                      <small style={{ display: "block", marginTop: "6px", color: "#64748B", fontStyle: "italic" }}>
+                        Statutory / QC Citation: {item.statutoryCitation}
+                      </small>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        alignItems: "center",
+                        marginTop: "4px",
+                        flexWrap: "wrap",
+                        borderTop: "1px solid #F1F5F9",
+                        paddingTop: "10px",
+                      }}
+                    >
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => {
+                          if (item.actionType === "document") {
+                            const doc = documents.find((d) => d.id === item.docId) || documents[0];
+                            if (doc) setSelectedDocForInspection(doc);
+                          } else if (item.actionType === "blocker") {
+                            setActiveTab("ai_findings");
+                          } else if (item.actionType === "form") {
+                            setActiveTab("form_prep");
+                          } else if (item.actionType === "package") {
+                            setActiveTab("package_review");
+                          } else {
+                            setActiveTab("all_in_one_workspace");
+                            setAllInOneChatMode("client");
+                          }
+                        }}
+                      >
+                        {item.actionLabel} →
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const targetCase = cases.find((c) => c.case_number === item.caseNumber) || cases[0];
+                          if (targetCase) setSelectedCaseForWorkspace(targetCase);
+                          setActiveTab("all_in_one_workspace");
+                        }}
+                      >
+                        Open in Case Studio
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* 3. ALL-IN-ONE WORKSPACE */}
+      {activeTab === "all_in_one_workspace" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* Top Bar: Case Selector and Meta Chips */}
+          <div
+            style={{
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "12px",
+              padding: "16px 20px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+              boxShadow: "0 1px 4px rgba(6, 60, 61, 0.04)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "12px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <label style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>
+                  Active Case:
+                </label>
+                <select
+                  value={selectedCaseForWorkspace?.id || cases[0]?.id}
+                  onChange={(e) => {
+                    const c = cases.find((item) => item.id === e.target.value);
+                    if (c) setSelectedCaseForWorkspace(c);
+                  }}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    border: "1px solid #B9DED4",
+                    background: "#F8FAF9",
+                    fontSize: "13px",
+                    fontWeight: 650,
+                    color: "#063C3D",
+                    cursor: "pointer",
+                  }}
+                >
+                  {visibleCases.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.case_number} — {c.client_name} ({c.visa_category})
+                    </option>
+                  ))}
+                </select>
+                <Badge variant="review">{selectedCaseForWorkspace?.visa_category || "O-1A"}</Badge>
+                <Badge variant="success">Readiness: {selectedCaseForWorkspace?.readiness_score || 88}%</Badge>
+              </div>
+
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <Button variant="secondary" size="sm" onClick={() => setActiveTab("form_prep")}>
+                  Review Forms
+                </Button>
+                <Button variant="primary" size="sm" onClick={handleAssemblePackage}>
+                  Assemble Package
+                </Button>
+              </div>
+            </div>
+
+            {/* Sub-view navigation filter */}
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", borderTop: "1px solid #F1F5F9", paddingTop: "12px" }}>
+              {[
+                { key: "all", label: "Unified Studio (All 5 Panels)" },
+                { key: "checklist", label: "Per-Applicant Checklist" },
+                { key: "tasks", label: "Casework Tasks" },
+                { key: "chat", label: "Chat & Quarantined Notes" },
+                { key: "package", label: "Package Preview" },
+                { key: "timeline", label: "Case Timeline" },
+              ].map((sub) => {
+                const active = allInOneSubView === sub.key;
+                return (
+                  <button
+                    key={sub.key}
+                    type="button"
+                    onClick={() => setAllInOneSubView(sub.key as typeof allInOneSubView)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: active ? 700 : 550,
+                      background: active ? "#EAF6F0" : "#F8FAF9",
+                      color: active ? "#0D6866" : "#64748B",
+                      border: active ? "1px solid #B9DED4" : "1px solid #E2E8F0",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {sub.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Phase 9 Approval Gates Card */}
+          {selectedCaseForWorkspace && (
+            <ApprovalGatesCard
+              caseItem={selectedCaseForWorkspace}
+              onCaseUpdated={(updated) => {
+                setSelectedCaseForWorkspace(updated);
+                onSelectCase(updated);
+              }}
+            />
+          )}
+
+          {/* 5 Unified Panels Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 480px), 1fr))", gap: "20px" }}>
+            {/* Panel 1: Per-Applicant Evidentiary Checklist */}
+            {(allInOneSubView === "all" || allInOneSubView === "checklist") && (
+              <Card
+                title="Per-Applicant Evidentiary Checklist"
+                subtitle="Requirements grouped per applicant with status and structured rejection reasons."
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {[
+                    {
+                      applicant: "Dr. Elena Rostova (Primary Applicant)",
+                      role: "Primary Beneficiary",
+                      items: [
+                        { name: "Passport Identity Page", status: "accepted", note: "Valid through 2031" },
+                        { name: "Ph.D. Academic Evaluation & Degree", status: "accepted", note: "US Equivalency certified" },
+                        { name: "Peer-Reviewed Publications & Citations", status: "under_review", note: "h-index 24 documented" },
+                        {
+                          name: "Reference Letters (3 Letters)",
+                          status: "correction_required",
+                          reasonCode: "INCOMPLETE_DOCUMENT",
+                          explanation: "Letter 2 lacks referee CV and proof of independence.",
+                        },
+                      ],
+                    },
+                    {
+                      applicant: "Dmitri Rostov (Spouse)",
+                      role: "Derivative Beneficiary",
+                      items: [
+                        { name: "Passport Identity Page", status: "accepted", note: "Valid through 2030" },
+                        { name: "Marriage Certificate", status: "accepted", note: "Authenticated apostille verified" },
+                        {
+                          name: "Foreign Language Certified Translation",
+                          status: "rejected",
+                          reasonCode: "MISSING_PAGES",
+                          explanation: "Translator declaration page omitted from PDF submission.",
+                        },
+                      ],
+                    },
+                    {
+                      applicant: "Sofia Rostova (Child)",
+                      role: "Derivative Child",
+                      items: [
+                        { name: "Passport Identity Page", status: "accepted", note: "Valid through 2029" },
+                        { name: "Birth Certificate", status: "required", note: "Required for I-485 filing" },
+                      ],
+                    },
+                  ].map((group) => (
+                    <div
+                      key={group.applicant}
+                      style={{
+                        border: "1px solid #E2E8F0",
+                        borderRadius: "8px",
+                        padding: "12px",
+                        background: "#FAFAFA",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <strong style={{ fontSize: "13px", color: "#063C3D" }}>{group.applicant}</strong>
+                        <Badge variant="neutral" size="sm">
+                          {group.role}
+                        </Badge>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        {group.items.map((it) => (
+                          <div
+                            key={it.name}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              background: "#FFFFFF",
+                              padding: "8px 10px",
+                              borderRadius: "6px",
+                              border: "1px solid #EDEDED",
+                              fontSize: "12px",
+                              flexWrap: "wrap",
+                              gap: "8px",
+                            }}
+                          >
+                            <div>
+                              <strong style={{ color: "#1E293B" }}>{it.name}</strong>
+                              {it.reasonCode && (
+                                <span
+                                  style={{
+                                    display: "block",
+                                    fontSize: "11px",
+                                    color: "#DC2626",
+                                    fontWeight: 650,
+                                    marginTop: "2px",
+                                  }}
+                                >
+                                  [{it.reasonCode}] {it.explanation}
+                                </span>
+                              )}
+                              {it.note && !it.reasonCode && (
+                                <span style={{ display: "block", fontSize: "11px", color: "#64748B" }}>
+                                  {it.note}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <Badge
+                                variant={
+                                  it.status === "accepted"
+                                    ? "success"
+                                    : it.status === "under_review"
+                                    ? "review"
+                                    : it.status === "rejected" || it.status === "correction_required"
+                                    ? "action"
+                                    : "neutral"
+                                }
+                                size="sm"
+                              >
+                                {it.status.replace("_", "-").toUpperCase()}
+                              </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const doc = documents[0];
+                                  if (doc) setSelectedDocForInspection(doc);
+                                }}
+                              >
+                                Inspect
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Panel 2: Immediate Tasks & Action Items */}
+            {(allInOneSubView === "all" || allInOneSubView === "tasks") && (
+              <Card
+                title="Immediate Tasks & Milestones"
+                subtitle="Caseworker action items with priority tags and completion audit."
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {tasks.map((task) => (
+                    <div
+                      key={task.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "10px 12px",
+                        background: "#FFFFFF",
+                        border: "1px solid #E2E8F0",
+                        borderRadius: "8px",
+                        gap: "10px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <input
+                          type="checkbox"
+                          checked={task.is_completed}
+                          onChange={() => onToggleTask(task.id)}
+                          aria-label={`Mark task ${task.title} complete`}
+                          style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                        />
+                        <div>
+                          <strong
+                            style={{
+                              fontSize: "13px",
+                              textDecoration: task.is_completed ? "line-through" : "none",
+                              color: task.is_completed ? "#94A3B8" : "#0F172A",
+                            }}
+                          >
+                            {task.title}
+                          </strong>
+                          <small style={{ display: "block", color: "#64748B" }}>
+                            {task.case_number} • Due {task.due_date}
+                          </small>
+                        </div>
+                      </div>
+                      <Badge variant={task.priority === "critical" ? "action" : "warning"} size="sm">
+                        {task.priority.toUpperCase()}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Panel 3: Client Chat & Quarantined Internal Notes */}
+            {(allInOneSubView === "all" || allInOneSubView === "chat") && (
+              <Card
+                title="Client Messaging & Quarantined Notes"
+                subtitle="Dual-channel communication: client portal messenger vs quarantined internal counsel work product."
+              >
+                {/* Channel Switcher */}
+                <div style={{ display: "flex", gap: "6px", marginBottom: "14px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setAllInOneChatMode("client")}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: allInOneChatMode === "client" ? 700 : 550,
+                      background: allInOneChatMode === "client" ? "#063C3D" : "#F1F5F9",
+                      color: allInOneChatMode === "client" ? "#FFFFFF" : "#475569",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    💬 Client Portal Chat ({messages.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAllInOneChatMode("internal_notes")}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: allInOneChatMode === "internal_notes" ? 700 : 550,
+                      background: allInOneChatMode === "internal_notes" ? "#DC2626" : "#FEE2E2",
+                      color: allInOneChatMode === "internal_notes" ? "#FFFFFF" : "#991B1B",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    🔒 Internal Notes ({internalNotes.length})
+                  </button>
+                </div>
+
+                {allInOneChatMode === "client" ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div
+                      style={{
+                        maxHeight: "260px",
+                        overflowY: "auto",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px",
+                        padding: "8px",
+                        background: "#F8FAF9",
+                        borderRadius: "8px",
+                      }}
+                    >
+                      {messages.map((m) => (
+                        <div
+                          key={m.id}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            background: m.sender_role === "client" ? "#E2E8F0" : "#EAF6F0",
+                            alignSelf: m.sender_role === "client" ? "flex-start" : "flex-end",
+                            maxWidth: "85%",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", fontSize: "11px" }}>
+                            <strong style={{ color: "#063C3D" }}>{m.sender_name || m.sender}</strong>
+                            <span style={{ color: "#64748B" }}>
+                              {new Date(m.created_at || m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "#1E293B" }}>{m.content}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <form onSubmit={handleSend} style={{ display: "flex", gap: "8px" }}>
+                      <input
+                        type="text"
+                        value={messageInput}
+                        onChange={(e) => setMessageInput(e.target.value)}
+                        placeholder="Reply to client..."
+                        style={{
+                          flex: 1,
+                          padding: "8px 12px",
+                          borderRadius: "6px",
+                          border: "1px solid #CBD5E1",
+                          fontSize: "13px",
+                        }}
+                      />
+                      <Button variant="primary" size="sm" type="submit">
+                        Send
+                      </Button>
+                    </form>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div
+                      style={{
+                        background: "#FEF2F2",
+                        border: "1px solid #FECACA",
+                        borderRadius: "6px",
+                        padding: "8px 10px",
+                        fontSize: "11px",
+                        color: "#991B1B",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span>🔒</span>
+                      <span>
+                        <strong>Quarantined Caseworker Workspace:</strong> These notes are internal work product and never exposed to the client portal.
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        maxHeight: "220px",
+                        overflowY: "auto",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px",
+                        padding: "8px",
+                        background: "#FFF",
+                        borderRadius: "8px",
+                        border: "1px solid #E2E8F0",
+                      }}
+                    >
+                      {internalNotes.map((n) => (
+                        <div key={n.id} style={{ padding: "8px", background: "#F8FAFC", borderRadius: "6px", border: "1px solid #E2E8F0" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "4px" }}>
+                            <strong style={{ color: "#063C3D" }}>{n.author} ({n.role})</strong>
+                            <span style={{ color: "#64748B" }}>
+                              {new Date(n.timestamp).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p style={{ margin: "0", fontSize: "12px", color: "#334155" }}>{n.content}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <input
+                        type="text"
+                        value={internalNoteInput}
+                        onChange={(e) => setInternalNoteInput(e.target.value)}
+                        placeholder="Add confidential internal legal note..."
+                        style={{
+                          flex: 1,
+                          padding: "8px 12px",
+                          borderRadius: "6px",
+                          border: "1px solid #CBD5E1",
+                          fontSize: "13px",
+                        }}
+                      />
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          if (!internalNoteInput.trim()) return;
+                          setInternalNotes((prev) => [
+                            ...prev,
+                            {
+                              id: `note-${Date.now()}`,
+                              author: "Sarah Vance, Esq.",
+                              role: "Lead Counsel",
+                              content: internalNoteInput.trim(),
+                              timestamp: new Date().toISOString(),
+                            },
+                          ]);
+                          setInternalNoteInput("");
+                        }}
+                      >
+                        Save Note
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Panel 4: Package Preview & Cryptographic Manifest */}
+            {(allInOneSubView === "all" || allInOneSubView === "package") && (
+              <Card
+                title="Filing Package Manifest & Provenance"
+                subtitle="Live assembly index with Merkle tree validation."
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div
+                    style={{
+                      background: "#F0FDF4",
+                      border: "1px solid #BBF7D0",
+                      borderRadius: "8px",
+                      padding: "10px 14px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: "11px", color: "#166534", fontWeight: 700, display: "block" }}>
+                        MERKLE ROOT HASH SEAL
+                      </span>
+                      <code style={{ fontSize: "12px", color: "#14532D" }}>
+                        sha256:7f9b8c2d4e1a0b3c...
+                      </code>
+                    </div>
+                    <Badge variant="success" size="sm">
+                      VERIFIED
+                    </Badge>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {[
+                      { index: "1", doc: "Form G-28 (Notice of Entry of Appearance)", status: "Validated" },
+                      { index: "2", doc: "Form I-140 Immigrant Petition for Alien Worker", status: "Validated" },
+                      { index: "3", doc: "Exhibit A: Identity, Passports & Curricula Vitae", status: "Validated" },
+                      { index: "4", doc: "Exhibit B: Academic Evaluations & Equivalencies", status: "Validated" },
+                      { index: "5", doc: "Exhibit C: Major Significance Letters & Citations", status: "Pending Seal" },
+                    ].map((ex) => (
+                      <div
+                        key={ex.index}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          padding: "6px 10px",
+                          background: "#F8FAFC",
+                          borderRadius: "6px",
+                          border: "1px solid #E2E8F0",
+                          fontSize: "12px",
+                        }}
+                      >
+                        <span>
+                          <strong>#{ex.index}</strong> {ex.doc}
+                        </span>
+                        <span style={{ fontWeight: 600, color: ex.status === "Validated" ? "#166534" : "#D97706" }}>
+                          {ex.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                    <Button variant="primary" size="sm" onClick={() => setActiveTab("package_review")}>
+                      Open Package Studio
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleExportPackage}>
+                      Generate Index PDF
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Panel 5: Case Timeline & Immutable Audit Trail */}
+            {(allInOneSubView === "all" || allInOneSubView === "timeline") && (
+              <Card
+                title="Immutable Case Timeline"
+                subtitle="Cryptographically logged audit history across client and staff actions."
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {[
+                    {
+                      actor: "Sarah Vance, Esq. (Lead Counsel)",
+                      action: "Verified Evidence: Passport Identity Page (Accepted)",
+                      time: "Today at 11:20 AM",
+                      icon: "✓",
+                      color: "#166534",
+                    },
+                    {
+                      actor: "Marcus Jenkin (Senior Paralegal)",
+                      action: "Issued Document Rejection [BLURRY_IMAGE] on Foreign Translation",
+                      time: "Yesterday at 04:15 PM",
+                      icon: "✕",
+                      color: "#DC2626",
+                    },
+                    {
+                      actor: "Dr. Elena Rostova (Client)",
+                      action: "Updated Form I-140 Questionnaire (Progress: 65%)",
+                      time: "2 days ago",
+                      icon: "📝",
+                      color: "#0284C7",
+                    },
+                    {
+                      actor: "LexAI Provenance Engine",
+                      action: "Automated OCR Extraction & Entity Grounding Completed",
+                      time: "3 days ago",
+                      icon: "🤖",
+                      color: "#7C3AED",
+                    },
+                    {
+                      actor: "Firm Tenancy System",
+                      action: "Case Retainer Signed & Tenancy Initialized",
+                      time: "Last week",
+                      icon: "📁",
+                      color: "#063C3D",
+                    },
+                  ].map((evt, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "10px",
+                        fontSize: "12px",
+                        padding: "6px 0",
+                        borderBottom: idx < 4 ? "1px solid #F1F5F9" : "none",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "22px",
+                          height: "22px",
+                          borderRadius: "50%",
+                          background: evt.color,
+                          color: "#FFF",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "11px",
+                          flexShrink: 0,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {evt.icon}
+                      </div>
+                      <div>
+                        <strong style={{ color: "#0F172A", display: "block" }}>{evt.action}</strong>
+                        <small style={{ color: "#64748B" }}>
+                          {evt.actor} • {evt.time}
+                        </small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4. ASSIGNED CASES */}
       {activeTab === "assigned_cases" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {/* Active Case Consistency & Discrepancy Alert Focus */}
@@ -968,6 +2087,7 @@ export function EmployeeWorkspace({
               findings={localFindingsState}
               onResolveFinding={handleResolveFindingAction}
               onEscalateFinding={handleEscalateFindingAction}
+              onRouteFinding={handleRouteFindingAction}
               onInspectDocument={(docId) => {
                 const doc = documents.find((d) => d.id === docId);
                 if (doc) setSelectedDocForInspection(doc);
@@ -975,10 +2095,13 @@ export function EmployeeWorkspace({
             />
           )}
 
-          <Card title="My Assigned Immigration Petitions" subtitle="Caseworker queue with object-level authorization applied.">
+          <Card
+            title="My Assigned Immigration Petitions"
+            subtitle={`Caseworker queue with object-level authorization applied (${visibleCases.length} petitions shown).`}
+          >
             <DataTable
               columns={caseColumns}
-              data={cases}
+              data={visibleCases}
               keyExtractor={(c) => c.id}
               searchPlaceholder="Search assigned cases..."
             />

@@ -135,6 +135,12 @@ def run_case_ai_analysis(db: Session, case_id: uuid.UUID, organization_id: uuid.
             except Exception:
                 pass
 
+        now = now_utc()
+        target_due = now + timedelta(days=3 if d.severity == "critical" else 7)
+        ev_ref = d.source_location or ({"document_id": str(doc_ref_id), "evidence_text": d.evidence_text} if doc_ref_id else None)
+        client_tmpl = d.clarification_question or f"Please verify the evidentiary details for '{d.title}'."
+        int_notes = f"[INTERNAL STAFF AUDIT] Compliance review for '{d.title}'. Assess under firm policy before client contact. Never declare statutory ineligibility or guarantee refusal."
+
         new_finding = CaseAIFinding(
             organization_id=organization_id,
             case_id=case_id,
@@ -146,6 +152,10 @@ def run_case_ai_analysis(db: Session, case_id: uuid.UUID, organization_id: uuid.
             description=d.description,
             evidence_text=d.evidence_text,
             source_location=d.source_location,
+            evidence_reference=ev_ref,
+            client_facing_template=client_tmpl,
+            internal_risk_notes=int_notes,
+            due_date=target_due,
             related_documents=d.related_documents,
             related_fields=d.related_fields,
             relevant_requirement=d.relevant_requirement,
@@ -169,7 +179,7 @@ def run_case_ai_analysis(db: Session, case_id: uuid.UUID, organization_id: uuid.
                 priority=d.severity,
                 status="pending",
                 is_completed=False,
-                due_date=now_utc() + timedelta(days=3 if d.severity == "critical" else 7),
+                due_date=target_due,
             )
             db.add(task)
             db.flush()
@@ -199,6 +209,12 @@ def run_case_ai_analysis(db: Session, case_id: uuid.UUID, organization_id: uuid.
                 created_or_updated.append(ex)
                 continue
 
+            now_q_time = now_utc()
+            target_q_due = now_q_time + timedelta(days=3 if q.severity == "critical" else 7)
+            q_ev_ref = {"document_id": d["id"], "page": q.page_number, "evidence_text": q.evidence_text}
+            q_client_tmpl = q.suggested_clarification or f"Please provide an updated, uncropped replacement document for '{d['title']}'."
+            q_int_notes = f"[INTERNAL STAFF AUDIT] Scan quality inspection for '{d['title']}'. Review under 8 CFR § 103.2(b)(1) legibility standards. Resolve before final filing."
+
             new_q = CaseAIFinding(
                 organization_id=organization_id,
                 case_id=case_id,
@@ -210,6 +226,10 @@ def run_case_ai_analysis(db: Session, case_id: uuid.UUID, organization_id: uuid.
                 description=q.description,
                 evidence_text=q.evidence_text,
                 source_location={"document_id": d["id"], "page": q.page_number},
+                evidence_reference=q_ev_ref,
+                client_facing_template=q_client_tmpl,
+                internal_risk_notes=q_int_notes,
+                due_date=target_q_due,
                 related_documents=[{"id": d["id"], "title": d["title"], "version": d.get("version", 1)}],
                 related_fields=[],
                 relevant_requirement="8 CFR § 103.2(b)(1) - Document Legibility & Completeness",
@@ -232,7 +252,7 @@ def run_case_ai_analysis(db: Session, case_id: uuid.UUID, organization_id: uuid.
                     priority=q.severity,
                     status="pending",
                     is_completed=False,
-                    due_date=now_utc() + timedelta(days=3 if q.severity == "critical" else 7),
+                    due_date=target_q_due,
                 )
                 db.add(task)
                 db.flush()
@@ -340,6 +360,78 @@ def resolve_finding(
             task.status = "completed"
             task.completed_at = now_utc()
             task.completed_by_user_id = user_id
+
+    # CRITICAL: Resolution does not automatically make the document package-eligible.
+    # Mandatory checks (human verification, legal hold, malware scan, unexpired status) run again.
+    if finding.document_id:
+        doc = db.scalar(select(Document).where(Document.id == finding.document_id))
+        if doc and doc.verification_status not in ("verified", "rejected"):
+            # Ensure document requires separate authorized human caseworker verification
+            doc.verification_status = "under_review" if doc.verification_status == "unverified" else doc.verification_status
+
+    from backend.app.domain.models import AuditEvent
+    audit = AuditEvent(
+        organization_id=organization_id,
+        actor_id=user_id,
+        action="ai_finding.resolved",
+        object_type="case_ai_finding",
+        object_id=str(finding.id),
+        metadata_json={
+            "finding_title": finding.title,
+            "resolution_reason": note,
+            "package_eligibility_automatic_grant": False,
+            "mandatory_checks_rerun_required": True,
+        },
+    )
+    db.add(audit)
+
+    db.commit()
+    db.refresh(finding)
+    return finding
+
+
+def route_finding(
+    db: Session,
+    finding_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    target_owner_user_id: uuid.UUID,
+    note: str,
+    due_date: Optional[datetime] = None,
+    client_facing_template: Optional[str] = None,
+) -> CaseAIFinding:
+    """Routes an issue to an authorized officer, manager, or lawyer under firm policy."""
+    finding = db.scalar(
+        select(CaseAIFinding).where(
+            CaseAIFinding.id == finding_id,
+            CaseAIFinding.organization_id == organization_id,
+        )
+    )
+    if not finding:
+        raise ValueError(f"Finding {finding_id} not found.")
+
+    finding.owner_user_id = target_owner_user_id
+    if due_date is not None:
+        finding.due_date = due_date
+    if client_facing_template is not None:
+        finding.client_facing_template = client_facing_template
+
+    history = list(finding.resolution_history or [])
+    history.append({
+        "timestamp": now_utc().isoformat(),
+        "user_id": str(user_id),
+        "action": "route",
+        "target_owner_user_id": str(target_owner_user_id),
+        "note": note,
+    })
+    finding.resolution_history = history
+
+    if finding.linked_task_id:
+        task = db.scalar(select(CaseTask).where(CaseTask.id == finding.linked_task_id))
+        if task:
+            task.assigned_to_user_id = target_owner_user_id
+            if due_date is not None:
+                task.due_date = due_date
 
     db.commit()
     db.refresh(finding)

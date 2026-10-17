@@ -45,6 +45,8 @@ import {
   FilingPackageItem,
   PackageManifestItem,
   PackageApprovalStage,
+  Phase7CanonicalManifest,
+  ManifestReportFormat,
   ServiceCatalogItem,
   ClientEngagementItem,
   InvoiceDetailItem,
@@ -56,7 +58,58 @@ import {
   ExecutiveDashboardData,
   OperationsAnalyticsData,
   OrganizationSettingsData,
+  UploadGuidance,
+  BatchUploadReceipt,
+  FamilyDocumentSummary,
+  CaseInterimReport,
+  PurgeRequestResponse,
+  PurgeConfirmResponse,
+  VerifyDocumentDownloadResponse,
+  DocumentSixDimensionsReview,
+  DocumentExtractionsResponse,
+  FieldExtractionProvenance,
+  RouteFindingPayload,
+  CountryRegistryItem,
+  PathwayTaxonomyItem,
+  CoverageMatrixResponse,
+  Phase6RuleRequirementItem,
+  GeneratedChecklistResponse,
+  PinnedChecklistSnapshotResponse,
+  CaseMigrationResponse,
+  CoverageStatus,
+  PathwayCategory,
+  StructuredRejectionReasonCode,
+  RejectDocumentPayload,
+  ManagerPriorityQueueResponse,
+  ManagerPriorityRankItem,
+  FirmConfiguration,
+  FirmConfigDomain,
+  FirmConfigAuditLogItem,
+  SubstantiveAuthorizations,
+  ProgressiveReviews,
+  ProgressiveReviewStage,
+  SubmissionAuthorizationStatus,
+  HandoverAuthorizationStatus,
+  ClientEngagementType,
+  BlockerExplanation,
+  PackageBlockerReport,
+  ApprovedRequestTemplate,
+  DraftRequestPayload,
+  ApproveDraftRequestPayload,
+  AuthorityRequestItem,
+  AuthorityRequestSummary,
+  ThreeTierEntity,
+  DocumentSplitSection,
+  CompletedApplicationSummary,
+  CaseWithdrawalTombstone,
+  FirmExportRequest,
+  PrivacyLegalReview,
+  DataFlowRegister,
+  DeadLetterJob,
+  OperationalDashboardData,
+  RestoreDrillResult,
 } from "./types";
+
 
 const API_BASE_URL = typeof window !== "undefined" ? "/api/backend" : "http://localhost:8000/api/v1";
 
@@ -1518,6 +1571,69 @@ export const api = {
     throw new Error("Document not found");
   },
 
+  async rejectDocument(
+    id: string,
+    payload: {
+      structured_reason_code: StructuredRejectionReasonCode;
+      client_explanation: string;
+      internal_notes?: string;
+    },
+    role: RoleCode = "case_manager"
+  ): Promise<ApiResponse<DocumentItem>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/documents/${id}/reject`, {
+        method: "POST",
+        headers: getAuthHeaders(role),
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localDocuments = localDocuments.map((d) => (d.id === id ? data : d));
+        return { data, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+
+    const docIndex = localDocuments.findIndex((d) => d.id === id);
+    if (docIndex >= 0) {
+      const doc = localDocuments[docIndex];
+      const noteStr = `[${payload.structured_reason_code}] ${payload.client_explanation}`;
+      const updatedDoc: DocumentItem = {
+        ...doc,
+        status: "action_needed",
+        verification_status: "rejected",
+        verification_notes: noteStr,
+        anomaly_notes: payload.client_explanation,
+        has_unresolved_anomaly: true,
+        verified_at: new Date().toISOString(),
+        verified_by_user_id: DEMO_USERS.case_manager.id,
+      };
+      localDocuments[docIndex] = updatedDoc;
+
+      localAuditEvents = [
+        {
+          id: `audit-${Date.now()}`,
+          action: "document.rejected",
+          object_type: "document",
+          object_id: id,
+          actor_email: DEMO_USERS.case_manager.email,
+          created_at: new Date().toISOString(),
+          metadata: {
+            status: "rejected",
+            structured_reason_code: payload.structured_reason_code,
+            client_explanation: payload.client_explanation,
+            internal_notes: payload.internal_notes,
+          },
+        },
+        ...localAuditEvents,
+      ];
+
+      return { data: updatedDoc, isLiveBackend: false };
+    }
+    throw new Error("Document not found");
+  },
+
   async correctExtractedField(
     docId: string,
     fieldId: string,
@@ -1584,6 +1700,208 @@ export const api = {
       }
     }
     throw new Error("Document field not found");
+  },
+
+  async getDocumentReviewDimensions(
+    id: string,
+    role: RoleCode = "case_manager"
+  ): Promise<ApiResponse<DocumentSixDimensionsReview>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/documents/${id}/review-dimensions`, {
+        headers: getAuthHeaders(role),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { data, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+
+    const doc = localDocuments.find((d) => d.id === id);
+    const mockReview: DocumentSixDimensionsReview = {
+      document_id: id,
+      document_version: doc?.version || 1,
+      readability: {
+        dimension: "readability",
+        status: "passed",
+        score: 0.96,
+        label: "Readability & Scan Quality",
+        summary: "Clear 300+ DPI contrast with legible typography across all extracted character blocks.",
+        details: { ocr_applied: true, page_count: doc?.page_count || 1 },
+        high_priority_flags: [],
+      },
+      document_type: {
+        dimension: "document_type",
+        status: "passed",
+        score: 0.94,
+        label: "Document Classification Type",
+        summary: `Classified as ${doc?.category || "identity_passport"}. Layout structural signatures match standard format.`,
+        details: { category: doc?.category || "identity_passport" },
+        high_priority_flags: [],
+      },
+      applicant_association: {
+        dimension: "applicant_association",
+        status: doc?.is_assignment_confirmed ? "passed" : "needs_review",
+        score: doc?.is_assignment_confirmed ? 1.0 : 0.72,
+        label: "Applicant Association",
+        summary: doc?.is_assignment_confirmed
+          ? "Confirmed match to primary petitioner Dr. Elena Rostova."
+          : "Candidate applicant suggested from OCR name tokens; requires caseworker confirmation.",
+        details: { candidate_name: doc?.proposed_applicant_name || "Elena Rostova" },
+        high_priority_flags: doc?.is_assignment_confirmed ? [] : ["Unconfirmed applicant association."],
+      },
+      consistency: {
+        dimension: "consistency",
+        status: "passed",
+        score: 0.98,
+        label: "Cross-Document Consistency",
+        summary: "Extracted dates of birth and identity tokens match petition record without discrepancy.",
+        details: { active_findings: 0 },
+        high_priority_flags: [],
+      },
+      evidentiary_sufficiency: {
+        dimension: "evidentiary_sufficiency",
+        status: "passed",
+        score: 1.0,
+        label: "Evidentiary Sufficiency & Completeness",
+        summary: "Cryptographic SHA-256 verified, validity period unexpired, pagination intact.",
+        details: { sha256_hash: doc?.sha256_hash },
+        high_priority_flags: [],
+      },
+      human_verification: {
+        dimension: "human_verification",
+        status: doc?.verification_status || "unverified",
+        score: doc?.verification_status === "verified" ? 1.0 : 0.5,
+        label: "Human Caseworker Verification",
+        summary: `Status: ${(doc?.verification_status || "unverified").toUpperCase()} (Strictly decoupled from OCR).`,
+        details: { is_decoupled_from_ocr: true, verified_at: doc?.verified_at },
+        high_priority_flags: doc?.verification_status === "verified" ? [] : ["Staff sign-off pending."],
+      },
+      overall_review_status: doc?.verification_status === "verified" ? "verified" : "needs_review",
+      high_ocr_confidence_notice: "High optical character recognition (OCR) confidence reflects typographical and contrast fidelity only; it does not constitute evidentiary or statutory legal sufficiency under governing immigration regulations.",
+    };
+
+    return { data: mockReview, isLiveBackend: false };
+  },
+
+  async getDocumentExtractions(
+    id: string,
+    role: RoleCode = "case_manager"
+  ): Promise<ApiResponse<DocumentExtractionsResponse>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/documents/${id}/extractions`, {
+        headers: getAuthHeaders(role),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { data, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+
+    const doc = localDocuments.find((d) => d.id === id);
+    const mockItems: FieldExtractionProvenance[] = (doc?.extracted_fields || []).map((f) => ({
+      field: f.field_name,
+      value: f.corrected_value || f.normalized_value || f.original_value,
+      source_document_version_id: id,
+      page_number: f.source_page || 1,
+      bounding_box: [0.12, 0.18, 0.72, 0.24],
+      confidence: f.extraction_confidence || 0.95,
+      extractor_version: f.model_version || "doc-intel-v5.0",
+      review_status: f.is_manually_corrected ? "CORRECTED" : f.validation_status === "verified" ? "VERIFIED" : "NEEDS_HUMAN_REVIEW",
+    }));
+
+    return {
+      data: {
+        document_id: id,
+        version: doc?.version || 1,
+        items: mockItems,
+        count: mockItems.length,
+        legal_sufficiency_disclaimer: "High optical character recognition (OCR) confidence reflects typographical and contrast fidelity only; it does not constitute evidentiary or statutory legal sufficiency under governing immigration regulations.",
+      },
+      isLiveBackend: false,
+    };
+  },
+
+  async correctDocumentClassification(
+    id: string,
+    category: string,
+    reason: string,
+    role: RoleCode = "case_manager"
+  ): Promise<ApiResponse<DocumentItem>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/documents/${id}/classification`, {
+        method: "PUT",
+        headers: getAuthHeaders(role),
+        body: JSON.stringify({ category, reason }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localDocuments = localDocuments.map((d) => (d.id === id ? data : d));
+        return { data, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+
+    localDocuments = localDocuments.map((d) => {
+      if (d.id === id) {
+        return {
+          ...d,
+          category,
+          proposed_category: undefined,
+          is_assignment_confirmed: true,
+        };
+      }
+      return d;
+    });
+
+    const doc = localDocuments.find((d) => d.id === id)!;
+    return { data: doc, isLiveBackend: false };
+  },
+
+  async correctApplicantAssociation(
+    id: string,
+    applicantName?: string,
+    clientId?: string,
+    reason?: string,
+    role: RoleCode = "case_manager"
+  ): Promise<ApiResponse<DocumentItem>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/documents/${id}/applicant-association`, {
+        method: "PUT",
+        headers: getAuthHeaders(role),
+        body: JSON.stringify({
+          applicant_name: applicantName,
+          client_id: clientId,
+          reason: reason || "Caseworker confirmed applicant association",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localDocuments = localDocuments.map((d) => (d.id === id ? data : d));
+        return { data, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+
+    localDocuments = localDocuments.map((d) => {
+      if (d.id === id) {
+        return {
+          ...d,
+          proposed_applicant_name: applicantName,
+          client_id: clientId || d.client_id,
+          is_assignment_confirmed: true,
+        };
+      }
+      return d;
+    });
+
+    const doc = localDocuments.find((d) => d.id === id)!;
+    return { data: doc, isLiveBackend: false };
   },
 
   async getDocumentVersions(id: string, role: RoleCode = "master_admin"): Promise<ApiResponse<DocumentVersionItem[]>> {
@@ -2357,6 +2675,49 @@ export const api = {
           ...f,
           severity: "critical" as const,
           resolution_action: "escalate" as const,
+          resolution_history: [...(f.resolution_history || []), audit],
+        };
+      }
+      return f;
+    });
+
+    const updated = localFindings.find((f) => f.id === findingId)!;
+    return { data: updated, isLiveBackend: false };
+  },
+
+  async routeFinding(
+    caseId: string,
+    findingId: string,
+    payload: RouteFindingPayload,
+    role: RoleCode = "case_manager"
+  ): Promise<ApiResponse<AIFinding>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/cases/${caseId}/findings/${findingId}/route`, {
+        method: "PUT",
+        headers: getAuthHeaders(role),
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { data, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+
+    localFindings = localFindings.map((f) => {
+      if (f.id === findingId) {
+        const audit = {
+          timestamp: new Date().toISOString(),
+          action: "route",
+          reviewer_email: "attorney@lexai.com",
+          note: payload.note,
+        };
+        return {
+          ...f,
+          owner_user_id: payload.owner_user_id,
+          due_date: payload.due_date || f.due_date,
+          client_facing_template: payload.client_facing_template || f.client_facing_template,
           resolution_history: [...(f.resolution_history || []), audit],
         };
       }
@@ -5041,6 +5402,183 @@ export async function exportFilingPackage(packageId: string): Promise<any> {
 }
 
 // ==========================================
+// PHASE 7: LOCAL ARCHIVE, DETERMINISTIC MANIFEST & OFFICER OVERRIDES
+// ==========================================
+
+function triggerBrowserDownload(blob: Blob, filename: string): void {
+  if (typeof window === "undefined") return;
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+export const FALLBACK_PHASE7_MANIFEST: Phase7CanonicalManifest = {
+  case_reference: "CASE-CA-2026-001",
+  generated_at: new Date().toISOString(),
+  generated_by: "officer-dev-01",
+  package_template_version: "v1.0.0",
+  checklist_rule_version: "IRCC-EE-2026.1",
+  documents: [
+    {
+      document_version_id: "doc-pass:v1",
+      relative_path: "DOCUMENTS/Passport.pdf",
+      sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      review_status: "HUMAN_VERIFIED",
+    },
+    {
+      document_version_id: "doc-ita:v1",
+      relative_path: "CIC CORRESPONDENCE/ITA_Letter.pdf",
+      sha256: "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+      review_status: "HUMAN_VERIFIED",
+    },
+  ],
+  exclusions: [
+    {
+      document_version_id: "doc-blocked:v1",
+      reason_code: "UNRESOLVED_ANOMALY",
+    },
+  ],
+  folder_structure: [
+    { folder_code: "01_Cic_Correspondence", folder_name: "CIC CORRESPONDENCE" },
+    { folder_code: "02_Documents", folder_name: "DOCUMENTS" },
+    { folder_code: "03_Forms", folder_name: "FORMS" },
+    { folder_code: "04_Extra", folder_name: "EXTRA" },
+    { folder_code: "05_Upload", folder_name: "UPLOAD" },
+  ],
+  retention_policy: "seven_days",
+  immutable_disclaimer:
+    "Package generation is an internal assembly workflow; it DOES NOT imply government submission or grant legal authorization.",
+};
+
+export async function fetchCanonicalManifest(packageId: string): Promise<Phase7CanonicalManifest> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/packages/${packageId}/manifest`);
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+  }
+  return FALLBACK_PHASE7_MANIFEST;
+}
+
+export async function downloadPackageZip(packageId: string, filename?: string): Promise<void> {
+  const targetName = filename || `package_${packageId}.zip`;
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/packages/${packageId}/download-zip`);
+      if (res.ok) {
+        const blob = await res.blob();
+        triggerBrowserDownload(blob, targetName);
+        return;
+      }
+    } catch {
+      // Fallback
+    }
+  }
+  const dummyBlob = new Blob([JSON.stringify(FALLBACK_PHASE7_MANIFEST, null, 2)], { type: "application/json" });
+  triggerBrowserDownload(dummyBlob, targetName.replace(".zip", "_manifest.json"));
+}
+
+export async function downloadManifestReport(
+  packageId: string,
+  format: ManifestReportFormat,
+  filename?: string
+): Promise<void> {
+  const ext = format === "pdf" ? "pdf" : format === "docx" ? "doc" : "txt";
+  const targetName = filename || `manifest_report_${packageId}.${ext}`;
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/packages/${packageId}/report?format=${format}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        triggerBrowserDownload(blob, targetName);
+        return;
+      }
+    } catch {
+      // Fallback
+    }
+  }
+  const dummyContent = `MANIFEST REPORT (${format.toUpperCase()})\nPackage: ${packageId}\nGenerated: ${new Date().toISOString()}`;
+  const dummyBlob = new Blob([dummyContent], { type: "text/plain" });
+  triggerBrowserDownload(dummyBlob, targetName);
+}
+
+export async function downloadCaseInterimReport(
+  caseId: string,
+  format: ManifestReportFormat,
+  filename?: string
+): Promise<void> {
+  const ext = format === "pdf" ? "pdf" : format === "docx" ? "doc" : "txt";
+  const targetName = filename || `interim_hold_report_${caseId}.${ext}`;
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/packages/cases/${caseId}/interim-report?format=${format}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        triggerBrowserDownload(blob, targetName);
+        return;
+      }
+    } catch {
+      // Fallback
+    }
+  }
+  const dummyContent = `INTERIM CASE DOSSIER (${format.toUpperCase()})\nCase: ${caseId}\nGenerated: ${new Date().toISOString()}`;
+  const dummyBlob = new Blob([dummyContent], { type: "text/plain" });
+  triggerBrowserDownload(dummyBlob, targetName);
+}
+
+export async function includePackageDocument(
+  packageId: string,
+  documentId: string
+): Promise<{ success: boolean; package_id: string; document_id: string; action: string }> {
+  if (isLiveBackend) {
+    const res = await fetch(`${API_BASE}/packages/${packageId}/documents/${documentId}/include`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Failed to include document" }));
+      throw new Error(err.detail || "Cannot include document: unresolved anomaly or blocker present");
+    }
+    return await res.json();
+  }
+  return { success: true, package_id: packageId, document_id: documentId, action: "included" };
+}
+
+export async function excludePackageDocument(
+  packageId: string,
+  documentId: string,
+  reasonCode: string = "OFFICER_MANUAL_REMOVAL",
+  notes?: string
+): Promise<{ success: boolean; package_id: string; document_id: string; action: string; reason_code: string }> {
+  if (isLiveBackend) {
+    const res = await fetch(`${API_BASE}/packages/${packageId}/documents/${documentId}/exclude`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason_code: reasonCode, notes }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Failed to exclude document" }));
+      throw new Error(err.detail || "Failed to exclude document from package");
+    }
+    return await res.json();
+  }
+  return {
+    success: true,
+    package_id: packageId,
+    document_id: documentId,
+    action: "excluded",
+    reason_code: reasonCode,
+  };
+}
+
+// ==========================================
 // PHASE 9: OWNER ANALYTICS, COMPANY MANAGEMENT & BILLING
 // ==========================================
 
@@ -5799,4 +6337,2240 @@ export async function inviteStaffMember(data: { email: string; role_code: string
   };
 }
 
+// ============================================================================
+// Phase 4: Intake, Boundary Detection, Family Summary, and Lifecycle Methods
+// ============================================================================
+
+export const FALLBACK_UPLOAD_GUIDANCE: UploadGuidance = {
+  focus_guidance: "Hold device steady and tap the screen to ensure sharp focus on document text. Retake if blurry or smeared.",
+  lighting_guidance: "Use bright, even, and diffuse natural or room lighting. Avoid casting dark shadows from hands or the phone.",
+  glare_guidance: "Tilt document or device slightly (10-15 degrees) or disable flash when scanning glossy photos, IDs, or lamination to eliminate bright glare spots.",
+  orientation_guidance: "Ensure all pages are upright, vertically oriented, and right-side up before snapping or submitting.",
+  corners_guidance: "Position document flat on a contrasting background. All 4 page corners and outer edges must be completely visible inside the camera frame.",
+  legibility_guidance: "Text, serial numbers, stamps, dates, and signatures must remain crisply legible when zoomed to 100%.",
+  supported_mime_types: ["application/pdf", "image/jpeg", "image/png", "image/tiff"],
+  max_file_size_bytes: 52428800,
+  non_acceptance_disclaimer:
+    "Upload receipt is not acceptance or readiness. Document upload confirms receipt of your file in storage for verification and technical processing. Uploaded files must still be reviewed and verified by an authorized officer, and filing package eligibility is evaluated separately under applicable statutory rules.",
+};
+
+export async function fetchUploadGuidance(): Promise<UploadGuidance> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/documents/upload-guidance`, {
+      headers: getAuthHeaders("retained_client"),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+  return FALLBACK_UPLOAD_GUIDANCE;
+}
+
+export async function submitBatchUpload(
+  files: File[],
+  caseId?: string,
+  applicantDependantId?: string,
+  category: string = "supporting_evidence",
+  role: RoleCode = "retained_client"
+): Promise<BatchUploadReceipt> {
+  try {
+    const formData = new FormData();
+    for (const f of files) {
+      formData.append("files", f);
+    }
+    if (caseId) formData.append("case_id", caseId);
+    if (applicantDependantId) formData.append("applicant_dependant_id", applicantDependantId);
+    formData.append("category", category);
+
+    const headers = getAuthHeaders(role);
+    delete (headers as any)["Content-Type"];
+
+    const res = await fetch(`${API_BASE_URL}/documents/upload-batch`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  // Simulated fallback batch receipt
+  const items = files.map((f, i) => ({
+    document_id: `doc-sim-${Date.now()}-${i}`,
+    filename: f.name,
+    byte_size: f.size,
+    sha256_hash: `sim-hash-${f.name.replace(/[^a-zA-Z0-9]/g, "")}-${i}`,
+    status: (i === 1 && files.length > 2 ? "duplicate_existing" : "uploaded") as any,
+    is_duplicate: i === 1 && files.length > 2,
+    existing_document_id: i === 1 && files.length > 2 ? "doc-01" : undefined,
+    proposed_category: category,
+    proposed_applicant_name: applicantDependantId ? "Priya Patel (Spouse)" : "Raj Patel (Primary)",
+    is_assignment_confirmed: Boolean(applicantDependantId),
+  }));
+
+  return {
+    batch_id: `batch-${Date.now()}`,
+    total_files: files.length,
+    uploaded_count: items.filter((it) => it.status === "uploaded").length,
+    duplicate_count: items.filter((it) => it.status === "duplicate_existing").length,
+    failed_count: 0,
+    items,
+    non_acceptance_disclaimer: FALLBACK_UPLOAD_GUIDANCE.non_acceptance_disclaimer,
+  };
+}
+
+export async function fetchFamilyDocumentsSummary(
+  caseId: string,
+  role: RoleCode = "retained_client"
+): Promise<FamilyDocumentSummary> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/documents/cases/${caseId}/family-documents-summary`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    case_id: caseId,
+    case_number: "CASE-US-8841",
+    total_required: 12,
+    total_received: 9,
+    total_verified: 6,
+    total_correction_required: 2,
+    total_unassigned: 1,
+    applicants: [
+      {
+        applicant_id: "client-primary",
+        applicant_name: "Dr. Elena Rostova",
+        relationship: "primary_applicant",
+        outstanding: [
+          {
+            requirement_id: "req-p1",
+            title: "Certified English Translation for Master's Degree",
+            category: "educational_records",
+            is_mandatory: true,
+          },
+        ],
+        received: [
+          {
+            document_id: "doc-01",
+            title: "Passport_Information_Page.pdf",
+            category: "identity_passport",
+            processing_status: "completed",
+            verification_status: "verified",
+            has_unresolved_anomaly: false,
+            created_at: "2026-09-01T10:00:00Z",
+          },
+          {
+            document_id: "doc-02",
+            title: "Doctorate_Diploma_Computer_Science.pdf",
+            category: "educational_records",
+            processing_status: "completed",
+            verification_status: "verified",
+            has_unresolved_anomaly: false,
+            created_at: "2026-09-05T12:00:00Z",
+          },
+        ],
+        correction_required: [
+          {
+            document_id: "doc-04",
+            title: "IEEE_Fellow_Award_Certificate.pdf",
+            category: "awards_honors",
+            processing_status: "needs_review",
+            verification_status: "unverified",
+            has_unresolved_anomaly: true,
+            created_at: "2026-09-20T16:00:00Z",
+          },
+        ],
+      },
+      {
+        applicant_id: "dep-spouse",
+        applicant_name: "Mikhail Rostov",
+        relationship: "spouse",
+        outstanding: [
+          {
+            requirement_id: "req-s1",
+            title: "Form I-693 Sealed Medical Examination Report",
+            category: "police_medical",
+            is_mandatory: true,
+          },
+        ],
+        received: [
+          {
+            document_id: "doc-03",
+            title: "Official_Marriage_Certificate_Certified.pdf",
+            category: "civil_status",
+            processing_status: "completed",
+            verification_status: "verified",
+            has_unresolved_anomaly: false,
+            created_at: "2026-09-12T14:30:00Z",
+          },
+        ],
+        correction_required: [
+          {
+            document_id: "doc-06",
+            title: "State_Police_Clearance_Certificate.pdf",
+            category: "police_medical",
+            processing_status: "needs_review",
+            verification_status: "rejected",
+            has_unresolved_anomaly: true,
+            created_at: "2026-10-10T15:30:00Z",
+          },
+        ],
+      },
+    ],
+    unassigned_documents: [],
+    non_readiness_disclaimer:
+      "Family checklist completion indicates intake progress only. Formal legal package readiness and eligibility are evaluated separately.",
+  };
+}
+
+export async function fetchCaseInterimReports(
+  caseId: string,
+  role: RoleCode = "case_manager"
+): Promise<CaseInterimReport[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/documents/cases/${caseId}/interim-reports`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return [
+    {
+      id: "ir-01",
+      case_id: caseId,
+      trigger_action: "hold_applied",
+      report_title: "Interim Snapshot: Case Placed on Legal Hold",
+      manifest_snapshot_json: {
+        total_documents: 8,
+        verified_count: 5,
+        anomaly_count: 1,
+        generated_at: "2026-10-15T09:00:00Z",
+      },
+      ocr_summary_json: {
+        completed_runs: 8,
+        average_confidence: 0.97,
+      },
+      anomaly_report_json: {
+        unresolved_anomalies: [
+          {
+            document_id: "doc-04",
+            anomaly: "Low lighting glare detected on bottom signature corner",
+          },
+        ],
+      },
+      created_at: "2026-10-15T09:00:00Z",
+    },
+  ];
+}
+
+export async function verifyDocumentDownload(
+  documentId: string,
+  receivedBytes: number,
+  browserStorageAcknowledged: boolean = true,
+  sha256Hash?: string,
+  role: RoleCode = "retained_client"
+): Promise<VerifyDocumentDownloadResponse> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/documents/${documentId}/verify-download`, {
+      method: "POST",
+      headers: getAuthHeaders(role),
+      body: JSON.stringify({
+        client_received_bytes: receivedBytes,
+        browser_storage_acknowledged: browserStorageAcknowledged,
+        client_sha256_hash: sha256Hash,
+      }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    document_id: documentId,
+    is_verified: true,
+    verified_at: new Date().toISOString(),
+    verification_limits_notice:
+      "Verification confirms client-side receipt in the active browser session. Local storage persistence, backups, and user disk integrity cannot be verified by Documento after transfer.",
+    local_copy_notice:
+      "Documento purges the server-side file and storage replica. Documento cannot and does not claim to delete any local copies or downloads that may have been saved to your personal computer, device, or external backup media.",
+  };
+}
+
+export async function requestDocumentPurge(
+  documentId: string,
+  role: RoleCode = "case_manager"
+): Promise<PurgeRequestResponse> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/documents/${documentId}/purge-request`, {
+      method: "POST",
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    confirmation_token: `purge-token-${Date.now()}-${documentId.slice(0, 8)}`,
+    document_id: documentId,
+    filename: "Evidence_Record.pdf",
+    expires_at: new Date(Date.now() + 600000).toISOString(),
+    impact_summary: "Document and all associated storage artifacts will be permanently destroyed.",
+    local_copy_notice:
+      "Documento purges the server-side file and storage replica. Documento cannot and does not claim to delete any local copies or downloads that may have been saved to your personal computer, device, or external backup media.",
+    required_acknowledgment:
+      "I understand that local copies already downloaded to my device cannot be deleted by Documento and remain my responsibility.",
+  };
+}
+
+export async function confirmDocumentPurge(
+  documentId: string,
+  token: string,
+  acknowledgedLocalCopy: boolean,
+  role: RoleCode = "case_manager"
+): Promise<PurgeConfirmResponse> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/documents/${documentId}/purge-confirm`, {
+      method: "POST",
+      headers: getAuthHeaders(role),
+      body: JSON.stringify({
+        confirmation_token: token,
+        acknowledged_local_copy_notice: acknowledgedLocalCopy,
+      }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    document_id: documentId,
+    purged: true,
+    purged_at: new Date().toISOString(),
+    audit_correlation_id: `purge-corr-${Date.now()}`,
+    local_copy_notice:
+      "Documento purges the server-side file and storage replica. Documento cannot and does not claim to delete any local copies or downloads that may have been saved to your personal computer, device, or external backup media.",
+  };
+}
+
+export async function resolveDocumentAnomaly(
+  documentId: string,
+  action: "mark_resolved" | "confirm_erroneous_and_purge",
+  notes: string,
+  role: RoleCode = "case_manager"
+): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/documents/${documentId}/resolve-anomaly`, {
+      method: "POST",
+      headers: getAuthHeaders(role),
+      body: JSON.stringify({
+        resolution_action: action,
+        notes,
+      }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    document_id: documentId,
+    status: action === "mark_resolved" ? "resolved" : "purged_erroneous",
+    notes,
+  };
+}
+
+// ==========================================
+// Phase 6: Rules & Checklist Engine API Methods
+// ==========================================
+
+export async function getCountryRegistry(role: RoleCode = "case_manager"): Promise<CountryRegistryItem[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/rules/countries`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  // Fallback sorted by Priority Tier
+  return [
+    {
+      code: "CA",
+      name: "Canada",
+      primary_authority: "Immigration, Refugees and Citizenship Canada (IRCC)",
+      official_source_registry_url: "https://www.canada.ca/en/immigration-refugees-citizenship.html",
+      release_owner: "Lead Canadian Immigration Counsel & Designated RCIC",
+      coverage_status: "SUPPORTED",
+      priority_tier: 1,
+      statutory_framework: "Immigration and Refugee Protection Act (S.C. 2001, c. 27); IRPR (SOR/2002-227)",
+      notes: "Priority 1 jurisdiction. Comprehensive Express Entry, Study Permit, and PGWP rule packs validated.",
+    },
+    {
+      code: "US",
+      name: "United States",
+      primary_authority: "U.S. Citizenship and Immigration Services (USCIS) / Department of State (DOS)",
+      official_source_registry_url: "https://www.uscis.gov/policy-manual",
+      release_owner: "Senior US Immigration Partner (AILA Member)",
+      coverage_status: "SUPPORTED",
+      priority_tier: 2,
+      statutory_framework: "Immigration and Nationality Act (INA), 8 U.S.C.; 8 CFR; 22 CFR",
+      notes: "Priority 2 jurisdiction. EB-1A Extraordinary Ability and H-1B Specialty Occupation validated.",
+    },
+    {
+      code: "AU",
+      name: "Australia",
+      primary_authority: "Department of Home Affairs (Immi)",
+      official_source_registry_url: "https://immi.homeaffairs.gov.au",
+      release_owner: "MARA Registered Migration Agent",
+      coverage_status: "SUPPORTED",
+      priority_tier: 3,
+      statutory_framework: "Migration Act 1958 (Cth); Migration Regulations 1994",
+      notes: "Priority 3 core jurisdiction. Subclass 189 Skilled Independent and Subclass 482 TSS validated.",
+    },
+    {
+      code: "NZ",
+      name: "New Zealand",
+      primary_authority: "Immigration New Zealand (INZ)",
+      official_source_registry_url: "https://www.immigration.govt.nz",
+      release_owner: "Licensed Immigration Adviser (NZIAA)",
+      coverage_status: "SUPPORTED",
+      priority_tier: 3,
+      statutory_framework: "Immigration Act 2009; INZ Operational Manual",
+      notes: "Priority 3 core jurisdiction. Skilled Migrant Category (SMC) Resident Visa validated.",
+    },
+    {
+      code: "GB",
+      name: "United Kingdom",
+      primary_authority: "UK Visas and Immigration (UKVI) / Home Office",
+      official_source_registry_url: "https://www.gov.uk/government/organisations/uk-visas-and-immigration",
+      release_owner: "UK Immigration Solicitor (SRA Regulated)",
+      coverage_status: "PARTIAL",
+      priority_tier: 4,
+      statutory_framework: "Immigration Act 1971; UK Immigration Rules Appendix Global Talent / Skilled Worker",
+      notes: "Partial coverage. Core statutory requirements mapped; endorsement bodies require manual verification.",
+    },
+    {
+      code: "DE",
+      name: "Germany / European Union",
+      primary_authority: "Federal Office for Migration and Refugees (BAMF) / Auswärtiges Amt",
+      official_source_registry_url: "https://www.bamf.de/EN",
+      release_owner: "European Migration Legal Specialist",
+      coverage_status: "UNVERIFIED",
+      priority_tier: 5,
+      statutory_framework: "Aufenthaltsgesetz (AufenthG - German Residence Act); EU Blue Card Directive",
+      notes: "Unverified draft. Legal audit in progress; cannot be marketed or evaluated as active production rules.",
+    },
+    {
+      code: "RU",
+      name: "Russia",
+      primary_authority: "Main Directorate for Migration Affairs of the Ministry of Internal Affairs (MVD)",
+      official_source_registry_url: "https://мвд.рф",
+      release_owner: "Managing Legal Counsel",
+      coverage_status: "UNVERIFIED",
+      priority_tier: 6,
+      statutory_framework: "Federal Law No. 115-FZ On the Legal Status of Foreign Citizens in the Russian Federation",
+      notes: "Unverified draft. Highly Qualified Specialist (VKS) rules pending bilateral treaty verification.",
+    },
+  ];
+}
+
+export async function getPathwayTaxonomy(
+  jurisdiction?: string,
+  role: RoleCode = "case_manager"
+): Promise<PathwayTaxonomyItem[]> {
+  try {
+    const url = jurisdiction
+      ? `${API_BASE_URL}/rules/taxonomy?jurisdiction=${encodeURIComponent(jurisdiction)}`
+      : `${API_BASE_URL}/rules/taxonomy`;
+    const res = await fetch(url, { headers: getAuthHeaders(role) });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  const allTaxonomy: PathwayTaxonomyItem[] = [
+    {
+      pathway_key: "CA_EXPRESS_ENTRY_FSW",
+      jurisdiction: "CA",
+      category: "pr_residence",
+      title: "Express Entry — Federal Skilled Worker Program (FSWP)",
+      statutory_reference: "IRPA s. 12(2); IRPR ss. 75-87",
+      coverage_status: "SUPPORTED",
+      official_source_url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/eligibility/federal-skilled-workers.html",
+      description: "Permanent residence for skilled workers with foreign work experience meeting 67-point selection grid.",
+    },
+    {
+      pathway_key: "CA_STUDY_PERMIT",
+      jurisdiction: "CA",
+      category: "study",
+      title: "Study Permit (Designated Learning Institution)",
+      statutory_reference: "IRPR Part 12, Division 2, ss. 211-222",
+      coverage_status: "SUPPORTED",
+      official_source_url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/study-permit.html",
+      requires_provincial_or_state_clearance: true,
+      description: "Authorization to study at Canadian DLI with mandatory Provincial Attestation Letter (PAL).",
+    },
+    {
+      pathway_key: "US_EB1A",
+      jurisdiction: "US",
+      category: "pr_residence",
+      title: "EB-1A Extraordinary Ability Immigrant Visa",
+      statutory_reference: "INA § 203(b)(1)(A), 8 U.S.C. § 1153(b)(1)(A); 8 CFR § 204.5(h)",
+      coverage_status: "SUPPORTED",
+      official_source_url: "https://www.uscis.gov/policy-manual/volume-6-part-f-chapter-2",
+      description: "First-preference employment petition requiring sustained national or international acclaim under Kazarian.",
+    },
+    {
+      pathway_key: "US_H1B",
+      jurisdiction: "US",
+      category: "work",
+      title: "H-1B Specialty Occupation Nonimmigrant Worker",
+      statutory_reference: "INA § 101(a)(15)(H)(i)(b); 8 CFR § 214.2(h)(4)",
+      coverage_status: "SUPPORTED",
+      official_source_url: "https://www.uscis.gov/working-in-the-united-states/temporary-workers/h-1b-specialty-occupations",
+      description: "Temporary specialty occupation requiring specialized bachelor's degree and certified Form ETA-9035 LCA.",
+    },
+    {
+      pathway_key: "AU_SUBCLASS_189",
+      jurisdiction: "AU",
+      category: "pr_residence",
+      title: "Skilled Independent Visa (Subclass 189)",
+      statutory_reference: "Migration Act 1958; Migration Regulations 1994, Schedule 2, Subclass 189",
+      coverage_status: "SUPPORTED",
+      official_source_url: "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/skilled-independent-189",
+      description: "Points-tested permanent residence for invited skilled workers not sponsored by an employer or state.",
+    },
+    {
+      pathway_key: "NZ_SKILLED_MIGRANT",
+      jurisdiction: "NZ",
+      category: "pr_residence",
+      title: "Skilled Migrant Category Resident Visa (SMC)",
+      statutory_reference: "Immigration Act 2009; INZ Operational Manual: Residence, SM1",
+      coverage_status: "SUPPORTED",
+      official_source_url: "https://www.immigration.govt.nz/new-zealand-visas/visas/visa/skilled-migrant-category-resident-visa",
+      description: "Permanent residence for skilled migrants who earn 6 points and hold skilled employment with an accredited employer.",
+    },
+    {
+      pathway_key: "GB_GLOBAL_TALENT",
+      jurisdiction: "GB",
+      category: "pr_residence",
+      title: "Global Talent Visa",
+      statutory_reference: "UK Immigration Rules Appendix Global Talent",
+      coverage_status: "PARTIAL",
+      official_source_url: "https://www.gov.uk/global-talent",
+      description: "Working in the UK as a leader or potential leader in academia, arts, or digital technology.",
+    },
+    {
+      pathway_key: "DE_CHANCENKARTE",
+      jurisdiction: "DE",
+      category: "work",
+      title: "Opportunity Card (Chancenkarte)",
+      statutory_reference: "AufenthG § 20a",
+      coverage_status: "UNVERIFIED",
+      official_source_url: "https://www.make-it-in-germany.com/en/visa-residence/types/jobseekers/opportunity-card",
+      description: "Points-based job search opportunity card for skilled workers in Germany.",
+    },
+    {
+      pathway_key: "RU_VKS",
+      jurisdiction: "RU",
+      category: "work",
+      title: "Highly Qualified Specialist Work Visa (ВКС)",
+      statutory_reference: "Federal Law No. 115-FZ, Article 13.2",
+      coverage_status: "UNVERIFIED",
+      official_source_url: "https://мвд.рф",
+      description: "Work visa for foreign high-earning specialists exceeding statutory monthly salary floor.",
+    },
+  ];
+
+  if (jurisdiction) {
+    return allTaxonomy.filter((p) => p.jurisdiction === jurisdiction.toUpperCase());
+  }
+  return allTaxonomy;
+}
+
+export async function getCoverageMatrix(role: RoleCode = "case_manager"): Promise<CoverageMatrixResponse> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/rules/coverage-matrix`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  const countries = await getCountryRegistry(role);
+  const matrixCountries = await Promise.all(
+    countries.map(async (c) => {
+      const pathways = await getPathwayTaxonomy(c.code, role);
+      return {
+        country: c,
+        pathways_count: pathways.length,
+        supported_count: pathways.filter((p) => p.coverage_status === "SUPPORTED").length,
+        partial_count: pathways.filter((p) => p.coverage_status === "PARTIAL").length,
+        unverified_count: pathways.filter((p) => p.coverage_status === "UNVERIFIED").length,
+        pathways,
+      };
+    })
+  );
+
+  return {
+    coverage_summary: {
+      total_countries: countries.length,
+      supported_countries: countries.filter((c) => c.coverage_status === "SUPPORTED").length,
+      total_pathways: matrixCountries.reduce((acc, c) => acc + c.pathways_count, 0),
+      supported_pathways: matrixCountries.reduce((acc, c) => acc + c.supported_count, 0),
+    },
+    countries: matrixCountries,
+  };
+}
+
+export async function seedProductionRulePacks(role: RoleCode = "company_admin"): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/rules/seed-production-packs`, {
+      method: "POST",
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    status: "success",
+    seeded_packs_count: 5,
+    seeded_packs: ["CA_EXPRESS_ENTRY_FSW", "CA_STUDY_PERMIT", "US_H1B", "AU_SUBCLASS_189", "NZ_SKILLED_MIGRANT"],
+    jurisdictions_covered: ["CA", "US", "AU", "NZ"],
+  };
+}
+
+export async function generateFactGroundedChecklist(
+  payload: {
+    jurisdiction: string;
+    pathway: string;
+    applicant_facts?: Record<string, any>;
+    as_of_date?: string;
+    case_id?: string;
+    pin_to_case?: boolean;
+  },
+  role: RoleCode = "case_manager"
+): Promise<GeneratedChecklistResponse> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/rules/generate-checklist`, {
+      method: "POST",
+      headers: getAuthHeaders(role),
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  // Safe stop fallback logic
+  const jur = payload.jurisdiction.toUpperCase();
+  if (jur === "DE" || jur === "RU") {
+    return {
+      status: "UNVERIFIED",
+      jurisdiction: jur,
+      pathway: payload.pathway,
+      is_supported: false,
+      can_generate_checklist: false,
+      message: `Pathway '${payload.pathway}' in jurisdiction '${jur}' is currently in DRAFT_UNVERIFIED status. Draft or unverified rules cannot be presented as current for legal filings under Documento policy.`,
+      disclaimer: "SAFE STOP: Stale/unverified rules cannot be presented as current.",
+      checklist: [],
+      total_rules_count: 0,
+      applicable_count: 0,
+    };
+  }
+
+  if (jur !== "CA" && jur !== "US" && jur !== "AU" && jur !== "NZ") {
+    return {
+      status: "UNSUPPORTED",
+      jurisdiction: jur,
+      pathway: payload.pathway,
+      is_supported: false,
+      can_generate_checklist: false,
+      message: `Pathway '${payload.pathway}' in jurisdiction '${jur}' is UNSUPPORTED. Documento adheres to strict validation standards and never presents unrelated fallback checklists.`,
+      disclaimer: "SAFE STOP: Long-term breadth is an ambition, not permission to market unvalidated pathways as complete.",
+      checklist: [],
+      total_rules_count: 0,
+      applicable_count: 0,
+    };
+  }
+
+  // Supported fallback: Canada Express Entry FSW with applicant facts evaluation
+  const hasJobOffer = Boolean(payload.applicant_facts?.has_valid_canadian_job_offer);
+  const caRules: Phase6RuleRequirementItem[] = [
+    {
+      rule_id: "CA-FSW-ID-001",
+      jurisdiction: "CA",
+      pathway: "CA_EXPRESS_ENTRY_FSW",
+      requirement_key: "identity.passport",
+      status: "VERIFIED",
+      source_url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/eligibility/federal-skilled-workers.html",
+      effective_from: "2024-01-01",
+      effective_to: null,
+      last_verified_at: "2026-01-15T00:00:00Z",
+      version: 1,
+      approved_by: "Lead Canadian Immigration Counsel & RCIC",
+      title: "Valid Unexpired Passport or Travel Document",
+      description: "Primary identity verification. Biodata page of unexpired passport for applicant and dependants.",
+      category: "mandatory_identity",
+      statutory_citation: "IRPR s. 52; IRPA s. 16(1)",
+      is_mandatory: true,
+      is_applicable: true,
+      requires_human_review: true,
+    },
+    {
+      rule_id: "CA-FSW-LANG-002",
+      jurisdiction: "CA",
+      pathway: "CA_EXPRESS_ENTRY_FSW",
+      requirement_key: "language.clb_test",
+      status: "VERIFIED",
+      source_url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/documents/language-test.html",
+      effective_from: "2024-01-01",
+      effective_to: null,
+      last_verified_at: "2026-01-15T00:00:00Z",
+      version: 1,
+      approved_by: "Lead Canadian Immigration Counsel & RCIC",
+      title: "Official Language Proficiency Assessment (CLB 7+)",
+      description: "Designated agency test report (IELTS General, CELPIP-G, TEF, or TCF) meeting CLB 7 in all 4 abilities.",
+      category: "statutory_criteria",
+      statutory_citation: "IRPR s. 79(1)",
+      is_mandatory: true,
+      is_applicable: true,
+      requires_human_review: true,
+    },
+    {
+      rule_id: "CA-FSW-ECA-003",
+      jurisdiction: "CA",
+      pathway: "CA_EXPRESS_ENTRY_FSW",
+      requirement_key: "education.eca_report",
+      status: "VERIFIED",
+      source_url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/documents/education-assessed.html",
+      effective_from: "2024-01-01",
+      effective_to: null,
+      last_verified_at: "2026-01-15T00:00:00Z",
+      version: 1,
+      approved_by: "Lead Canadian Immigration Counsel & RCIC",
+      title: "Educational Credential Assessment (ECA) Report",
+      description: "Designated organization evaluation proving Canadian equivalency of foreign educational credentials.",
+      category: "statutory_criteria",
+      statutory_citation: "IRPR s. 78",
+      is_mandatory: true,
+      is_applicable: true,
+      requires_human_review: true,
+    },
+    {
+      rule_id: "CA-FSW-WORK-004",
+      jurisdiction: "CA",
+      pathway: "CA_EXPRESS_ENTRY_FSW",
+      requirement_key: "work_experience.reference_letter",
+      status: "VERIFIED",
+      source_url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/eligibility/federal-skilled-workers.html#skilled",
+      effective_from: "2024-01-01",
+      effective_to: null,
+      last_verified_at: "2026-01-15T00:00:00Z",
+      version: 1,
+      approved_by: "Lead Canadian Immigration Counsel & RCIC",
+      title: "Skilled Work Experience Employment Verification Letters",
+      description: "Employer reference letters verifying 1+ year continuous full-time experience in NOC TEER 0, 1, 2, or 3.",
+      category: "statutory_criteria",
+      statutory_citation: "IRPR s. 80; NOC 2021",
+      is_mandatory: true,
+      is_applicable: true,
+      requires_human_review: true,
+    },
+    {
+      rule_id: "CA-FSW-FUNDS-005",
+      jurisdiction: "CA",
+      pathway: "CA_EXPRESS_ENTRY_FSW",
+      requirement_key: "financial.settlement_funds",
+      status: "VERIFIED",
+      source_url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/documents/proof-funds.html",
+      effective_from: "2024-01-01",
+      effective_to: null,
+      last_verified_at: "2026-01-15T00:00:00Z",
+      version: 1,
+      approved_by: "Lead Canadian Immigration Counsel & RCIC",
+      title: "Proof of Settlement Funds (LICO Threshold)",
+      description: "Bank statements demonstrating unencumbered funds meeting LICO. Waived if applicant has authorized valid Canadian job offer.",
+      category: "financial_evidence",
+      statutory_citation: "IRPR s. 76(1)(b)",
+      is_mandatory: true,
+      is_applicable: !hasJobOffer,
+      requires_human_review: true,
+    },
+    {
+      rule_id: "CA-FSW-POLICE-006",
+      jurisdiction: "CA",
+      pathway: "CA_EXPRESS_ENTRY_FSW",
+      requirement_key: "security.police_certificate",
+      status: "VERIFIED",
+      source_url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/documents/police-certificates.html",
+      effective_from: "2024-01-01",
+      effective_to: null,
+      last_verified_at: "2026-01-15T00:00:00Z",
+      version: 1,
+      approved_by: "Lead Canadian Immigration Counsel & RCIC",
+      title: "Police Clearance Certificates for Security Screening",
+      description: "Clearance certificates from every country lived in for 6 consecutive months since age 18.",
+      category: "security_clearance",
+      statutory_citation: "IRPA s. 36; IRPR s. 16(2)",
+      is_mandatory: true,
+      is_applicable: true,
+      requires_human_review: true,
+    },
+  ];
+
+  const applicableRules = caRules.filter((r) => r.is_applicable);
+
+  return {
+    status: "SUPPORTED",
+    jurisdiction: "CA",
+    pathway: payload.pathway,
+    is_supported: true,
+    can_generate_checklist: true,
+    coverage_level: "SUPPORTED",
+    rule_set_name: "Canada Express Entry Federal Skilled Worker Rules",
+    rule_version_number: "1.0.0",
+    effective_as_of: new Date().toISOString(),
+    total_rules_count: caRules.length,
+    applicable_count: applicableRules.length,
+    stale_rules_excluded_count: 0,
+    stale_rules_excluded: [],
+    checklist: applicableRules,
+    all_rules: caRules,
+    is_pinned_to_case: Boolean(payload.pin_to_case),
+    case_id: payload.case_id || null,
+  };
+}
+
+export async function getCasePinnedChecklist(
+  caseId: string,
+  role: RoleCode = "case_manager"
+): Promise<PinnedChecklistSnapshotResponse> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/rules/cases/${caseId}/pinned-checklist`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    case_id: caseId,
+    case_number: "CAS-CA-001",
+    is_pinned: true,
+    pinned_rule_version_id: "v-ca-fsw-100",
+    snapshot_pinned_at: new Date().toISOString(),
+    rules_update_available: false,
+    snapshot: await generateFactGroundedChecklist({
+      jurisdiction: "CA",
+      pathway: "CA_EXPRESS_ENTRY_FSW",
+      pin_to_case: true,
+      case_id: caseId,
+    }),
+  };
+}
+
+export async function migrateCaseRuleVersion(
+  caseId: string,
+  payload: { to_version_id: string; migration_reason: string },
+  role: RoleCode = "company_admin"
+): Promise<CaseMigrationResponse> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/rules/cases/${caseId}/migrate-version`, {
+      method: "POST",
+      headers: getAuthHeaders(role),
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  const updatedChecklist = await generateFactGroundedChecklist({
+    jurisdiction: "CA",
+    pathway: "CA_EXPRESS_ENTRY_FSW",
+    case_id: caseId,
+    pin_to_case: true,
+  });
+
+  return {
+    success: true,
+    case_id: caseId,
+    case_number: "CAS-CA-001",
+    from_version_number: "1.0.0",
+    to_version_number: "2.0.0",
+    migrated_at: new Date().toISOString(),
+    migration_reason: payload.migration_reason,
+    impact: {
+      from_version: "1.0.0",
+      to_version: "2.0.0",
+      added_count: 1,
+      removed_count: 0,
+      modified_count: 0,
+      unchanged_count: 6,
+      requirements_added: [
+        {
+          code: "CA-FSW-BIO-008",
+          title: "Digital Biometrics Verification & IRCC Facial Match",
+          category: "statutory_criteria",
+          is_mandatory: true,
+        },
+      ],
+    },
+    pinned_checklist: updatedChecklist,
+  };
+}
+
+export async function verifyRuleRequirement(
+  requirementId: string,
+  payload: { approved_by: string; source_url?: string; effective_from?: string; effective_to?: string },
+  role: RoleCode = "company_admin"
+): Promise<Phase6RuleRequirementItem> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/rules/requirements/${requirementId}/verify`, {
+      method: "POST",
+      headers: getAuthHeaders(role),
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    rule_id: requirementId,
+    jurisdiction: "CA",
+    pathway: "CA_EXPRESS_ENTRY_FSW",
+    requirement_key: "statutory.verified_rule",
+    status: "VERIFIED",
+    source_url: payload.source_url || "https://www.canada.ca/en/immigration-refugees-citizenship.html",
+    effective_from: payload.effective_from || new Date().toISOString().split("T")[0],
+    effective_to: payload.effective_to || null,
+    last_verified_at: new Date().toISOString(),
+    version: 1,
+    approved_by: payload.approved_by,
+  };
+}
+
+export async function compareRuleVersions(
+  fromVersionId: string,
+  toVersionId: string,
+  role: RoleCode = "case_manager"
+): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/rules/versions/${fromVersionId}/compare/${toVersionId}`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    from_version: "1.0.0",
+    to_version: "2.0.0",
+    added_count: 1,
+    removed_count: 0,
+    modified_count: 0,
+    unchanged_count: 6,
+    requirements_added: [
+      {
+        code: "CA-FSW-BIO-008",
+        title: "Digital Biometrics Verification & IRCC Facial Match",
+        category: "statutory_criteria",
+        is_mandatory: true,
+      },
+    ],
+    requirements_removed: [],
+    requirements_modified: [],
+  };
+}
+
+// =========================================================================
+// PHASE 8: MANAGER PRIORITY QUEUE (RANKS 1-8) & REJECTION EXPORTS
+// =========================================================================
+
+export const FALLBACK_MANAGER_PRIORITY_QUEUE: ManagerPriorityQueueResponse = {
+  generated_at: "2026-10-17T12:00:00Z",
+  organization_id: DEMO_ORG_ID,
+  summary: {
+    critical_overdue_deadlines_count: 3,
+    unassigned_cases_count: 2,
+    blocked_cases_count: 2,
+    overdue_client_responses_count: 2,
+    pending_reviews_count: 3,
+    quality_issues_count: 3,
+    payment_summary: {
+      paid_count: 5,
+      pending_count: 3,
+      partially_paid_count: 2,
+      paid_amount: 14750.0,
+      pending_amount: 8500.0,
+      partially_paid_amount: 3200.0,
+    },
+    first_time_pass_rate_percent: 94.2,
+  },
+  ranks: [
+    {
+      rank: 1,
+      title: "Critical/Overdue Deadlines (Especially Authority Requests)",
+      priority: "P1_CRITICAL",
+      count: 3,
+      description: "USCIS RFE/NOID, IRCC PFL, court/biometrics, and statutory filing deadlines",
+      items: [
+        {
+          id: "m-rfe-01",
+          type: "authority_request",
+          title: "USCIS Form I-140 Request for Evidence (RFE) Response Window",
+          case_id: "case-01",
+          case_number: "CASE-US-8841",
+          client_name: "Dr. Elena Rostova",
+          deadline: "2026-10-24T17:00:00Z",
+          days_remaining: 7,
+          is_overdue: false,
+          is_authority_request: true,
+          authority_type: "USCIS RFE/NOID",
+          severity: "CRITICAL",
+        },
+        {
+          id: "m-pfl-02",
+          type: "authority_request",
+          title: "IRCC Procedural Fairness Letter (PFL) Evidentiary Cure",
+          case_id: "case-ca-02",
+          case_number: "CASE-CA-4091",
+          client_name: "Rajesh Sharma",
+          deadline: "2026-10-20T17:00:00Z",
+          days_remaining: 3,
+          is_overdue: false,
+          is_authority_request: true,
+          authority_type: "IRCC PFL",
+          severity: "CRITICAL",
+        },
+        {
+          id: "m-bio-03",
+          type: "authority_task",
+          title: "Mandatory Biometrics Capture & ASC Appointment Notice",
+          case_id: "case-us-8842",
+          case_number: "CASE-US-8842",
+          client_name: "Fatima Al-Mansoor",
+          deadline: "2026-10-15T09:00:00Z",
+          days_remaining: -2,
+          is_overdue: true,
+          is_authority_request: true,
+          authority_type: "Statutory Biometrics Deadline",
+          severity: "CRITICAL",
+        },
+      ],
+    },
+    {
+      rank: 2,
+      title: "Workload & Allocation",
+      priority: "P2_HIGH",
+      count: 3,
+      unassigned_cases_count: 2,
+      description: "Officer caseload distribution, capacity utilization %, and unassigned queue",
+      staff_allocation: [
+        {
+          user_id: "usr-01",
+          full_name: "Sarah Jenkins, Esq.",
+          email: "attorney@lexai.com",
+          assigned_cases_count: 22,
+          pending_tasks_count: 8,
+          capacity_limit: 25,
+          utilization_percent: 88.0,
+          allocation_status: "OPTIMAL",
+        },
+        {
+          user_id: "usr-02",
+          full_name: "Marcus Vance",
+          email: "paralegal@lexai.com",
+          assigned_cases_count: 27,
+          pending_tasks_count: 14,
+          capacity_limit: 25,
+          utilization_percent: 108.0,
+          allocation_status: "OVERLOADED",
+        },
+        {
+          user_id: "usr-03",
+          full_name: "Priya Nair",
+          email: "pnair@lexai.com",
+          assigned_cases_count: 12,
+          pending_tasks_count: 4,
+          capacity_limit: 25,
+          utilization_percent: 48.0,
+          allocation_status: "AVAILABLE",
+        },
+      ],
+      unassigned_cases: [
+        {
+          case_id: "case-unassigned-01",
+          case_number: "CASE-US-9012",
+          title: "O-1A Extraordinary Ability Petition in Athletics",
+          visa_category: "O-1A",
+          created_at: "2026-10-16T14:30:00Z",
+        },
+        {
+          case_id: "case-unassigned-02",
+          case_number: "CASE-CA-4105",
+          title: "Express Entry PNP Ontario Nomination Review",
+          visa_category: "Express Entry - PNP",
+          created_at: "2026-10-17T09:15:00Z",
+        },
+      ],
+    },
+    {
+      rank: 3,
+      title: "Blocked Cases",
+      priority: "P3_HIGH",
+      count: 2,
+      description: "Hard statutory blockers, critical discrepancies, and unresolved anomalies",
+      items: [
+        {
+          case_id: "case-01",
+          case_number: "CASE-US-8841",
+          title: "EB-1A Extraordinary Ability Petition",
+          client_name: "Dr. Elena Rostova",
+          visa_category: "EB-1A",
+          status: "review",
+          blocker_reasons: [
+            "Statutory Anomaly: Peer review evidence missing official publication timestamp",
+            "Document Issue: Foreign diploma translation certificate unverified",
+          ],
+          blockers_count: 2,
+        },
+        {
+          case_id: "case-ca-02",
+          case_number: "CASE-CA-4091",
+          title: "Express Entry Federal Skilled Worker",
+          client_name: "Rajesh Sharma",
+          visa_category: "FSW-Express Entry",
+          status: "gathering",
+          blocker_reasons: [
+            "Document Issue: Reference letter date precedes incorporation date (Failed hash check)",
+          ],
+          blockers_count: 1,
+        },
+      ],
+    },
+    {
+      rank: 4,
+      title: "Overdue Client Responses",
+      priority: "P4_MEDIUM",
+      count: 2,
+      description: "Overdue document requests and stalled evidentiary questionnaires",
+      items: [
+        {
+          id: "req-overdue-01",
+          type: "document_request",
+          title: "Certified English Translation of Medical License",
+          case_id: "case-01",
+          case_number: "CASE-US-8841",
+          client_name: "Dr. Elena Rostova",
+          due_date: "2026-10-12T17:00:00Z",
+          days_overdue: 5,
+          status: "requested",
+        },
+        {
+          id: "q-stalled-02",
+          type: "questionnaire_stalled",
+          title: "Intake Questionnaire (42% filled)",
+          case_id: "case-ca-02",
+          case_number: "CASE-CA-4091",
+          client_name: "Rajesh Sharma",
+          due_date: "2026-10-10T17:00:00Z",
+          days_overdue: 7,
+          status: "in_progress",
+        },
+      ],
+    },
+    {
+      rank: 5,
+      title: "Pending Reviews",
+      priority: "P5_MEDIUM",
+      count: 3,
+      description: "Evidence awaiting verification, submitted application forms, and packages in review",
+      items: [
+        {
+          id: "doc-pending-01",
+          item_type: "document",
+          title: "Curriculum Vitae & Citation Metrics Index",
+          case_id: "case-01",
+          case_number: "CASE-US-8841",
+          submitted_at: "2026-10-16T18:00:00Z",
+          review_state: "under_review",
+        },
+        {
+          id: "form-pending-02",
+          item_type: "form_submission",
+          title: "Application Form (Form I-140)",
+          case_id: "case-01",
+          case_number: "CASE-US-8841",
+          submitted_at: "2026-10-15T11:30:00Z",
+          review_state: "submitted",
+        },
+        {
+          id: "pkg-pending-03",
+          item_type: "filing_package",
+          title: "Filing Dossier Package (v1)",
+          case_id: "case-ca-02",
+          case_number: "CASE-CA-4091",
+          submitted_at: "2026-10-14T15:20:00Z",
+          review_state: "ready_for_review",
+        },
+      ],
+    },
+    {
+      rank: 6,
+      title: "Quality Issues, Corrections & Escalations",
+      priority: "P6_MEDIUM",
+      count: 3,
+      description: "Rejected documents, manual field overrides, and partner escalations",
+      items: [
+        {
+          id: "doc-rej-01",
+          issue_type: "document_rejected",
+          title: "Passport Photo Page (Blurry Scan)",
+          case_id: "case-01",
+          case_number: "CASE-US-8841",
+          structured_reason_code: "BLURRY_IMAGE",
+          explanation: "The MRZ barcode and expiration date are unreadable due to glare. Please re-upload with flat lighting.",
+          timestamp: "2026-10-16T16:20:00Z",
+        },
+        {
+          id: "field-corr-02",
+          issue_type: "field_correction",
+          title: "Manual Field Override: Beneficiary Date of Birth",
+          case_id: "case-01",
+          case_number: "CASE-US-8841",
+          structured_reason_code: "OCR_EXTRACTION_CORRECTION",
+          explanation: "OCR extracted 05/12/1984 instead of 12/05/1984 based on passport DD/MM/YYYY standard.",
+          timestamp: "2026-10-15T14:10:00Z",
+        },
+        {
+          id: "esc-finding-03",
+          issue_type: "supervisor_escalation",
+          title: "Kazarian Major Significant Contributions Criterion Evaluation",
+          case_id: "case-01",
+          case_number: "CASE-US-8841",
+          structured_reason_code: "FINDING_ESCALATED",
+          explanation: "Escalated to managing partner to verify if patent citations meet Ninth Circuit legal standard.",
+          timestamp: "2026-10-14T09:45:00Z",
+        },
+      ],
+    },
+    {
+      rank: 7,
+      title: "Payment Status",
+      priority: "P7_FINANCIAL",
+      count: 10,
+      paid_count: 5,
+      pending_count: 3,
+      partially_paid_count: 2,
+      paid_amount: 14750.0,
+      pending_amount: 8500.0,
+      partially_paid_amount: 3200.0,
+      description: "Accounts receivable aging and retainer fees: Paid, Pending, and Partially Paid",
+      items: [
+        {
+          id: "inv-01",
+          invoice_number: "INV-2026-0001",
+          client_id: "cl-01",
+          status: "PAID",
+          amount: 4250.0,
+          paid_amount: 4250.0,
+          balance_due: 0.0,
+          due_date: "2026-09-30T00:00:00Z",
+        },
+        {
+          id: "inv-02",
+          invoice_number: "INV-2026-0002",
+          client_id: "cl-02",
+          status: "PENDING",
+          amount: 5000.0,
+          paid_amount: 0.0,
+          balance_due: 5000.0,
+          due_date: "2026-10-31T00:00:00Z",
+        },
+        {
+          id: "inv-03",
+          invoice_number: "INV-2026-0003",
+          client_id: "cl-03",
+          status: "PARTIALLY_PAID",
+          amount: 6000.0,
+          paid_amount: 2800.0,
+          balance_due: 3200.0,
+          due_date: "2026-10-25T00:00:00Z",
+        },
+      ],
+    },
+    {
+      rank: 8,
+      title: "Performance View & Quality Improvement",
+      priority: "P8_PERFORMANCE",
+      count: 1,
+      first_time_pass_rate_percent: 94.2,
+      description: "Visual and numeric metrics supporting quality improvement, not blame-only management",
+      metrics: {
+        first_time_right_percentage: 94.2,
+        median_turnaround_hours: 18.5,
+        correction_cycle_time_days: 1.8,
+        quality_improvement_index: 94.2,
+        weekly_trajectory: [
+          { week: "W1", accuracy_score: 88.4, first_time_right: 84.1 },
+          { week: "W2", accuracy_score: 89.9, first_time_right: 86.0 },
+          { week: "W3", accuracy_score: 91.2, first_time_right: 88.5 },
+          { week: "W4", accuracy_score: 93.0, first_time_right: 90.2 },
+          { week: "W5", accuracy_score: 93.8, first_time_right: 91.6 },
+          { week: "W6", accuracy_score: 94.5, first_time_right: 93.0 },
+        ],
+        philosophy: "Metrics support quality improvement, training, and team enablement rather than blame-only punitive management.",
+      },
+      coaching_focus_areas: [
+        "Proactive camera scanning guidance reduced illegible uploads by 41%",
+        "Cross-checking statutory criteria prior to filing lowered RFE rates",
+        "Weekly quality circles on USCIS EB-1A Kazarian precedents",
+      ],
+    },
+  ],
+};
+
+export async function fetchManagerPriorityQueue(
+  role: RoleCode = "master_admin"
+): Promise<ManagerPriorityQueueResponse> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/analytics/manager-priority-queue`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+  return FALLBACK_MANAGER_PRIORITY_QUEUE;
+}
+
+export async function rejectDocument(
+  id: string,
+  payload: RejectDocumentPayload,
+  role: RoleCode = "case_manager"
+): Promise<ApiResponse<DocumentItem>> {
+  return api.rejectDocument(id, payload, role);
+}
+
+// ============================================================================
+// PHASE 9: FIRM CONFIGURATION & APPROVAL GATES API
+// ============================================================================
+
+export const FALLBACK_FIRM_CONFIGURATION: FirmConfiguration = {
+  organization_id: DEMO_ORG_ID,
+  version: 1,
+  domains: {
+    roles: {
+      roles: [
+        { code: "master_admin", name: "Managing Partner", permissions: ["all"] },
+        { code: "senior_reviewer", name: "Senior Reviewing Counsel", permissions: ["review:signoff", "case:read"] },
+        { code: "case_manager", name: "Case Manager", permissions: ["case:write", "case:read"] },
+        { code: "retained_client", name: "Retained Client", permissions: ["portal:access"] },
+      ],
+      escalation_contacts: ["managing-partner@firm.internal"],
+    },
+    country_pathway_enablement: {
+      jurisdictions: {
+        USA: { enabled: true, pathways: ["EB-1A", "EB-2-NIW", "O-1A", "H-1B", "L-1A"] },
+        GBR: { enabled: true, pathways: ["Skilled Worker", "Global Talent", "Innovator Founder"] },
+        CAN: { enabled: true, pathways: ["Express Entry", "Start-Up Visa"] },
+      },
+    },
+    folder_structure: {
+      standard_folders: [
+        "01_Identity_and_Civil",
+        "02_Education_and_Degrees",
+        "03_Employment_and_Experience",
+        "04_Immigration_History",
+        "05_Draft_Petition_and_Forms",
+      ],
+      enforce_hierarchy: true,
+    },
+    checklist_versions: {
+      standard_version: "v2026.1",
+      mandatory_tiers: ["tier_1_identity", "tier_2_eligibility"],
+    },
+    reminders_escalations: {
+      auto_reminders_enabled: true,
+      first_reminder_days: 7,
+      second_reminder_days: 14,
+      escalate_after_days: 21,
+    },
+    inactivity_policy: {
+      warn_after_inactive_days: 14,
+      auto_dormant_after_days: 30,
+    },
+    review_stages: {
+      require_officer_review: true,
+      require_senior_review: true,
+      require_lawyer_signoff_before_submission: true,
+    },
+    approval_owners: {
+      manager_authorization: "case_manager",
+      accounts_clearance: "finance_staff",
+      counsellor_confirmation: "case_worker",
+    },
+    templates: {
+      welcome_email: "Welcome to our client portal. Your file reference is {{case_number}}.",
+      document_request: "Please review the requested documents in your portal checklist.",
+    },
+    rejection_reasons: {
+      standard_rejection_codes: [
+        "ILLEGIBLE_SCAN",
+        "WRONG_DOCUMENT_TYPE",
+        "EXPIRED_DOCUMENT",
+        "MISSING_PAGES",
+        "UNOFFICIAL_TRANSLATION",
+      ],
+    },
+  },
+  immutable_safeguards: {
+    audit_logging_enabled: true,
+    require_lawyer_signoff_before_submission: true,
+    tripartite_clearance_required_for_substantive_prep: true,
+    min_config_change_reason_length: 10,
+    tenant_isolation_enforced: true,
+  },
+};
+
+export const FALLBACK_FIRM_AUDIT_LOG: FirmConfigAuditLogItem[] = [
+  {
+    id: "audit-01",
+    organization_id: DEMO_ORG_ID,
+    domain: "checklist_versions",
+    version: 1,
+    old_version: 1,
+    new_version: 1,
+    actor_id: DEMO_USERS.master_admin.id,
+    actor_email: "managing-partner@firm.internal",
+    old_version_json: {},
+    new_version_json: { standard_version: "v2026.1" },
+    reason: "Initial baseline configuration of firm governance domains",
+    effective_date: "2026-01-01T00:00:00Z",
+    created_at: "2026-01-01T00:00:00Z",
+  },
+];
+
+export async function fetchFirmConfiguration(
+  orgId?: string,
+  role: RoleCode = "master_admin"
+): Promise<FirmConfiguration> {
+  try {
+    const url = orgId
+      ? `${API_BASE_URL}/organizations/${orgId}/firm-configuration`
+      : `${API_BASE_URL}/firm-config`;
+    const res = await fetch(url, { headers: getAuthHeaders(role) });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+  return FALLBACK_FIRM_CONFIGURATION;
+}
+
+export async function updateDomainConfiguration(
+  domain: string,
+  data: any,
+  reason: string,
+  effectiveDate?: string,
+  orgId?: string,
+  role: RoleCode = "master_admin"
+): Promise<any> {
+  try {
+    const url = orgId
+      ? `${API_BASE_URL}/organizations/${orgId}/firm-configuration/domains/${domain}`
+      : `${API_BASE_URL}/firm-config/${domain}`;
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        data,
+        reason,
+        effective_date: effectiveDate,
+      }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to update firm configuration domain");
+  } catch (e: any) {
+    if (e.message?.includes("cannot be disabled") || e.message?.includes("at least 10 characters")) {
+      throw e;
+    }
+  }
+  return {
+    domain,
+    version: 2,
+    configuration: data,
+    effective_date: effectiveDate || new Date().toISOString(),
+  };
+}
+
+export async function fetchFirmConfigAuditLog(
+  domain?: string,
+  orgId?: string,
+  role: RoleCode = "master_admin"
+): Promise<FirmConfigAuditLogItem[]> {
+  try {
+    const url = orgId
+      ? `${API_BASE_URL}/organizations/${orgId}/firm-configuration/audit-log${domain ? `?domain=${domain}` : ""}`
+      : `${API_BASE_URL}/firm-config/audit-log${domain ? `?domain=${domain}` : ""}`;
+    const res = await fetch(url, { headers: getAuthHeaders(role) });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+  return domain
+    ? FALLBACK_FIRM_AUDIT_LOG.filter((l) => l.domain === domain)
+    : FALLBACK_FIRM_AUDIT_LOG;
+}
+
+export async function fetchCase(
+  caseId: string,
+  role: RoleCode = "case_manager"
+): Promise<ImmigrationCase> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/cases/${caseId}`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+  const allCasesResp = await api.getCases(role);
+  const found = allCasesResp.data?.find((c) => c.id === caseId);
+  if (found) return found;
+  return {
+    id: caseId,
+    case_number: "CASE-DEMO-01",
+    title: "Skilled Worker Visa Case",
+    client_id: "client-01",
+    client_name: "Jane Doe",
+    jurisdiction: "GBR",
+    visa_category: "Skilled Worker",
+    status: "intake",
+    organization_id: DEMO_ORG_ID,
+    created_at: new Date().toISOString(),
+  };
+}
+
+export async function recordTripartiteAuthorization(
+  caseId: string,
+  payload: {
+    gate_type: string;
+    authorized?: boolean;
+    notes?: string;
+    reference_id?: string;
+    waived?: boolean;
+    waiver_reason?: string;
+  },
+  role: RoleCode = "case_manager"
+): Promise<ImmigrationCase> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/cases/${caseId}/tripartite-authorization`, {
+      method: "POST",
+      headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to record tripartite authorization");
+  } catch (e: any) {
+    if (e.message?.includes("Invalid authorization type")) {
+      throw e;
+    }
+  }
+  const caseItem = await fetchCase(caseId, role);
+  return caseItem;
+}
+
+export async function recordProgressiveReview(
+  caseId: string,
+  payload: {
+    stage: string;
+    completed?: boolean;
+    outcome?: string;
+    notes?: string;
+  },
+  role: RoleCode = "case_manager"
+): Promise<ImmigrationCase> {
+  const body = {
+    stage: payload.stage,
+    outcome: payload.outcome || (payload.completed === false ? "CHANGES_REQUESTED" : "APPROVED"),
+    comments: payload.notes,
+    notes: payload.notes,
+    checklist_verified: true,
+  };
+  try {
+    const res = await fetch(`${API_BASE_URL}/cases/${caseId}/progressive-review`, {
+      method: "POST",
+      headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to record progressive review");
+  } catch (e: any) {
+    if (e.message?.includes("Invalid review stage")) {
+      throw e;
+    }
+  }
+  return await fetchCase(caseId, role);
+}
+
+export async function setSubmissionAuthorization(
+  caseId: string,
+  payload: {
+    status: string;
+    reason?: string;
+  },
+  role: RoleCode = "case_manager"
+): Promise<ImmigrationCase> {
+  const body = {
+    action: payload.status,
+    status: payload.status,
+    notes: payload.reason,
+    reason: payload.reason,
+  };
+  try {
+    const res = await fetch(`${API_BASE_URL}/cases/${caseId}/submission-authorization`, {
+      method: "POST",
+      headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to update submission authorization");
+  } catch (e: any) {
+    if (e.message?.includes("Hold reason is required")) {
+      throw e;
+    }
+  }
+  return await fetchCase(caseId, role);
+}
+
+export async function setHandoverAuthorization(
+  caseId: string,
+  payload: {
+    status: string;
+    reason?: string;
+  },
+  role: RoleCode = "case_manager"
+): Promise<ImmigrationCase> {
+  const body = {
+    authorized: payload.status === "AUTHORIZED_FOR_HANDOVER" || payload.status === "CLEARED_FOR_HANDOVER",
+    status: payload.status,
+    target_status: payload.status,
+    notes: payload.reason,
+    reason: payload.reason,
+  };
+  try {
+    const res = await fetch(`${API_BASE_URL}/cases/${caseId}/handover-authorization`, {
+      method: "POST",
+      headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to update handover authorization");
+  } catch (e: any) {
+    // fallback
+  }
+  return await fetchCase(caseId, role);
+}
+
+export async function sendManualReminder(
+  caseId: string,
+  payload?: {
+    recipient_type?: string;
+    reminder_type?: string;
+    custom_message?: string;
+  },
+  role: RoleCode = "case_manager"
+): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/cases/${caseId}/send-reminder`, {
+      method: "POST",
+      headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+  return {
+    status: "dispatched",
+    case_id: caseId,
+    dispatched_at: new Date().toISOString(),
+    recipient: "client@example.com",
+    channel: "email",
+    preview_body: payload?.custom_message || "Action Required: Please complete pending checklist items.",
+  };
+}
+
+export async function sendManualAcknowledgement(
+  caseId: string,
+  payload?: {
+    acknowledgement_type?: string;
+    custom_message?: string;
+  },
+  role: RoleCode = "case_manager"
+): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/cases/${caseId}/send-acknowledgement`, {
+      method: "POST",
+      headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+  return {
+    status: "dispatched",
+    case_id: caseId,
+    dispatched_at: new Date().toISOString(),
+    recipient: "client@example.com",
+    channel: "email",
+    preview_body: payload?.custom_message || "Acknowledgement: We have safely received your submission.",
+  };
+}
+
+export async function migrateCaseFirmConfig(
+  caseId: string,
+  payload: { reason: string },
+  role: RoleCode = "case_manager"
+): Promise<ImmigrationCase> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/cases/${caseId}/migrate-firm-config`, {
+      method: "POST",
+      headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to migrate case configuration snapshot");
+  } catch (e: any) {
+    if (e.message?.includes("min 10 characters")) {
+      throw e;
+    }
+  }
+  return await fetchCase(caseId, role);
+}
+
+// --- Phase 10: AI Assistance, Guardrails & Explanations API Endpoints ---
+
+export async function getPackageBlockersExplanation(
+  caseId: string,
+  role: RoleCode = "case_manager"
+): Promise<PackageBlockerReport> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/packages/cases/${caseId}/blockers/explanation`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("Failed to fetch package blocker explanation:", err);
+  }
+
+  // Graceful fallback if backend unavailable
+  return {
+    case_id: caseId,
+    case_number: "CASE-UNKNOWN",
+    organization_id: DEMO_ORG_ID,
+    is_blocked: false,
+    total_blockers_count: 0,
+    critical_blockers_count: 0,
+    warning_blockers_count: 0,
+    blockers: [],
+    evaluated_at: new Date().toISOString(),
+    guardrail_notice: "AI does not decide legal eligibility, authenticity, fraud, or legal sufficiency.",
+  };
+}
+
+export async function getApprovedRequestTemplates(
+  role: RoleCode = "case_manager"
+): Promise<ApprovedRequestTemplate[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/requests/templates`, {
+      headers: getAuthHeaders(role),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("Failed to fetch approved request templates:", err);
+  }
+
+  // Fallback approved templates
+  return [
+    {
+      template_code: "PASSPORT_BIO_PAGE_UNCERTAINTY",
+      title: "Biographic Passport Page Clarification Request",
+      category: "identity",
+      default_instructions: "Please upload a high-resolution, full-color copy of your primary biometric passport data page. Ensure all 4 corners and MRZ zone are completely visible without glare.",
+      legal_context: "8 CFR § 103.2(b)(1) & Foreign Affairs Manual identity verification guidelines.",
+      suggested_days_to_due: 7,
+      required_review_role: "case_manager",
+    },
+    {
+      template_code: "NAME_DISCREPANCY_CLARIFICATION",
+      title: "Legal Name Discrepancy & Alias Explanation Request",
+      category: "vital_records",
+      default_instructions: "We observed a spelling or format difference in your name across documents. Please provide certified vital records, gazette notification, or marriage certificate documenting all name variations.",
+      legal_context: "8 CFR § 204.1(g)(1) identity continuity standards.",
+      suggested_days_to_due: 10,
+      required_review_role: "case_manager",
+    },
+    {
+      template_code: "ACADEMIC_CREDENTIAL_EVALUATION",
+      title: "Academic Credential Evaluation & Certified Transcripts",
+      category: "education",
+      default_instructions: "Please provide official degree certificates along with complete year-by-year academic transcripts for foreign degree equivalency determination.",
+      legal_context: "8 CFR § 204.5(k)(2) academic qualification equivalence.",
+      suggested_days_to_due: 14,
+      required_review_role: "case_manager",
+    },
+    {
+      template_code: "EXPERIENCE_DUTIES_BREAKDOWN",
+      title: "Employment Experience Verification & Detailed Job Duties",
+      category: "employment",
+      default_instructions: "Please provide signed employer verification letters on official company letterhead detailing specific job duties, tools, and dates of qualifying employment.",
+      legal_context: "8 CFR § 204.5(g)(1) evidentiary standard for employment experience.",
+      suggested_days_to_due: 14,
+      required_review_role: "case_manager",
+    },
+    {
+      template_code: "FINANCIAL_SUFFICIENT_FUNDS",
+      title: "Financial Capacity & Settlement Funds Evidence",
+      category: "financial",
+      default_instructions: "Please provide official bank statements covering the past 6 continuous months demonstrating unencumbered transferable liquid funds.",
+      legal_context: "INA § 212(a)(4) public charge and economic settlement capacity requirements.",
+      suggested_days_to_due: 10,
+      required_review_role: "case_manager",
+    },
+    {
+      template_code: "AUTHORITY_REQUEST_REBUTTAL",
+      title: "Statutory Deficiency Rebuttal & Supplementary Evidence",
+      category: "government_notice",
+      default_instructions: "The adjudicating authority issued an official notice requesting additional evidence. Please provide the requested documentation before the statutory deadline.",
+      legal_context: "8 CFR § 103.2(b)(8) Request for Evidence (RFE) & Notice of Intent to Deny response.",
+      suggested_days_to_due: 14,
+      required_review_role: "case_manager",
+    },
+  ];
+}
+
+export async function draftClientRequest(
+  payload: DraftRequestPayload,
+  role: RoleCode = "case_manager"
+): Promise<DocumentRequestItem> {
+  const res = await fetch(`${API_BASE_URL}/requests/draft-from-template`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to generate draft client request");
+  }
+  return await res.json();
+}
+
+export async function approveAndSendDraftRequest(
+  requestId: string,
+  payload: ApproveDraftRequestPayload = {},
+  role: RoleCode = "case_manager"
+): Promise<DocumentRequestItem> {
+  const res = await fetch(`${API_BASE_URL}/requests/${requestId}/approve-and-send`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to authorize and send client request");
+  }
+  return await res.json();
+}
+
+export async function summarizeAuthorityRequest(
+  caseId: string,
+  payload: { authority_text?: string; document_id?: string } = {},
+  role: RoleCode = "case_manager"
+): Promise<AuthorityRequestSummary> {
+  const res = await fetch(`${API_BASE_URL}/cases/${caseId}/findings/summarize-authority-request`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to analyze official authority request");
+  }
+  return await res.json();
+}
+
+export async function splitDocumentSections(
+  documentId: string,
+  sections?: DocumentSplitSection[],
+  role: RoleCode = "case_manager"
+): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/documents/${documentId}/split-sections`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(sections ? { sections } : {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to split document into sections");
+  }
+  return await res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Phase 11: Reliability, Security, Privacy & Operations API Methods
+// ---------------------------------------------------------------------------
+
+export async function getOperationalDashboard(
+  role: RoleCode = "master_admin"
+): Promise<OperationalDashboardData> {
+  const res = await fetch(`${API_BASE_URL}/operations/dashboard`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load operational dashboard");
+  }
+  return await res.json();
+}
+
+export async function getCompletedApplicationSummaries(
+  limit: number = 50,
+  role: RoleCode = "case_manager"
+): Promise<CompletedApplicationSummary[]> {
+  const res = await fetch(`${API_BASE_URL}/operations/completed-applications?limit=${limit}`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to fetch completed application summaries");
+  }
+  return await res.json();
+}
+
+export async function getWithdrawnTombstones(
+  limit: number = 50,
+  role: RoleCode = "case_manager"
+): Promise<CaseWithdrawalTombstone[]> {
+  const res = await fetch(`${API_BASE_URL}/operations/withdrawn-tombstones?limit=${limit}`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to fetch case withdrawal tombstones");
+  }
+  return await res.json();
+}
+
+export async function getDataFlowRegister(
+  role: RoleCode = "master_admin"
+): Promise<DataFlowRegister> {
+  const res = await fetch(`${API_BASE_URL}/operations/data-flow-register`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to fetch data-flow register");
+  }
+  return await res.json();
+}
+
+export async function getPrivacyReviews(
+  role: RoleCode = "master_admin"
+): Promise<PrivacyLegalReview[]> {
+  const res = await fetch(`${API_BASE_URL}/operations/privacy-reviews`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to fetch jurisdiction privacy reviews");
+  }
+  return await res.json();
+}
+
+export async function executeCaseWithdrawal(
+  payload: {
+    case_id: string;
+    reason: string;
+    formal_authority_already_submitted?: boolean;
+    formal_authority_notes?: string;
+  },
+  role: RoleCode = "case_manager"
+): Promise<CaseWithdrawalTombstone> {
+  const res = await fetch(`${API_BASE_URL}/operations/scenarios/withdrawal`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to execute case withdrawal");
+  }
+  return await res.json();
+}
+
+export async function executeCompletedCaseCleanup(
+  payload: {
+    case_id: string;
+    adjudication_outcome?: string;
+    official_reference_number?: string;
+  },
+  role: RoleCode = "case_manager"
+): Promise<CompletedApplicationSummary> {
+  const res = await fetch(`${API_BASE_URL}/operations/scenarios/completed-cleanup`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to execute completed case cleanup");
+  }
+  return await res.json();
+}
+
+export async function createReapplication(
+  payload: {
+    prior_case_id: string;
+    new_case_number: string;
+    reason: string;
+    new_title?: string;
+  },
+  role: RoleCode = "case_manager"
+): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/operations/scenarios/reapplication`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create reapplication");
+  }
+  return await res.json();
+}
+
+export async function offboardEmployee(
+  payload: {
+    departing_user_id: string;
+    successor_user_id?: string;
+    notes?: string;
+  },
+  role: RoleCode = "master_admin"
+): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/operations/scenarios/employee-offboard`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to offboard employee");
+  }
+  return await res.json();
+}
+
+export async function requestFirmExport(
+  payload: { export_type: "self_service" | "assisted_concierge" },
+  role: RoleCode = "master_admin"
+): Promise<FirmExportRequest> {
+  const res = await fetch(`${API_BASE_URL}/operations/scenarios/firm-export`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to request firm export");
+  }
+  return await res.json();
+}
+
+export async function executeBackupRestoreDrill(
+  role: RoleCode = "master_admin"
+): Promise<RestoreDrillResult> {
+  const res = await fetch(`${API_BASE_URL}/operations/backups/drill`, {
+    method: "POST",
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to execute backup restore drill");
+  }
+  return await res.json();
+}
+
+export async function getDeletionAccountingReport(
+  role: RoleCode = "master_admin"
+): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/operations/backups/deletion-accounting`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to fetch deletion accounting report");
+  }
+  return await res.json();
+}
+
+export async function simulateKeyRotationDrill(
+  role: RoleCode = "master_admin"
+): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/operations/security/key-rotation`, {
+    method: "POST",
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to simulate key rotation drill");
+  }
+  return await res.json();
+}
+
+export async function executeEmergencyLockdown(
+  reason: string,
+  role: RoleCode = "master_admin"
+): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/operations/security/lockdown`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to execute emergency lockdown");
+  }
+  return await res.json();
+}
+
+export async function listDeadLetterJobs(
+  role: RoleCode = "master_admin"
+): Promise<DeadLetterJob[]> {
+  const res = await fetch(`${API_BASE_URL}/operations/dlq`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to list dead letter jobs");
+  }
+  return await res.json();
+}
+
+export async function reprocessDeadLetterJob(
+  jobId: string,
+  role: RoleCode = "master_admin"
+): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/operations/dlq/${jobId}/reprocess`, {
+    method: "POST",
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to reprocess dead letter job");
+  }
+  return await res.json();
+}
+
+export async function getDocumentDownloadToken(
+  documentId: string,
+  expiresInSeconds: number = 300,
+  role: RoleCode = "case_manager"
+): Promise<{ download_token: string; download_url: string; expires_in_seconds: number }> {
+  const res = await fetch(`${API_BASE_URL}/documents/${documentId}/download-token`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify({ expires_in_seconds: expiresInSeconds }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to generate short-lived download token");
+  }
+  return await res.json();
+}
 

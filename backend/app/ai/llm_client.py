@@ -55,6 +55,8 @@ class BaseAIClient(ABC):
         filename: str,
         category: str,
         mime_type: str = "application/pdf",
+        *args: Any,
+        **kwargs: Any,
     ) -> VisionExtractionResult:
         """Analyzes document content and returns structured entity extractions."""
         pass
@@ -95,8 +97,27 @@ class GeminiVisionClient(BaseAIClient):
         filename: str,
         category: str,
         mime_type: str = "application/pdf",
+        db: Optional[Any] = None,
+        organization_id: Optional[Any] = None,
+        client_id: Optional[Any] = None,
     ) -> VisionExtractionResult:
         """Sends document images & text to Gemini 2.0 with structured JSON Schema."""
+        if db is not None and organization_id is not None:
+            from backend.app.ai.privacy_guard import AIExternalPrivacyGate
+            privacy_res = AIExternalPrivacyGate.evaluate_external_egress(
+                db=db,
+                organization_id=organization_id,
+                client_id=client_id,
+                provider="gemini",
+                destination_region="US",
+            )
+            if not privacy_res.is_allowed:
+                logger.warning(
+                    f"Privacy gate blocked external Gemini egress: {privacy_res.block_reasons}. Falling back to local deterministic client."
+                )
+                fallback = MockLocalVisionClient()
+                return fallback.extract_document_entities(content, filename, category, mime_type)
+
         prompt = (
             f"You are an expert legal immigration document examiner analyzing a {category} file named '{filename}'. "
             "Extract all primary identity, financial, employment, or academic entities with exact verbatim text and normalized values. "
@@ -206,6 +227,8 @@ class MockLocalVisionClient(BaseAIClient):
         filename: str,
         category: str,
         mime_type: str = "application/pdf",
+        *args: Any,
+        **kwargs: Any,
     ) -> VisionExtractionResult:
         text = ""
         try:

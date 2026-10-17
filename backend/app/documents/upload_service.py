@@ -295,3 +295,40 @@ def verify_download_token(token: str, expected_doc_id: UUID) -> dict:
         raise PermissionDeniedError("Download access URL has expired. Please request a fresh link.")
     except jwt.PyJWTError:
         raise PermissionDeniedError("Invalid or forged download token.")
+
+
+def generate_purge_confirmation_token(
+    organization_id: UUID,
+    document_id: UUID,
+    user_id: UUID,
+    expires_in_seconds: int = 600,
+) -> str:
+    """Generates a short-lived cryptographic challenge token for two-step purge confirmation."""
+    settings = get_settings()
+    payload = {
+        "sub": str(user_id),
+        "doc_id": str(document_id),
+        "org_id": str(organization_id),
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds),
+        "iat": datetime.now(timezone.utc),
+        "purpose": "purge_confirm_challenge",
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm="HS256")
+
+
+def verify_purge_confirmation_token(token: str, expected_doc_id: UUID, expected_org_id: UUID) -> dict:
+    """Verifies cryptographic challenge token for two-step purge confirmation."""
+    settings = get_settings()
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=["HS256"])
+        if payload.get("purpose") != "purge_confirm_challenge":
+            raise PermissionDeniedError("Invalid challenge token purpose.")
+        if payload.get("doc_id") != str(expected_doc_id):
+            raise PermissionDeniedError("Purge confirmation token does not match target document.")
+        if payload.get("org_id") != str(expected_org_id):
+            raise PermissionDeniedError("Purge confirmation token does not match authorized organization.")
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise PermissionDeniedError("Purge confirmation challenge has expired. Please request a fresh confirmation.")
+    except jwt.PyJWTError:
+        raise PermissionDeniedError("Invalid or forged purge confirmation token.")

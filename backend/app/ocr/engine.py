@@ -29,6 +29,8 @@ class PageExtractionResult:
     blocks: list[PageBlock]
     width: float
     height: float
+    detected_rotation: int = 0  # 0, 90, 180, 270 degrees
+    is_rotation_corrected: bool = False
 
 
 def detect_language(text: str) -> str:
@@ -187,6 +189,14 @@ class OCREngine:
 
                 for page_idx in range(len(doc)):
                     page = doc[page_idx]
+                    detected_rot = int(page.rotation) % 360
+                    is_rotation_corrected = False
+
+                    # Normalize page rotation if not upright
+                    if detected_rot != 0:
+                        page.set_rotation(0)
+                        is_rotation_corrected = True
+
                     rect = page.rect
                     width, height = float(rect.width), float(rect.height)
 
@@ -240,6 +250,8 @@ class OCREngine:
                             blocks=blocks,
                             width=width,
                             height=height,
+                            detected_rotation=detected_rot,
+                            is_rotation_corrected=is_rotation_corrected,
                         )
                     )
                 doc.close()
@@ -254,12 +266,37 @@ class OCREngine:
                         blocks=[],
                         width=612.0,
                         height=792.0,
+                        detected_rotation=0,
+                        is_rotation_corrected=False,
                     )
                 )
 
         else:
             # Image file (JPEG, PNG, TIFF, WebP)
             try:
+                detected_rot = 0
+                is_rot_corrected = False
+                try:
+                    from PIL import Image, ImageOps
+                    with Image.open(io.BytesIO(content)) as im:
+                        exif = im.getexif()
+                        orientation = exif.get(0x0112, 1) if exif else 1
+                        if orientation == 3:
+                            detected_rot = 180
+                        elif orientation == 6:
+                            detected_rot = 270
+                        elif orientation == 8:
+                            detected_rot = 90
+
+                        if detected_rot != 0 or orientation != 1:
+                            transposed = ImageOps.exif_transpose(im)
+                            buf = io.BytesIO()
+                            transposed.save(buf, format=im.format or "PNG")
+                            content = buf.getvalue()
+                            is_rot_corrected = True
+                except Exception:
+                    pass
+
                 img_doc = pymupdf.open(stream=content, filetype=mime_type.split("/")[-1])
                 width, height = 612.0, 792.0
                 if len(img_doc) > 0:
@@ -278,6 +315,8 @@ class OCREngine:
                         blocks=blocks,
                         width=width,
                         height=height,
+                        detected_rotation=detected_rot,
+                        is_rotation_corrected=is_rot_corrected,
                     )
                 )
             except Exception:
@@ -290,10 +329,80 @@ class OCREngine:
                         blocks=[],
                         width=612.0,
                         height=792.0,
+                        detected_rotation=0,
+                        is_rotation_corrected=False,
                     )
                 )
 
         return results
+
+    @classmethod
+    def normalize_document(cls, content: bytes, mime_type: str = "application/pdf") -> tuple[bytes, dict]:
+        """
+        Normalizes document bytes (PDF or image) to standard upright orientation (0°),
+        returning normalized content bytes and rotation audit metadata.
+        """
+        if mime_type == "application/pdf":
+            try:
+                doc = pymupdf.open(stream=content, filetype="pdf")
+                pages_rotated = []
+                for pno in range(len(doc)):
+                    p = doc[pno]
+                    if p.rotation != 0:
+                        pages_rotated.append({"page_number": pno + 1, "prior_rotation": p.rotation})
+                        p.set_rotation(0)
+                if pages_rotated:
+                    out_pdf = doc.tobytes(garbage=3, deflate=True)
+                    doc.close()
+                    return out_pdf, {
+                        "pages_rotated": len(pages_rotated),
+                        "rotations_detected": [p["prior_rotation"] for p in pages_rotated],
+                        "details": pages_rotated,
+                        "normalized": True,
+                        "is_normalized": True,
+                    }
+                doc.close()
+                return content, {
+                    "pages_rotated": 0,
+                    "rotations_detected": [],
+                    "details": [],
+                    "normalized": False,
+                    "is_normalized": False,
+                }
+            except Exception:
+                return content, {
+                    "pages_rotated": 0,
+                    "rotations_detected": [],
+                    "details": [],
+                    "normalized": False,
+                    "is_normalized": False,
+                }
+        else:
+            try:
+                from PIL import Image, ImageOps
+                with Image.open(io.BytesIO(content)) as im:
+                    exif = im.getexif()
+                    orientation = exif.get(0x0112, 1) if exif else 1
+                    if orientation != 1:
+                        transposed = ImageOps.exif_transpose(im)
+                        buf = io.BytesIO()
+                        transposed.save(buf, format=im.format or "PNG")
+                        return buf.getvalue(), {
+                            "pages_rotated": 1,
+                            "rotations_detected": [orientation],
+                            "details": [{"page_number": 1, "orientation": orientation}],
+                            "normalized": True,
+                            "is_normalized": True,
+                        }
+            except Exception:
+                pass
+            return content, {
+                "pages_rotated": 0,
+                "rotations_detected": [],
+                "details": [],
+                "normalized": False,
+                "is_normalized": False,
+            }
 
     @classmethod
     def _extract_scanned_page(cls, page: Any, width: float, height: float) -> tuple[str, list[PageBlock]]:

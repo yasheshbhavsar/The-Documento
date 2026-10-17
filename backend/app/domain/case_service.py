@@ -311,3 +311,38 @@ def validate_case_status_transition(
     if tgt == CaseStage.REOPENED:
         if not any(r in STAFF_ROLES for r in ctx.roles):
             raise PermissionDeniedError("Only staff case managers or administrators can reopen a closed or archived case")
+
+
+def sync_legacy_to_decoupled_lifecycle(case: ImmigrationCase, target_legacy_status: str) -> None:
+    """Synchronizes decoupled lifecycle fields when legacy status transition occurs."""
+    tgt = target_legacy_status.lower().strip()
+    if tgt in ("inquiry", "intake"):
+        case.preparation_status = "AUTHORIZED_FOR_PREPARATION" if tgt == "intake" else "CLEARANCE_PENDING"
+        case.operational_state = "ACTIVE"
+    elif tgt in ("awaiting_documents", "processing", "awaiting_client"):
+        case.preparation_status = "PREPARATION_IN_PROGRESS"
+        case.operational_state = "ACTIVE"
+    elif tgt in ("internal_review", "ready_for_approval"):
+        case.preparation_status = "READY_FOR_FINAL_REVIEW"
+        case.review_status = "SENIOR_REVIEW"
+        case.operational_state = "ACTIVE"
+    elif tgt == "approved_for_submission":
+        case.preparation_status = "READY_TO_SUBMIT"
+        case.review_status = "APPROVED"
+        case.operational_state = "ACTIVE"
+    elif tgt == "submitted":
+        case.preparation_status = "SUBMITTED"
+        case.outcome_status = "PENDING_ADJUDICATION"
+        case.operational_state = "ACTIVE"
+    elif tgt == "decision_received":
+        case.preparation_status = "SUBMITTED"
+        case.outcome_status = "APPROVED"
+        case.operational_state = "COMPLETED"
+    elif tgt == "closed":
+        case.operational_state = "COMPLETED"
+    elif tgt == "archived":
+        case.operational_state = "ARCHIVED"
+    elif tgt == "reopened":
+        case.operational_state = "ACTIVE"
+        case.preparation_status = "PREPARATION_IN_PROGRESS"
+

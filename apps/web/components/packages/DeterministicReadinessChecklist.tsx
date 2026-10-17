@@ -1,19 +1,59 @@
 "use client";
 
-import React from "react";
-import { PackageReadinessChecklist, ReadinessCheckItem } from "../../lib/types";
+import React, { useState, useEffect } from "react";
+import {
+  PackageReadinessChecklist,
+  ReadinessCheckItem,
+  PackageBlockerReport,
+  BlockerExplanation,
+} from "../../lib/types";
+import { getPackageBlockersExplanation } from "../../lib/api";
 
 interface DeterministicReadinessChecklistProps {
   checklist: PackageReadinessChecklist;
   onAssemblePackage?: () => void;
   isLoading?: boolean;
+  caseId?: string;
+  blockerReport?: PackageBlockerReport;
+  onBlockerAction?: (actionUrl: string) => void;
 }
 
 export const DeterministicReadinessChecklist: React.FC<DeterministicReadinessChecklistProps> = ({
   checklist,
   onAssemblePackage,
   isLoading = false,
+  caseId,
+  blockerReport,
+  onBlockerAction,
 }) => {
+  const targetCaseId = caseId || checklist.case_id;
+  const [report, setReport] = useState<PackageBlockerReport | null>(blockerReport || null);
+  const [loadingBlockers, setLoadingBlockers] = useState<boolean>(false);
+  const [showBlockersSection, setShowBlockersSection] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (blockerReport) {
+      setReport(blockerReport);
+      return;
+    }
+    if (targetCaseId) {
+      let active = true;
+      setLoadingBlockers(true);
+      getPackageBlockersExplanation(targetCaseId)
+        .then((res) => {
+          if (active && res) {
+            setReport(res);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (active) setLoadingBlockers(false);
+        });
+      return () => {
+        active = false;
+      };
+    }
+  }, [targetCaseId, blockerReport]);
   const getStatusBadge = (item: ReadinessCheckItem) => {
     switch (item.status) {
       case "passed":
@@ -357,6 +397,230 @@ export const DeterministicReadinessChecklist: React.FC<DeterministicReadinessChe
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Deterministic Blocker Explanations Section */}
+      <div
+        data-testid="deterministic-blockers-section"
+        style={{
+          borderTop: "2px solid #E2E8E4",
+          background: "#F8FAF9",
+          padding: "24px 28px",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "16px" }}>🔍</span>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#172322", margin: 0 }}>
+                Deterministic Blocker Explanations & Root Cause Traces
+              </h3>
+              {report && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "3px 10px",
+                    borderRadius: "999px",
+                    background: report.critical_blockers_count > 0 ? "#FEE2E2" : "#ECFDF5",
+                    color: report.critical_blockers_count > 0 ? "#991B1B" : "#065F46",
+                    border: report.critical_blockers_count > 0 ? "1px solid #FCA5A5" : "1px solid #A7F3D0",
+                  }}
+                >
+                  {report.critical_blockers_count} Critical Blocker(s) • {report.warning_blockers_count} Warning(s)
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: "12px", color: "#6E7F7C", margin: "4px 0 0 0" }}>
+              Translates deterministic package blockers and status/reason codes into explicit explanations with statutory context and remediation workflows.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowBlockersSection(!showBlockersSection)}
+            style={{
+              padding: "6px 12px",
+              fontSize: "12px",
+              fontWeight: 600,
+              borderRadius: "6px",
+              border: "1px solid #D1D5DB",
+              background: "#FFFFFF",
+              color: "#374151",
+              cursor: "pointer",
+            }}
+          >
+            {showBlockersSection ? "Collapse Explanations" : "Expand Explanations"}
+          </button>
+        </div>
+
+        {showBlockersSection && (
+          <div>
+            {loadingBlockers ? (
+              <div style={{ padding: "16px", textAlign: "center", color: "#6E7F7C", fontSize: "12px" }}>
+                Evaluating deterministic blocker rules across onboarding, holds, reviews, and documents...
+              </div>
+            ) : report?.blockers && report.blockers.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {report.blockers.map((b) => (
+                  <div
+                    key={b.blocker_code}
+                    data-testid={`blocker-item-${b.blocker_code}`}
+                    style={{
+                      background: "#FFFFFF",
+                      borderRadius: "10px",
+                      border: b.severity === "CRITICAL_BLOCKER" ? "1.5px solid #FECACA" : "1px solid #FDE68A",
+                      padding: "16px",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 800,
+                            fontFamily: "monospace",
+                            padding: "2px 8px",
+                            borderRadius: "4px",
+                            background: b.severity === "CRITICAL_BLOCKER" ? "#FEE2E2" : "#FEF3C7",
+                            color: b.severity === "CRITICAL_BLOCKER" ? "#991B1B" : "#92400E",
+                          }}
+                        >
+                          {b.blocker_code}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontFamily: "monospace",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            background: "#F3F4F6",
+                            color: "#4B5563",
+                            border: "1px solid #E5E7EB",
+                          }}
+                        >
+                          STATUS: {b.status_code}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            background: "#EEF2FF",
+                            color: "#3730A3",
+                          }}
+                        >
+                          {b.category.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: b.severity === "CRITICAL_BLOCKER" ? "#DC2626" : "#D97706",
+                        }}
+                      >
+                        {b.severity === "CRITICAL_BLOCKER" ? "⛔ CRITICAL BLOCKER" : "⚠️ WARNING"}
+                      </span>
+                    </div>
+
+                    <h4 style={{ fontSize: "14px", fontWeight: 700, color: "#111827", margin: "10px 0 4px 0" }}>
+                      {b.title}
+                    </h4>
+                    <p style={{ fontSize: "13px", color: "#374151", margin: "0 0 8px 0", lineHeight: "1.5" }}>
+                      {b.explanation}
+                    </p>
+
+                    {b.statutory_context && (
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#4B5563",
+                          background: "#F9FAFB",
+                          padding: "6px 10px",
+                          borderRadius: "6px",
+                          border: "1px solid #E5E7EB",
+                          marginBottom: "10px",
+                        }}
+                      >
+                        <strong>Statutory / Governance Context:</strong> {b.statutory_context}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginTop: "8px",
+                        paddingTop: "8px",
+                        borderTop: "1px solid #F3F4F6",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                      }}
+                    >
+                      <div style={{ fontSize: "12px", color: "#065F46", fontWeight: 600 }}>
+                        <span style={{ marginRight: "4px" }}>🔧</span> Remediation: {b.remediation_action}
+                      </div>
+                      {b.action_url && onBlockerAction && (
+                        <button
+                          type="button"
+                          onClick={() => onBlockerAction(b.action_url!)}
+                          style={{
+                            padding: "4px 10px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            borderRadius: "6px",
+                            background: "#0D6866",
+                            color: "#FFFFFF",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Navigate to Resolve →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: "16px",
+                  borderRadius: "8px",
+                  background: "#ECFDF5",
+                  border: "1px solid #A7F3D0",
+                  color: "#065F46",
+                  fontSize: "13px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <span>✓</span>
+                <strong>Zero package assembly blockers detected.</strong> All onboarding clearances, progressive reviews, and document integrity checks are in ready state.
+              </div>
+            )}
+
+            {/* Guardrail Disclaimer */}
+            <div
+              style={{
+                marginTop: "14px",
+                padding: "8px 12px",
+                borderRadius: "6px",
+                background: "#FEF3C7",
+                border: "1px solid #FDE68A",
+                color: "#92400E",
+                fontSize: "11px",
+                lineHeight: "1.4",
+              }}
+            >
+              <strong>AI Guardrail:</strong> {report?.guardrail_notice || "AI does not decide legal eligibility, authenticity, fraud, or legal sufficiency. All blocker checks evaluate deterministic system rules."}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

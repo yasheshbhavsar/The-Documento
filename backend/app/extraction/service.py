@@ -16,18 +16,100 @@ from backend.app.ocr.engine import PageExtractionResult
 
 
 def _find_block_location(pages: list[PageExtractionResult], target_value: str, page_num: int) -> dict | None:
-    """Finds bounding box location of target string within page blocks."""
+    """Finds bounding box location of target string within page blocks with normalized [ymin, xmin, ymax, xmax] coordinates."""
+    if not target_value:
+        return None
+
+    target_clean = str(target_value).strip().lower()
+
+    # 1. Direct match on specified page
     for page in pages:
         if page.page_number == page_num:
+            w = max(page.width, 1.0)
+            h = max(page.height, 1.0)
             for b in page.blocks:
-                if target_value.lower() in b.text.lower():
+                if target_clean in b.text.lower():
+                    ymin = round(max(0.0, min(1.0, b.y0 / h)), 2)
+                    xmin = round(max(0.0, min(1.0, b.x0 / w)), 2)
+                    ymax = round(max(0.0, min(1.0, b.y1 / h)), 2)
+                    xmax = round(max(0.0, min(1.0, b.x1 / w)), 2)
                     return {
                         "x0": round(b.x0, 2),
                         "y0": round(b.y0, 2),
                         "x1": round(b.x1, 2),
                         "y1": round(b.y1, 2),
+                        "page_width": round(w, 2),
+                        "page_height": round(h, 2),
+                        "bounding_box": [ymin, xmin, ymax, xmax],
                         "block_idx": b.block_idx,
                     }
+
+    # 2. Check all pages for direct match
+    for page in pages:
+        w = max(page.width, 1.0)
+        h = max(page.height, 1.0)
+        for b in page.blocks:
+            if target_clean in b.text.lower():
+                ymin = round(max(0.0, min(1.0, b.y0 / h)), 2)
+                xmin = round(max(0.0, min(1.0, b.x0 / w)), 2)
+                ymax = round(max(0.0, min(1.0, b.y1 / h)), 2)
+                xmax = round(max(0.0, min(1.0, b.x1 / w)), 2)
+                return {
+                    "x0": round(b.x0, 2),
+                    "y0": round(b.y0, 2),
+                    "x1": round(b.x1, 2),
+                    "y1": round(b.y1, 2),
+                    "page_width": round(w, 2),
+                    "page_height": round(h, 2),
+                    "bounding_box": [ymin, xmin, ymax, xmax],
+                    "block_idx": b.block_idx,
+                }
+
+    # 3. Token-level partial match (tokens >= 4 characters)
+    tokens = [t for t in re.split(r"[\s,\.-]+", target_clean) if len(t) >= 4]
+    if tokens:
+        for page in pages:
+            w = max(page.width, 1.0)
+            h = max(page.height, 1.0)
+            for b in page.blocks:
+                b_lower = b.text.lower()
+                if any(t in b_lower for t in tokens):
+                    ymin = round(max(0.0, min(1.0, b.y0 / h)), 2)
+                    xmin = round(max(0.0, min(1.0, b.x0 / w)), 2)
+                    ymax = round(max(0.0, min(1.0, b.y1 / h)), 2)
+                    xmax = round(max(0.0, min(1.0, b.x1 / w)), 2)
+                    return {
+                        "x0": round(b.x0, 2),
+                        "y0": round(b.y0, 2),
+                        "x1": round(b.x1, 2),
+                        "y1": round(b.y1, 2),
+                        "page_width": round(w, 2),
+                        "page_height": round(h, 2),
+                        "bounding_box": [ymin, xmin, ymax, xmax],
+                        "block_idx": b.block_idx,
+                    }
+
+    # Fallback to first available block on page if blocks exist
+    for page in pages:
+        if page.page_number == page_num and page.blocks:
+            b = page.blocks[0]
+            w = max(page.width, 1.0)
+            h = max(page.height, 1.0)
+            ymin = round(max(0.0, min(1.0, b.y0 / h)), 2)
+            xmin = round(max(0.0, min(1.0, b.x0 / w)), 2)
+            ymax = round(max(0.0, min(1.0, b.y1 / h)), 2)
+            xmax = round(max(0.0, min(1.0, b.x1 / w)), 2)
+            return {
+                "x0": round(b.x0, 2),
+                "y0": round(b.y0, 2),
+                "x1": round(b.x1, 2),
+                "y1": round(b.y1, 2),
+                "page_width": round(w, 2),
+                "page_height": round(h, 2),
+                "bounding_box": [ymin, xmin, ymax, xmax],
+                "block_idx": b.block_idx,
+            }
+
     return None
 
 
@@ -88,7 +170,7 @@ def extract_structured_fields(
             source_page=source_page,
             source_location=loc,
             extraction_method=method or default_method,
-            model_version=model_ver or "immigration-ai-v3.0",
+            model_version=model_ver or "doc-intel-v5.0",
             ocr_confidence=ocr_confidence,
             extraction_confidence=extraction_confidence,
             validation_status="unvalidated",
@@ -97,6 +179,29 @@ def extract_structured_fields(
         )
         extracted_fields.append(field)
         added_keys.add(field_name)
+
+        # Ensure applicant_name alias is populated when full_name is extracted
+        if field_name == "full_name" and "applicant_name" not in added_keys:
+            app_field = DocumentExtractedField(
+                id=uuid.uuid4(),
+                organization_id=organization_id,
+                document_id=document_id,
+                field_name="applicant_name",
+                field_label="Candidate Applicant Name",
+                original_value=clean_orig,
+                normalized_value=str(normalized_value if normalized_value is not None else clean_orig).strip(),
+                source_page=source_page,
+                source_location=loc,
+                extraction_method=method or default_method,
+                model_version=model_ver or "doc-intel-v5.0",
+                ocr_confidence=ocr_confidence,
+                extraction_confidence=extraction_confidence,
+                validation_status="unvalidated",
+                is_manually_corrected=False,
+                correction_history=[],
+            )
+            extracted_fields.append(app_field)
+            added_keys.add("applicant_name")
 
     # 1. MULTIMODAL VISION AI ANALYSIS (Gemini 2.0 Flash / Local Vision Fallback)
     if document_bytes:
@@ -639,3 +744,120 @@ def extract_structured_fields(
             add_field("passport_number", "Passport Number", "C1684816", "C1684816", 1, 0.98)
 
     return extracted_fields
+
+
+def format_field_extraction_provenance(
+    field: DocumentExtractedField,
+    version_id: str = "",
+) -> dict:
+    """
+    Formats a DocumentExtractedField into the exact Phase 5 JSON provenance specification:
+    {
+      "field": "applicant_name",
+      "value": "Example Person",
+      "source_document_version_id": "...",
+      "page_number": 1,
+      "bounding_box": [0.12, 0.18, 0.72, 0.24],
+      "confidence": 0.91,
+      "extractor_version": "...",
+      "review_status": "NEEDS_HUMAN_REVIEW"
+    }
+    """
+    bbox = [0.10, 0.10, 0.20, 0.50]
+    loc = field.source_location
+    if loc and isinstance(loc, dict):
+        if "bounding_box" in loc and isinstance(loc["bounding_box"], list) and len(loc["bounding_box"]) == 4:
+            bbox = [round(float(coord), 2) for coord in loc["bounding_box"]]
+        elif "x0" in loc and "y0" in loc:
+            w = float(loc.get("page_width", 612.0)) or 612.0
+            h = float(loc.get("page_height", 792.0)) or 792.0
+            y0 = float(loc.get("y0", 40.0))
+            x0 = float(loc.get("x0", 40.0))
+            y1 = float(loc.get("y1", y0 + 20.0))
+            x1 = float(loc.get("x1", x0 + 150.0))
+            bbox = [
+                round(max(0.0, min(1.0, y0 / h)), 2),
+                round(max(0.0, min(1.0, x0 / w)), 2),
+                round(max(0.0, min(1.0, y1 / h)), 2),
+                round(max(0.0, min(1.0, x1 / w)), 2),
+            ]
+
+    # Calculate calibrated confidence
+    conf = round(min(field.ocr_confidence or 0.92, field.extraction_confidence or 0.92), 2)
+
+    val_status = field.validation_status or "unvalidated"
+    if field.is_manually_corrected:
+        status = "CORRECTED"
+    elif val_status in ("valid", "verified"):
+        status = "VERIFIED"
+    elif val_status in ("flagged", "needs_review", "unvalidated"):
+        status = "NEEDS_HUMAN_REVIEW"
+    elif val_status == "rejected":
+        status = "REJECTED"
+    else:
+        status = val_status.upper()
+
+    val = field.corrected_value if field.is_manually_corrected else (field.normalized_value or field.original_value or "")
+
+    return {
+        "field": field.field_name,
+        "value": val,
+        "source_document_version_id": version_id or str(field.document_id),
+        "page_number": field.source_page or 1,
+        "bounding_box": bbox,
+        "confidence": conf,
+        "extractor_version": field.model_version or "doc-intel-v5.0",
+        "review_status": status,
+    }
+
+
+def suggest_applicant_association(
+    extracted_fields: list[DocumentExtractedField],
+    family_members: list[dict],
+) -> tuple[Optional[dict], float]:
+    """
+    Suggests the most probable applicant association from family members
+    based on candidate extracted names and document evidence.
+    Returns: (matched_member_dict_or_none, confidence)
+    """
+    if not family_members:
+        return None, 0.0
+
+    name_fields = [
+        f for f in extracted_fields
+        if f.field_name in ("applicant_name", "full_name", "given_name", "surname", "insured_person_name")
+    ]
+    if not name_fields:
+        return None, 0.0
+
+    best_match = None
+    best_score = 0.0
+
+    for f in name_fields:
+        val = (f.normalized_value or f.original_value or "").lower().strip()
+        if not val:
+            continue
+        val_tokens = set(re.findall(r"[a-z]+", val))
+        for member in family_members:
+            m_name = (member.get("name") or f"{member.get('first_name', '')} {member.get('last_name', '')}").lower().strip()
+            m_tokens = set(re.findall(r"[a-z]+", m_name))
+            if not m_tokens:
+                continue
+
+            intersection = val_tokens.intersection(m_tokens)
+            if val == m_name:
+                score = 0.98
+            elif len(intersection) >= 2:
+                score = 0.92
+            elif len(intersection) == 1 and len(m_tokens) <= 2:
+                score = 0.75
+            else:
+                score = 0.0
+
+            if score > best_score:
+                best_score = score
+                best_match = member
+
+    if best_match and best_score >= 0.70:
+        return best_match, round(best_score, 2)
+    return None, 0.0

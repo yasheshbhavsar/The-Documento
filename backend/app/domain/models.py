@@ -47,6 +47,13 @@ class Organization(Base):
     settings: Mapped[list["OrganizationSetting"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     processing_runs: Mapped[list["DocumentProcessingRun"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     outbox_events: Mapped[list["OutboxEvent"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    package_download_events: Mapped[list["PackageDownloadEvent"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    case_holds: Mapped[list["CaseHoldHistory"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    interim_reports: Mapped[list["CaseInterimReport"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    firm_config_audit_logs: Mapped[list["FirmConfigurationAuditLog"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    completed_application_summaries: Mapped[list["CompletedApplicationSummary"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    case_withdrawal_tombstones: Mapped[list["CaseWithdrawalTombstone"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    firm_export_requests: Mapped[list["FirmExportRequest"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
 
 
 class Branch(Base):
@@ -234,6 +241,9 @@ class ImmigrationCase(Base):
         UniqueConstraint("organization_id", "case_number", name="uq_case_org_number"),
         Index("ix_cases_org_status", "organization_id", "status"),
         Index("ix_cases_org_jurisdiction", "organization_id", "jurisdiction"),
+        Index("ix_cases_prep_status", "organization_id", "preparation_status"),
+        Index("ix_cases_operational_state", "organization_id", "operational_state"),
+        Index("ix_cases_payment_clearance", "organization_id", "payment_clearance_status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -245,6 +255,45 @@ class ImmigrationCase(Base):
     visa_category: Mapped[str] = mapped_column(String(64), nullable=False)  # EB-1A, O-1A, H-1B, L-1A
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="intake")
     priority_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Decoupled Phase 2 Multi-Dimensional Case Lifecycle States
+    payment_clearance_status: Mapped[str] = mapped_column(String(32), default="PENDING", nullable=False)
+    preparation_status: Mapped[str] = mapped_column(String(32), default="CLEARANCE_PENDING", nullable=False)
+    operational_state: Mapped[str] = mapped_column(String(32), default="ACTIVE", nullable=False)
+    review_status: Mapped[str] = mapped_column(String(32), default="NOT_STARTED", nullable=False)
+    outcome_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # Operational Hold Details (Holds NEVER erase deadlines)
+    hold_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    hold_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hold_applied_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Reapplication Link (Links history without auto-reusing stale documents/answers)
+    prior_case_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("immigration_cases.id", ondelete="SET NULL"), nullable=True, index=True)
+    reapplication_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Phase 4 Intake and Temporary Lifecycle
+    last_client_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    inactivity_warning_level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    post_download_retention_policy: Mapped[str] = mapped_column(String(32), default="seven_days", nullable=False)
+
+    # Phase 6 Rule Version Pinning & Change Control (Prevents silent overwrites of active cases)
+    pinned_rule_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    pinned_checklist_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    snapshot_pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rules_update_available: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    latest_available_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    # Phase 9 Firm Configuration Pinning & Decoupled Approval Gates
+    client_engagement_type: Mapped[str] = mapped_column(String(32), default="retained", nullable=False)
+    is_retained: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    submission_authorization_status: Mapped[str] = mapped_column(String(32), default="UNAUTHORIZED", nullable=False)
+    handover_authorization_status: Mapped[str] = mapped_column(String(32), default="RESTRICTED", nullable=False)
+    substantive_authorizations: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    pinned_firm_config_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    firm_config_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    firm_config_update_available: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 
@@ -265,6 +314,10 @@ class ImmigrationCase(Base):
     filing_packages: Mapped[list["FilingPackage"]] = relationship(back_populates="case", cascade="all, delete-orphan")
     engagements: Mapped[list["ClientEngagement"]] = relationship(back_populates="case", cascade="all, delete-orphan")
     invoices: Mapped[list["Invoice"]] = relationship(back_populates="case", cascade="all, delete-orphan")
+    hold_applied_by: Mapped[User | None] = relationship(foreign_keys=[hold_applied_by_id])
+    prior_case: Mapped["ImmigrationCase | None"] = relationship(remote_side=[id], foreign_keys=[prior_case_id])
+    hold_history: Mapped[list["CaseHoldHistory"]] = relationship(back_populates="case", cascade="all, delete-orphan")
+    interim_reports: Mapped[list["CaseInterimReport"]] = relationship(back_populates="case", cascade="all, delete-orphan")
 
 
 class CaseAssignment(Base):
@@ -302,6 +355,10 @@ class ClientDependant(Base):
 
     primary_client: Mapped[ClientProfile] = relationship(back_populates="dependants")
     user: Mapped[User | None] = relationship()
+
+    @property
+    def relationship(self) -> str:
+        return self.relationship_type
 
 
 class ClientConsent(Base):
@@ -428,6 +485,7 @@ class Document(Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     case_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("immigration_cases.id", ondelete="CASCADE"), nullable=True, index=True)
     client_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("client_profiles.id", ondelete="CASCADE"), nullable=True, index=True)
+    applicant_dependant_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("client_dependants.id", ondelete="SET NULL"), nullable=True, index=True)
     uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -461,12 +519,24 @@ class Document(Base):
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     layout_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
+    # Phase 4 Intake and Lifecycle Extensions
+    proposed_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    proposed_applicant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_assignment_confirmed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    assignment_confirmed_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    sub_documents_metadata: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    is_purged: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    has_unresolved_anomaly: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    anomaly_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 
     organization: Mapped[Organization] = relationship(back_populates="documents")
     case: Mapped[ImmigrationCase | None] = relationship(back_populates="documents")
     client: Mapped[ClientProfile | None] = relationship(back_populates="documents")
+    applicant_dependant: Mapped[ClientDependant | None] = relationship(foreign_keys=[applicant_dependant_id])
     uploaded_by: Mapped[User | None] = relationship(foreign_keys=[uploaded_by_user_id])
     verified_by: Mapped[User | None] = relationship(foreign_keys=[verified_by_user_id])
     extracted_fields: Mapped[list["DocumentExtractedField"]] = relationship(back_populates="document", cascade="all, delete-orphan")
@@ -627,6 +697,12 @@ class CaseAIFinding(Base):
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_confirmed_contradiction: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    evidence_reference: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {document_id, version, page, bounding_box, field}
+    client_facing_template: Mapped[str | None] = mapped_column(Text, nullable=True)  # Client-safe explanation template
+    internal_risk_notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Strictly staff-only privileged fraud/risk notes
+
     reviewer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolution_action: Mapped[str | None] = mapped_column(String(32), nullable=True)  # resolve, dismiss, escalate
@@ -640,6 +716,7 @@ class CaseAIFinding(Base):
     case: Mapped[ImmigrationCase] = relationship(back_populates="ai_findings")
     document: Mapped[Document | None] = relationship()
     reviewer: Mapped[User | None] = relationship(foreign_keys=[reviewer_id])
+    owner: Mapped[User | None] = relationship(foreign_keys=[owner_user_id])
     linked_task: Mapped[CaseTask | None] = relationship()
 
 
@@ -764,10 +841,91 @@ class RuleRequirement(Base):
     requires_human_review: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     review_guidance: Mapped[str | None] = mapped_column(Text, nullable=True)
     blocking_dependencies: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # Phase 6 Versioned Configuration, Review Status & Provenance
+    requirement_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="DRAFT_UNVERIFIED", nullable=False)  # DRAFT_UNVERIFIED, VERIFIED, STALE, DEPRECATED
+    source_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    effective_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 
     rule_set_version: Mapped[RuleSetVersion] = relationship(back_populates="requirements")
+
+    def to_phase6_dict(self, ruleset: Any = None, version: Any = None) -> dict:
+        """Serializes requirement to exact Phase 6 Rule JSON specification:
+        {
+          "rule_id": "CA-EXAMPLE-001",
+          "jurisdiction": "CA",
+          "pathway": "EXAMPLE_PATHWAY",
+          "requirement_key": "identity.passport",
+          "status": "DRAFT_UNVERIFIED",
+          "source_url": "https://official-source.example/",
+          "effective_from": "YYYY-MM-DD",
+          "effective_to": null,
+          "last_verified_at": null,
+          "version": 1,
+          "approved_by": null
+        }
+        """
+        v = version or self.rule_set_version
+        rs = ruleset or (v.rule_set if v and hasattr(v, "rule_set") else None)
+
+        eff_from_str = None
+        if self.effective_from:
+            eff_from_str = self.effective_from.strftime("%Y-%m-%d")
+        elif v and v.effective_date:
+            eff_from_str = v.effective_date.strftime("%Y-%m-%d")
+
+        eff_to_str = None
+        if self.effective_to:
+            eff_to_str = self.effective_to.strftime("%Y-%m-%d")
+
+        ver_val = 1
+        if v and getattr(v, "version_number", None):
+            try:
+                ver_val = int(str(v.version_number).split(".")[0])
+            except (ValueError, TypeError):
+                ver_val = 1
+
+        src_url = self.source_url
+        if not src_url and v and getattr(v, "official_source", None):
+            src_url = v.official_source.url
+
+        appr = self.approved_by
+        if not appr and v and getattr(v, "approved_by", None):
+            appr = v.approved_by.full_name
+
+        req_key = self.requirement_key
+        if not req_key:
+            req_key = self.code.lower().replace("-", ".")
+
+        return {
+            "rule_id": self.code,
+            "jurisdiction": getattr(rs, "jurisdiction", "CA") if rs else "CA",
+            "pathway": getattr(rs, "program_pathway", "UNKNOWN_PATHWAY") if rs else "UNKNOWN_PATHWAY",
+            "requirement_key": req_key,
+            "status": self.status,
+            "source_url": src_url,
+            "effective_from": eff_from_str,
+            "effective_to": eff_to_str,
+            "last_verified_at": self.last_verified_at.isoformat() if self.last_verified_at else None,
+            "version": ver_val,
+            "approved_by": appr,
+            "title": self.title,
+            "description": self.description,
+            "category": self.category,
+            "statutory_citation": self.statutory_citation,
+            "is_mandatory": self.is_mandatory,
+            "priority": self.priority,
+            "applicability_conditions": self.applicability_conditions or {},
+            "accepted_evidence_types": self.accepted_evidence_types or [],
+            "validation_rules": self.validation_rules or [],
+            "requires_human_review": self.requires_human_review,
+        }
 
 
 class CaseRequirementEvaluation(Base):
@@ -861,13 +1019,16 @@ class MessageThread(Base):
     __table_args__ = (
         Index("ix_threads_org_case", "organization_id", "case_id"),
         Index("ix_threads_status", "organization_id", "status"),
+        Index("ix_threads_channel_cat", "organization_id", "channel_category"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("immigration_cases.id", ondelete="CASCADE"), nullable=False, index=True)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
-    thread_type: Mapped[str] = mapped_column(String(64), default="general", nullable=False)  # client_inquiry, case_update, document_request, general
+    thread_type: Mapped[str] = mapped_column(String(64), default="general", nullable=False)  # client_inquiry, case_update, document_request, general, team_chat
+    channel_category: Mapped[str] = mapped_column(String(32), default="client", nullable=False)  # client, team
+    is_internal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)  # open, resolved, archived
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
@@ -1038,6 +1199,8 @@ class FilingPackage(Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("immigration_cases.id", ondelete="CASCADE"), nullable=False, index=True)
     package_template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("package_templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    prior_filing_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("filing_packages.id", ondelete="SET NULL"), nullable=True, index=True)
+    reapplication_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     version_number: Mapped[str] = mapped_column(String(32), default="v1.0.0", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)  # draft, readiness_passed, in_review, senior_review, client_confirmed, approved, locked, rejected
@@ -1058,6 +1221,86 @@ class FilingPackage(Base):
     template: Mapped[PackageTemplate | None] = relationship(back_populates="packages")
     approved_by: Mapped[User | None] = relationship(foreign_keys=[approved_by_user_id])
     rule_set_version: Mapped["RuleSetVersion | None"] = relationship()
+    prior_filing: Mapped["FilingPackage | None"] = relationship(remote_side=[id], foreign_keys=[prior_filing_id])
+    download_events: Mapped[list["PackageDownloadEvent"]] = relationship(back_populates="package", cascade="all, delete-orphan")
+
+
+class PackageDownloadEvent(Base):
+    __tablename__ = "package_download_events"
+    __table_args__ = (
+        Index("ix_pkg_downloads_pkg", "organization_id", "package_id"),
+        Index("ix_pkg_downloads_time", "organization_id", "downloaded_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    package_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("filing_packages.id", ondelete="CASCADE"), nullable=False, index=True)
+    downloaded_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    downloaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    package_hash_at_download: Mapped[str] = mapped_column(String(64), nullable=False)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    manifest_snapshot_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+    # Phase 4 Verified Download & Lifecycle Tracking
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    client_verification_payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    post_download_purge_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    post_download_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    organization: Mapped[Organization] = relationship(back_populates="package_download_events")
+    package: Mapped[FilingPackage] = relationship(back_populates="download_events")
+    downloaded_by: Mapped[User] = relationship()
+
+
+class CaseHoldHistory(Base):
+    __tablename__ = "case_hold_history"
+    __table_args__ = (
+        Index("ix_case_holds_case", "organization_id", "case_id"),
+        Index("ix_case_holds_placed_at", "organization_id", "placed_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("immigration_cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    hold_type: Mapped[str] = mapped_column(String(64), nullable=False)  # client_request, billing_arrears, pending_official_record, administrative
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    placed_by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    placed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    released_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    organization: Mapped[Organization] = relationship()
+    case: Mapped[ImmigrationCase] = relationship(back_populates="hold_history")
+    placed_by: Mapped[User] = relationship(foreign_keys=[placed_by_id])
+    released_by: Mapped[User | None] = relationship(foreign_keys=[released_by_id])
+
+
+class CaseInterimReport(Base):
+    __tablename__ = "case_interim_reports"
+    __table_args__ = (
+        Index("ix_case_interim_reports_case", "organization_id", "case_id"),
+        Index("ix_case_interim_reports_created", "organization_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("immigration_cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    trigger_action: Mapped[str] = mapped_column(String(64), nullable=False)  # hold_applied, owner_reassigned, manual_export
+    report_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    manifest_snapshot_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    ocr_summary_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    anomaly_report_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    download_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_downloaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="interim_reports")
+    case: Mapped[ImmigrationCase] = relationship(back_populates="interim_reports")
+    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
 
 
 class ServiceItem(Base):
@@ -1217,3 +1460,153 @@ class OrganizationSetting(Base):
 
     organization: Mapped[Organization] = relationship(back_populates="settings")
     updated_by: Mapped[User | None] = relationship()
+
+
+class FirmConfigurationAuditLog(Base):
+    __tablename__ = "firm_configuration_audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    config_domain: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    old_version_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    new_version_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    effective_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="firm_config_audit_logs")
+    actor: Mapped[User | None] = relationship()
+
+
+class CompletedApplicationSummary(Base):
+    """
+    Separate summary for completed/approved immigration cases.
+    Retains client name, case timeline (start/completion dates), assigned officer details,
+    and adjudication outcome after raw uploads and compiled packages are purged.
+    """
+    __tablename__ = "completed_application_summaries"
+    __table_args__ = (
+        Index("ix_comp_app_org_case", "organization_id", "case_id"),
+        Index("ix_comp_app_completed_at", "organization_id", "completion_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("immigration_cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    case_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    client_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    client_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("client_profiles.id", ondelete="SET NULL"), nullable=True)
+    visa_category: Mapped[str] = mapped_column(String(64), nullable=False)
+    jurisdiction: Mapped[str] = mapped_column(String(32), default="US", nullable=False)
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completion_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    assigned_officer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    assigned_officer_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    assigned_officer_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    assigned_officer_role: Mapped[str] = mapped_column(String(64), default="lead_attorney", nullable=False)
+    adjudication_outcome: Mapped[str] = mapped_column(String(64), default="APPROVED", nullable=False)
+    official_reference_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    cleanup_executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    purged_files_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="completed_application_summaries")
+    case: Mapped[ImmigrationCase] = relationship()
+    client: Mapped[ClientProfile | None] = relationship()
+    assigned_officer: Mapped[User | None] = relationship()
+
+
+class CaseWithdrawalTombstone(Base):
+    """
+    Minimal tombstone record retained following case representation withdrawal.
+    Deletes raw file uploads and filing packages under the retention policy while preserving
+    minimal demographic data, contact info, intended application type, and formal authority status.
+    """
+    __tablename__ = "case_withdrawal_tombstones"
+    __table_args__ = (
+        Index("ix_withdrawn_org_case", "organization_id", "case_id"),
+        Index("ix_withdrawn_date", "organization_id", "executed_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("immigration_cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    case_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    client_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    client_address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    client_contact_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    client_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    intended_application_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    jurisdiction: Mapped[str] = mapped_column(String(32), default="US", nullable=False)
+    executed_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    executed_by_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    withdrawal_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    pre_withdrawal_state_snapshot_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    formal_authority_withdrawal_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    formal_authority_status: Mapped[str] = mapped_column(String(64), default="not_applicable", nullable=False)
+    formal_authority_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="case_withdrawal_tombstones")
+    case: Mapped[ImmigrationCase] = relationship()
+    executed_by: Mapped[User | None] = relationship()
+
+
+class FirmExportRequest(Base):
+    """
+    Firm offboarding and data export request.
+    Controlled by owner/admin and evaluated against plan/payment/contractual rights.
+    Supports automated self-service bundle generation or assisted concierge export path.
+    """
+    __tablename__ = "firm_export_requests"
+    __table_args__ = (
+        Index("ix_firm_export_org", "organization_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)  # pending, processing, completed, assisted_export_required, denied
+    export_type: Mapped[str] = mapped_column(String(32), default="self_service", nullable=False)  # self_service, assisted_concierge
+    contractual_entitlement_verified: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    archive_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    archive_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    archive_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    support_ticket_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    organization: Mapped[Organization] = relationship(back_populates="firm_export_requests")
+    requested_by: Mapped[User | None] = relationship()
+
+
+class PrivacyLegalReview(Base):
+    """
+    Jurisdiction-specific privacy and legal review register (India DPDP 2023, Canada PIPEDA, US, UK/EU).
+    Tracks regulatory frameworks, legal counsel sign-off, valid dates, and mandatory safeguards.
+    """
+    __tablename__ = "privacy_legal_reviews"
+    __table_args__ = (
+        Index("ix_privacy_reviews_jurisdiction", "jurisdiction"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    jurisdiction: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)  # IN, CA, US, UK_EU
+    market_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    statutory_framework: Mapped[str] = mapped_column(String(255), nullable=False)
+    review_status: Mapped[str] = mapped_column(String(32), default="approved", nullable=False)  # approved, in_review, conditionally_approved
+    legal_counsel_signoff_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    signoff_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    mandatory_safeguards_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+

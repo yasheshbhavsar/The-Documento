@@ -9,6 +9,9 @@ import {
   MessageItem,
   NotificationItem,
   InvoiceItem,
+  InProgressFormItem,
+  ClientPendingActionItem,
+  ClientAppointmentItem,
 } from "../../lib/types";
 import { DocumentInspectorModal } from "../modals/DocumentInspectorModal";
 import { WaitingStateBanner } from "../portal/WaitingStateBanner";
@@ -16,10 +19,11 @@ import { DocumentRequestManager } from "../portal/DocumentRequestManager";
 import { SecureMessagingHub } from "../portal/SecureMessagingHub";
 import { ClientOnboardingWizard } from "../portal/ClientOnboardingWizard";
 import { ConfigurableFormViewer } from "../forms/ConfigurableFormViewer";
-import { FALLBACK_FORM_SUBMISSION } from "../../lib/api";
+import { FALLBACK_FORM_SUBMISSION, FALLBACK_WAITING_STATE } from "../../lib/api";
 import { VisaFileUpdatesView, FALLBACK_VISA_FILE_UPDATES } from "../portal/VisaFileUpdatesView";
 import { DirectDocumentUploader } from "../portal/DirectDocumentUploader";
 import { CaseOfficerChatBanner } from "../portal/CaseOfficerChatBanner";
+import { FamilyDocumentIntakeHub } from "../portal/FamilyDocumentIntakeHub";
 import {
   ClientLanguage,
   CLIENT_TRANSLATIONS,
@@ -27,6 +31,134 @@ import {
   saveClientLanguage,
 } from "../../lib/clientLocalization";
 import { ClientLanguageBar } from "../portal/ClientLanguageBar";
+
+export function DocumentProgressionStepper({
+  status,
+  processingStatus,
+  verificationStatus,
+}: {
+  status: string;
+  processingStatus?: string;
+  verificationStatus?: string;
+}) {
+  const isRejected =
+    verificationStatus === "rejected" ||
+    status === "rejected" ||
+    status === "correction_required";
+  const isAccepted =
+    verificationStatus === "verified" ||
+    verificationStatus === "accepted" ||
+    status === "verified" ||
+    status === "accepted";
+  const isPackageReady =
+    status === "ready" ||
+    status === "filed" ||
+    status === "package_ready";
+  const isUnderReview =
+    !isAccepted &&
+    !isPackageReady &&
+    !isRejected &&
+    (status === "under_review" ||
+      processingStatus === "completed" ||
+      verificationStatus === "review");
+
+  const currentStep = isPackageReady
+    ? 4
+    : isAccepted
+    ? 3
+    : isUnderReview
+    ? 2
+    : isRejected
+    ? 2
+    : 1;
+
+  const steps = [
+    { num: 1, label: "Uploaded" },
+    { num: 2, label: isRejected ? "Correction Req." : "Under Review" },
+    { num: 3, label: "Accepted" },
+    { num: 4, label: "Package-Ready" },
+  ];
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "4px",
+        background: "#F8FAF9",
+        border: "1px solid #DCE5E1",
+        borderRadius: "20px",
+        padding: "3px 8px",
+        fontSize: "11px",
+      }}
+      aria-label={`Document progression stage: ${steps[currentStep - 1]?.label}`}
+    >
+      {steps.map((st, idx) => {
+        const isDone = st.num < currentStep;
+        const isCurrent = st.num === currentStep;
+        const isStepRejected = isRejected && st.num === 2;
+
+        return (
+          <React.Fragment key={st.num}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "3px",
+                fontWeight: isCurrent ? 750 : 500,
+                color: isStepRejected
+                  ? "#DC2626"
+                  : isCurrent
+                  ? "#0D6866"
+                  : isDone
+                  ? "#166534"
+                  : "#94A3B8",
+              }}
+            >
+              <span
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  borderRadius: "50%",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "9px",
+                  fontWeight: 800,
+                  background: isStepRejected
+                    ? "#FEE2E2"
+                    : isCurrent
+                    ? "#0D6866"
+                    : isDone
+                    ? "#DCFCE7"
+                    : "#E2E8F0",
+                  color: isStepRejected
+                    ? "#DC2626"
+                    : isCurrent
+                    ? "#FFFFFF"
+                    : isDone
+                    ? "#166534"
+                    : "#64748B",
+                  border: isStepRejected
+                    ? "1px solid #FCA5A5"
+                    : isCurrent
+                    ? "1px solid #0D6866"
+                    : "none",
+                }}
+              >
+                {isStepRejected ? "✕" : isDone ? "✓" : st.num}
+              </span>
+              <span>{st.label}</span>
+            </span>
+            {idx < steps.length - 1 && (
+              <span style={{ color: "#CBD5E1", fontSize: "10px" }}>➔</span>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
 
 interface ClientPortalProps {
   myCase: ImmigrationCase | null;
@@ -65,6 +197,7 @@ export function ClientPortal({
   const [activeTab, setActiveTab] = useState<
     | "overview"
     | "updates"
+    | "checklist"
     | "profile"
     | "questionnaire"
     | "forms"
@@ -80,6 +213,75 @@ export function ClientPortal({
   const [selectedDocForInspection, setSelectedDocForInspection] = useState<DocumentItem | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [chatPromptText, setChatPromptText] = useState("");
+  const [checklistApplicantFilter, setChecklistApplicantFilter] = useState<"all" | "primary" | "spouse" | "child">("all");
+  const [checklistStatusFilter, setChecklistStatusFilter] = useState<string>("all");
+  const [rescheduleNotice, setRescheduleNotice] = useState<string | null>(null);
+
+  // In-Progress Questionnaires & Forms
+  const [inProgressForms, setInProgressForms] = useState<InProgressFormItem[]>([
+    {
+      form_id: "form-i140",
+      form_title: "Form I-140 Immigrant Petition Questionnaire",
+      completion_percentage: 65,
+      last_saved_at: "2026-03-24T18:40:00Z",
+      applicant_name: "Dr. Elena Rostova",
+      estimated_minutes_remaining: 15,
+    },
+    {
+      form_id: "form-i485-dep",
+      form_title: "Form I-485 Derivative Biographic Questionnaire",
+      completion_percentage: 30,
+      last_saved_at: "2026-03-22T11:20:00Z",
+      applicant_name: "Dmitri Rostov",
+      estimated_minutes_remaining: 25,
+    },
+  ]);
+
+  // Pending Actions
+  const [pendingActions, setPendingActions] = useState<ClientPendingActionItem[]>([
+    {
+      id: "act-1",
+      title: "Re-upload Certified Translation of Foreign Marriage Record",
+      description: "Cyrillic marriage record requires complete certified English translator declaration.",
+      due_date: "In 3 days (April 10, 2026)",
+      priority: "high",
+      action_type: "document_upload",
+      target_applicant: "Dmitri Rostov",
+    },
+    {
+      id: "act-2",
+      title: "Digital Sign-off on Premium Processing Retainer Addendum",
+      description: "Authorize Form I-907 upgrade for 15-day USCIS adjudication window.",
+      due_date: "In 5 days",
+      priority: "medium",
+      action_type: "esign",
+      target_applicant: "Dr. Elena Rostova",
+    },
+  ]);
+
+  // Upcoming Appointments
+  const [upcomingAppointments, setUpcomingAppointments] = useState<ClientAppointmentItem[]>([
+    {
+      id: "apt-1",
+      title: "USCIS Biometrics Appointment",
+      appointment_type: "biometrics",
+      date_time: "Tuesday, April 14, 2026 at 10:00 AM EST",
+      location: "USCIS Application Support Center • 8830 Richmond Hwy, Alexandria, VA",
+      officer_or_venue: "ASC Officer Station 4",
+      instructions: "Bring unexpired foreign passport and official Form I-797C appointment notice.",
+      can_reschedule: true,
+    },
+    {
+      id: "apt-2",
+      title: "Strategy Video Consultation with Lead Attorney",
+      appointment_type: "attorney_strategy",
+      date_time: "Friday, April 17, 2026 at 02:30 PM EST",
+      location: "Secure Firm Zoom Conference Room",
+      officer_or_venue: "Sarah Vance, Esq. (Lead Partner)",
+      instructions: "Review final exhibit list and expert witness endorsement statements.",
+      can_reschedule: true,
+    },
+  ]);
 
   const missingDocs = documents.filter((d) => d.status === "missing" || d.status === "action_needed");
   const unreadCount = notifications.filter((n) => n.status === "unread").length;
@@ -108,6 +310,13 @@ export function ClientPortal({
       buttonText: `📑 ${t.navUpdates} (5)`,
       icon: "📑",
       count: 5,
+    },
+    {
+      key: "checklist" as const,
+      label: "Per-Applicant Checklist",
+      buttonText: `✅ Per-Applicant Checklist (8)`,
+      icon: "✅",
+      count: 8,
     },
     {
       key: "documents" as const,
@@ -841,6 +1050,7 @@ export function ClientPortal({
 
             {/* Primary Next-Action Card & Task Ownership Separation */}
             <WaitingStateBanner
+              waitingState={FALLBACK_WAITING_STATE}
               caseId={myCase?.id}
               onActionClick={(item) => {
                 if (item.type === "document_request") {
@@ -850,6 +1060,342 @@ export function ClientPortal({
                 }
               }}
             />
+
+            {/* In-Progress Forms, Pending Actions & Upcoming Appointments Card */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1px solid #B9DED4",
+                borderRadius: "14px",
+                padding: "20px 24px",
+                boxShadow: "0 1px 4px rgba(6, 60, 61, 0.03)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "18px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                  borderBottom: "1px solid #DCE5E1",
+                  paddingBottom: "12px",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "16px" }}>⚡</span>
+                    <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
+                      In-Progress Forms, Pending Actions &amp; Appointments
+                    </h3>
+                  </div>
+                  <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
+                    Resume unfinished questionnaires, clear client blockers, and track scheduled official appointments.
+                  </p>
+                </div>
+                <Badge variant="review">
+                  {inProgressForms.length} Forms In Progress • {pendingActions.length} Pending Actions
+                </Badge>
+              </div>
+
+              {rescheduleNotice && (
+                <div
+                  style={{
+                    background: "#EAF6F0",
+                    border: "1px solid #B9DED4",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    fontSize: "12px",
+                    color: "#0D6866",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span>✓ {rescheduleNotice}</span>
+                  <button
+                    type="button"
+                    onClick={() => setRescheduleNotice(null)}
+                    style={{ background: "transparent", border: "none", color: "#0D6866", cursor: "pointer", fontWeight: 700 }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
+                  gap: "16px",
+                }}
+              >
+                {/* 1. In-Progress Forms (Save / Resume) */}
+                <div
+                  style={{
+                    background: "#F8FAF9",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "10px",
+                    padding: "14px 16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <strong style={{ fontSize: "13px", color: "#063C3D" }}>📝 In-Progress Forms</strong>
+                      <span style={{ fontSize: "11px", color: "#64748B" }}>Auto-Saved</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      {inProgressForms.map((frm) => (
+                        <div
+                          key={frm.form_id}
+                          style={{
+                            background: "#FFFFFF",
+                            border: "1px solid #CBD5E1",
+                            borderRadius: "8px",
+                            padding: "10px 12px",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                            <div>
+                              <strong style={{ fontSize: "12px", color: "#0F172A", display: "block" }}>
+                                {frm.form_title}
+                              </strong>
+                              <span style={{ fontSize: "11px", color: "#64748B" }}>
+                                For: {frm.applicant_name} • ~{frm.estimated_minutes_remaining} min left
+                              </span>
+                            </div>
+                            <span style={{ fontSize: "12px", fontWeight: 750, color: "#0D6866" }}>
+                              {frm.completion_percentage}%
+                            </span>
+                          </div>
+                          <div style={{ width: "100%", height: "6px", background: "#E2E8F0", borderRadius: "3px", margin: "8px 0" }}>
+                            <div
+                              style={{
+                                width: `${frm.completion_percentage}%`,
+                                height: "100%",
+                                background: "#0D6866",
+                                borderRadius: "3px",
+                              }}
+                            />
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ fontSize: "10px", color: "#94A3B8" }}>
+                              Saved {new Date(frm.last_saved_at).toLocaleDateString()}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onOpenQuestionnaireModal();
+                              }}
+                              style={{
+                                background: "#0D6866",
+                                color: "#FFF",
+                                border: "none",
+                                borderRadius: "4px",
+                                padding: "4px 10px",
+                                fontSize: "11px",
+                                fontWeight: 650,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Resume Form →
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Pending Actions Counter & Checklist */}
+                <div
+                  style={{
+                    background: "#F8FAF9",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "10px",
+                    padding: "14px 16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <strong style={{ fontSize: "13px", color: "#063C3D" }}>⚠️ Pending Actions</strong>
+                      <span
+                        style={{
+                          background: "#FEE2E2",
+                          color: "#991B1B",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "2px 7px",
+                          borderRadius: "10px",
+                        }}
+                      >
+                        {pendingActions.length} Actions Required
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {pendingActions.map((act) => (
+                        <div
+                          key={act.id}
+                          style={{
+                            background: "#FFFFFF",
+                            border: "1px solid #FECACA",
+                            borderRadius: "8px",
+                            padding: "10px 12px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "6px",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                            <strong style={{ fontSize: "12px", color: "#991B1B" }}>{act.title}</strong>
+                            <Badge variant={act.priority === "high" ? "action" : "warning"} size="sm">
+                              {act.priority.toUpperCase()}
+                            </Badge>
+                          </div>
+                          <p style={{ margin: "0", fontSize: "11px", color: "#475569", lineHeight: "1.4" }}>
+                            {act.description}
+                          </p>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "2px" }}>
+                            <span style={{ fontSize: "11px", color: "#DC2626", fontWeight: 650 }}>
+                              ⏰ {act.due_date}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (act.action_type === "document_upload") {
+                                  onOpenUploadModal();
+                                } else {
+                                  onOpenQuestionnaireModal();
+                                }
+                              }}
+                              style={{
+                                background: "#DC2626",
+                                color: "#FFF",
+                                border: "none",
+                                borderRadius: "4px",
+                                padding: "4px 10px",
+                                fontSize: "11px",
+                                fontWeight: 650,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Take Action →
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Upcoming Official Appointments */}
+                <div
+                  style={{
+                    background: "#F8FAF9",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "10px",
+                    padding: "14px 16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <strong style={{ fontSize: "13px", color: "#063C3D" }}>📅 Upcoming Appointments</strong>
+                      <span style={{ fontSize: "11px", color: "#166534", fontWeight: 650 }}>Confirmed</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {upcomingAppointments.map((apt) => (
+                        <div
+                          key={apt.id}
+                          style={{
+                            background: "#FFFFFF",
+                            border: "1px solid #CBD5E1",
+                            borderRadius: "8px",
+                            padding: "10px 12px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "4px",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
+                            <strong style={{ fontSize: "12px", color: "#063C3D" }}>{apt.title}</strong>
+                            <Badge variant="success" size="sm">
+                              {apt.appointment_type.replace("_", " ").toUpperCase()}
+                            </Badge>
+                          </div>
+                          <span style={{ fontSize: "11px", color: "#0F172A", fontWeight: 650 }}>
+                            🗓️ {apt.date_time}
+                          </span>
+                          <span style={{ fontSize: "11px", color: "#64748B" }}>
+                            📍 {apt.location}
+                          </span>
+                          <p style={{ margin: "2px 0 0 0", fontSize: "11px", color: "#475569", fontStyle: "italic" }}>
+                            {apt.instructions}
+                          </p>
+                          <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRescheduleNotice(`Calendar invitation for "${apt.title}" generated.`);
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: "4px 8px",
+                                fontSize: "10px",
+                                fontWeight: 600,
+                                background: "#EAF6F0",
+                                color: "#0D6866",
+                                border: "1px solid #B9DED4",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Add to Calendar
+                            </button>
+                            {apt.can_reschedule && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRescheduleNotice(
+                                    `Reschedule request submitted to your caseworker for ${apt.title}. Expect confirmation within 24 business hours.`
+                                  );
+                                }}
+                                style={{
+                                  padding: "4px 8px",
+                                  fontSize: "10px",
+                                  fontWeight: 600,
+                                  background: "#FFF",
+                                  color: "#64748B",
+                                  border: "1px solid #CBD5E1",
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Request Reschedule
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Quick Preview of Visa Application File Updates on Overview */}
             <div
@@ -1184,10 +1730,347 @@ export function ClientPortal({
         )}
 
         {/* =========================================================================
+            TAB: PER-APPLICANT EVIDENTIARY CHECKLIST
+            ========================================================================= */}
+        {activeTab === "checklist" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {/* Header Card */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1px solid #DCE5E1",
+                borderRadius: "12px",
+                padding: "20px 24px",
+                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+                    <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 750, color: "#063C3D" }}>
+                      Per-Applicant Evidentiary Checklist
+                    </h2>
+                    <Badge variant="review">8 CFR § 204.5 Grounded</Badge>
+                  </div>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#445451" }}>
+                    Individualized requirements grouped per family member. Review exact verification states, document progression pipelines, and structured rejection remedies.
+                  </p>
+                </div>
+                <Button variant="primary" size="sm" onClick={onOpenUploadModal}>
+                  + Upload Document
+                </Button>
+              </div>
+
+              {/* Applicant Filter Tabs */}
+              <div style={{ display: "flex", gap: "8px", marginTop: "16px", flexWrap: "wrap" }}>
+                {[
+                  { key: "all", label: "All Family Members", count: 10 },
+                  { key: "primary", label: "Dr. Elena Rostova (Primary)", count: 5 },
+                  { key: "spouse", label: "Dmitri Rostov (Spouse)", count: 3 },
+                  { key: "child", label: "Sofia Rostova (Child)", count: 2 },
+                ].map((flt) => {
+                  const active = checklistApplicantFilter === flt.key;
+                  return (
+                    <button
+                      key={flt.key}
+                      type="button"
+                      onClick={() => setChecklistApplicantFilter(flt.key as typeof checklistApplicantFilter)}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: "20px",
+                        fontSize: "12px",
+                        fontWeight: active ? 700 : 550,
+                        background: active ? "#063C3D" : "#F4F6F5",
+                        color: active ? "#FFFFFF" : "#445451",
+                        border: active ? "1px solid #063C3D" : "1px solid #DCE5E1",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {flt.label} ({flt.count})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Applicant Requirement Groups */}
+            {[
+              {
+                id: "primary",
+                name: "Dr. Elena Rostova (Primary Applicant)",
+                role: "Principal Beneficiary • EB-1A Extraordinary Ability",
+                avatar: "ER",
+                items: [
+                  {
+                    id: "chk-1",
+                    title: "Foreign Passport Identity & Photo Page",
+                    status: "accepted" as const,
+                    statutoryBasis: "8 CFR § 204.5(a) Identity Proof",
+                    notes: "Valid through June 2031. Verified by Sarah Vance, Esq.",
+                  },
+                  {
+                    id: "chk-2",
+                    title: "Ph.D. Degree & Official US Academic Credential Evaluation",
+                    status: "accepted" as const,
+                    statutoryBasis: "8 CFR § 204.5(k)(2) Advanced Degree",
+                    notes: "U.S. Equivalency certified by Trustfort Credential Evaluations.",
+                  },
+                  {
+                    id: "chk-3",
+                    title: "Peer-Reviewed Scholarly Articles & Citation Metric Record",
+                    status: "received" as const,
+                    statutoryBasis: "8 CFR § 204.5(h)(3)(vi) Scholarly Articles",
+                    notes: "14 articles and verified h-index 24 submitted; under attorney analysis.",
+                  },
+                  {
+                    id: "chk-4",
+                    title: "Independent Expert Reference & Testimonial Letters (3 Letters)",
+                    status: "rejected" as const,
+                    statutoryBasis: "8 CFR § 204.5(h)(3)(v) Major Significance",
+                    rejectionReasonCode: "INCOMPLETE_DOCUMENT",
+                    rejectionReasonLabel: "Incomplete Document or Missing Pages",
+                    clientExplanation:
+                      "Letter 2 from Prof. H. Zhang lacks the referee's complete curriculum vitae and independent relationship verification. Please re-upload updated package with full credentials.",
+                    notes: "Correction required immediately.",
+                  },
+                  {
+                    id: "chk-5",
+                    title: "Biographical Intake Questionnaire (Form I-140)",
+                    status: "received" as const,
+                    statutoryBasis: "USCIS Form I-140 Part 4",
+                    notes: "65% completed. Part 4 alien travel history pending completion.",
+                  },
+                ],
+              },
+              {
+                id: "spouse",
+                name: "Dmitri Rostov (Spouse)",
+                role: "Derivative Beneficiary • Adjustment of Status (Form I-485)",
+                avatar: "DR",
+                items: [
+                  {
+                    id: "chk-6",
+                    title: "Foreign Passport Identity Page",
+                    status: "accepted" as const,
+                    statutoryBasis: "8 CFR § 245.2 Identity Proof",
+                    notes: "Valid through 2030. Unexpired foreign travel document.",
+                  },
+                  {
+                    id: "chk-7",
+                    title: "Official Government Marriage Certificate",
+                    status: "accepted" as const,
+                    statutoryBasis: "8 CFR § 204.2(a)(2) Spousal Relationship",
+                    notes: "Apostille authenticated and certified copy filed.",
+                  },
+                  {
+                    id: "chk-8",
+                    title: "Certified English Translation of Marriage Record",
+                    status: "rejected" as const,
+                    statutoryBasis: "8 CFR § 103.2(b)(3) Foreign Language Translation",
+                    rejectionReasonCode: "MISSING_PAGES",
+                    rejectionReasonLabel: "Missing Pages or Declaration",
+                    clientExplanation:
+                      "The Cyrillic marriage certificate was uploaded without the certified translator's formal declaration of competence. Please re-upload the complete certified translation document.",
+                    notes: "Correction required before package seal.",
+                  },
+                ],
+              },
+              {
+                id: "child",
+                name: "Sofia Rostova (Child)",
+                role: "Derivative Child • Form I-485 Supplement",
+                avatar: "SR",
+                items: [
+                  {
+                    id: "chk-9",
+                    title: "Foreign Birth Certificate with Parentage",
+                    status: "required" as const,
+                    statutoryBasis: "8 CFR § 204.2(d)(2) Parent-Child Relationship",
+                    notes: "Civil record showing parentage required for adjustment.",
+                  },
+                  {
+                    id: "chk-10",
+                    title: "USCIS Standard Passport Style Photographs",
+                    status: "outstanding" as const,
+                    statutoryBasis: "Form I-485 Instructions Part 8",
+                    notes: "Two identical 2x2 color photographs required before interview.",
+                  },
+                ],
+              },
+            ]
+              .filter(
+                (grp) =>
+                  checklistApplicantFilter === "all" || grp.id === checklistApplicantFilter
+              )
+              .map((grp) => (
+                <div
+                  key={grp.id}
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
+                    padding: "20px 24px",
+                    boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "16px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #F1F5F9", paddingBottom: "12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <div
+                        style={{
+                          width: "34px",
+                          height: "34px",
+                          borderRadius: "50%",
+                          background: "#0D6866",
+                          color: "#FFF",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 700,
+                          fontSize: "13px",
+                        }}
+                      >
+                        {grp.avatar}
+                      </div>
+                      <div>
+                        <strong style={{ fontSize: "15px", color: "#063C3D", display: "block" }}>
+                          {grp.name}
+                        </strong>
+                        <span style={{ fontSize: "12px", color: "#64748B" }}>{grp.role}</span>
+                      </div>
+                    </div>
+                    <Badge variant="neutral">{grp.items.length} Requirements</Badge>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {grp.items.map((it) => {
+                      const isRejected = it.status === "rejected";
+                      const isAccepted = it.status === "accepted";
+                      const isRequired = it.status === "required";
+                      const isOutstanding = it.status === "outstanding";
+
+                      return (
+                        <div
+                          key={it.id}
+                          style={{
+                            background: isRejected ? "#FEF2F2" : "#F8FAF9",
+                            border: `1px solid ${isRejected ? "#FECACA" : "#E2E8F0"}`,
+                            borderRadius: "10px",
+                            padding: "14px 16px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "8px",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+                            <div>
+                              <strong style={{ fontSize: "14px", color: isRejected ? "#991B1B" : "#0F172A" }}>
+                                {it.title}
+                              </strong>
+                              <small style={{ display: "block", color: "#64748B", marginTop: "2px" }}>
+                                Statutory Basis: {it.statutoryBasis}
+                              </small>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                              <Badge
+                                variant={
+                                  isAccepted
+                                    ? "success"
+                                    : isRejected
+                                    ? "action"
+                                    : isRequired
+                                    ? "warning"
+                                    : isOutstanding
+                                    ? "neutral"
+                                    : "review"
+                                }
+                              >
+                                {isAccepted
+                                  ? "✓ ACCEPTED"
+                                  : isRejected
+                                  ? "✕ REJECTED (CORRECTION REQ.)"
+                                  : it.status.toUpperCase()}
+                              </Badge>
+                              <DocumentProgressionStepper
+                                status={it.status}
+                                verificationStatus={isAccepted ? "verified" : isRejected ? "rejected" : undefined}
+                              />
+                            </div>
+                          </div>
+
+                          {it.notes && (
+                            <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#475569" }}>
+                              {it.notes}
+                            </p>
+                          )}
+
+                          {/* Structured Rejection Explanation Alert */}
+                          {isRejected && (
+                            <div
+                              style={{
+                                background: "#FFFFFF",
+                                border: "1.5px solid #F87171",
+                                borderRadius: "8px",
+                                padding: "12px 14px",
+                                marginTop: "6px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "6px",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span style={{ fontSize: "14px" }}>⚠️</span>
+                                <strong style={{ fontSize: "12px", color: "#B91C1C" }}>
+                                  Correction Required: [{it.rejectionReasonCode}] {it.rejectionReasonLabel}
+                                </strong>
+                              </div>
+                              <p style={{ margin: "0", fontSize: "12px", color: "#7F1D1D", lineHeight: "1.4" }}>
+                                <strong>Caseworker Explanation:</strong> {it.clientExplanation}
+                              </p>
+                              <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={onOpenUploadModal}
+                                  style={{ background: "#DC2626", color: "#FFFFFF" }}
+                                >
+                                  Re-Upload Document →
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {isRequired && (
+                            <div style={{ marginTop: "4px" }}>
+                              <Button variant="secondary" size="sm" onClick={onOpenUploadModal}>
+                                Upload Required Document →
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+
+        {/* =========================================================================
             TAB 2: UPLOAD DOCUMENTS (Evidence & Uploads)
             ========================================================================= */}
         {activeTab === "documents" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {/* Phase 4 — Family Intake & Mobile-First Camera Scanning Hub */}
+            <FamilyDocumentIntakeHub
+              caseId={myCase?.id || "case-01"}
+              onDocumentUploaded={() => {
+                // Trigger refresh if needed
+              }}
+            />
+
             {/* Direct In-Tab Drag-and-Drop Document Uploader */}
             <DirectDocumentUploader
               caseId={myCase?.id}
@@ -1285,6 +2168,17 @@ export function ClientPortal({
                         </Badge>
                       );
                     },
+                  },
+                  {
+                    key: "progression_state",
+                    header: "Progression Pipeline",
+                    render: (d) => (
+                      <DocumentProgressionStepper
+                        status={d.status}
+                        processingStatus={d.processing_status}
+                        verificationStatus={d.verification_status}
+                      />
+                    ),
                   },
                   {
                     key: "extracted_fields",

@@ -29,6 +29,11 @@ from backend.app.packages.eligibility import (
     evaluate_document_for_package,
     UNRESOLVED_FINDING_STATUSES,
 )
+from backend.app.packages.local_archive import (
+    sanitize_filename,
+    normalize_relative_path,
+    build_canonical_phase7_manifest,
+)
 
 DEFAULT_USCIS_FOLDERS = [
     {"folder_code": "00_Case_Summary", "folder_name": "Case Summary & Exhibits Index", "is_internal_only": False},
@@ -45,17 +50,12 @@ DEFAULT_USCIS_FOLDERS = [
 ]
 
 DEFAULT_CANADA_FOLDERS = [
-    {"folder_code": "00_Case_Summary", "folder_name": "Submission Letter & Checklist", "is_internal_only": False},
-    {"folder_code": "01_Identity_and_Civil_Status", "folder_name": "Passports & Civil Status", "is_internal_only": False},
-    {"folder_code": "02_Application_Forms", "folder_name": "Generic Application Forms (IMM0008)", "is_internal_only": False},
-    {"folder_code": "03_Pathway_Evidence", "folder_name": "Express Entry / PNP Comprehensive Evidence", "is_internal_only": False},
-    {"folder_code": "04_Financial_Evidence", "folder_name": "Settlement Funds & Bank Verification", "is_internal_only": False},
-    {"folder_code": "05_Education_and_Employment", "folder_name": "ECA Reports & Reference Letters", "is_internal_only": False},
-    {"folder_code": "06_Family_and_Sponsorship", "folder_name": "Dependant Information & Police Certificates", "is_internal_only": False},
-    {"folder_code": "07_Translations_and_Certifications", "folder_name": "Certified Official Translations", "is_internal_only": False},
-    {"folder_code": "08_Additional_Evidence", "folder_name": "Supplementary Records", "is_internal_only": False},
-    {"folder_code": "09_Internal_Review", "folder_name": "Internal Paralegal & Counsel Notes", "is_internal_only": True},
-    {"folder_code": "10_Approved_Package", "folder_name": "Final IRCC Filing Binder", "is_internal_only": False},
+    {"folder_code": "01_Cic_Correspondence", "folder_name": "CIC CORRESPONDENCE", "is_internal_only": False},
+    {"folder_code": "02_Documents", "folder_name": "DOCUMENTS", "is_internal_only": False},
+    {"folder_code": "03_Forms", "folder_name": "FORMS", "is_internal_only": False},
+    {"folder_code": "04_Extra", "folder_name": "EXTRA", "is_internal_only": False},
+    {"folder_code": "05_Upload", "folder_name": "UPLOAD", "is_internal_only": False},
+    {"folder_code": "09_Internal_Review", "folder_name": "INTERNAL CONFIDENTIAL", "is_internal_only": True},
 ]
 
 
@@ -68,28 +68,38 @@ class PackageBuilderService:
             PackageTemplate.name == "USCIS Standard Immigrant Petition Assembly",
         )
         existing = db.execute(stmt).scalar_one_or_none()
-        if existing:
-            return existing
+        if not existing:
+            us_template = PackageTemplate(
+                organization_id=organization_id,
+                name="USCIS Standard Immigrant Petition Assembly",
+                jurisdiction="US",
+                pathway="EB-1A",
+                description="10-folder exhibit structure with strict internal notes separation.",
+                folder_structure=DEFAULT_USCIS_FOLDERS,
+            )
+            db.add(us_template)
+        else:
+            us_template = existing
 
-        us_template = PackageTemplate(
-            organization_id=organization_id,
-            name="USCIS Standard Immigrant Petition Assembly",
-            jurisdiction="US",
-            pathway="EB-1A",
-            description="10-folder exhibit structure with strict internal notes separation.",
-            folder_structure=DEFAULT_USCIS_FOLDERS,
+        # Ensure Canada template
+        ca_stmt = select(PackageTemplate).where(
+            PackageTemplate.organization_id == organization_id,
+            PackageTemplate.name == "IRCC Canadian Economic Class Assembly",
         )
-        db.add(us_template)
-
-        ca_template = PackageTemplate(
-            organization_id=organization_id,
-            name="IRCC Canadian Economic Class Assembly",
-            jurisdiction="CA",
-            pathway="Express Entry",
-            description="Canadian federal economic immigration submission binder.",
-            folder_structure=DEFAULT_CANADA_FOLDERS,
-        )
-        db.add(ca_template)
+        ca_template = db.execute(ca_stmt).scalar_one_or_none()
+        if not ca_template:
+            ca_template = PackageTemplate(
+                organization_id=organization_id,
+                name="IRCC Canadian Economic Class Assembly",
+                jurisdiction="CA",
+                pathway="Express Entry",
+                description="Firm-configured Canadian folder template (CIC CORRESPONDENCE, DOCUMENTS, FORMS, EXTRA, UPLOAD).",
+                folder_structure=DEFAULT_CANADA_FOLDERS,
+            )
+            db.add(ca_template)
+        else:
+            ca_template.folder_structure = DEFAULT_CANADA_FOLDERS
+            flag_modified(ca_template, "folder_structure")
 
         db.commit()
         db.refresh(us_template)
@@ -256,36 +266,66 @@ class PackageBuilderService:
                 })
                 continue
 
+            # Detect if using Canada folder configuration
+            is_canada_template = any(
+                f.get("folder_name") in ["CIC CORRESPONDENCE", "DOCUMENTS", "FORMS", "EXTRA", "UPLOAD"]
+                or f.get("folder_code") in ["01_Cic_Correspondence", "02_Documents", "03_Forms", "04_Extra", "05_Upload"]
+                for f in folder_list
+            )
+
             # Eligible document: map category to folder
-            folder_code = "03_Pathway_Evidence"
             cat = (doc.category or "").lower()
-            if cat in ["passport", "visas_residence_permits", "identity_document"]:
-                folder_code = "01_Identity_and_Civil_Status"
-            elif cat in ["financial_evidence", "tax_record", "bank_statement"]:
-                folder_code = "04_Financial_Evidence"
-            elif cat in ["educational_credential", "degree", "diploma"]:
-                folder_code = "05_Education_and_Employment"
-            elif cat in ["civil_status", "marriage_certificate", "birth_certificate"]:
-                folder_code = "06_Family_and_Sponsorship"
-            elif cat in ["certified_translation", "translation"]:
-                folder_code = "07_Translations_and_Certifications"
-            elif cat in ["internal_memo", "lawyer_strategy", "conflict_check"]:
-                folder_code = "09_Internal_Review"
+            title_low = (doc.title or "").lower()
+            fn_low = (doc.filename or "").lower()
+
+            if is_canada_template:
+                if any(k in cat or k in title_low or k in fn_low for k in ["correspondence", "cic", "ircc", "ita", "letter", "email"]):
+                    folder_code = "01_Cic_Correspondence"
+                elif any(k in cat or k in title_low or k in fn_low for k in ["form", "imm0008", "imm5669", "imm5406", "application_form"]):
+                    folder_code = "03_Forms"
+                elif any(k in cat or k in title_low or k in fn_low for k in ["extra", "supplementary", "additional", "testimonial", "affidavit"]):
+                    folder_code = "04_Extra"
+                elif any(k in cat or k in title_low or k in fn_low for k in ["upload", "portal", "screenshot", "receipt", "confirmation"]):
+                    folder_code = "05_Upload"
+                elif any(k in cat or k in title_low or k in fn_low for k in ["internal", "memo", "strategy", "confidential"]):
+                    folder_code = "09_Internal_Review"
+                else:
+                    folder_code = "02_Documents"
+            else:
+                folder_code = "03_Pathway_Evidence"
+                if cat in ["passport", "visas_residence_permits", "identity_document"]:
+                    folder_code = "01_Identity_and_Civil_Status"
+                elif cat in ["financial_evidence", "tax_record", "bank_statement"]:
+                    folder_code = "04_Financial_Evidence"
+                elif cat in ["educational_credential", "degree", "diploma"]:
+                    folder_code = "05_Education_and_Employment"
+                elif cat in ["civil_status", "marriage_certificate", "birth_certificate"]:
+                    folder_code = "06_Family_and_Sponsorship"
+                elif cat in ["certified_translation", "translation"]:
+                    folder_code = "07_Translations_and_Certifications"
+                elif cat in ["internal_memo", "lawyer_strategy", "conflict_check"]:
+                    folder_code = "09_Internal_Review"
 
             is_internal = folder_code == "09_Internal_Review"
             file_hash = doc.sha256_hash or hashlib.sha256((doc.filename or doc.title).encode()).hexdigest()
             item_hashes.append(file_hash)
 
+            # Resolve folder name and clean filename
+            matched_folder = next((f for f in folder_list if f.get("folder_code") == folder_code), None)
+            folder_name = matched_folder.get("folder_name") if matched_folder else folder_code
+            safe_fn = sanitize_filename(doc.filename or f"{doc.title}.pdf")
+            rel_path = f"{folder_name}/{safe_fn}"
+
             manifest_items.append({
                 "document_id": str(doc.id),
                 "version": doc.version or 1,
                 "version_id": f"{doc.id}:v{doc.version or 1}",
-                "file_name": doc.filename or f"{doc.title}.pdf",
+                "file_name": safe_fn,
                 "folder_code": folder_code,
-                "folder_path": f"{folder_code}/{doc.filename or doc.title}",
+                "folder_path": rel_path,
                 "document_category": doc.category,
                 "sha256_hash": file_hash,
-                "review_status": doc.verification_status or "verified",
+                "review_status": "HUMAN_VERIFIED" if (doc.verification_status or "").lower() in ["verified", "human_verified", "signed_off"] else (doc.verification_status or "pending_review"),
                 "related_requirement_code": "MANDATORY_EVIDENCE",
                 "is_internal_only": is_internal,
                 "page_count": doc.page_count or 1,
@@ -302,21 +342,31 @@ class PackageBuilderService:
         )
         forms = db.execute(forms_stmt).scalars().all()
         for f in forms:
-            form_code = "USCIS_I140"
+            form_code = "GENERIC_IMM" if case.jurisdiction == "CA" else "USCIS_I140"
             if f.schema_version and f.schema_version.schema:
                 form_code = f.schema_version.schema.form_code
+
+            # Invariant: Non-US pathways do not inherit US-only forms or instructions
+            if case.jurisdiction != "US" and (form_code.startswith("USCIS_") or form_code.startswith("I-") or form_code.startswith("G-")):
+                continue
+
+            form_folder_code = "03_Forms" if is_canada_template else "02_Application_Forms"
+            matched_folder = next((fld for fld in folder_list if fld.get("folder_code") == form_folder_code), None)
+            form_folder_name = matched_folder.get("folder_name") if matched_folder else form_folder_code
+
             form_hash = hashlib.sha256(f"{f.id}-{f.revision_number}".encode()).hexdigest()
             item_hashes.append(form_hash)
+            form_fn = sanitize_filename(f"Form_{form_code}_Executed_Rev{f.revision_number}.pdf")
             manifest_items.append({
                 "form_submission_id": str(f.id),
                 "version": f.revision_number,
                 "version_id": f"{f.id}:v{f.revision_number}",
-                "file_name": f"Form_{form_code}_Executed_Rev{f.revision_number}.pdf",
-                "folder_code": "02_Application_Forms",
-                "folder_path": f"02_Application_Forms/Form_{form_code}_Executed_Rev{f.revision_number}.pdf",
+                "file_name": form_fn,
+                "folder_code": form_folder_code,
+                "folder_path": f"{form_folder_name}/{form_fn}",
                 "document_category": "application_forms",
                 "sha256_hash": form_hash,
-                "review_status": "signed_off" if f.sensitive_fields_reviewed else "pending_review",
+                "review_status": "HUMAN_VERIFIED" if f.sensitive_fields_reviewed else "pending_review",
                 "related_requirement_code": form_code,
                 "is_internal_only": False,
                 "page_count": 8,
@@ -440,6 +490,16 @@ class PackageBuilderService:
                 "NOTE: Automated government portal submission is not permitted. File physically or via verified official USCIS e-filing portal."
             )
 
+        # Build canonical Phase 7 manifest
+        phase7_manifest = build_canonical_phase7_manifest(
+            case_reference=case.case_number or f"CASE-{case.id}",
+            generated_by=str(user_id) if user_id else "SYSTEM",
+            package_template_version="v1.0.0",
+            checklist_rule_version=rule_set_version,
+            included_documents=manifest_items,
+            excluded_documents=excluded_items,
+        )
+
         manifest = {
             "case_id": str(case_id),
             "case_number": case.case_number,
@@ -456,6 +516,7 @@ class PackageBuilderService:
             "external_items_count": sum(1 for i in manifest_items if not i.get("is_internal_only")),
             "internal_items_count": sum(1 for i in manifest_items if i.get("is_internal_only")),
             "package_hash": package_root_hash,
+            "phase7_manifest": phase7_manifest,
             "compliance_notice": (
                 "Evaluation performed strictly against internal statutory compliance and evidence sufficiency criteria. "
                 "Probability of approval is never generated or displayed. "

@@ -22,17 +22,21 @@ export function WaitingStateBanner({
   const [data, setData] = useState<WaitingStateData>(initialWaitingState || FALLBACK_WAITING_STATE);
 
   useEffect(() => {
+    let isMounted = true;
     if (initialWaitingState) {
       setData(initialWaitingState);
     } else {
       fetchClientWaitingState(caseId)
         .then((res) => {
-          if (res) setData(res);
+          if (isMounted && res) setData(res);
         })
         .catch(() => {
-          setData(FALLBACK_WAITING_STATE);
+          if (isMounted) setData(FALLBACK_WAITING_STATE);
         });
     }
+    return () => {
+      isMounted = false;
+    };
   }, [initialWaitingState, caseId]);
 
   const {

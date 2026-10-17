@@ -58,21 +58,24 @@ def detect_document_quality_issues(
                 )
             )
 
-    # 2. Check for Low OCR Quality / Unreadable Scan
+    # 2. Check for Low OCR Quality / Poor, Torn, or Faded Scans
+    scan_defect_matches = re.findall(r"\b(poor quality|faded|torn|illegible|blurred|creased|scan cut off|unreadable|faint print)\b", text, re.IGNORECASE)
     low_conf_fields = [f for f in extracted_fields if f.get("ocr_confidence") is not None and f["ocr_confidence"] < 0.70]
-    if low_conf_fields:
-        field_names = ", ".join([f.get("field_label", f.get("field_name", "unknown")) for f in low_conf_fields[:3]])
+    
+    if scan_defect_matches or low_conf_fields:
+        defect_desc = ", ".join(set(m.lower() for m in scan_defect_matches)) if scan_defect_matches else "low OCR character confidence"
+        field_names = ", ".join([f.get("field_label", f.get("field_name", "unknown")) for f in low_conf_fields[:3]]) if low_conf_fields else "optical scan"
         findings.append(
             QualityFinding(
                 finding_type="document_quality",
-                severity="major" if len(low_conf_fields) >= 2 else "minor",
-                title="Low OCR Quality / Degraded Optical Scan Detected",
-                description=f"Automated optical character recognition recorded low confidence (< 70%) on fields ({field_names}) in '{title}'. Potential blur, low DPI, or scan distortion.",
-                evidence_text=f"Fields with degraded confidence: {field_names}",
-                page_number=low_conf_fields[0].get("source_page", 1),
-                recommended_action="Inspect source document scan resolution. Request 300+ DPI color replacement if text is illegible to human reviewer.",
-                uncertainty_limitations="OCR engine confidence reflects character contrast and typography, not legal invalidity.",
-                suggested_clarification="If possible, please re-scan this document at high resolution (300 DPI, flatbed) to prevent immigration agency RFE.",
+                severity="critical" if (category in ["identity_passport", "civil_status_family"] or len(scan_defect_matches) >= 2) else "major",
+                title=f"High Priority: Low OCR Quality / Poor, Torn, or Faded Scan Detected ({defect_desc})",
+                description=f"Automated quality inspection detected optical scan defects ({defect_desc}) affecting {field_names} in '{title}'. Degraded scan quality presents significant risk of immigration authority RFE or rejection.",
+                evidence_text=f"Detected defects: {defect_desc}; Fields: {field_names}",
+                page_number=low_conf_fields[0].get("source_page", 1) if low_conf_fields else 1,
+                recommended_action="Inspect source document. Obtain a pristine, high-resolution (300+ DPI color flatbed) replacement scan with all 4 corners visible.",
+                uncertainty_limitations="Automated contrast and typographical quality assessment. Review physical scan legibility.",
+                suggested_clarification="The uploaded scan appears faded, torn, or low resolution. Please provide a clear, color replacement scan with all four corners visible.",
             )
         )
 

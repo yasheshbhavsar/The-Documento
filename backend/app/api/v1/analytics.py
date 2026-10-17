@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from backend.app.analytics.service import ExecutiveDashboardService, AnalyticsService
 from backend.app.db.session import get_db
 from backend.app.domain.models import AuditEvent
-from backend.app.security.auth import AuthContext, require_permission
+from backend.app.security.auth import AuthContext, get_auth_context, require_permission
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -28,6 +28,29 @@ def get_executive_dashboard(
     time windows, and interactive drill-down paths.
     """
     return ExecutiveDashboardService.get_dashboard_metrics(db, ctx.organization_id, window_days)
+
+
+@router.get("/manager-priority-queue")
+def get_manager_priority_queue(
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns the Manager Priority Queue strictly structured in Rank 1 through Rank 8:
+    Rank 1: Critical/overdue deadlines (authority requests: USCIS RFE/NOID, IRCC PFL, court/biometrics)
+    Rank 2: Workload & allocation matrix (officer caseload, capacity %, unassigned queue)
+    Rank 3: Blocked cases (hard eligibility/anomaly blockers)
+    Rank 4: Overdue client responses (document requests, stalled questionnaires)
+    Rank 5: Pending reviews (documents & application forms awaiting sign-off)
+    Rank 6: Quality issues, corrections, and supervisor escalations
+    Rank 7: Payment status (Paid / Pending / Partially Paid)
+    Rank 8: Performance view (continuous quality improvement, visual & numeric trends)
+    """
+    if ctx.is_retained_client():
+        from backend.app.core.errors import PermissionDeniedError
+        raise PermissionDeniedError("Clients cannot view management priority queues.")
+
+    return ExecutiveDashboardService.get_manager_priority_queue(db, ctx.organization_id)
 
 
 @router.get("/operations")

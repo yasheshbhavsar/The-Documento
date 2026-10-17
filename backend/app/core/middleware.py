@@ -1,9 +1,23 @@
 import time
+import uuid
 from collections import defaultdict
 from fastapi import Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from backend.app.core.config import get_settings
+from backend.app.core.logging import correlation_id_ctx
+
+
+class CorrelationIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        cid = request.headers.get("X-Correlation-ID") or request.headers.get("x-correlation-id") or str(uuid.uuid4())
+        token = correlation_id_ctx.set(cid)
+        try:
+            response: Response = await call_next(request)
+            response.headers["X-Correlation-ID"] = cid
+            return response
+        finally:
+            correlation_id_ctx.reset(token)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):

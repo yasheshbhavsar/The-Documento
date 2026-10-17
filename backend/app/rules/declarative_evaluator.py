@@ -11,7 +11,9 @@ from typing import Any
 ALLOWED_OPERATORS = {
     "eq": lambda a, b: str(a).strip().lower() == str(b).strip().lower() if a is not None and b is not None else a == b,
     "neq": lambda a, b: str(a).strip().lower() != str(b).strip().lower() if a is not None and b is not None else a != b,
+    "ne": lambda a, b: str(a).strip().lower() != str(b).strip().lower() if a is not None and b is not None else a != b,
     "gt": lambda a, b: float(a) > float(b) if a is not None and b is not None else False,
+
     "gte": lambda a, b: float(a) >= float(b) if a is not None and b is not None else False,
     "lt": lambda a, b: float(a) < float(b) if a is not None and b is not None else False,
     "lte": lambda a, b: float(a) <= float(b) if a is not None and b is not None else False,

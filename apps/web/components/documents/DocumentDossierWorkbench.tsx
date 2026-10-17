@@ -7,8 +7,12 @@ import {
   DocumentVersionItem,
   DocumentProcessingRunItem,
   RoleCode,
+  DocumentSixDimensionsReview,
+  FieldExtractionProvenance,
+  ThreeTierEntity,
+  DocumentSplitSection,
 } from "../../lib/types";
-import { api } from "../../lib/api";
+import { api, splitDocumentSections } from "../../lib/api";
 
 export const PIPELINE_STAGES = [
   { id: "queued", label: "Queued", step: 1 },
@@ -44,9 +48,31 @@ export function DocumentDossierWorkbench({
   activeRole = "case_manager",
 }: DocumentDossierWorkbenchProps) {
   // Navigation & view states
-  const [activeTab, setActiveTab] = useState<"fields" | "ocr_stream" | "verification" | "versions">("fields");
+  const [activeTab, setActiveTab] = useState<
+    "fields" | "intelligence" | "provenance" | "ocr_stream" | "verification" | "versions"
+  >("fields");
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null);
+  const [sixDimensions, setSixDimensions] = useState<DocumentSixDimensionsReview | null>(
+    doc.review_dimensions || null
+  );
+  const [loadingDimensions, setLoadingDimensions] = useState(false);
+  const [provenanceExtractions, setProvenanceExtractions] = useState<FieldExtractionProvenance[]>(
+    doc.provenance_extractions || []
+  );
+  const [loadingProvenance, setLoadingProvenance] = useState(false);
+
+  // Staff classification correction modal
+  const [showClassificationModal, setShowClassificationModal] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>(doc.category || "identity_passport");
+  const [classificationReason, setClassificationReason] = useState("");
+  const [isSubmittingClassification, setIsSubmittingClassification] = useState(false);
+
+  // Staff applicant association modal
+  const [showApplicantModal, setShowApplicantModal] = useState(false);
+  const [targetApplicantName, setTargetApplicantName] = useState(doc.proposed_applicant_name || "");
+  const [associationReason, setAssociationReason] = useState("");
+  const [isSubmittingAssociation, setIsSubmittingAssociation] = useState(false);
 
   // Canvas viewport controls
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -80,6 +106,38 @@ export function DocumentDossierWorkbench({
   const [activeRun, setActiveRun] = useState<DocumentProcessingRunItem | null>(null);
   const [showPipelineDetails, setShowPipelineDetails] = useState<boolean>(true);
 
+  // Phase 10: Section Splitting & Three-Tier Provenance
+  const [isSplittingSections, setIsSplittingSections] = useState<boolean>(false);
+  const [selectedTierFilter, setSelectedTierFilter] = useState<"ALL" | "EXTRACTED_FACT" | "MODEL_INFERENCE" | "PROFESSIONAL_DECISION">("ALL");
+
+  const suggestedBoundaries: DocumentSplitSection[] =
+    (doc.suggested_boundaries as any) ||
+    (doc.layout_metadata?.suggested_boundaries as any) ||
+    (doc.sub_documents_metadata as any) ||
+    [];
+
+  const handleSplitSections = async () => {
+    setIsSplittingSections(true);
+    try {
+      const res = await splitDocumentSections(
+        doc.id,
+        suggestedBoundaries.length > 0 ? suggestedBoundaries : undefined,
+        activeRole
+      );
+      setFeedbackToast({
+        message: `Successfully partitioned multi-page document into ${res.split_count || 2} distinct sub-sections.`,
+        type: "success",
+      });
+    } catch (err: any) {
+      setFeedbackToast({
+        message: err.message || "Failed to split document sections",
+        type: "error",
+      });
+    } finally {
+      setIsSplittingSections(false);
+    }
+  };
+
   const fieldCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const isStaff = activeRole !== "retained_client" && activeRole !== "applicant";
@@ -107,7 +165,20 @@ export function DocumentDossierWorkbench({
   };
 
   useEffect(() => {
-    fetchRuns();
+    let isMounted = true;
+    if (doc.id) {
+      api.getDocumentRuns(doc.id, activeRole)
+        .then((res) => {
+          if (isMounted && res.data && res.data.length > 0) {
+            setRuns(res.data);
+            setActiveRun(res.data[0]);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      isMounted = false;
+    };
   }, [doc.id, activeRole]);
 
   // Live polling while document is processing or pending
@@ -120,12 +191,14 @@ export function DocumentDossierWorkbench({
 
     if (!isProcessing) return;
 
+    let isMounted = true;
     const interval = setInterval(async () => {
       try {
         const [runsRes, docRes] = await Promise.all([
           api.getDocumentRuns(doc.id, activeRole),
           api.getDocument(doc.id, activeRole),
         ]);
+        if (!isMounted) return;
         if (runsRes.data && runsRes.data.length > 0) {
           setRuns(runsRes.data);
           setActiveRun(runsRes.data[0]);
@@ -144,17 +217,183 @@ export function DocumentDossierWorkbench({
       }
     }, 2000);
 
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [doc.id, doc.processing_status, activeRun?.status, activeRole, onDocumentUpdated]);
 
   // Load versions when versions tab is selected
   useEffect(() => {
+    let isMounted = true;
     if (activeTab === "versions" && doc.id) {
       api.getDocumentVersions(doc.id, activeRole)
-        .then((res) => setVersions(res.data))
+        .then((res) => {
+          if (isMounted) setVersions(res.data);
+        })
         .catch(() => {});
     }
+    return () => {
+      isMounted = false;
+    };
   }, [activeTab, doc.id, activeRole]);
+
+  // Fetch six review dimensions
+  const fetchSixDimensions = async () => {
+    if (!doc.id) return;
+    setLoadingDimensions(true);
+    try {
+      const res = await api.getDocumentReviewDimensions(doc.id, activeRole);
+      if (res.data) {
+        setSixDimensions(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to load review dimensions", err);
+    } finally {
+      setLoadingDimensions(false);
+    }
+  };
+
+  // Fetch extraction provenance
+  const fetchProvenance = async () => {
+    if (!doc.id) return;
+    setLoadingProvenance(true);
+    try {
+      const res = await api.getDocumentExtractions(doc.id, activeRole);
+      if (res.data && res.data.items) {
+        setProvenanceExtractions(res.data.items);
+      }
+    } catch (err) {
+      console.error("Failed to load extraction provenance", err);
+    } finally {
+      setLoadingProvenance(false);
+    }
+  };
+
+  const threeTierEntities: ThreeTierEntity[] = React.useMemo(() => {
+    if (doc.three_tier_extractions && doc.three_tier_extractions.length > 0) {
+      return doc.three_tier_extractions;
+    }
+    const list: ThreeTierEntity[] = [];
+    // Tier 1: Extracted Facts
+    provenanceExtractions.forEach((p) => {
+      list.push({
+        field_name: p.field,
+        field_label: p.field.replace(/_/g, " ").toUpperCase(),
+        tier: "EXTRACTED_FACT",
+        tier_number: 1,
+        tier_label: "Tier 1: Extracted Fact",
+        tier_badge_color: "emerald",
+        value: p.value,
+        confidence: p.confidence,
+        source_page: p.page_number,
+        bounding_box: p.bounding_box,
+        model_or_method: p.extractor_version,
+        statutory_disclaimer: "Typographical scan fact. Does not constitute legal sufficiency.",
+      });
+    });
+    // Tier 2: Model Inferences
+    if (doc.proposed_category) {
+      list.push({
+        field_name: "proposed_category",
+        field_label: "Proposed Document Category",
+        tier: "MODEL_INFERENCE",
+        tier_number: 2,
+        tier_label: "Tier 2: Model Inference",
+        tier_badge_color: "amber",
+        value: doc.proposed_category,
+        confidence: 0.88,
+        model_or_method: "Classification ML Engine",
+        statutory_disclaimer: "Statistical prediction. Requires professional confirmation before filing.",
+      });
+    }
+    if (doc.proposed_applicant_name) {
+      list.push({
+        field_name: "proposed_applicant",
+        field_label: "Applicant Association Candidate",
+        tier: "MODEL_INFERENCE",
+        tier_number: 2,
+        tier_label: "Tier 2: Model Inference",
+        tier_badge_color: "amber",
+        value: doc.proposed_applicant_name,
+        confidence: 0.85,
+        model_or_method: "Applicant Matcher ML",
+        statutory_disclaimer: "Entity link prediction. Requires caseworker confirmation.",
+      });
+    }
+    // Tier 3: Professional Decisions
+    if (doc.verification_status && doc.verification_status !== "unverified") {
+      list.push({
+        field_name: "document_verification",
+        field_label: "Document Verification Status",
+        tier: "PROFESSIONAL_DECISION",
+        tier_number: 3,
+        tier_label: "Tier 3: Professional Decision",
+        tier_badge_color: "indigo",
+        value: doc.verification_status.toUpperCase(),
+        confidence: 1.0,
+        decision_notes: doc.verification_notes || "Professional casework review performed.",
+        decided_by: doc.verified_by_user_id || "Caseworker",
+        decided_at: doc.verified_at,
+        statutory_disclaimer: "Human professional determination governing filing readiness.",
+      });
+    }
+    return list;
+  }, [doc, provenanceExtractions]);
+
+  const filteredThreeTierEntities = React.useMemo(() => {
+    if (selectedTierFilter === "ALL") return threeTierEntities;
+    return threeTierEntities.filter((e) => e.tier === selectedTierFilter);
+  }, [threeTierEntities, selectedTierFilter]);
+
+  useEffect(() => {
+    if (activeTab === "intelligence" && !sixDimensions) {
+      fetchSixDimensions();
+    }
+    if (activeTab === "provenance" && (!provenanceExtractions || provenanceExtractions.length === 0)) {
+      fetchProvenance();
+    }
+  }, [activeTab, doc.id]);
+
+  const handleSaveClassification = async () => {
+    if (!classificationReason.trim()) {
+      setFeedbackToast({ message: "Please provide an audit reason for category change.", type: "error" });
+      return;
+    }
+    setIsSubmittingClassification(true);
+    try {
+      const res = await api.correctDocumentClassification(doc.id, selectedCategory, classificationReason.trim(), activeRole);
+      onDocumentUpdated(res.data);
+      setShowClassificationModal(false);
+      setClassificationReason("");
+      setFeedbackToast({ message: `Document reclassified as "${selectedCategory}". Audit logged.`, type: "success" });
+      fetchSixDimensions();
+    } catch (err: any) {
+      setFeedbackToast({ message: err?.message || "Failed to update classification.", type: "error" });
+    } finally {
+      setIsSubmittingClassification(false);
+    }
+  };
+
+  const handleSaveApplicantAssociation = async () => {
+    if (!associationReason.trim()) {
+      setFeedbackToast({ message: "Please provide an audit justification for applicant assignment.", type: "error" });
+      return;
+    }
+    setIsSubmittingAssociation(true);
+    try {
+      const res = await api.correctApplicantAssociation(doc.id, targetApplicantName.trim(), doc.client_id, associationReason.trim(), activeRole);
+      onDocumentUpdated(res.data);
+      setShowApplicantModal(false);
+      setAssociationReason("");
+      setFeedbackToast({ message: `Applicant assignment confirmed. Audit trail updated.`, type: "success" });
+      fetchSixDimensions();
+    } catch (err: any) {
+      setFeedbackToast({ message: err?.message || "Failed to update applicant association.", type: "error" });
+    } finally {
+      setIsSubmittingAssociation(false);
+    }
+  };
 
   // Scroll to active field card in the inspector
   const scrollToFieldCard = (fieldId: string) => {
@@ -321,9 +560,9 @@ export function DocumentDossierWorkbench({
   const correctedCount = fields.filter((f) => f.is_manually_corrected).length;
   const editingField = fields.find((f) => f.id === editingFieldId);
 
-  const isFailed = doc.processing_status === "failed" || activeRun?.status === "failed";
-  const currentStageIndex = getStageIndex(activeRun?.stage || doc.active_run_stage, doc.processing_status);
-  const progressPercent = activeRun?.progress_percent ?? doc.active_run_progress_percent ?? (doc.processing_status === "completed" ? 100 : isFailed ? 35 : 15);
+  const isFailed = doc.processing_status === "failed" || (doc.processing_status !== "completed" && activeRun?.status === "failed");
+  const currentStageIndex = getStageIndex(doc.active_run_stage || activeRun?.stage, doc.processing_status);
+  const progressPercent = doc.active_run_progress_percent ?? activeRun?.progress_percent ?? (doc.processing_status === "completed" ? 100 : isFailed ? 35 : 15);
 
   return (
     <div className="flex flex-col h-full bg-[#071917] text-slate-100 rounded-xl overflow-hidden border border-[#1b3a36] shadow-2xl">
@@ -1178,10 +1417,20 @@ export function DocumentDossierWorkbench({
                     const loc = field.source_location;
                     if (!loc) return null;
 
-                    const x = loc.x0 || 70;
-                    const y = loc.y0 || 100;
-                    const width = Math.max((loc.x1 || 240) - x, 40);
-                    const height = Math.max((loc.y1 || 130) - y, 22);
+                    let x = loc.x0 || 70;
+                    let y = loc.y0 || 100;
+                    let width = Math.max((loc.x1 || 240) - x, 40);
+                    let height = Math.max((loc.y1 || 130) - y, 22);
+
+                    if (loc.bounding_box && Array.isArray(loc.bounding_box) && loc.bounding_box.length === 4) {
+                      const [ymin, xmin, ymax, xmax] = loc.bounding_box;
+                      const viewW = 600;
+                      const viewH = doc.category === "educational_records" ? 440 : 420;
+                      x = Math.round(xmin * viewW);
+                      y = Math.round(ymin * viewH);
+                      width = Math.max(Math.round((xmax - xmin) * viewW), 40);
+                      height = Math.max(Math.round((ymax - ymin) * viewH), 22);
+                    }
 
                     const isHovered = hoveredFieldId === field.id;
                     const isSelected = selectedFieldId === field.id;
@@ -1294,7 +1543,33 @@ export function DocumentDossierWorkbench({
                   : "border-transparent text-slate-400 hover:text-slate-200"
               }`}
             >
-              Extracted Fields & Provenance ({fields.length})
+              Extracted Fields ({fields.length})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "intelligence"}
+              onClick={() => setActiveTab("intelligence")}
+              className={`flex-1 py-3 px-3 font-medium border-b-2 text-center transition-colors whitespace-nowrap ${
+                activeTab === "intelligence"
+                  ? "border-teal-400 text-teal-300 font-semibold bg-[#0b2825]"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              6-Dimension Intelligence
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "provenance"}
+              onClick={() => setActiveTab("provenance")}
+              className={`flex-1 py-3 px-3 font-medium border-b-2 text-center transition-colors whitespace-nowrap ${
+                activeTab === "provenance"
+                  ? "border-teal-400 text-teal-300 font-semibold bg-[#0b2825]"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              Provenance (JSON)
             </button>
             <button
               type="button"
@@ -1320,7 +1595,7 @@ export function DocumentDossierWorkbench({
                   : "border-transparent text-slate-400 hover:text-slate-200"
               }`}
             >
-              Human Verification & Audit Trail
+              Verification & Audit
             </button>
             <button
               type="button"
@@ -1333,7 +1608,7 @@ export function DocumentDossierWorkbench({
                   : "border-transparent text-slate-400 hover:text-slate-200"
               }`}
             >
-              Version History
+              Versions
             </button>
           </div>
 
@@ -1781,8 +2056,532 @@ export function DocumentDossierWorkbench({
               </div>
             </div>
           )}
+          {/* TAB: 6-DIMENSION INTELLIGENCE */}
+          {activeTab === "intelligence" && (
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Mandatory Legal Sufficiency Notice */}
+              <div className="bg-amber-950/40 border border-amber-600/40 rounded-lg p-3 text-xs text-amber-200 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300 uppercase tracking-wide text-[11px]">
+                  <span>⚖️ Legal Notice: Calibrated Confidence Thresholds</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-amber-200/90">
+                  {sixDimensions?.high_ocr_confidence_notice || doc.legal_sufficiency_disclaimer || "High optical character recognition (OCR) confidence reflects typographical and contrast fidelity only; it does not constitute evidentiary or statutory legal sufficiency under governing immigration regulations."}
+                </p>
+              </div>
+
+              {loadingDimensions ? (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  Evaluating document across 6 separate review dimensions...
+                </div>
+              ) : sixDimensions ? (
+                <div className="space-y-3">
+                  {/* Dimension 1: Readability & Scan Quality */}
+                  <div className="bg-[#09221f] border border-[#1b3a36] rounded-lg p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs text-slate-100">1. {sixDimensions.readability.label}</span>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        sixDimensions.readability.status === "passed"
+                          ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                          : "bg-rose-950 text-rose-300 border border-rose-800"
+                      }`}>
+                        {sixDimensions.readability.status}
+                      </span>
+                    </div>
+                    <div className="w-full bg-[#051413] rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className={`h-full ${sixDimensions.readability.score >= 0.8 ? "bg-emerald-400" : "bg-amber-400"}`}
+                        style={{ width: `${Math.round(sixDimensions.readability.score * 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-300">{sixDimensions.readability.summary}</p>
+                    {sixDimensions.readability.high_priority_flags.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        {sixDimensions.readability.high_priority_flags.map((f, i) => (
+                          <div key={i} className="text-[11px] text-rose-300 flex items-center gap-1.5 bg-rose-950/40 px-2 py-1 rounded border border-rose-900/50">
+                            <span>⚠️</span> <span>{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dimension 2: Document Classification Type */}
+                  <div className="bg-[#09221f] border border-[#1b3a36] rounded-lg p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-100">2. {sixDimensions.document_type.label}</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950 text-emerald-300 border border-emerald-800">
+                        {sixDimensions.document_type.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300">{sixDimensions.document_type.summary}</p>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[11px] font-mono text-teal-300 bg-[#051413] px-2 py-1 rounded border border-[#1b3a36]">
+                        Category: {doc.category}
+                      </span>
+                      {isStaff && (
+                        <button
+                          onClick={() => {
+                            setSelectedCategory(doc.category);
+                            setShowClassificationModal(true);
+                          }}
+                          className="px-2.5 py-1 text-xs rounded bg-[#133c38] hover:bg-[#1a4e49] text-teal-200 border border-[#215751] transition-colors"
+                        >
+                          Correct Classification
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Dimension 3: Applicant Association */}
+                  <div className="bg-[#09221f] border border-[#1b3a36] rounded-lg p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-100">3. {sixDimensions.applicant_association.label}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        sixDimensions.applicant_association.status === "passed"
+                          ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                          : "bg-amber-950 text-amber-300 border border-amber-800"
+                      }`}>
+                        {sixDimensions.applicant_association.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300">{sixDimensions.applicant_association.summary}</p>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[11px] font-medium text-slate-200">
+                        Associated: {doc.proposed_applicant_name ? doc.proposed_applicant_name : <span className="text-amber-400 italic">Unassigned (Uncertain candidate)</span>}
+                      </span>
+                      {isStaff && (
+                        <button
+                          onClick={() => {
+                            setTargetApplicantName(doc.proposed_applicant_name || "");
+                            setShowApplicantModal(true);
+                          }}
+                          className="px-2.5 py-1 text-xs rounded bg-[#133c38] hover:bg-[#1a4e49] text-teal-200 border border-[#215751] transition-colors"
+                        >
+                          Confirm / Reassign
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Multi-Page Boundary Detection & Section Splitting */}
+                  {Boolean(doc.page_count && doc.page_count > 1) && (
+                    <div
+                      data-testid="page-boundary-section"
+                      className="bg-[#09221f] border border-[#1b3a36] rounded-lg p-3.5 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-slate-100">📑 Suggested Page Boundaries & Sub-Documents</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-sky-950 text-sky-300 border border-sky-800">
+                            {doc.page_count} Pages Detected
+                          </span>
+                        </div>
+                        {isStaff && (
+                          <button
+                            type="button"
+                            onClick={handleSplitSections}
+                            disabled={isSplittingSections}
+                            className="px-2.5 py-1 text-xs rounded bg-[#133c38] hover:bg-[#1a4e49] text-teal-200 border border-[#215751] transition-colors font-medium flex items-center gap-1.5"
+                          >
+                            <span>⚡</span>
+                            <span>{isSplittingSections ? "Splitting..." : "Split Document Sections"}</span>
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-300">
+                        Automated boundary detection identifies distinct document types embedded within this single multi-page file.
+                      </p>
+                      <div className="space-y-1.5 pt-1">
+                        {suggestedBoundaries.length > 0 ? (
+                          suggestedBoundaries.map((sec: any, sIdx: number) => (
+                            <div
+                              key={sIdx}
+                              className="text-xs font-mono bg-[#051413] p-2 rounded border border-[#1b3a36] flex items-center justify-between"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-teal-400 font-bold">{sec.title || `Section ${sIdx + 1}`}</span>
+                                <span className="text-slate-400 text-[11px]">({sec.category})</span>
+                              </div>
+                              <div className="flex items-center gap-3 text-slate-300 text-[11px]">
+                                <span>Pages {sec.start_page} – {sec.end_page}</span>
+                                {sec.confidence && (
+                                  <span className="text-emerald-400 font-semibold">{Math.round(sec.confidence * 100)}% Conf</span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-xs text-slate-400 italic bg-[#051413] p-2 rounded border border-[#1b3a36]">
+                            Pages 1 through {doc.page_count} evaluated as single continuous document stream. Click "Split Document Sections" to partition by visual headers.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dimension 4: Cross-Document Consistency */}
+                  <div className="bg-[#09221f] border border-[#1b3a36] rounded-lg p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-100">4. {sixDimensions.consistency.label}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        sixDimensions.consistency.status === "passed"
+                          ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                          : "bg-amber-950 text-amber-300 border border-amber-800"
+                      }`}>
+                        {sixDimensions.consistency.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300">{sixDimensions.consistency.summary}</p>
+                  </div>
+
+                  {/* Dimension 5: Evidentiary Sufficiency & Completeness */}
+                  <div className="bg-[#09221f] border border-[#1b3a36] rounded-lg p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-100">5. {sixDimensions.evidentiary_sufficiency.label}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        sixDimensions.evidentiary_sufficiency.status === "passed"
+                          ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                          : "bg-rose-950 text-rose-300 border border-rose-800"
+                      }`}>
+                        {sixDimensions.evidentiary_sufficiency.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300">{sixDimensions.evidentiary_sufficiency.summary}</p>
+                    {sixDimensions.evidentiary_sufficiency.high_priority_flags.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        {sixDimensions.evidentiary_sufficiency.high_priority_flags.map((f, i) => (
+                          <div key={i} className="text-[11px] text-amber-300 flex items-center gap-1.5 bg-amber-950/40 px-2 py-1 rounded border border-amber-900/50">
+                            <span>⏳</span> <span>{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dimension 6: Human Verification */}
+                  <div className="bg-[#09221f] border border-[#1b3a36] rounded-lg p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-100">6. {sixDimensions.human_verification.label}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        doc.verification_status === "verified"
+                          ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                          : "bg-amber-950 text-amber-300 border border-amber-800"
+                      }`}>
+                        {doc.verification_status || "UNVERIFIED"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300">{sixDimensions.human_verification.summary}</p>
+                    <div className="text-[11px] text-teal-300/90 font-medium bg-[#051413] p-2 rounded border border-[#1b3a36]">
+                      Notice: Decoupled from automated OCR extraction. Authorized caseworker certification required under 8 CFR § 103.2 for package filing.
+                    </div>
+                  </div>
+
+                  <div className="pt-2 text-center">
+                    <button
+                      onClick={fetchSixDimensions}
+                      className="px-3 py-1.5 text-xs rounded bg-[#0D6866] hover:bg-[#063C3D] text-white font-medium transition-colors"
+                    >
+                      Re-audit Six Dimensions
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 text-center text-xs text-slate-400">
+                  <button
+                    onClick={fetchSixDimensions}
+                    className="px-3 py-1.5 text-xs rounded bg-[#0D6866] hover:bg-[#063C3D] text-white font-medium"
+                  >
+                    Evaluate Six Review Dimensions
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: THREE-TIER CANDIDATE EXTRACTION PROVENANCE */}
+          {activeTab === "provenance" && (
+            <div data-testid="three-tier-provenance-view" className="flex-1 overflow-y-auto p-4 space-y-3.5">
+              {/* Three-Tier Statutory Guardrail Banner */}
+              <div className="bg-[#09221f] border border-[#1b3a36] rounded-lg p-3 text-xs text-slate-300 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">⚖️</span>
+                    <span className="font-bold text-teal-300">Phase 10 Three-Tier Evidence Traceability Architecture</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(threeTierEntities, null, 2));
+                      setFeedbackToast({ message: "Copied all Three-Tier records.", type: "success" });
+                    }}
+                    className="px-2.5 py-1 text-xs rounded bg-[#133c38] text-teal-200 hover:bg-[#1a4e49] border border-[#215751] whitespace-nowrap"
+                  >
+                    Copy All JSON
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Strict regulatory separation of <strong>Extracted Facts</strong> (source OCR tokens), <strong>Model Inferences</strong> (predictions/classifications), and <strong>Professional Decisions</strong> (licensed staff determinations). AI does not decide legal eligibility, authenticity, fraud, or legal sufficiency.
+                </p>
+              </div>
+
+              {/* Tier Filter Buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTierFilter("ALL")}
+                  className={`px-2.5 py-1 text-xs rounded font-medium border transition-colors ${
+                    selectedTierFilter === "ALL"
+                      ? "bg-teal-900/60 text-teal-200 border-teal-500"
+                      : "bg-[#09221f] text-slate-400 border-[#1b3a36] hover:text-slate-200"
+                  }`}
+                >
+                  All ({threeTierEntities.length})
+                </button>
+                <button
+                  type="button"
+                  data-testid="filter-tier-1"
+                  onClick={() => setSelectedTierFilter("EXTRACTED_FACT")}
+                  className={`px-2.5 py-1 text-xs rounded font-medium border transition-colors ${
+                    selectedTierFilter === "EXTRACTED_FACT"
+                      ? "bg-emerald-950 text-emerald-300 border-emerald-600"
+                      : "bg-[#09221f] text-emerald-400/70 border-[#1b3a36] hover:text-emerald-300"
+                  }`}
+                >
+                  Tier 1: Facts ({threeTierEntities.filter((e) => e.tier === "EXTRACTED_FACT").length})
+                </button>
+                <button
+                  type="button"
+                  data-testid="filter-tier-2"
+                  onClick={() => setSelectedTierFilter("MODEL_INFERENCE")}
+                  className={`px-2.5 py-1 text-xs rounded font-medium border transition-colors ${
+                    selectedTierFilter === "MODEL_INFERENCE"
+                      ? "bg-amber-950 text-amber-300 border-amber-600"
+                      : "bg-[#09221f] text-amber-400/70 border-[#1b3a36] hover:text-amber-300"
+                  }`}
+                >
+                  Tier 2: Inferences ({threeTierEntities.filter((e) => e.tier === "MODEL_INFERENCE").length})
+                </button>
+                <button
+                  type="button"
+                  data-testid="filter-tier-3"
+                  onClick={() => setSelectedTierFilter("PROFESSIONAL_DECISION")}
+                  className={`px-2.5 py-1 text-xs rounded font-medium border transition-colors ${
+                    selectedTierFilter === "PROFESSIONAL_DECISION"
+                      ? "bg-indigo-950 text-indigo-300 border-indigo-600"
+                      : "bg-[#09221f] text-indigo-400/70 border-[#1b3a36] hover:text-indigo-300"
+                  }`}
+                >
+                  Tier 3: Decisions ({threeTierEntities.filter((e) => e.tier === "PROFESSIONAL_DECISION").length})
+                </button>
+              </div>
+
+              {loadingProvenance ? (
+                <div className="p-8 text-center text-xs text-slate-400">Loading structured extraction provenance...</div>
+              ) : filteredThreeTierEntities.length > 0 ? (
+                <div className="space-y-3">
+                  {filteredThreeTierEntities.map((item, idx) => {
+                    const badgeStyles =
+                      item.tier === "EXTRACTED_FACT"
+                        ? "bg-emerald-950 text-emerald-300 border-emerald-800"
+                        : item.tier === "MODEL_INFERENCE"
+                        ? "bg-amber-950 text-amber-300 border-amber-800"
+                        : "bg-indigo-950 text-indigo-300 border-indigo-800";
+
+                    return (
+                      <div
+                        key={idx}
+                        data-testid={`three-tier-card-${item.field_name}`}
+                        onClick={() => {
+                          const matchingField = fields.find((f) => f.field_name === item.field_name);
+                          if (matchingField) setSelectedFieldId(matchingField.id);
+                        }}
+                        className="bg-[#051413] border border-[#1b3a36] rounded-lg p-3 font-mono text-xs text-slate-200 space-y-2 hover:border-teal-500/50 cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${badgeStyles}`}>
+                              {item.tier_label || `Tier ${item.tier_number}: ${item.tier.replace(/_/g, " ")}`}
+                            </span>
+                            <span className="font-bold text-teal-300">{item.field_label || item.field_name}</span>
+                          </div>
+                          <span className="text-[11px] font-sans font-semibold text-slate-300">
+                            Confidence: {Math.round(item.confidence * 100)}%
+                          </span>
+                        </div>
+
+                        <div className="text-[12px] text-slate-100 font-sans font-medium bg-[#09221f] p-2 rounded border border-[#1b3a36]">
+                          "{String(item.value)}"
+                        </div>
+
+                        <div className="text-[10px] text-slate-400 flex flex-wrap gap-x-3 gap-y-1">
+                          {item.source_page && <span>Page {item.source_page}</span>}
+                          {item.model_or_method && <span>Engine: {item.model_or_method}</span>}
+                          {item.decided_by && <span>Reviewer: {item.decided_by}</span>}
+                        </div>
+
+                        {item.decision_notes && (
+                          <div className="text-[11px] text-indigo-200 bg-indigo-950/40 px-2.5 py-1.5 rounded border border-indigo-900/50">
+                            <span className="font-semibold text-indigo-300">Staff Decision:</span> {item.decision_notes}
+                          </div>
+                        )}
+
+                        {item.bounding_box && (
+                          <div className="text-[10px] text-teal-300/90 bg-[#09221f] px-2 py-1 rounded border border-[#1b3a36]">
+                            bounding_box: [{(item.bounding_box as number[]).map((n) => typeof n === "number" ? n.toFixed(2) : n).join(", ")}]
+                          </div>
+                        )}
+
+                        {item.statutory_disclaimer && (
+                          <div className="text-[10px] text-slate-400 italic bg-[#09221f]/50 px-2 py-1 rounded">
+                            ⚖️ {item.statutory_disclaimer}
+                          </div>
+                        )}
+
+                        <div className="flex justify-end pt-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(JSON.stringify(item, null, 2));
+                              setFeedbackToast({ message: `Copied JSON for ${item.field_name}`, type: "info" });
+                            }}
+                            className="px-2 py-1 text-[10px] rounded bg-[#133c38] text-teal-200 hover:bg-[#1a4e49] border border-[#215751]"
+                          >
+                            Copy Item JSON
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  <button
+                    onClick={fetchProvenance}
+                    className="px-3 py-1.5 text-xs rounded bg-[#0D6866] hover:bg-[#063C3D] text-white font-medium"
+                  >
+                    Load Extraction Provenance
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* CLASSIFICATION CORRECTION MODAL */}
+      {showClassificationModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#09221f] border border-[#1b3a36] rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-[#1b3a36] pb-3">
+              <h3 className="text-sm font-bold text-slate-100">Correct Document Classification</h3>
+              <button onClick={() => setShowClassificationModal(false)} className="text-slate-400 hover:text-slate-200 text-sm">✕</button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-300 block mb-1 font-semibold">Document Category</label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full bg-[#051413] border border-[#1b3a36] rounded-lg p-2 text-slate-100 focus:outline-none focus:border-teal-500"
+                >
+                  <option value="identity_passport">Identity & Passport</option>
+                  <option value="civil_status">Civil Status & Family</option>
+                  <option value="visas_residence_permits">Visas & Residence Permits</option>
+                  <option value="educational_records">Educational Records & Degrees</option>
+                  <option value="employment_records">Employment & Experience Letters</option>
+                  <option value="financial_evidence">Financial & Tax Evidence</option>
+                  <option value="police_medical">Police & Medical Clearances</option>
+                  <option value="government_correspondence">Government Notices & Receipts</option>
+                  <option value="translations_certifications">Certified Translations</option>
+                  <option value="supporting_evidence">General Supporting Evidence</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-slate-300 block mb-1 font-semibold">Audit Justification Reason</label>
+                <textarea
+                  rows={3}
+                  value={classificationReason}
+                  onChange={(e) => setClassificationReason(e.target.value)}
+                  placeholder="e.g., Reclassified as official certified marriage apostille based on physical seal inspection."
+                  className="w-full bg-[#051413] border border-[#1b3a36] rounded-lg p-2 text-slate-100 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+              <div className="text-[11px] text-slate-400 bg-[#051413] p-2 rounded border border-[#1b3a36]">
+                ⚠️ Note: Reclassification logs an immutable audit event with previous and updated category. Decoupled from filing package readiness.
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#1b3a36]">
+              <button
+                onClick={() => setShowClassificationModal(false)}
+                className="px-3 py-1.5 text-xs rounded bg-transparent hover:bg-[#133c38] text-slate-300 border border-[#1b3a36]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveClassification}
+                disabled={isSubmittingClassification}
+                className="px-4 py-1.5 text-xs rounded bg-[#0D6866] hover:bg-[#063C3D] text-white font-semibold transition-colors disabled:opacity-50"
+              >
+                {isSubmittingClassification ? "Saving..." : "Save Classification"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* APPLICANT ASSOCIATION MODAL */}
+      {showApplicantModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#09221f] border border-[#1b3a36] rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-[#1b3a36] pb-3">
+              <h3 className="text-sm font-bold text-slate-100">Confirm or Reassign Applicant</h3>
+              <button onClick={() => setShowApplicantModal(false)} className="text-slate-400 hover:text-slate-200 text-sm">✕</button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-300 block mb-1 font-semibold">Applicant Name</label>
+                <input
+                  type="text"
+                  value={targetApplicantName}
+                  onChange={(e) => setTargetApplicantName(e.target.value)}
+                  placeholder="e.g. Dr. Elena Rostova"
+                  className="w-full bg-[#051413] border border-[#1b3a36] rounded-lg p-2 text-slate-100 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+              <div>
+                <label className="text-slate-300 block mb-1 font-semibold">Audit Justification Reason</label>
+                <textarea
+                  rows={3}
+                  value={associationReason}
+                  onChange={(e) => setAssociationReason(e.target.value)}
+                  placeholder="e.g., Matches primary petitioner biodata name tokens and passport number."
+                  className="w-full bg-[#051413] border border-[#1b3a36] rounded-lg p-2 text-slate-100 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+              <div className="text-[11px] text-slate-400 bg-[#051413] p-2 rounded border border-[#1b3a36]">
+                ⚠️ Note: Confirmed assignment links document evidence directly to the selected applicant profile with audit provenance.
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#1b3a36]">
+              <button
+                onClick={() => setShowApplicantModal(false)}
+                className="px-3 py-1.5 text-xs rounded bg-transparent hover:bg-[#133c38] text-slate-300 border border-[#1b3a36]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveApplicantAssociation}
+                disabled={isSubmittingAssociation}
+                className="px-4 py-1.5 text-xs rounded bg-[#0D6866] hover:bg-[#063C3D] text-white font-semibold transition-colors disabled:opacity-50"
+              >
+                {isSubmittingAssociation ? "Saving..." : "Confirm Assignment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

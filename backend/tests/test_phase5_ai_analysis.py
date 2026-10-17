@@ -505,3 +505,280 @@ def test_cross_tenant_isolation_on_findings(client, db, phase5_setup):
 
     resp = client.get(f"/api/v1/cases/{case.id}/findings", headers=headers_b)
     assert resp.status_code in (403, 404)
+
+
+def test_document_six_dimensions_and_extractions_provenance(client, db, phase5_setup):
+    """
+    Validates Phase 5 Document Intelligence:
+    - 6 review dimensions
+    - Exact JSON extraction provenance shape:
+      {
+        "field": "applicant_name",
+        "value": "Dr. Elena Rostova",
+        "source_document_version_id": "...",
+        "page_number": 1,
+        "bounding_box": [0.12, 0.18, 0.72, 0.24],
+        "confidence": 0.91,
+        "extractor_version": "doc-intel-v5.0",
+        "review_status": "NEEDS_HUMAN_REVIEW"
+      }
+    - Legal sufficiency disclaimer presence
+    """
+    org = phase5_setup["org"]
+    case = phase5_setup["case"]
+    attorney = phase5_setup["attorney"]
+    client_profile = phase5_setup["client_profile"]
+
+    doc = Document(
+        organization_id=org.id,
+        case_id=case.id,
+        client_id=client_profile.id,
+        title="Passport_Elena.pdf",
+        filename="Passport_Elena.pdf",
+        category="identity_passport",
+        storage_path="mock/path/passport.pdf",
+        sha256_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        byte_size=2048,
+        mime_type="application/pdf",
+        page_count=1,
+        version=1,
+        is_current_version=True,
+        processing_status="completed",
+        verification_status="unverified",
+        ocr_applied=True,
+    )
+    db.add(doc)
+    db.flush()
+
+    f1 = DocumentExtractedField(
+        organization_id=org.id,
+        document_id=doc.id,
+        field_name="applicant_name",
+        field_label="Applicant Name",
+        original_value="Dr. Elena Rostova",
+        normalized_value="Elena Rostova",
+        source_page=1,
+        source_location={
+            "bounding_box": [0.12, 0.18, 0.72, 0.24],
+            "page_width": 595.0,
+            "page_height": 842.0,
+        },
+        ocr_confidence=0.91,
+        extraction_confidence=0.95,
+        validation_status="unvalidated",
+        model_version="doc-intel-v5.0",
+    )
+    db.add(f1)
+    db.commit()
+
+    headers = {
+        "X-User-Id": str(attorney.id),
+        "X-User-Role": "attorney",
+        "X-Org-Id": str(org.id),
+    }
+
+    # 1. Test GET /documents/{doc.id}/review-dimensions
+    dim_resp = client.get(f"/api/v1/documents/{doc.id}/review-dimensions", headers=headers)
+    assert dim_resp.status_code == 200
+    dim_data = dim_resp.json()
+    assert dim_data["document_id"] == str(doc.id)
+    assert "readability" in dim_data
+    assert "document_type" in dim_data
+    assert "applicant_association" in dim_data
+    assert "consistency" in dim_data
+    assert "evidentiary_sufficiency" in dim_data
+    assert "human_verification" in dim_data
+    assert "does not constitute evidentiary or statutory legal sufficiency" in dim_data["high_ocr_confidence_notice"]
+    assert dim_data["human_verification"]["details"]["is_decoupled_from_ocr"] is True
+
+    # 2. Test GET /documents/{doc.id}/extractions
+    ext_resp = client.get(f"/api/v1/documents/{doc.id}/extractions", headers=headers)
+    assert ext_resp.status_code == 200
+    ext_data = ext_resp.json()
+    assert ext_data["count"] == 1
+    item = ext_data["items"][0]
+    assert item["field"] == "applicant_name"
+    assert item["value"] == "Elena Rostova"
+    assert item["page_number"] == 1
+    assert item["bounding_box"] == [0.12, 0.18, 0.72, 0.24]
+    assert item["confidence"] == 0.91
+    assert item["extractor_version"] == "doc-intel-v5.0"
+    assert item["review_status"] == "NEEDS_HUMAN_REVIEW"
+    assert "does not constitute evidentiary or statutory legal sufficiency" in ext_data["legal_sufficiency_disclaimer"]
+
+
+def test_staff_classification_and_applicant_association_correction(client, db, phase5_setup):
+    """
+    Validates authorized staff corrections for classification and applicant association:
+    - Immutable audit trails recorded
+    - Rejection of client role requests (403)
+    - Decoupled from automated package readiness
+    """
+    org = phase5_setup["org"]
+    case = phase5_setup["case"]
+    attorney = phase5_setup["attorney"]
+    client_user = phase5_setup["client_user"]
+    client_profile = phase5_setup["client_profile"]
+
+    doc = Document(
+        organization_id=org.id,
+        case_id=case.id,
+        title="Unclassified_Record.pdf",
+        filename="Unclassified_Record.pdf",
+        category="unclassified",
+        storage_path="mock/path/unclassified.pdf",
+        sha256_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        byte_size=1024,
+        mime_type="application/pdf",
+        page_count=1,
+        version=1,
+        is_current_version=True,
+        processing_status="completed",
+        verification_status="unverified",
+    )
+    db.add(doc)
+    db.commit()
+
+    staff_headers = {
+        "X-User-Id": str(attorney.id),
+        "X-User-Role": "case_manager",
+        "X-Org-Id": str(org.id),
+    }
+
+    client_headers = {
+        "X-User-Id": str(client_user.id),
+        "X-User-Role": "retained_client",
+        "X-Org-Id": str(org.id),
+    }
+
+    # Retained client is forbidden from reclassifying
+    client_resp = client.put(
+        f"/api/v1/documents/{doc.id}/classification",
+        headers=client_headers,
+        json={"category": "civil_status_family", "reason": "Self-classification"},
+    )
+    assert client_resp.status_code == 403
+
+    # Authorized staff corrects classification
+    staff_resp = client.put(
+        f"/api/v1/documents/{doc.id}/classification",
+        headers=staff_headers,
+        json={"category": "civil_status_family", "reason": "Verified marriage certificate from apostille seal"},
+    )
+    assert staff_resp.status_code == 200
+    assert staff_resp.json()["category"] == "civil_status_family"
+    assert staff_resp.json()["is_assignment_confirmed"] is True
+    # Verification status remains unverified (not automatically package-eligible)
+    assert staff_resp.json()["verification_status"] == "unverified"
+
+    # Authorized staff corrects applicant association
+    assoc_resp = client.put(
+        f"/api/v1/documents/{doc.id}/applicant-association",
+        headers=staff_headers,
+        json={
+            "client_id": str(client_profile.id),
+            "applicant_name": "Elena Rostova",
+            "reason": "Matching petitioner profile and birth certificate name",
+        },
+    )
+    assert assoc_resp.status_code == 200
+    assert assoc_resp.json()["client_id"] == str(client_profile.id)
+    assert assoc_resp.json()["proposed_applicant_name"] == "Elena Rostova"
+
+
+def test_route_finding_and_privacy_guard(client, db, phase5_setup):
+    """
+    Validates the Phase 5 Anomaly Workflow:
+    - Route finding to an owner with due date and client-facing explanation
+    - Private internal risk notes are hidden from client views
+    """
+    org = phase5_setup["org"]
+    case = phase5_setup["case"]
+    attorney = phase5_setup["attorney"]
+    client_user = phase5_setup["client_user"]
+
+    finding = CaseAIFinding(
+        organization_id=org.id,
+        case_id=case.id,
+        finding_type="consistency_discrepancy",
+        severity="major",
+        status="needs_review",
+        title="Spelling variation on diploma",
+        description="Candidate name mismatch between passport and university certificate",
+        recommended_action="Verify secondary evidence",
+        uncertainty_limitations="Automated comparison",
+        internal_risk_notes="Privileged audit: Possible diploma mill verification required by counsel before filing.",
+        resolution_history=[],
+    )
+    db.add(finding)
+    db.commit()
+
+    staff_headers = {
+        "X-User-Id": str(attorney.id),
+        "X-User-Role": "case_manager",
+        "X-Org-Id": str(org.id),
+    }
+
+    client_headers = {
+        "X-User-Id": str(client_user.id),
+        "X-User-Role": "retained_client",
+        "X-Org-Id": str(org.id),
+    }
+
+    # Route finding to attorney with due date and client-facing template
+    due = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+    route_resp = client.put(
+        f"/api/v1/cases/{case.id}/findings/{finding.id}/route",
+        headers=staff_headers,
+        json={
+            "owner_user_id": str(attorney.id),
+            "due_date": due,
+            "note": "Assigned to primary counsel for evidentiary inspection",
+            "client_facing_template": "We are currently reviewing the spelling of your name on your degree certificate.",
+        },
+    )
+    assert route_resp.status_code == 200
+    routed_data = route_resp.json()
+    assert routed_data["owner_user_id"] == str(attorney.id)
+    assert routed_data["client_facing_template"] == "We are currently reviewing the spelling of your name on your degree certificate."
+    assert routed_data["internal_risk_notes"] is not None
+
+    # Verify client portal view: internal_risk_notes must be None
+    client_findings_resp = client.get(f"/api/v1/cases/{case.id}/findings", headers=client_headers)
+    assert client_findings_resp.status_code == 200
+    client_findings = client_findings_resp.json()
+    our_finding = next(f for f in client_findings if f["id"] == str(finding.id))
+    assert our_finding["internal_risk_notes"] is None, "Privileged internal risk notes MUST NEVER be leaked to clients!"
+    assert our_finding["client_facing_template"] is not None
+
+
+def test_ocr_page_rotation_normalization():
+    """Validates that OCREngine detects rotated pages and normalizes them upright (0 deg)."""
+    import fitz
+    from backend.app.ocr.engine import OCREngine
+
+    # Create rotated PDF in memory
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 72), "CONFIDENTIAL CIVIL DOCUMENT")
+    page.set_rotation(90)
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    # Test OCREngine.normalize_document
+    norm_bytes, meta = OCREngine.normalize_document(pdf_bytes, "application/pdf")
+    assert meta["is_normalized"] is True
+    assert meta["pages_rotated"] == 1
+    assert 90 in meta["rotations_detected"]
+
+    # Verify normalized document has 0 degree rotation
+    norm_doc = fitz.open(stream=norm_bytes, filetype="pdf")
+    assert norm_doc[0].rotation == 0
+    norm_doc.close()
+
+    # Test extract_document records rotation correction
+    pages = OCREngine.extract_document(pdf_bytes, "application/pdf")
+    assert len(pages) == 1
+    assert pages[0].detected_rotation == 90
+    assert pages[0].is_rotation_corrected is True
+    assert "CONFIDENTIAL CIVIL DOCUMENT" in pages[0].text

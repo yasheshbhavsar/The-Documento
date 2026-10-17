@@ -106,8 +106,28 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
             filename=doc.filename,
             declared_category=doc.category,
         )
-        if doc.category in ("supporting_evidence", "other") and detected_category != "supporting_evidence":
-            doc.category = detected_category
+        doc.proposed_category = detected_category
+
+        # PHASE 10: Uncertain assignment remains unassigned
+        if class_confidence >= 0.70:
+            if doc.category in ("supporting_evidence", "other") and detected_category != "supporting_evidence":
+                doc.category = detected_category
+                doc.is_assignment_confirmed = False
+        else:
+            if doc.category in ("supporting_evidence", "other"):
+                doc.category = "supporting_evidence"
+            doc.is_assignment_confirmed = False
+
+        # Suggested Page Boundaries for multi-page documents
+        suggested_boundaries = []
+        if len(pages) > 1:
+            from backend.app.documents.boundaries import detect_document_boundaries
+            boundary_inputs = [
+                {"page_number": p.page_number, "text": p.text or ""}
+                for p in pages
+            ]
+            suggested_boundaries = detect_document_boundaries(boundary_inputs)
+            doc.sub_documents_metadata = suggested_boundaries
 
         # 4. Layout Metadata Packaging
         layout_pages = []
@@ -137,6 +157,7 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
             "page_count": len(pages),
             "detected_language": detected_lang,
             "classification_confidence": class_confidence,
+            "suggested_boundaries": suggested_boundaries,
             "pages": layout_pages,
         }
 
@@ -185,6 +206,45 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
                 field.validation_status = "corrected"
 
             db.add(field)
+
+        # PHASE 10: Suggest applicant association; uncertain assignment remains unassigned
+        if doc.case_id:
+            from backend.app.domain.models import ImmigrationCase
+            from backend.app.extraction.service import suggest_applicant_association
+            case = db.query(ImmigrationCase).filter(ImmigrationCase.id == doc.case_id).first()
+            if case and case.client:
+                primary = {
+                    "id": str(case.client.id),
+                    "name": f"{case.client.first_name} {case.client.last_name}".strip(),
+                    "first_name": case.client.first_name,
+                    "last_name": case.client.last_name,
+                    "is_dependant": False,
+                }
+                dependants = [
+                    {
+                        "id": str(d.id),
+                        "name": f"{d.first_name} {d.last_name}".strip(),
+                        "first_name": d.first_name,
+                        "last_name": d.last_name,
+                        "is_dependant": True,
+                        "dependant_id": d.id,
+                    }
+                    for d in (case.client.dependants or [])
+                ]
+                family_candidates = [primary] + dependants
+                matched_member, match_score = suggest_applicant_association(new_extracted_fields, family_candidates)
+                if matched_member and match_score >= 0.70:
+                    doc.proposed_applicant_name = matched_member["name"]
+                    doc.is_assignment_confirmed = False
+                    if matched_member["is_dependant"]:
+                        doc.applicant_dependant_id = matched_member["dependant_id"]
+                    else:
+                        doc.applicant_dependant_id = None
+                else:
+                    # Uncertain assignment remains unassigned
+                    doc.proposed_applicant_name = None
+                    doc.applicant_dependant_id = None
+                    doc.is_assignment_confirmed = False
 
         # 6. Mark Processing Completed
         doc.processing_status = "completed"

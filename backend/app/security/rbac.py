@@ -39,7 +39,7 @@ ROLE_PERMISSIONS: dict[RoleCode, set[str]] = {
         "analytics:read", "analytics:export", "assignment:manage",
         "case:read", "case:read:all", "case:write", "case:write:all", "case:create",
         "document:read", "document:read:all", "document:write", "document:verify",
-        "task:write", "request:write", "package:prepare", "finding:disposition",
+        "task:write", "request:write", "package:prepare", "finding:disposition", "readiness:approve",
         "rules:manage", "rules:evaluate", "rule:draft", "rule:approve", "rule:publish", "source:write", "source:read",
     },
     RoleCode.SENIOR_REVIEWER: {
@@ -88,8 +88,8 @@ ROLE_PERMISSIONS: dict[RoleCode, set[str]] = {
         "task:write", "request:write", "package:prepare", "finding:disposition", "readiness:approve",
     },
     RoleCode.CASE_WORKER: {
-        "case:read", "case:read:all", "case:read:assigned", "case:write", "case:write:assigned", "case:create",
-        "document:read", "document:read:all", "document:read:assigned", "document:write", "document:verify",
+        "case:read", "case:read:assigned", "case:write", "case:write:assigned", "case:create",
+        "document:read", "document:read:assigned", "document:write", "document:verify",
         "task:write", "request:write", "package:prepare", "assignment:manage",
     },
     RoleCode.APPLICANT: {

@@ -17,6 +17,9 @@ from backend.app.domain.models import (
     Role,
     Invitation,
     AuditEvent,
+    CaseAssignment,
+    ImmigrationCase,
+    Session as UserSession,
 )
 from backend.app.security.auth import AuthContext, get_auth_context, require_permission
 from backend.app.security.rbac import RoleCode, can_assign_permission
@@ -329,3 +332,157 @@ def create_invitation(
         created_at=invitation.created_at,
         invitation_token=raw_token,
     )
+
+
+class OffboardMemberRequest(BaseModel):
+    transfer_cases_to_user_id: uuid.UUID | None = None
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
+class OffboardMemberResponse(BaseModel):
+    user_id: uuid.UUID
+    organization_id: uuid.UUID
+    membership_status: str
+    user_status: str
+    transferred_cases_count: int
+    transferred_to_user_id: uuid.UUID | None = None
+    sessions_revoked_count: int
+    offboarded_at: datetime
+
+
+@router.post("/members/{user_id}/offboard", response_model=OffboardMemberResponse)
+def offboard_member(
+    user_id: uuid.UUID,
+    payload: OffboardMemberRequest,
+    ctx: AuthContext = Depends(require_permission("user:manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Executes employee offboarding:
+    - Only owner/manager (is_org_admin) can execute offboarding.
+    - Transfers active cases to designated colleague, preserving history.
+    - Sets membership to inactive and revokes all active sessions.
+    - Logs audit events without leaking sensitive data.
+    """
+    if not ctx.is_org_admin():
+        raise PermissionDeniedError("Only organization owners and administrators can offboard employees")
+
+    membership = (
+        db.query(OrganizationMembership)
+        .filter(
+            OrganizationMembership.organization_id == ctx.organization_id,
+            OrganizationMembership.user_id == user_id,
+        )
+        .first()
+    )
+    if not membership:
+        raise EntityNotFoundError("OrganizationMembership", user_id)
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise EntityNotFoundError("User", user_id)
+
+    now = datetime.now(timezone.utc)
+    transferred_count = 0
+
+    # 1. Transfer active case assignments if requested
+    if payload.transfer_cases_to_user_id:
+        recipient = (
+            db.query(User)
+            .join(User.memberships)
+            .filter(
+                User.id == payload.transfer_cases_to_user_id,
+                User.memberships.any(
+                    organization_id=ctx.organization_id,
+                    status="active",
+                ),
+            )
+            .first()
+        )
+        if not recipient:
+            raise EntityNotFoundError("Active Recipient User in Organization", payload.transfer_cases_to_user_id)
+
+        active_assignments = (
+            db.query(CaseAssignment)
+            .join(CaseAssignment.case)
+            .filter(
+                CaseAssignment.user_id == user_id,
+                ImmigrationCase.organization_id == ctx.organization_id,
+            )
+            .all()
+        )
+        for assign in active_assignments:
+            old_uid = str(assign.user_id)
+            assign.user_id = recipient.id
+            assign.assigned_at = now
+            transferred_count += 1
+
+            audit = AuditEvent(
+                organization_id=ctx.organization_id,
+                actor_id=ctx.user_id,
+                action="case.assignment_transferred",
+                object_type="case_assignment",
+                object_id=str(assign.id),
+                metadata_json={
+                    "case_id": str(assign.case_id),
+                    "role_in_case": assign.role_in_case,
+                    "previous_user_id": old_uid,
+                    "transferred_to_user_id": str(recipient.id),
+                    "offboarding_reason": payload.reason,
+                },
+                occurred_at=now,
+            )
+            db.add(audit)
+
+    # 2. Deactivate membership
+    membership.status = "inactive"
+
+    # 3. Revoke all active sessions
+    revoked_count = (
+        db.query(UserSession)
+        .filter(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
+        .update({"revoked_at": now})
+    )
+
+    # 4. If no other active memberships, mark user inactive
+    other_active = (
+        db.query(OrganizationMembership)
+        .filter(
+            OrganizationMembership.user_id == user_id,
+            OrganizationMembership.id != membership.id,
+            OrganizationMembership.status == "active",
+        )
+        .count()
+    )
+    if other_active == 0:
+        target_user.status = "inactive"
+
+    # 5. Record audit event for employee offboarding
+    audit_offboard = AuditEvent(
+        organization_id=ctx.organization_id,
+        actor_id=ctx.user_id,
+        action="organization.employee_offboarded",
+        object_type="user",
+        object_id=str(user_id),
+        metadata_json={
+            "transferred_cases_count": transferred_count,
+            "transferred_to_user_id": str(payload.transfer_cases_to_user_id) if payload.transfer_cases_to_user_id else None,
+            "sessions_revoked": revoked_count,
+            "reason": payload.reason,
+        },
+        occurred_at=now,
+    )
+    db.add(audit_offboard)
+    db.commit()
+
+    return OffboardMemberResponse(
+        user_id=user_id,
+        organization_id=ctx.organization_id,
+        membership_status=membership.status,
+        user_status=target_user.status,
+        transferred_cases_count=transferred_count,
+        transferred_to_user_id=payload.transfer_cases_to_user_id,
+        sessions_revoked_count=revoked_count,
+        offboarded_at=now,
+    )
+

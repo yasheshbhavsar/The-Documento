@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.errors import EntityNotFoundError, PermissionDeniedError
 from backend.app.db.session import get_db
 from backend.app.domain.models import (
+    AuditEvent,
     ClientProfile,
     Document,
     ImmigrationCase,
@@ -25,7 +26,8 @@ router = APIRouter(prefix="/messaging", tags=["messaging"])
 class ThreadCreateRequest(BaseModel):
     case_id: uuid.UUID
     subject: str = Field(..., min_length=2, max_length=255)
-    thread_type: str = Field(default="general", max_length=64, description="client_inquiry, case_update, document_request, general")
+    thread_type: str = Field(default="general", max_length=64, description="client_inquiry, case_update, document_request, general, team_chat")
+    channel_category: str = Field(default="client", max_length=32, description="'client' for client-facing, 'team' for staff-only")
     initial_message: str | None = None
     is_internal: bool = Field(default=False, description="Staff-only internal note thread")
     attachment_document_ids: list[uuid.UUID] = Field(default_factory=list)
@@ -38,6 +40,8 @@ class ThreadResponse(BaseModel):
     case_number: str
     subject: str
     thread_type: str
+    channel_category: str = "client"
+    is_internal: bool = False
     status: str
     created_by_user_id: uuid.UUID | None
     created_at: datetime
@@ -73,6 +77,23 @@ class DeliveryWebhookRequest(BaseModel):
     error_message: str | None = None
 
 
+class ManagerConversationOverviewItem(BaseModel):
+    thread_id: uuid.UUID
+    case_id: uuid.UUID
+    case_number: str
+    client_name: str
+    assigned_officer_name: str
+    subject: str
+    channel_category: str
+    is_internal: bool
+    status: str
+    total_messages_count: int
+    unread_count: int
+    last_message_preview: str | None
+    last_message_at: datetime
+    last_sender_role: str | None
+
+
 # --- Helpers ---
 
 def _assert_user_can_access_thread(
@@ -93,6 +114,15 @@ def _assert_user_can_access_thread(
         authorized_dependant_user_ids=authorized_deps,
         assigned_user_ids=assigned_user_ids,
     )
+
+    # Strict client boundary: Clients can NEVER access internal team chats or staff notes
+    is_team_or_internal = (
+        thread.is_internal
+        or getattr(thread, "channel_category", "") == "team"
+        or thread.thread_type in ("team", "team_chat", "internal", "staff_only")
+    )
+    if ctx.is_retained_client() and is_team_or_internal:
+        raise PermissionDeniedError("Client access denied: Internal team chats and staff notes are strictly confidential")
 
 
 # --- Endpoints ---
@@ -120,10 +150,12 @@ def create_thread(
         assigned_user_ids=assigned_user_ids,
     )
 
-    # If client attempts to create an internal note, force False
-    is_internal = payload.is_internal
-    if ctx.is_retained_client():
-        is_internal = False
+    # Clients can NEVER initiate internal team chats or staff notes
+    if ctx.is_retained_client() and (payload.channel_category == "team" or payload.is_internal or payload.thread_type in ("team", "team_chat", "internal")):
+        raise PermissionDeniedError("Clients cannot create internal team chats or staff-only notes")
+
+    channel_category = "client" if ctx.is_retained_client() else payload.channel_category
+    is_internal = False if ctx.is_retained_client() else (payload.is_internal or payload.channel_category == "team")
 
     now = datetime.now(timezone.utc)
     thread = MessageThread(
@@ -131,6 +163,8 @@ def create_thread(
         case_id=payload.case_id,
         subject=payload.subject,
         thread_type=payload.thread_type,
+        channel_category=channel_category,
+        is_internal=is_internal,
         status="open",
         created_by_user_id=ctx.user_id,
         created_at=now,
@@ -155,6 +189,23 @@ def create_thread(
         db.add(msg)
         last_preview = payload.initial_message[:100]
 
+    # Privacy-preserving audit logging: never copy sensitive message contents to audit trail
+    audit = AuditEvent(
+        organization_id=ctx.organization_id,
+        actor_id=ctx.user_id,
+        action="messaging.thread_created",
+        object_type="message_thread",
+        object_id=str(thread.id),
+        metadata_json={
+            "case_id": str(thread.case_id),
+            "thread_type": thread.thread_type,
+            "channel_category": thread.channel_category,
+            "is_internal": thread.is_internal,
+            "has_initial_message": bool(payload.initial_message),
+        },
+        occurred_at=now,
+    )
+    db.add(audit)
     db.commit()
     db.refresh(thread)
 
@@ -165,6 +216,8 @@ def create_thread(
         case_number=case.case_number,
         subject=thread.subject,
         thread_type=thread.thread_type,
+        channel_category=thread.channel_category,
+        is_internal=thread.is_internal,
         status=thread.status,
         created_by_user_id=thread.created_by_user_id,
         created_at=thread.created_at,
@@ -179,6 +232,7 @@ def create_thread(
 def list_threads(
     case_id: uuid.UUID | None = Query(default=None),
     thread_type: str | None = Query(default=None),
+    channel_category: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     search: str | None = Query(default=None),
     ctx: AuthContext = Depends(get_auth_context),
@@ -186,14 +240,25 @@ def list_threads(
 ):
     """
     Lists message threads permitted for the user.
-    Retained clients can only list threads for cases they own or are authorized to view.
+    Retained clients can only list client-facing threads for cases they own.
+    Team chats and staff-only notes are strictly excluded for clients.
     """
     query = db.query(MessageThread).filter(MessageThread.organization_id == ctx.organization_id)
+
+    if ctx.is_retained_client():
+        # Strictly exclude internal team chats
+        query = query.filter(
+            MessageThread.is_internal == False,
+            MessageThread.channel_category != "team",
+            ~MessageThread.thread_type.in_(["team", "team_chat", "internal", "staff_only"]),
+        )
 
     if case_id:
         query = query.filter(MessageThread.case_id == case_id)
     if thread_type:
         query = query.filter(MessageThread.thread_type == thread_type)
+    if channel_category:
+        query = query.filter(MessageThread.channel_category == channel_category)
     if status_filter:
         query = query.filter(MessageThread.status == status_filter)
     if search:
@@ -226,7 +291,6 @@ def list_threads(
             msg_query = msg_query.filter(Message.is_internal == False)
 
         all_msgs = msg_query.order_by(Message.created_at.asc()).all()
-        # If client and no client-visible messages exist in this thread, skip or show
         last_msg = all_msgs[-1] if all_msgs else None
         unread = sum(1 for m in all_msgs if m.sender_id != ctx.user_id and m.read_at is None)
 
@@ -238,6 +302,8 @@ def list_threads(
                 case_number=case.case_number,
                 subject=t.subject,
                 thread_type=t.thread_type,
+                channel_category=t.channel_category,
+                is_internal=t.is_internal,
                 status=t.status,
                 created_by_user_id=t.created_by_user_id,
                 created_at=t.created_at,
@@ -344,6 +410,25 @@ def post_message(
     thread.updated_at = now
     db.commit()
     db.refresh(message)
+
+    # Privacy-preserving audit logging: never copy sensitive message contents to audit trail
+    audit = AuditEvent(
+        organization_id=ctx.organization_id,
+        actor_id=ctx.user_id,
+        action="messaging.message_sent",
+        object_type="message",
+        object_id=str(message.id),
+        metadata_json={
+            "case_id": str(thread.case_id),
+            "thread_id": str(thread.id),
+            "is_internal": message.is_internal,
+            "has_attachments": bool(message.attachment_document_ids),
+            "char_count": len(message.content),
+        },
+        occurred_at=now,
+    )
+    db.add(audit)
+    db.commit()
 
     # If client message, notify case manager. If staff message and not internal, notify client.
     user = db.query(User).filter(User.id == ctx.user_id).first()
@@ -463,3 +548,100 @@ def delivery_webhook(
 
     db.commit()
     return {"status": "ok", "message_id": str(message.id), "delivery_status": message.delivery_status}
+
+
+@router.get("/manager-overview", response_model=list[ManagerConversationOverviewItem])
+def get_manager_conversation_overview(
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Manager/Owner workspace view of all officer-client conversations across the firm.
+    Enforces that managers/owners have global review oversight to support continuous quality,
+    while caseworkers and clients are strictly forbidden from viewing unauthorized threads.
+    """
+    if ctx.is_retained_client():
+        raise PermissionDeniedError("Clients are strictly forbidden from management conversation audit queues.")
+
+    is_firm_manager = (
+        ctx.is_org_admin()
+        or ctx.is_senior_reviewer()
+        or ctx.is_case_manager()
+        or ctx.has_permission("case:read:all")
+    )
+    if not is_firm_manager:
+        raise PermissionDeniedError("Restricted to case managers, senior partners, and firm administrators.")
+
+    threads = (
+        db.query(MessageThread)
+        .filter(MessageThread.organization_id == ctx.organization_id)
+        .order_by(MessageThread.updated_at.desc())
+        .all()
+    )
+
+    results: list[ManagerConversationOverviewItem] = []
+    for t in threads:
+        case = db.query(ImmigrationCase).filter(ImmigrationCase.id == t.case_id).first()
+        if not case:
+            continue
+
+        assigned_officer = "Unassigned"
+        if case.assignments:
+            officer_user = case.assignments[0].user
+            if officer_user:
+                assigned_officer = officer_user.full_name
+
+        all_msgs = (
+            db.query(Message)
+            .filter(Message.thread_id == t.id)
+            .order_by(Message.created_at.asc())
+            .all()
+        )
+        last_msg = all_msgs[-1] if all_msgs else None
+        unread = sum(1 for m in all_msgs if m.read_at is None)
+
+        last_sender_role = None
+        if last_msg:
+            sender = db.query(User).filter(User.id == last_msg.sender_id).first()
+            if sender:
+                client = db.query(ClientProfile).filter(ClientProfile.user_id == sender.id).first()
+                last_sender_role = "client" if client else "officer"
+
+        results.append(
+            ManagerConversationOverviewItem(
+                thread_id=t.id,
+                case_id=t.case_id,
+                case_number=case.case_number,
+                client_name=f"{case.client.first_name} {case.client.last_name}" if case.client else "Client",
+                assigned_officer_name=assigned_officer,
+                subject=t.subject,
+                channel_category=t.channel_category or "client",
+                is_internal=t.is_internal,
+                status=t.status,
+                total_messages_count=len(all_msgs),
+                unread_count=unread,
+                last_message_preview=last_msg.content[:120] if last_msg else None,
+                last_message_at=last_msg.created_at if last_msg else t.updated_at,
+                last_sender_role=last_sender_role,
+            )
+        )
+
+    return results
+
+
+@router.put("/messages/{message_id}")
+@router.patch("/messages/{message_id}")
+@router.delete("/messages/{message_id}")
+def edit_or_delete_message(
+    message_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+):
+    """
+    Client messages are strictly immutable after send/receive.
+    Mistakes must be corrected by sending a new message.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+        detail="Client messages are strictly immutable after send/receive. Send a new message to correct mistakes.",
+    )
+

@@ -81,6 +81,22 @@ class DocumentRequestReplaceRequest(BaseModel):
     explanation: str | None = None
 
 
+class DraftRequestIn(BaseModel):
+    case_id: uuid.UUID
+    template_code: str
+    finding_id: uuid.UUID | None = None
+    custom_instructions: str | None = None
+    due_date: datetime | None = None
+
+
+class ApproveDraftRequestIn(BaseModel):
+    title_override: str | None = None
+    description_override: str | None = None
+    instructions_override: str | None = None
+    due_date_override: datetime | None = None
+    review_notes: str | None = None
+
+
 class CommentCreateRequest(BaseModel):
     content: str = Field(..., min_length=1)
     is_internal: bool = Field(default=False)
@@ -231,6 +247,8 @@ def list_document_requests(
         if not client:
             return []
         query = query.filter(DocumentRequest.requested_from_client_id == client.id)
+        # PRIVACY ENFORCEMENT: Clients can NEVER see unapproved staff drafts!
+        query = query.filter(DocumentRequest.status != "draft")
 
     if case_id:
         query = query.filter(DocumentRequest.case_id == case_id)
@@ -678,3 +696,124 @@ def list_request_comments(
         )
         for c in comments
     ]
+
+
+# ---------------------------------------------------------------------------
+# Phase 10 AI-Assisted Request Drafting & Staff Review Approval
+# ---------------------------------------------------------------------------
+
+@router.get("/templates")
+def list_approved_request_templates(
+    ctx: AuthContext = Depends(get_auth_context),
+):
+    """Returns all pre-approved firm client request templates."""
+    from backend.app.ai.client_request_drafter import get_approved_request_templates
+    return get_approved_request_templates()
+
+
+@router.post("/draft-from-template", response_model=DocumentRequestResponse)
+def draft_request_from_template_endpoint(
+    payload: DraftRequestIn,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Drafts a client document request using a pre-approved regulatory template.
+    Strictly enters 'draft' status requiring staff review before transmission.
+    """
+    if ctx.is_retained_client():
+        raise PermissionDeniedError("Clients cannot draft document requests.")
+
+    from backend.app.ai.client_request_drafter import draft_client_request_from_template
+
+    doc_req = draft_client_request_from_template(
+        db=db,
+        case_id=payload.case_id,
+        template_code=payload.template_code,
+        finding_id=payload.finding_id,
+        custom_instructions=payload.custom_instructions,
+        custom_due_date=payload.due_date,
+        actor_id=ctx.user_id,
+        organization_id=ctx.organization_id,
+    )
+
+    return DocumentRequestResponse(
+        id=doc_req.id,
+        organization_id=doc_req.organization_id,
+        case_id=doc_req.case_id,
+        requested_by_user_id=doc_req.requested_by_user_id,
+        requested_from_client_id=doc_req.requested_from_client_id,
+        dependant_id=doc_req.dependant_id,
+        title=doc_req.title,
+        description=doc_req.description,
+        category=doc_req.category,
+        rationale=doc_req.rationale,
+        statutory_requirement_code=doc_req.statutory_requirement_code,
+        accepted_formats=doc_req.accepted_formats,
+        acceptable_alternatives=doc_req.acceptable_alternatives,
+        due_date=doc_req.due_date,
+        instructions=doc_req.instructions,
+        translation_guidance=doc_req.translation_guidance,
+        status=doc_req.status,
+        fulfilled_document_id=doc_req.fulfilled_document_id,
+        rejection_reason=doc_req.rejection_reason,
+        status_history=doc_req.status_history,
+        created_at=doc_req.created_at,
+        updated_at=doc_req.updated_at,
+        comments_count=0,
+    )
+
+
+@router.post("/{request_id}/approve-and-send", response_model=DocumentRequestResponse)
+def approve_and_send_draft_request_endpoint(
+    request_id: uuid.UUID,
+    payload: ApproveDraftRequestIn | None = None,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Staff reviews, optionally edits, and explicitly approves an AI draft request for dispatch.
+    Transitions status from 'draft' -> 'requested' and notifies the client portal.
+    """
+    if ctx.is_retained_client():
+        raise PermissionDeniedError("Clients cannot approve or send document requests.")
+
+    from backend.app.ai.client_request_drafter import review_and_send_client_request
+
+    doc_req = review_and_send_client_request(
+        db=db,
+        request_id=request_id,
+        reviewer_id=ctx.user_id,
+        organization_id=ctx.organization_id,
+        title_override=payload.title_override if payload else None,
+        description_override=payload.description_override if payload else None,
+        instructions_override=payload.instructions_override if payload else None,
+        due_date_override=payload.due_date_override if payload else None,
+        review_notes=payload.review_notes if payload else None,
+    )
+
+    return DocumentRequestResponse(
+        id=doc_req.id,
+        organization_id=doc_req.organization_id,
+        case_id=doc_req.case_id,
+        requested_by_user_id=doc_req.requested_by_user_id,
+        requested_from_client_id=doc_req.requested_from_client_id,
+        dependant_id=doc_req.dependant_id,
+        title=doc_req.title,
+        description=doc_req.description,
+        category=doc_req.category,
+        rationale=doc_req.rationale,
+        statutory_requirement_code=doc_req.statutory_requirement_code,
+        accepted_formats=doc_req.accepted_formats,
+        acceptable_alternatives=doc_req.acceptable_alternatives,
+        due_date=doc_req.due_date,
+        instructions=doc_req.instructions,
+        translation_guidance=doc_req.translation_guidance,
+        status=doc_req.status,
+        fulfilled_document_id=doc_req.fulfilled_document_id,
+        rejection_reason=doc_req.rejection_reason,
+        status_history=doc_req.status_history,
+        created_at=doc_req.created_at,
+        updated_at=doc_req.updated_at,
+        comments_count=len(doc_req.comments) if doc_req.comments else 0,
+    )

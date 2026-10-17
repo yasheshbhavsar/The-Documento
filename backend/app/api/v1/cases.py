@@ -8,7 +8,22 @@ from sqlalchemy.orm import Session, joinedload
 
 from backend.app.core.errors import ConflictError, EntityNotFoundError, PermissionDeniedError, TenantIsolationError
 from backend.app.db.session import get_db
-from backend.app.domain.case_service import CaseStage, validate_case_status_transition
+from backend.app.domain.case_service import CaseStage, validate_case_status_transition, sync_legacy_to_decoupled_lifecycle
+from backend.app.domain.firm_config_service import FirmConfigService
+from backend.app.domain.case_lifecycle import (
+    CaseLifecycleService,
+    PaymentClearanceStatus,
+    PreparationStatus,
+    OperationalState,
+    ReviewStatus,
+    AdjudicationOutcome,
+    CaseHoldType,
+    SubmissionAuthorizationStatus,
+    HandoverAuthorizationStatus,
+    ClientEngagementType,
+    ProgressiveReviewStage,
+)
+from backend.app.domain.models import CaseHoldHistory
 from backend.app.domain.models import (
     AuditEvent,
     CaseAssignment,
@@ -40,6 +55,8 @@ class CaseCreateRequest(BaseModel):
     case_manager_id: uuid.UUID | None = None
     lead_attorney_id: uuid.UUID | None = None
     reviewer_id: uuid.UUID | None = None
+    client_engagement_type: str = Field(default="RETAINED_CLIENT", description="RETAINED_CLIENT, CONSULTATION_ONLY, PRELIMINARY_ASSESSMENT")
+    is_retained: bool = True
 
 
 class CaseUpdateRequest(BaseModel):
@@ -54,6 +71,108 @@ class StatusTransitionRequest(BaseModel):
     reason: str | None = None
     notes: str | None = None
     is_pathway_override: bool = False
+
+
+class PreparationTransitionRequest(BaseModel):
+    target_status: str = Field(..., description="CLEARANCE_PENDING, AUTHORIZED_FOR_PREPARATION, PREPARATION_IN_PROGRESS, READY_FOR_FINAL_REVIEW, READY_TO_SUBMIT, SUBMITTED")
+    notes: str | None = None
+    is_pathway_override: bool = False
+
+
+class HoldRequest(BaseModel):
+    hold_type: str = Field(default="client_request", description="client_request, billing_arrears, pending_official_record, administrative")
+    reason: str = Field(..., min_length=3, max_length=255)
+
+
+class ReleaseHoldRequest(BaseModel):
+    resolution_notes: str = Field(..., min_length=3, max_length=255)
+
+
+class ReassignOwnerRequest(BaseModel):
+    new_user_id: uuid.UUID
+    role_in_case: str = Field(default="lead_attorney", description="lead_attorney, case_manager, reviewer")
+    notify_client: bool = Field(default=False)
+
+
+class WithdrawRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=255)
+
+
+class ReapplicationRequest(BaseModel):
+    new_case_number: str = Field(..., min_length=3, max_length=64)
+    reason: str = Field(..., min_length=3, max_length=255)
+    title: str | None = None
+
+
+class PaymentClearanceUpdateRequest(BaseModel):
+    payment_status: str = Field(..., description="PENDING, PARTIALLY_PAID, PAID")
+    notes: str | None = None
+
+
+class TripartiteAuthorizationRequest(BaseModel):
+    gate_type: str | None = Field(default=None, description="manager_authorization, accounts_clearance, counsellor_confirmation")
+    auth_type: str | None = None
+    authorized: bool = True
+    notes: str | None = None
+    reference_id: str | None = None
+    waived: bool = False
+    waiver_reason: str | None = None
+
+
+class ProgressiveReviewRequest(BaseModel):
+    stage: str = Field(..., description="OFFICER_INITIAL_REVIEW, SENIOR_REVIEW, LAWYER_REVIEW")
+    outcome: str = Field(default="APPROVED", description="APPROVED, REJECTED, CHANGES_REQUESTED")
+    comments: str | None = None
+    notes: str | None = None
+    checklist_verified: bool = True
+
+
+class SubmissionAuthorizationRequest(BaseModel):
+    action: str | None = Field(default=None, description="APPROVE, REJECT, HOLD_ACCOUNTS, HOLD_COUNSELLOR, HOLD_CLIENT_DECISION, RELEASE_HOLD")
+    status: str | None = None
+    notes: str | None = None
+    reason: str | None = None
+
+
+class HandoverAuthorizationRequest(BaseModel):
+    authorized: bool = True
+    target_status: str | None = None
+    status: str | None = None
+    notes: str | None = None
+    reason: str | None = None
+
+
+class ManualReminderRequest(BaseModel):
+    reminder_type: str = Field(default="GENERAL", description="GENERAL, CHECKLIST_OUTSTANDING, REVIEW_REQUIRED, PAYMENT_OVERDUE")
+    recipient_role: str = Field(default="CLIENT", description="CLIENT, COUNSELLOR, REVIEWER, LAWYER, ACCOUNTS")
+    recipient_type: str | None = None
+    custom_message: str | None = None
+    message: str | None = None
+
+
+class ManualAcknowledgementRequest(BaseModel):
+    acknowledgement_type: str = Field(default="RECEIPT", description="RECEIPT, REVIEW_COMPLETED, GATE_CLEARED")
+    notes: str | None = None
+    custom_message: str | None = None
+    subject: str | None = None
+    details: str | None = None
+
+
+class CaseMigrateConfigRequest(BaseModel):
+    reason: str = Field(..., min_length=10, description="Mandatory reason for updating case's pinned configuration rules")
+    target_version: int | None = None
+
+
+class CaseHoldHistoryResponse(BaseModel):
+    id: uuid.UUID
+    case_id: uuid.UUID
+    hold_type: str
+    reason: str
+    placed_by_id: uuid.UUID
+    placed_at: datetime
+    released_by_id: uuid.UUID | None = None
+    released_at: datetime | None = None
+    resolution_notes: str | None = None
 
 
 class CaseCloseRequest(BaseModel):
@@ -180,9 +299,29 @@ class CaseDetailResponse(BaseModel):
     jurisdiction: str
     visa_category: str
     status: str
+    # Phase 2 Decoupled Lifecycle State
+    payment_clearance_status: str = "PENDING"
+    preparation_status: str = "CLEARANCE_PENDING"
+    operational_state: str = "ACTIVE"
+    review_status: str = "NOT_STARTED"
+    outcome_status: str | None = None
+    hold_reason: str | None = None
+    hold_applied_at: datetime | None = None
+    prior_case_id: uuid.UUID | None = None
+    reapplication_reason: str | None = None
     priority_date: datetime | None
     created_at: datetime
     updated_at: datetime
+    # Phase 9 Configuration & Approval Gates State
+    client_engagement_type: str = "RETAINED_CLIENT"
+    is_retained: bool = True
+    submission_authorization_status: str = "NOT_REQUESTED"
+    handover_authorization_status: str = "NOT_REQUESTED"
+    substantive_authorizations: dict = {}
+    progressive_reviews: dict = {}
+    pinned_firm_config_snapshot: dict = {}
+    firm_config_version: int = 1
+    firm_config_update_available: bool = False
     assignments: list[AssignmentResponse] = []
     milestones: list[MilestoneResponse] = []
     tasks_count: int = 0
@@ -237,6 +376,23 @@ def _to_case_detail_response(case: ImmigrationCase) -> CaseDetailResponse:
     c_email = case.client.email if case.client else ""
     c_nat = case.client.nationality if case.client else ""
 
+    prog_reviews: dict = {}
+    r_stat = (case.review_status or "NOT_STARTED").upper()
+    if r_stat in ("OFFICER_INITIAL_REVIEW", "SENIOR_REVIEW", "APPROVED", "LAWYER_REVIEW"):
+        prog_reviews["officer_initial_review"] = {"completed": True}
+    else:
+        prog_reviews["officer_initial_review"] = {"completed": False}
+
+    if r_stat in ("SENIOR_REVIEW", "APPROVED", "LAWYER_REVIEW"):
+        prog_reviews["senior_review"] = {"completed": True}
+    else:
+        prog_reviews["senior_review"] = {"completed": False}
+
+    if r_stat in ("APPROVED",):
+        prog_reviews["lawyer_review"] = {"completed": True}
+    else:
+        prog_reviews["lawyer_review"] = {"completed": False}
+
     return CaseDetailResponse(
         id=case.id,
         organization_id=case.organization_id,
@@ -249,9 +405,27 @@ def _to_case_detail_response(case: ImmigrationCase) -> CaseDetailResponse:
         jurisdiction=case.jurisdiction,
         visa_category=case.visa_category,
         status=case.status,
+        payment_clearance_status=case.payment_clearance_status or "PENDING",
+        preparation_status=case.preparation_status or "CLEARANCE_PENDING",
+        operational_state=case.operational_state or "ACTIVE",
+        review_status=case.review_status or "NOT_STARTED",
+        outcome_status=case.outcome_status,
+        hold_reason=case.hold_reason,
+        hold_applied_at=case.hold_applied_at,
+        prior_case_id=case.prior_case_id,
+        reapplication_reason=case.reapplication_reason,
         priority_date=case.priority_date,
         created_at=case.created_at,
         updated_at=case.updated_at,
+        client_engagement_type=case.client_engagement_type or "RETAINED_CLIENT",
+        is_retained=case.is_retained if case.is_retained is not None else True,
+        submission_authorization_status=case.submission_authorization_status or "NOT_REQUESTED",
+        handover_authorization_status=case.handover_authorization_status or "NOT_REQUESTED",
+        substantive_authorizations=case.substantive_authorizations or {},
+        progressive_reviews=prog_reviews,
+        pinned_firm_config_snapshot=case.pinned_firm_config_snapshot or {},
+        firm_config_version=case.firm_config_version or 1,
+        firm_config_update_available=bool(case.firm_config_update_available),
         assignments=assignments,
         milestones=milestones,
         tasks_count=len(tasks),
@@ -304,7 +478,7 @@ def _build_cases_query(
 
         query = query.filter(ImmigrationCase.client_id.in_(allowed_ids))
 
-    elif ctx.has_role(RoleCode.DOCUMENT_REVIEWER) and not ctx.is_company_admin():
+    elif (ctx.has_role(RoleCode.CASE_WORKER) or ctx.has_role(RoleCode.DOCUMENT_REVIEWER)) and not (ctx.is_org_admin() or ctx.is_senior_reviewer() or ctx.is_case_manager() or ctx.has_permission("case:read:all")):
         query = query.join(ImmigrationCase.assignments).filter(CaseAssignment.user_id == ctx.user_id)
 
     if status_filter:
@@ -473,6 +647,21 @@ def create_case(
         raise ConflictError(f"Case number '{payload.case_number}' already exists in this organization")
 
     now = datetime.now(timezone.utc)
+    pinned_snapshot, config_version = FirmConfigService.create_case_config_snapshot(db, ctx.organization_id)
+
+    engagement_type = payload.client_engagement_type or ClientEngagementType.RETAINED_CLIENT.value
+    is_retained = payload.is_retained
+    if engagement_type in (ClientEngagementType.CONSULTATION_ONLY.value, ClientEngagementType.PRELIMINARY_ASSESSMENT.value):
+        is_retained = False
+
+    prep_status = PreparationStatus.CLEARANCE_PENDING.value
+    if engagement_type == ClientEngagementType.CONSULTATION_ONLY.value:
+        prep_status = PreparationStatus.CONSULTATION_ONLY.value
+    elif engagement_type == ClientEngagementType.PRELIMINARY_ASSESSMENT.value:
+        prep_status = PreparationStatus.PRELIMINARY_ASSESSMENT.value
+
+    auths = CaseLifecycleService.initialize_case_authorizations()
+
     case = ImmigrationCase(
         organization_id=ctx.organization_id,
         client_id=client.id,
@@ -482,6 +671,15 @@ def create_case(
         visa_category=payload.visa_category.strip(),
         status=payload.status.strip(),
         priority_date=payload.priority_date,
+        client_engagement_type=engagement_type,
+        is_retained=is_retained,
+        preparation_status=prep_status,
+        submission_authorization_status=SubmissionAuthorizationStatus.NOT_REQUESTED.value,
+        handover_authorization_status=HandoverAuthorizationStatus.NOT_REQUESTED.value,
+        substantive_authorizations=auths,
+        pinned_firm_config_snapshot=pinned_snapshot,
+        firm_config_version=config_version,
+        firm_config_update_available=False,
         created_at=now,
         updated_at=now,
     )
@@ -645,6 +843,7 @@ def change_case_status(
     old_status = case.status
     now = datetime.now(timezone.utc)
     case.status = target_status
+    sync_legacy_to_decoupled_lifecycle(case, target_status)
     case.updated_at = now
 
     audit = AuditEvent(
@@ -1406,3 +1605,444 @@ def get_case_history(
         )
         for e in events
     ]
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 Decoupled Lifecycle Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/{case_id}/lifecycle/preparation", response_model=CaseDetailResponse)
+def transition_case_preparation(
+    case_id: uuid.UUID,
+    payload: PreparationTransitionRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """
+    Transitions a case's preparation lifecycle status with server-side guard enforcement.
+    """
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    updated = CaseLifecycleService.transition_preparation_status(
+        db=db,
+        case=case,
+        target_status=payload.target_status,
+        ctx=ctx,
+        notes=payload.notes,
+        is_pathway_override=payload.is_pathway_override,
+    )
+    return _to_case_detail_response(updated)
+
+
+@router.post("/{case_id}/lifecycle/hold", response_model=CaseDetailResponse)
+def place_case_on_hold(
+    case_id: uuid.UUID,
+    payload: HoldRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """
+    Places a case on hold while preserving all statutory deadlines and tasks.
+    """
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    CaseLifecycleService.apply_hold(
+        db=db,
+        case=case,
+        hold_type=payload.hold_type,
+        reason=payload.reason,
+        actor_id=ctx.user_id,
+    )
+    return _to_case_detail_response(case)
+
+
+@router.post("/{case_id}/lifecycle/release-hold", response_model=CaseDetailResponse)
+def release_case_hold(
+    case_id: uuid.UUID,
+    payload: ReleaseHoldRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """
+    Releases an active hold, returning the case to ACTIVE operational state.
+    """
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    updated = CaseLifecycleService.release_hold(
+        db=db,
+        case=case,
+        resolution_notes=payload.resolution_notes,
+        actor_id=ctx.user_id,
+    )
+    return _to_case_detail_response(updated)
+
+
+@router.post("/{case_id}/lifecycle/reassign", response_model=CaseDetailResponse)
+def reassign_case_owner(
+    case_id: uuid.UUID,
+    payload: ReassignOwnerRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """
+    Reassigns lead attorney or case manager without modifying the preparation stage or deadlines.
+    """
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    CaseLifecycleService.reassign_owner(
+        db=db,
+        case=case,
+        new_user_id=payload.new_user_id,
+        role_in_case=payload.role_in_case,
+        actor_id=ctx.user_id,
+        notify_client=payload.notify_client,
+    )
+    return _to_case_detail_response(case)
+
+
+@router.post("/{case_id}/lifecycle/withdraw", response_model=CaseDetailResponse)
+def withdraw_case_representation(
+    case_id: uuid.UUID,
+    payload: WithdrawRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """
+    Marks representation as withdrawn.
+    """
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    # Server-side guard: Only owner or manager (is_org_admin or is_senior_reviewer) can withdraw representation
+    if not (ctx.is_org_admin() or ctx.is_senior_reviewer()):
+        audit = AuditEvent(
+            organization_id=case.organization_id,
+            actor_id=ctx.user_id,
+            action="case.withdrawal.unauthorized_attempt",
+            object_type="immigration_case",
+            object_id=str(case.id),
+            metadata_json={
+                "denial_reason": "Only owner or firm manager can execute representation withdrawal",
+                "attempted_by_roles": list(ctx.roles),
+            },
+            occurred_at=datetime.now(timezone.utc),
+        )
+        db.add(audit)
+        db.commit()
+        raise PermissionDeniedError("Only owner or firm manager can execute representation withdrawal")
+
+    updated = CaseLifecycleService.withdraw_case(
+        db=db,
+        case=case,
+        reason=payload.reason,
+        actor_id=ctx.user_id,
+    )
+    return _to_case_detail_response(updated)
+
+
+@router.post("/{case_id}/lifecycle/reapply", response_model=CaseDetailResponse)
+def create_reapplication_case(
+    case_id: uuid.UUID,
+    payload: ReapplicationRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """
+    Creates a fresh reapplication case linked to a prior refused or withdrawn case.
+    Prior history is preserved for statutory disclosures, but old answers/documents are not auto-reused.
+    """
+    prior_case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not prior_case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(prior_case.organization_id)
+
+    new_case = CaseLifecycleService.create_reapplication(
+        db=db,
+        prior_case=prior_case,
+        new_case_number=payload.new_case_number,
+        reason=payload.reason,
+        actor_id=ctx.user_id,
+        new_title=payload.title,
+    )
+    return _to_case_detail_response(new_case)
+
+
+@router.put("/{case_id}/lifecycle/payment-clearance", response_model=CaseDetailResponse)
+def update_case_payment_clearance(
+    case_id: uuid.UUID,
+    payload: PaymentClearanceUpdateRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """
+    Updates the commercial payment clearance status on a case.
+    """
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    updated = CaseLifecycleService.update_payment_clearance(
+        db=db,
+        case=case,
+        new_status=payload.payment_status,
+        actor_id=ctx.user_id,
+        notes=payload.notes,
+    )
+    return _to_case_detail_response(updated)
+
+
+@router.get("/{case_id}/lifecycle/holds", response_model=list[CaseHoldHistoryResponse])
+def list_case_hold_history(
+    case_id: uuid.UUID,
+    ctx: AuthContext = Depends(require_permission("case:read")),
+    db: Session = Depends(get_db),
+):
+    """
+    Lists all historic and active holds for a case.
+    """
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    holds = (
+        db.query(CaseHoldHistory)
+        .filter(CaseHoldHistory.case_id == case.id)
+        .order_by(desc(CaseHoldHistory.placed_at))
+        .all()
+    )
+    return [
+        CaseHoldHistoryResponse(
+            id=h.id,
+            case_id=h.case_id,
+            hold_type=h.hold_type,
+            reason=h.reason,
+            placed_by_id=h.placed_by_id,
+            placed_at=h.placed_at,
+            released_by_id=h.released_by_id,
+            released_at=h.released_at,
+            resolution_notes=h.resolution_notes,
+        )
+        for h in holds
+    ]
+
+
+@router.get("/{case_id}/family-documents-summary")
+def get_case_family_documents_summary(
+    case_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Per-applicant outstanding/received/correction-required lists plus family summary."""
+    from backend.app.api.v1.documents import get_family_documents_summary
+    return get_family_documents_summary(case_id=case_id, auth=ctx, db=db)
+
+
+@router.get("/{case_id}/interim-reports")
+def get_case_interim_reports_endpoint(
+    case_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Lists interim reports generated during hold, reassignment, or manual export."""
+    from backend.app.api.v1.documents import list_case_interim_reports
+    return list_case_interim_reports(case_id=case_id, auth=ctx, db=db)
+
+
+# --- Phase 9 Approval Gates & Firm Config Case Endpoints ---
+
+@router.post("/{case_id}/tripartite-authorization", response_model=CaseDetailResponse)
+def record_case_tripartite_authorization(
+    case_id: uuid.UUID,
+    payload: TripartiteAuthorizationRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Records one of the tripartite onboarding clearances: manager_authorization, accounts_clearance, counsellor_confirmation."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    gate = payload.gate_type or payload.auth_type or "manager_authorization"
+    updated = CaseLifecycleService.record_tripartite_authorization(
+        db=db,
+        case=case,
+        gate_type=gate,
+        actor_id=ctx.user_id,
+        actor_role=ctx.roles[0] if ctx.roles else "unknown",
+        authorized=payload.authorized,
+        notes=payload.notes,
+        reference_id=payload.reference_id,
+        waived=payload.waived,
+        waiver_reason=payload.waiver_reason,
+    )
+    return _to_case_detail_response(updated)
+
+
+@router.post("/{case_id}/progressive-review", response_model=CaseDetailResponse)
+def record_case_progressive_review(
+    case_id: uuid.UUID,
+    payload: ProgressiveReviewRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Executes a progressive review stage: OFFICER_INITIAL_REVIEW -> SENIOR_REVIEW -> LAWYER_REVIEW."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    effective_notes = payload.comments or payload.notes
+    updated = CaseLifecycleService.record_progressive_review(
+        db=db,
+        case=case,
+        stage=payload.stage,
+        outcome=payload.outcome or "APPROVED",
+        actor_id=ctx.user_id,
+        comments=effective_notes,
+        checklist_verified=payload.checklist_verified,
+    )
+    return _to_case_detail_response(updated)
+
+
+@router.post("/{case_id}/submission-authorization", response_model=CaseDetailResponse)
+def set_case_submission_authorization(
+    case_id: uuid.UUID,
+    payload: SubmissionAuthorizationRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Sets submission authorization (APPROVE, REJECT, HOLD_ACCOUNTS, HOLD_COUNSELLOR, HOLD_CLIENT_DECISION, RELEASE_HOLD)."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    effective_action = payload.action or payload.status or "APPROVE"
+    effective_notes = payload.notes or payload.reason
+    updated = CaseLifecycleService.set_submission_authorization(
+        db=db,
+        case=case,
+        action=effective_action,
+        actor_id=ctx.user_id,
+        notes=effective_notes,
+    )
+    return _to_case_detail_response(updated)
+
+
+@router.post("/{case_id}/handover-authorization", response_model=CaseDetailResponse)
+def set_case_handover_authorization(
+    case_id: uuid.UUID,
+    payload: HandoverAuthorizationRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Sets distinct post-decision client handover authorization."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    effective_status = payload.status or payload.target_status
+    effective_notes = payload.notes or payload.reason
+    updated = CaseLifecycleService.set_handover_authorization(
+        db=db,
+        case=case,
+        target_status=effective_status,
+        authorized=payload.authorized,
+        actor_id=ctx.user_id,
+        notes=effective_notes,
+    )
+    return _to_case_detail_response(updated)
+
+
+@router.post("/{case_id}/send-reminder")
+def send_case_manual_reminder(
+    case_id: uuid.UUID,
+    payload: ManualReminderRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Dispatches a manual reminder regardless of automated reminder cadence."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    recip = payload.recipient_role or payload.recipient_type or "CLIENT"
+    msg = payload.custom_message or payload.message
+    result = CaseLifecycleService.send_manual_reminder(
+        db=db,
+        case=case,
+        actor_id=ctx.user_id,
+        reminder_type=payload.reminder_type,
+        recipient_role=recip,
+        custom_message=msg,
+    )
+    return {"success": True, "result": result}
+
+
+@router.post("/{case_id}/send-acknowledgement")
+def send_case_manual_acknowledgement(
+    case_id: uuid.UUID,
+    payload: ManualAcknowledgementRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Dispatches a manual formal acknowledgement to client or external stakeholders."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    effective_details = payload.details or payload.custom_message or payload.notes
+    result = CaseLifecycleService.send_manual_acknowledgement(
+        db=db,
+        case=case,
+        actor_id=ctx.user_id,
+        acknowledgement_type=payload.acknowledgement_type,
+        subject=payload.subject,
+        details=effective_details,
+        notes=effective_details,
+    )
+    return {"success": True, "result": result}
+
+
+@router.post("/{case_id}/migrate-firm-config", response_model=CaseDetailResponse)
+def migrate_case_firm_config(
+    case_id: uuid.UUID,
+    payload: CaseMigrateConfigRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Explicitly migrates case pinned configuration to the latest firm configuration version."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    updated = FirmConfigService.migrate_case_to_latest_config(
+        db=db,
+        case=case,
+        actor_id=ctx.user_id,
+        reason=payload.reason,
+        target_version=payload.target_version,
+    )
+    return _to_case_detail_response(updated)
+
