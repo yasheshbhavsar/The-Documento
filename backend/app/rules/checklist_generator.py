@@ -275,6 +275,16 @@ def generate_pathway_checklist(
             "published_at": target_version.published_at.isoformat() if target_version.published_at else None,
             "approved_by": target_version.approved_by.full_name if target_version.approved_by else None,
         },
+        "partial_coverage_warning": (
+            "Partial coverage. Core statutory requirements mapped; manual verification required for endorsement bodies, provincial/state variations, or local labor market testing."
+            if coverage == CoverageStatus.PARTIAL
+            else None
+        ),
+        "eu_schengen_notice": (
+            "CRITICAL: EU/Schengen is not one universal checklist! National work and residence permits are governed exclusively by national legislation (e.g. German AufenthG, French CESEDA). Uniform Schengen rules apply solely to short-stay Type-C visas."
+            if jur_upper in ["DE", "FR"]
+            else None
+        ),
     }
 
     # Step 4: Handle Pinned Checklist Snapshot for Existing Cases

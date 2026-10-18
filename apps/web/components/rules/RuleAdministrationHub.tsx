@@ -16,6 +16,7 @@ import {
   RoleCode,
   CountryRegistryItem,
   PathwayTaxonomyItem,
+  PathwayDossierResponse,
   CoverageMatrixResponse,
   Phase6RuleRequirementItem,
   GeneratedChecklistResponse,
@@ -32,6 +33,7 @@ import {
   FALLBACK_REQUIREMENTS,
   getCountryRegistry,
   getPathwayTaxonomy,
+  getPathwayDossier,
   getCoverageMatrix,
   seedProductionRulePacks,
   generateFactGroundedChecklist,
@@ -107,15 +109,22 @@ export function RuleAdministrationHub({
   const [regressionResult, setRegressionResult] = useState<any>(null);
   const [impactResult, setImpactResult] = useState<AffectedCasesImpactResult | null>(null);
 
-  // Phase 6 State: Country Registry, Coverage Matrix, Taxonomy
+  // Phase 6 / 12 State: Country Registry, Coverage Matrix, Taxonomy & Priority Tiers
   const [countries, setCountries] = useState<CountryRegistryItem[]>([]);
   const [taxonomies, setTaxonomies] = useState<PathwayTaxonomyItem[]>([]);
   const [coverageMatrix, setCoverageMatrix] = useState<CoverageMatrixResponse | null>(null);
-  const [selectedCountryCode, setSelectedCountryCode] = useState<string>("CA");
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string>("ALL");
+  const [selectedPriorityTier, setSelectedPriorityTier] = useState<number | "ALL">("ALL");
   const [selectedTaxonomyCategory, setSelectedTaxonomyCategory] = useState<string>("ALL");
+  const [selectedCoverageStatusFilter, setSelectedCoverageStatusFilter] = useState<string>("ALL");
   const [isSeedingPacks, setIsSeedingPacks] = useState<boolean>(false);
 
-  // Phase 6 State: Fact-Grounded Checklist Generator & Safe Stop Simulator
+  // Phase 12 State: Pathway Validation Dossier Modal
+  const [selectedDossier, setSelectedDossier] = useState<PathwayDossierResponse | null>(null);
+  const [isDossierModalOpen, setIsDossierModalOpen] = useState<boolean>(false);
+  const [isLoadingDossier, setIsLoadingDossier] = useState<boolean>(false);
+
+  // Phase 6 / 12 State: Fact-Grounded Checklist Generator & Safe Stop Simulator
   const [simJurisdiction, setSimJurisdiction] = useState<string>("CA");
   const [simPathway, setSimPathway] = useState<string>("CA_EXPRESS_ENTRY_FSW");
   const [simHasJobOffer, setSimHasJobOffer] = useState<boolean>(false);
@@ -137,20 +146,33 @@ export function RuleAdministrationHub({
     try {
       const [cList, tList, cMatrix] = await Promise.all([
         getCountryRegistry(userRole),
-        getPathwayTaxonomy(undefined, userRole),
+        getPathwayTaxonomy(undefined, undefined, undefined, userRole),
         getCoverageMatrix(userRole),
       ]);
       setCountries(cList);
       setTaxonomies(tList);
       setCoverageMatrix(cMatrix);
     } catch (e) {
-      console.error("Failed to load Phase 6 data", e);
+      console.error("Failed to load Phase 6/12 data", e);
     }
   };
 
   useEffect(() => {
     loadPhase6Data();
   }, [userRole]);
+
+  const handleOpenPathwayDossier = async (pathwayKey: string) => {
+    setIsLoadingDossier(true);
+    setIsDossierModalOpen(true);
+    try {
+      const dossier = await getPathwayDossier(pathwayKey, userRole);
+      setSelectedDossier(dossier);
+    } catch {
+      onNotification?.("Failed to retrieve pathway validation dossier", "error");
+    } finally {
+      setIsLoadingDossier(false);
+    }
+  };
 
   const handleSeedProductionPacks = async () => {
     setIsSeedingPacks(true);
@@ -683,7 +705,7 @@ export function RuleAdministrationHub({
       </div>
 
       {/* ============================================================== */}
-      {/* TAB: COUNTRY REGISTRY & COVERAGE MATRIX (PHASE 6) */}
+      {/* TAB: COUNTRY REGISTRY & COVERAGE MATRIX (PHASE 12) */}
       {/* ============================================================== */}
       {activeTab === "coverage" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
@@ -702,11 +724,11 @@ export function RuleAdministrationHub({
               gap: "18px",
             }}
           >
-            <div style={{ maxWidth: "780px" }}>
+            <div style={{ maxWidth: "800px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
                 <span style={{ fontSize: "20px" }}>🌐</span>
                 <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700, letterSpacing: "-0.01em" }}>
-                  Country Registry, Pathway Taxonomy & Coverage Matrix
+                  Phase 12: Country and Pathway Expansion Architecture
                 </h3>
                 <span
                   style={{
@@ -719,11 +741,11 @@ export function RuleAdministrationHub({
                     letterSpacing: "0.05em",
                   }}
                 >
-                  Phase 6 Core
+                  Phase 12 Expansion
                 </span>
               </div>
               <p style={{ margin: "0 0 8px 0", fontSize: "13px", lineHeight: "1.5", opacity: 0.95 }}>
-                <strong>Statutory Priority Order:</strong> Canada (IRCC) Tier 1, USA (USCIS/DOS) Tier 1, Australia (Home Affairs) &amp; New Zealand (INZ) Tier 2 core; United Kingdom, Germany, Russia destinations later.
+                <strong>Statutory Priority Order:</strong> Canada (IRCC) Tier 1, USA (USCIS/DOS) Tier 1 • Priority 1: Canada (IRCC source-linked, RCIC reviewed) • Priority 2: USA (USCIS/DOS, zero legacy hardcoded assumptions) • Priority 3: Australia &amp; New Zealand (Separate reviewed rules &amp; templates) • Priority 4: UK &amp; Germany/Selected Europe (Country-specific review; EU is NOT one universal checklist) • Priority 5: Russia &amp; Other Destinations (Publish strictly after official validation).
               </p>
               <div
                 style={{
@@ -735,7 +757,7 @@ export function RuleAdministrationHub({
                   lineHeight: "1.4",
                 }}
               >
-                ⚠️ <strong>Strict Governance:</strong> Long-term breadth is an ambition, not permission to market unvalidated pathways as complete. Unsupported pathways stop safely with no unrelated fallback checklist.
+                ⚠️ <strong>Strict Governance &amp; Safe-Stop Policy:</strong> Long-term breadth is an ambition, not permission to market unvalidated pathways as complete. UNVERIFIED and UNSUPPORTED pathways stop safely with zero fallback checklists.
               </div>
             </div>
 
@@ -754,50 +776,50 @@ export function RuleAdministrationHub({
                   boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)",
                 }}
               >
-                {isSeedingPacks ? "Provisioning Rule Packs..." : "🌱 Seed Authentic Production Packs (CA, US, AU, NZ)"}
+                {isSeedingPacks ? "Provisioning Rule Packs..." : "🌱 Seed Authentic Production Packs (CA, US, AU, NZ, GB, DE)"}
               </Button>
               <span style={{ fontSize: "11px", opacity: 0.85 }}>Authentic statutory citations only • Zero placeholder URLs</span>
             </div>
           </div>
 
-          {/* Coverage Summary Metrics Ribbon */}
+          {/* Coverage Summary Metrics Ribbon across Priority Tiers */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
               gap: "14px",
             }}
           >
             <div style={{ background: "#FFFFFF", padding: "16px 20px", borderRadius: "10px", border: "1px solid #DCE5E1" }}>
               <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "#6E7F7C", letterSpacing: "0.05em" }}>
-                Marketed Jurisdictions
+                Priority Jurisdictions
               </div>
               <div style={{ fontSize: "24px", fontWeight: 800, color: "#063C3D", marginTop: "4px" }}>
-                {coverageMatrix?.coverage_summary?.total_countries || countries.length || 7}
+                {coverageMatrix?.coverage_summary?.total_countries || countries.length || 11}
               </div>
               <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "2px" }}>
-                {coverageMatrix?.coverage_summary?.supported_countries || 4} fully approved
+                {coverageMatrix?.coverage_summary?.supported_countries || 4} fully approved • {coverageMatrix?.coverage_summary?.partial_countries || 1} partial
               </div>
             </div>
 
             <div style={{ background: "#FFFFFF", padding: "16px 20px", borderRadius: "10px", border: "1px solid #DCE5E1" }}>
               <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "#6E7F7C", letterSpacing: "0.05em" }}>
-                Marketed Pathways (Taxonomy)
+                Pathway Taxonomy
               </div>
               <div style={{ fontSize: "24px", fontWeight: 800, color: "#0D6866", marginTop: "4px" }}>
-                {coverageMatrix?.coverage_summary?.total_pathways || taxonomies.length || 19}
+                {coverageMatrix?.coverage_summary?.total_pathways || taxonomies.length || 30}
               </div>
               <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "2px" }}>
-                Standardized across 8 categories
+                Covering all 8 broad application families
               </div>
             </div>
 
             <div style={{ background: "#FFFFFF", padding: "16px 20px", borderRadius: "10px", border: "1px solid #DCE5E1" }}>
-              <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "#0D6866", letterSpacing: "0.05em" }}>
-                Supported Pathways (Active Packs)
+              <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "#059669", letterSpacing: "0.05em" }}>
+                Supported Pathways
               </div>
               <div style={{ fontSize: "24px", fontWeight: 800, color: "#059669", marginTop: "4px" }}>
-                {coverageMatrix?.coverage_summary?.supported_pathways || taxonomies.filter((t) => t.coverage_status === "SUPPORTED").length || 6}
+                {coverageMatrix?.coverage_summary?.supported_pathways || taxonomies.filter((t) => t.coverage_status === "SUPPORTED").length || 15}
               </div>
               <div style={{ fontSize: "11px", color: "#059669", marginTop: "2px", fontWeight: 600 }}>
                 100% verified legal provenance
@@ -806,132 +828,219 @@ export function RuleAdministrationHub({
 
             <div style={{ background: "#FFFFFF", padding: "16px 20px", borderRadius: "10px", border: "1px solid #DCE5E1" }}>
               <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "#B45309", letterSpacing: "0.05em" }}>
-                Partial / Unverified Pathways
+                Partial / Supervised
               </div>
               <div style={{ fontSize: "24px", fontWeight: 800, color: "#D97706", marginTop: "4px" }}>
-                {(coverageMatrix?.coverage_summary?.total_pathways || taxonomies.length || 19) -
-                  (coverageMatrix?.coverage_summary?.supported_pathways || taxonomies.filter((t) => t.coverage_status === "SUPPORTED").length || 6)}
+                {coverageMatrix?.coverage_summary?.partial_pathways || taxonomies.filter((t) => t.coverage_status === "PARTIAL").length || 6}
               </div>
               <div style={{ fontSize: "11px", color: "#B45309", marginTop: "2px", fontWeight: 600 }}>
-                Protected by strict safe stop
+                Requires lawyer sign-off on variations
+              </div>
+            </div>
+
+            <div style={{ background: "#FFFFFF", padding: "16px 20px", borderRadius: "10px", border: "1px solid #DCE5E1" }}>
+              <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "#6B21A8", letterSpacing: "0.05em" }}>
+                Unverified (Safe-Stop Guarded)
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: "#7E22CE", marginTop: "4px" }}>
+                {coverageMatrix?.coverage_summary?.unverified_pathways || taxonomies.filter((t) => t.coverage_status === "UNVERIFIED").length || 9}
+              </div>
+              <div style={{ fontSize: "11px", color: "#6B21A8", marginTop: "2px", fontWeight: 600 }}>
+                Safe-stop enforced (zero checklists)
               </div>
             </div>
           </div>
 
           {/* Section 1: Country Registry & Authority Metadata */}
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
               <div>
                 <h4 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#172322" }}>
                   Jurisdiction Registry &amp; Statutory Authority Release Owners
                 </h4>
                 <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#6E7F7C" }}>
-                  Official-source registry, statutory frameworks, priority tiers, and release accountability.
+                  Official-source registry, statutory frameworks, priority tiers, and release condition attestations.
                 </p>
+              </div>
+
+              {/* Priority Tier Filter Pills */}
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                {[
+                  { id: "ALL", label: "All Priority Tiers" },
+                  { id: 1, label: "Priority 1: Canada (IRCC)" },
+                  { id: 2, label: "Priority 2: USA (USCIS)" },
+                  { id: 3, label: "Priority 3: AU & NZ" },
+                  { id: 4, label: "Priority 4: UK & Europe" },
+                  { id: 5, label: "Priority 5: Emerging / Safe-Stop" },
+                ].map((tier) => (
+                  <button
+                    key={String(tier.id)}
+                    type="button"
+                    onClick={() => setSelectedPriorityTier(tier.id as any)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      fontWeight: selectedPriorityTier === tier.id ? 700 : 500,
+                      cursor: "pointer",
+                      background: selectedPriorityTier === tier.id ? "#0D6866" : "#F3F4F6",
+                      color: selectedPriorityTier === tier.id ? "#FFFFFF" : "#4B5563",
+                      border: "1px solid transparent",
+                    }}
+                  >
+                    {tier.label}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "14px" }}>
-              {countries.map((country) => {
-                const flagMap: Record<string, string> = {
-                  CA: "🇨🇦",
-                  US: "🇺🇸",
-                  AU: "🇦🇺",
-                  NZ: "🇳🇿",
-                  GB: "🇬🇧",
-                  DE: "🇩🇪",
-                  RU: "🇷🇺",
-                };
-                const isSelected = selectedCountryCode === country.code;
-                return (
-                  <div
-                    key={country.code}
-                    onClick={() => setSelectedCountryCode(country.code)}
-                    style={{
-                      background: isSelected ? "#F8FAF9" : "#FFFFFF",
-                      border: isSelected ? "2px solid #0D6866" : "1px solid #DCE5E1",
-                      borderRadius: "10px",
-                      padding: "16px",
-                      cursor: "pointer",
-                      boxShadow: isSelected ? "0 4px 12px rgba(13, 104, 102, 0.1)" : "none",
-                      transition: "all 0.15s ease",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span style={{ fontSize: "22px" }}>{flagMap[country.code] || "🌐"}</span>
-                          <div>
-                            <div style={{ fontSize: "14px", fontWeight: 800, color: "#063C3D" }}>
-                              {country.name} ({country.code})
-                            </div>
-                            <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>
-                              Priority Tier {country.priority_tier} {country.priority_tier <= 2 ? "★ Priority" : "• Core"}
+              {countries
+                .filter((c) => (selectedPriorityTier === "ALL" ? true : c.priority_tier === selectedPriorityTier))
+                .map((country) => {
+                  const flagMap: Record<string, string> = {
+                    CA: "🇨🇦",
+                    US: "🇺🇸",
+                    AU: "🇦🇺",
+                    NZ: "🇳🇿",
+                    GB: "🇬🇧",
+                    DE: "🇩🇪",
+                    FR: "🇫🇷",
+                    RU: "🇷🇺",
+                    SG: "🇸🇬",
+                    AE: "🇦🇪",
+                    JP: "🇯🇵",
+                  };
+                  const isSelected = selectedCountryCode === country.code;
+                  return (
+                    <div
+                      key={country.code}
+                      onClick={() => setSelectedCountryCode(selectedCountryCode === country.code ? "ALL" : country.code)}
+                      style={{
+                        background: isSelected ? "#F8FAF9" : "#FFFFFF",
+                        border: isSelected ? "2px solid #0D6866" : "1px solid #DCE5E1",
+                        borderRadius: "10px",
+                        padding: "16px",
+                        cursor: "pointer",
+                        boxShadow: isSelected ? "0 4px 12px rgba(13, 104, 102, 0.1)" : "none",
+                        transition: "all 0.15s ease",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "22px" }}>{flagMap[country.code] || "🌐"}</span>
+                            <div>
+                              <div style={{ fontSize: "14px", fontWeight: 800, color: "#063C3D" }}>
+                                {country.name} ({country.code})
+                              </div>
+                              <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>
+                                Priority Tier {country.priority_tier} • {country.priority_tier === 1 ? "Canada Core" : country.priority_tier === 2 ? "USA Independent" : country.priority_tier === 3 ? "AU & NZ Distinct" : country.priority_tier === 4 ? "UK / Europe" : "Emerging / Unverified"}
+                              </div>
                             </div>
                           </div>
+                          <span
+                            style={{
+                              padding: "3px 8px",
+                              borderRadius: "6px",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              background:
+                                country.coverage_status === "SUPPORTED"
+                                  ? "#EAF6F0"
+                                  : country.coverage_status === "PARTIAL"
+                                  ? "#FEF3C7"
+                                  : "#F3E8FF",
+                              color:
+                                country.coverage_status === "SUPPORTED"
+                                  ? "#063C3D"
+                                  : country.coverage_status === "PARTIAL"
+                                  ? "#92400E"
+                                  : "#6B21A8",
+                              border:
+                                country.coverage_status === "SUPPORTED"
+                                  ? "1px solid #0D6866"
+                                  : country.coverage_status === "PARTIAL"
+                                  ? "1px solid #F59E0B"
+                                  : "1px solid #C084FC",
+                            }}
+                          >
+                            {country.coverage_status}
+                          </span>
                         </div>
-                        <span
-                          style={{
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            background:
-                              country.coverage_status === "SUPPORTED"
-                                ? "#EAF6F0"
-                                : country.coverage_status === "PARTIAL"
-                                ? "#FEF3C7"
-                                : "#FFEDD5",
-                            color:
-                              country.coverage_status === "SUPPORTED"
-                                ? "#063C3D"
-                                : country.coverage_status === "PARTIAL"
-                                ? "#92400E"
-                                : "#9A3412",
-                            border:
-                              country.coverage_status === "SUPPORTED"
-                                ? "1px solid #0D6866"
-                                : country.coverage_status === "PARTIAL"
-                                ? "1px solid #F59E0B"
-                                : "1px solid #EA580C",
-                          }}
+
+                        <div style={{ fontSize: "12px", color: "#4B5563", marginBottom: "4px" }}>
+                          <strong>Authority:</strong> {country.primary_authority}
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#4B5563", marginBottom: "4px" }}>
+                          <strong>Release Owner:</strong> {country.release_owner}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#6E7F7C", fontStyle: "italic", marginBottom: "6px" }}>
+                          {country.statutory_framework}
+                        </div>
+
+                        {/* EU / Schengen Distinction Alert Tag */}
+                        {country.eu_schengen_distinction_applies && (
+                          <div
+                            data-testid="country-eu-schengen-badge"
+                            style={{
+                              padding: "6px 8px",
+                              background: "#EFF6FF",
+                              border: "1px solid #93C5FD",
+                              borderRadius: "6px",
+                              fontSize: "11px",
+                              color: "#1E40AF",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            🇪🇺 <strong>EU/Schengen Notice:</strong> Governed under sovereign national statute ({country.code === "DE" ? "AufenthG" : "CESEDA"}). EU/Schengen is NOT one universal checklist!
+                          </div>
+                        )}
+
+                        {/* Release Conditions Checklist Pills */}
+                        {country.release_conditions_status && (
+                          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "6px" }}>
+                            {Object.entries(country.release_conditions_status).map(([cond, met]) => (
+                              <span
+                                key={cond}
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 600,
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  background: met ? "#DCFCE7" : "#FEE2E2",
+                                  color: met ? "#15803D" : "#B91C1C",
+                                  border: met ? "1px solid #86EFAC" : "1px solid #FCA5A5",
+                                }}
+                              >
+                                {met ? "✓" : "✗"} {cond.replace(/_/g, " ")}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ paddingTop: "8px", borderTop: "1px solid #E2E8E4", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <a
+                          href={country.official_source_registry_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ fontSize: "11px", color: "#0D6866", textDecoration: "underline", fontWeight: 600 }}
                         >
-                          {country.coverage_status}
+                          Official Registry ↗
+                        </a>
+                        <span style={{ fontSize: "11px", color: isSelected ? "#0D6866" : "#6E7F7C", fontWeight: 700 }}>
+                          {isSelected ? "✓ Active Filter" : "Filter Pathways →"}
                         </span>
                       </div>
-
-                      <div style={{ fontSize: "12px", color: "#4B5563", marginBottom: "4px" }}>
-                        <strong>Authority:</strong> {country.primary_authority}
-                      </div>
-                      <div style={{ fontSize: "12px", color: "#4B5563", marginBottom: "4px" }}>
-                        <strong>Release Owner:</strong> {country.release_owner}
-                      </div>
-                      <div style={{ fontSize: "11px", color: "#6E7F7C", fontStyle: "italic", marginBottom: "6px" }}>
-                        {country.statutory_framework}
-                      </div>
                     </div>
-
-                    <div style={{ paddingTop: "8px", borderTop: "1px solid #E2E8E4", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <a
-                        href={country.official_source_registry_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ fontSize: "11px", color: "#0D6866", textDecoration: "underline", fontWeight: 600 }}
-                      >
-                        Official Registry ↗
-                      </a>
-                      <span style={{ fontSize: "11px", color: isSelected ? "#0D6866" : "#6E7F7C", fontWeight: 700 }}>
-                        {isSelected ? "✓ Active Filter" : "Filter Pathways →"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </div>
 
@@ -943,41 +1052,67 @@ export function RuleAdministrationHub({
                   Standardized Pathway Taxonomy &amp; Verification Matrix
                 </h4>
                 <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#6E7F7C" }}>
-                  Mapped across 8 standardized categories with statutory citations and coverage ratings.
+                  Mapped across all 8 broad application families with official statutory citations, validation levels, and reviewer sign-offs.
                 </p>
               </div>
 
-              {/* Category Filter Pills */}
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                {[
-                  { id: "ALL", label: "All Categories" },
-                  { id: "pr_residence", label: "PR / Residence" },
-                  { id: "work", label: "Work" },
-                  { id: "study", label: "Study" },
-                  { id: "family", label: "Family" },
-                  { id: "visitor", label: "Visitor" },
-                  { id: "citizenship", label: "Citizenship" },
-                  { id: "humanitarian_protection", label: "Humanitarian" },
-                  { id: "extension_renewal_change", label: "Extensions" },
-                ].map((cat) => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => setSelectedTaxonomyCategory(cat.id)}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                      fontWeight: selectedTaxonomyCategory === cat.id ? 700 : 500,
-                      cursor: "pointer",
-                      background: selectedTaxonomyCategory === cat.id ? "#0D6866" : "#F3F4F6",
-                      color: selectedTaxonomyCategory === cat.id ? "#FFFFFF" : "#4B5563",
-                      border: "1px solid transparent",
-                    }}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
+              {/* Status and Category Filters */}
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                {/* Coverage Status Filter */}
+                <select
+                  id="coverage-status-filter-select"
+                  data-testid="coverage-status-filter-select"
+                  value={selectedCoverageStatusFilter}
+                  onChange={(e) => setSelectedCoverageStatusFilter(e.target.value)}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    border: "1px solid #DCE5E1",
+                    background: "#FAFAF8",
+                    color: "#374151",
+                    fontWeight: 600,
+                  }}
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="SUPPORTED">SUPPORTED Only</option>
+                  <option value="PARTIAL">PARTIAL Only</option>
+                  <option value="UNVERIFIED">UNVERIFIED Only</option>
+                  <option value="UNSUPPORTED">UNSUPPORTED Only</option>
+                </select>
+
+                {/* Category Filter Pills (All 8 broad application families) */}
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {[
+                    { id: "ALL", label: "All Categories" },
+                    { id: "visitor", label: "Visitor" },
+                    { id: "study", label: "Study" },
+                    { id: "work", label: "Work" },
+                    { id: "family", label: "Family" },
+                    { id: "pr_residence", label: "PR / Residence" },
+                    { id: "citizenship", label: "Citizenship" },
+                    { id: "humanitarian_protection", label: "Humanitarian" },
+                    { id: "extension_renewal_change", label: "Extensions" },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setSelectedTaxonomyCategory(cat.id)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "6px",
+                        fontSize: "11px",
+                        fontWeight: selectedTaxonomyCategory === cat.id ? 700 : 500,
+                        cursor: "pointer",
+                        background: selectedTaxonomyCategory === cat.id ? "#0D6866" : "#F3F4F6",
+                        color: selectedTaxonomyCategory === cat.id ? "#FFFFFF" : "#4B5563",
+                        border: "1px solid transparent",
+                      }}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -988,16 +1123,17 @@ export function RuleAdministrationHub({
                   <tr style={{ background: "#F8FAF9", borderBottom: "2px solid #DCE5E1", textAlign: "left" }}>
                     <th style={{ padding: "10px 12px", color: "#6E7F7C", fontWeight: 700 }}>Jurisdiction</th>
                     <th style={{ padding: "10px 12px", color: "#6E7F7C", fontWeight: 700 }}>Pathway &amp; Statutory Authority</th>
-                    <th style={{ padding: "10px 12px", color: "#6E7F7C", fontWeight: 700 }}>Category</th>
+                    <th style={{ padding: "10px 12px", color: "#6E7F7C", fontWeight: 700 }}>Application Family</th>
                     <th style={{ padding: "10px 12px", color: "#6E7F7C", fontWeight: 700 }}>Coverage Status</th>
-                    <th style={{ padding: "10px 12px", color: "#6E7F7C", fontWeight: 700 }}>Statutory Provenance</th>
-                    <th style={{ padding: "10px 12px", color: "#6E7F7C", fontWeight: 700, textAlign: "right" }}>Simulator Action</th>
+                    <th style={{ padding: "10px 12px", color: "#6E7F7C", fontWeight: 700 }}>Reviewer Sign-Off</th>
+                    <th style={{ padding: "10px 12px", color: "#6E7F7C", fontWeight: 700, textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {taxonomies
                     .filter((item) => (selectedCountryCode === "ALL" ? true : item.jurisdiction === selectedCountryCode))
                     .filter((item) => (selectedTaxonomyCategory === "ALL" ? true : item.category === selectedTaxonomyCategory))
+                    .filter((item) => (selectedCoverageStatusFilter === "ALL" ? true : item.coverage_status === selectedCoverageStatusFilter))
                     .map((item) => {
                       const flagMap: Record<string, string> = {
                         CA: "🇨🇦",
@@ -1006,7 +1142,11 @@ export function RuleAdministrationHub({
                         NZ: "🇳🇿",
                         GB: "🇬🇧",
                         DE: "🇩🇪",
+                        FR: "🇫🇷",
                         RU: "🇷🇺",
+                        SG: "🇸🇬",
+                        AE: "🇦🇪",
+                        JP: "🇯🇵",
                       };
                       return (
                         <tr key={item.pathway_key} style={{ borderBottom: "1px solid #E5E7EB" }}>
@@ -1050,7 +1190,7 @@ export function RuleAdministrationHub({
                                 textTransform: "capitalize",
                               }}
                             >
-                              {item.category.replace("_", " ")}
+                              {item.category.replace(/_/g, " ")}
                             </span>
                           </td>
                           <td style={{ padding: "12px", verticalAlign: "top" }}>
@@ -1066,7 +1206,7 @@ export function RuleAdministrationHub({
                                     : item.coverage_status === "PARTIAL"
                                     ? "#FEF3C7"
                                     : item.coverage_status === "UNVERIFIED"
-                                    ? "#FFEDD5"
+                                    ? "#F3E8FF"
                                     : "#FEE2E2",
                                 color:
                                   item.coverage_status === "SUPPORTED"
@@ -1074,7 +1214,7 @@ export function RuleAdministrationHub({
                                     : item.coverage_status === "PARTIAL"
                                     ? "#92400E"
                                     : item.coverage_status === "UNVERIFIED"
-                                    ? "#9A3412"
+                                    ? "#6B21A8"
                                     : "#991B1B",
                                 border:
                                   item.coverage_status === "SUPPORTED"
@@ -1082,36 +1222,53 @@ export function RuleAdministrationHub({
                                     : item.coverage_status === "PARTIAL"
                                     ? "1px solid #F59E0B"
                                     : item.coverage_status === "UNVERIFIED"
-                                    ? "1px solid #EA580C"
+                                    ? "1px solid #C084FC"
                                     : "1px solid #DC2626",
                               }}
                             >
                               {item.coverage_status}
                             </span>
+                            {item.coverage_status === "UNVERIFIED" && (
+                              <div style={{ fontSize: "10px", color: "#6B21A8", marginTop: "3px", fontWeight: 600 }}>
+                                🛡️ Safe-Stop Guarded
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: "12px", verticalAlign: "top" }}>
-                            <a
-                              href={item.official_source_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: "#0D6866", textDecoration: "underline", fontSize: "11px", wordBreak: "break-all" }}
-                            >
-                              Official Source ↗
-                            </a>
+                            <div style={{ fontSize: "11px", color: "#172322", fontWeight: 600 }}>
+                              {item.professional_reviewer || "Pending Legal Sign-off"}
+                            </div>
+                            {item.regression_test_suite && (
+                              <div style={{ fontSize: "10px", color: "#6E7F7C", marginTop: "2px", fontFamily: "monospace" }}>
+                                🧪 {item.regression_test_suite}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: "12px", verticalAlign: "top", textAlign: "right" }}>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              type="button"
-                              onClick={() => {
-                                setSimJurisdiction(item.jurisdiction);
-                                setSimPathway(item.pathway_key);
-                                setActiveTab("checklist_engine");
-                              }}
-                            >
-                              Test in Simulator →
-                            </Button>
+                            <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                onClick={() => handleOpenPathwayDossier(item.pathway_key)}
+                                style={{ fontSize: "11px" }}
+                              >
+                                Dossier 📜
+                              </Button>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                type="button"
+                                onClick={() => {
+                                  setSimJurisdiction(item.jurisdiction);
+                                  setSimPathway(item.pathway_key);
+                                  setActiveTab("checklist_engine");
+                                }}
+                                style={{ fontSize: "11px" }}
+                              >
+                                Simulator ⚡
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1195,10 +1352,12 @@ export function RuleAdministrationHub({
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
                   <div>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>
+                    <label htmlFor="sim-jurisdiction-select" style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>
                       Jurisdiction
                     </label>
                     <select
+                      id="sim-jurisdiction-select"
+                      data-testid="sim-jurisdiction-select"
                       value={simJurisdiction}
                       onChange={(e) => {
                         const newJ = e.target.value;
@@ -1219,21 +1378,37 @@ export function RuleAdministrationHub({
                         fontWeight: 600,
                       }}
                     >
-                      <option value="CA">🇨🇦 Canada (Priority Tier 1)</option>
-                      <option value="US">🇺🇸 United States (Priority Tier 1)</option>
-                      <option value="AU">🇦🇺 Australia (Priority Tier 2)</option>
-                      <option value="NZ">🇳🇿 New Zealand (Priority Tier 2)</option>
-                      <option value="GB">🇬🇧 United Kingdom (Tier 3)</option>
-                      <option value="DE">🇩🇪 Germany (Tier 3)</option>
-                      <option value="RU">🇷🇺 Russia (Tier 3)</option>
+                      {countries && countries.length > 0 ? (
+                        countries.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.code === "CA" ? "🇨🇦" : c.code === "US" ? "🇺🇸" : c.code === "AU" ? "🇦🇺" : c.code === "NZ" ? "🇳🇿" : c.code === "GB" ? "🇬🇧" : c.code === "DE" ? "🇩🇪" : c.code === "FR" ? "🇫🇷" : c.code === "RU" ? "🇷🇺" : c.code === "SG" ? "🇸🇬" : c.code === "AE" ? "🇦🇪" : c.code === "JP" ? "🇯🇵" : "🌐"} {c.name} (Priority {c.priority_tier}) [{c.coverage_status}]
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="CA">🇨🇦 Canada (Priority 1) [SUPPORTED]</option>
+                          <option value="US">🇺🇸 United States (Priority 2) [SUPPORTED]</option>
+                          <option value="AU">🇦🇺 Australia (Priority 3) [SUPPORTED]</option>
+                          <option value="NZ">🇳🇿 New Zealand (Priority 3) [SUPPORTED]</option>
+                          <option value="GB">🇬🇧 United Kingdom (Priority 4) [SUPPORTED]</option>
+                          <option value="DE">🇩🇪 Germany (Priority 4) [PARTIAL]</option>
+                          <option value="FR">🇫🇷 France (Priority 4) [UNVERIFIED]</option>
+                          <option value="RU">🇷🇺 Russia (Priority 5) [UNVERIFIED]</option>
+                          <option value="SG">🇸🇬 Singapore (Priority 5) [UNVERIFIED]</option>
+                          <option value="AE">🇦🇪 United Arab Emirates (Priority 5) [UNVERIFIED]</option>
+                          <option value="JP">🇯🇵 Japan (Priority 5) [UNVERIFIED]</option>
+                        </>
+                      )}
                     </select>
                   </div>
 
                   <div>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>
+                    <label htmlFor="sim-pathway-select" style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>
                       Target Pathway
                     </label>
                     <select
+                      id="sim-pathway-select"
+                      data-testid="sim-pathway-select"
                       value={simPathway}
                       onChange={(e) => setSimPathway(e.target.value)}
                       style={{
@@ -1355,6 +1530,52 @@ export function RuleAdministrationHub({
               {/* SIMULATION RESULT DISPLAY */}
               {simChecklistResponse && (
                 <div>
+                  {/* Phase 12 EU / Schengen Regulatory Notice Banner */}
+                  {simChecklistResponse.eu_schengen_notice && (
+                    <div
+                      data-testid="eu-schengen-notice-banner"
+                      style={{
+                        padding: "12px 16px",
+                        background: "#EFF6FF",
+                        border: "1.5px solid #3B82F6",
+                        borderRadius: "8px",
+                        marginBottom: "12px",
+                        fontSize: "12px",
+                        color: "#1E40AF",
+                        lineHeight: "1.5",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>🇪🇺</span>
+                        <span>EU / Schengen Regulatory Distinction:</span>
+                      </div>
+                      {simChecklistResponse.eu_schengen_notice}
+                    </div>
+                  )}
+
+                  {/* Phase 12 Partial Coverage Supervisory Advisory Banner */}
+                  {simChecklistResponse.partial_coverage_warning && (
+                    <div
+                      data-testid="partial-coverage-warning-banner"
+                      style={{
+                        padding: "12px 16px",
+                        background: "#FFFBEB",
+                        border: "1.5px solid #F59E0B",
+                        borderRadius: "8px",
+                        marginBottom: "12px",
+                        fontSize: "12px",
+                        color: "#92400E",
+                        lineHeight: "1.5",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>⚠️</span>
+                        <span>Partial Coverage Supervisory Advisory:</span>
+                      </div>
+                      {simChecklistResponse.partial_coverage_warning}
+                    </div>
+                  )}
+
                   {!simChecklistResponse.is_supported ? (
                     /* SAFE STOP CARD */
                     <div
@@ -2986,6 +3207,266 @@ export function RuleAdministrationHub({
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* PHASE 12: PATHWAY VALIDATION DOSSIER MODAL */}
+      <Modal
+        isOpen={isDossierModalOpen}
+        onClose={() => {
+          setIsDossierModalOpen(false);
+          setSelectedDossier(null);
+        }}
+        title={`Pathway Validation Dossier: ${selectedDossier?.pathway?.title || "Pathway Validation"}`}
+      >
+        {isLoadingDossier ? (
+          <div style={{ padding: "40px", textAlign: "center", color: "#6E7F7C", fontSize: "14px" }}>
+            Loading statutory validation dossier...
+          </div>
+        ) : selectedDossier ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxHeight: "75vh", overflowY: "auto", paddingRight: "4px" }}>
+            {/* Header Summary & Badges */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+              <div>
+                <div style={{ fontSize: "16px", fontWeight: 800, color: "#063C3D" }}>
+                  {selectedDossier.pathway.title}
+                </div>
+                <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "2px" }}>
+                  Key: <code>{selectedDossier.pathway.pathway_key}</code> • Jurisdiction:{" "}
+                  <strong>
+                    {selectedDossier.country?.name || selectedDossier.pathway.jurisdiction} ({selectedDossier.pathway.jurisdiction})
+                  </strong>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                <span
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    background:
+                      selectedDossier.pathway.coverage_status === "SUPPORTED"
+                        ? "#EAF6F0"
+                        : selectedDossier.pathway.coverage_status === "PARTIAL"
+                        ? "#FEF3C7"
+                        : "#F3E8FF",
+                    color:
+                      selectedDossier.pathway.coverage_status === "SUPPORTED"
+                        ? "#063C3D"
+                        : selectedDossier.pathway.coverage_status === "PARTIAL"
+                        ? "#92400E"
+                        : "#6B21A8",
+                    border: `1px solid ${
+                      selectedDossier.pathway.coverage_status === "SUPPORTED"
+                        ? "#0D6866"
+                        : selectedDossier.pathway.coverage_status === "PARTIAL"
+                        ? "#F59E0B"
+                        : "#A855F7"
+                    }`,
+                  }}
+                >
+                  {selectedDossier.pathway.coverage_status}
+                </span>
+
+                <span
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    background: "#F3F4F6",
+                    color: "#374151",
+                  }}
+                >
+                  Tier {selectedDossier.country?.priority_tier || 1}
+                </span>
+              </div>
+            </div>
+
+            {/* Safe Stop Status Banner */}
+            {selectedDossier.safe_stop_required ? (
+              <div
+                data-testid="dossier-safe-stop-alert"
+                style={{
+                  padding: "12px 16px",
+                  background: "#FEF2F2",
+                  border: "1.5px solid #EF4444",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  color: "#991B1B",
+                  lineHeight: "1.5",
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>🛑</span>
+                  <span>Safe-Stop Policy Enforced: Checklist Generation Disabled</span>
+                </div>
+                This pathway is classified as <strong>{selectedDossier.pathway.coverage_status}</strong>. To safeguard against unvalidated legal advice or misleading filings, automatic checklist generation returns 0 items. Rule definitions must undergo professional review before promotion.
+              </div>
+            ) : (
+              <div
+                data-testid="dossier-safe-active-alert"
+                style={{
+                  padding: "12px 16px",
+                  background: "#EAF6F0",
+                  border: "1.5px solid #0D6866",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  color: "#063C3D",
+                  lineHeight: "1.5",
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>✅</span>
+                  <span>Checklist Engine Authorized: Fact-Grounded Generation Active</span>
+                </div>
+                Statutory baseline is confirmed with source links, professional reviewer sign-off, and passing regression suites.
+              </div>
+            )}
+
+            {/* Statutory Reference & Authority */}
+            <div style={{ background: "#F8FAF9", padding: "14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D", marginBottom: "8px" }}>
+                ⚖️ Statutory Framework &amp; Legal Provenance
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "12px" }}>
+                <div>
+                  <span style={{ color: "#6E7F7C", display: "block" }}>Statutory Citation / Reference:</span>
+                  <span style={{ fontWeight: 700, color: "#172322" }}>
+                    {selectedDossier.pathway.statutory_reference}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: "#6E7F7C", display: "block" }}>Statutory Framework:</span>
+                  <span style={{ fontWeight: 600, color: "#172322" }}>
+                    {selectedDossier.country?.statutory_framework || "National Immigration Statutes"}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: "#6E7F7C", display: "block" }}>Competent Primary Authority:</span>
+                  <span style={{ fontWeight: 600, color: "#172322" }}>
+                    {selectedDossier.country?.primary_authority || "Government Ministry / Department"}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: "#6E7F7C", display: "block" }}>Release Owner:</span>
+                  <span style={{ fontWeight: 600, color: "#172322" }}>
+                    {selectedDossier.country?.release_owner || "Regional Counsel"}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px solid #E2E8E4", fontSize: "12px" }}>
+                <span style={{ color: "#6E7F7C" }}>Official Government Source: </span>
+                <a
+                  href={selectedDossier.pathway.official_source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "#0D6866", textDecoration: "underline", wordBreak: "break-all" }}
+                >
+                  {selectedDossier.pathway.official_source_url}
+                </a>
+              </div>
+            </div>
+
+            {/* Professional Review & Quality Assurance */}
+            <div style={{ background: "#FFFFFF", padding: "14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D", marginBottom: "8px" }}>
+                🔍 Professional Review &amp; Quality Assurance
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "12px" }}>
+                <div>
+                  <span style={{ color: "#6E7F7C", display: "block" }}>Professional Reviewer:</span>
+                  <span style={{ fontWeight: 700, color: "#172322" }}>
+                    {selectedDossier.pathway.professional_reviewer || "Pending professional assignment"}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: "#6E7F7C", display: "block" }}>Review Sign-off Timestamp:</span>
+                  <span style={{ fontWeight: 600, color: "#172322" }}>
+                    {selectedDossier.pathway.review_timestamp ? new Date(selectedDossier.pathway.review_timestamp).toLocaleDateString() : "Pending"}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: "#6E7F7C", display: "block" }}>Independent Rule Pack Validation:</span>
+                  <span style={{ fontWeight: 700, color: selectedDossier.pathway.independent_validation_confirmed ? "#059669" : "#D97706" }}>
+                    {selectedDossier.pathway.independent_validation_confirmed ? "✓ Confirmed Independent" : "✗ Pending Verification"}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: "#6E7F7C", display: "block" }}>Automated Regression Suite:</span>
+                  <code style={{ fontSize: "11px", background: "#F3F4F6", padding: "2px 6px", borderRadius: "4px" }}>
+                    {selectedDossier.pathway.regression_test_suite || "backend/tests/test_phase12_country_pathway_expansion.py"}
+                  </code>
+                </div>
+              </div>
+            </div>
+
+            {/* Scope Limitations & Regional Caveats */}
+            <div style={{ background: "#F8FAF9", padding: "14px", borderRadius: "8px", border: "1px solid #DCE5E1", fontSize: "12px" }}>
+              <div style={{ fontWeight: 700, color: "#063C3D", marginBottom: "4px" }}>
+                📌 Scope Limitations &amp; Regional Distinctions:
+              </div>
+              <div style={{ color: "#4B5563", lineHeight: "1.4" }}>
+                {selectedDossier.pathway.scope_limitations || "Standard federal filing rules apply without regional variations."}
+              </div>
+
+              {selectedDossier.country?.eu_schengen_distinction_applies && (
+                <div style={{ marginTop: "8px", padding: "8px 10px", background: "#EFF6FF", borderRadius: "6px", borderLeft: "3px solid #3B82F6", color: "#1E40AF" }}>
+                  <strong>EU / Schengen Distinction:</strong> Regulation (EC) No 810/2009 governs short-stay visas only. Long-term residence, Blue Card, and work authorization are governed exclusively by national statutes.
+                </div>
+              )}
+            </div>
+
+            {/* Release Conditions Checklist */}
+            {selectedDossier.country?.release_conditions_status && (
+              <div style={{ background: "#FFFFFF", padding: "14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D", marginBottom: "8px" }}>
+                  📋 Jurisdiction Release Conditions Attestation
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "11px" }}>
+                  {Object.entries(selectedDossier.country.release_conditions_status).map(([cond, isMet]) => (
+                    <div key={cond} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>{isMet ? "✅" : "⏳"}</span>
+                      <span style={{ color: isMet ? "#063C3D" : "#6B7280", fontWeight: isMet ? 600 : 400 }}>
+                        {cond.replace(/_/g, " ")}: <strong>{isMet ? "MET" : "PENDING"}</strong>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer Action Buttons */}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", paddingTop: "12px", borderTop: "1px solid #E2E8E4" }}>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  setSimJurisdiction(selectedDossier.pathway.jurisdiction);
+                  setSimPathway(selectedDossier.pathway.pathway_key);
+                  setIsDossierModalOpen(false);
+                  setSelectedDossier(null);
+                  setActiveTab("checklist_engine");
+                }}
+              >
+                ⚡ Test in Simulator
+              </Button>
+              <Button
+                variant="primary"
+                type="button"
+                onClick={() => {
+                  setIsDossierModalOpen(false);
+                  setSelectedDossier(null);
+                }}
+              >
+                Close Dossier
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

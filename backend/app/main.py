@@ -35,6 +35,7 @@ from backend.app.api.v1.billing import router as billing_router
 from backend.app.api.v1.analytics import router as analytics_router
 from backend.app.api.v1.operations import router as operations_router
 from backend.app.api.v1.firm_config import router as firm_config_router, tenant_firm_config_router
+from backend.app.api.v1.governance import router as governance_router
 
 # Initialize structured logging
 setup_logging()
@@ -100,6 +101,7 @@ app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(operations_router, prefix="/api/v1")
 app.include_router(firm_config_router, prefix="/api/v1")
 app.include_router(tenant_firm_config_router, prefix="/api/v1")
+app.include_router(governance_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["health"])

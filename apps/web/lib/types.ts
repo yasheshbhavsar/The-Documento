@@ -1721,6 +1721,10 @@ export interface CountryRegistryItem {
   priority_tier: number;
   statutory_framework: string;
   notes: string;
+  supported_families?: PathwayCategory[];
+  release_conditions_status?: Record<string, boolean>;
+  eu_schengen_distinction_applies?: boolean;
+  independent_jurisdiction_rules?: boolean;
 }
 
 export interface PathwayTaxonomyItem {
@@ -1733,6 +1737,20 @@ export interface PathwayTaxonomyItem {
   official_source_url: string;
   requires_provincial_or_state_clearance?: boolean;
   description: string;
+  validation_level?: string;
+  release_conditions_met?: boolean;
+  professional_reviewer?: string | null;
+  review_timestamp?: string | null;
+  regression_test_suite?: string | null;
+  scope_limitations?: string | null;
+  independent_validation_confirmed?: boolean;
+}
+
+export interface PathwayDossierResponse {
+  pathway: PathwayTaxonomyItem;
+  country: CountryRegistryItem | null;
+  is_safe_to_generate_checklist: boolean;
+  safe_stop_required: boolean;
 }
 
 export interface CountryCoverageMatrixItem {
@@ -1741,6 +1759,7 @@ export interface CountryCoverageMatrixItem {
   supported_count: number;
   partial_count: number;
   unverified_count: number;
+  unsupported_count?: number;
   pathways: PathwayTaxonomyItem[];
 }
 
@@ -1748,9 +1767,21 @@ export interface CoverageMatrixResponse {
   coverage_summary: {
     total_countries: number;
     supported_countries: number;
+    partial_countries?: number;
+    unverified_countries?: number;
     total_pathways: number;
     supported_pathways: number;
+    partial_pathways?: number;
+    unverified_pathways?: number;
+    priority_tiers?: Record<string, string>;
   };
+  families_breakdown?: Record<string, {
+    total: number;
+    supported: number;
+    partial: number;
+    unverified: number;
+    unsupported: number;
+  }>;
   countries: CountryCoverageMatrixItem[];
 }
 
@@ -1799,6 +1830,8 @@ export interface GeneratedChecklistResponse {
   case_id?: string | null;
   message?: string;
   disclaimer?: string;
+  partial_coverage_warning?: string | null;
+  eu_schengen_notice?: string | null;
 }
 
 export interface PinnedChecklistSnapshotResponse {
@@ -2225,5 +2258,85 @@ export interface RestoreDrillResult {
   deletion_policy_accounting_verified: boolean;
   completed_at: string;
   details: string;
+}
+
+// --- Phase 13 Pilot Governance, Stress-Testing, KPIs, Release Gates & Runbooks ---
+
+export interface PilotCohort {
+  id: string;
+  organization_id: string;
+  cohort_name: string;
+  firm_tier: 'small_firm' | 'medium_firm' | 'boutique' | string;
+  status: 'active' | 'graduated' | 'suspended' | string;
+  max_cases_allowed: number;
+  allowed_pathways: string[];
+  synthetic_data_attestation: boolean;
+  unapproved_ai_block_enabled: boolean;
+  assigned_lead_email: string;
+  start_date: string;
+  target_end_date?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface PilotKPIBenchmark {
+  id: string;
+  period_label: string;
+  pathway_key: string;
+  baseline_workflow_hours: number;
+  documento_workflow_hours: number;
+  time_saved_hours: number;
+  time_saved_percentage: number;
+  correction_rate_percentage: number;
+  false_positive_flags_count: number;
+  missed_exceptions_count: number;
+  package_rework_rate_percentage: number;
+  operational_failures_count: number;
+  operational_recovery_rate_percentage: number;
+  created_at: string;
+}
+
+export interface StressTestExecution {
+  id: string;
+  scenario_key: string;
+  scenario_name: string;
+  status: 'passed' | 'failed' | 'pending' | string;
+  execution_notes: string;
+  metrics: Record<string, any>;
+  executed_at: string;
+  executed_by_name: string;
+}
+
+export interface ReleaseGateItem {
+  gate_id?: string;
+  gate_number: number;
+  title?: string;
+  name?: string;
+  description?: string;
+  status: 'PASSED' | 'FAILED' | string;
+  evidence: string | Record<string, any>;
+  blocking_issues?: string[];
+}
+
+export interface ReleaseGateEvaluation {
+  id: string;
+  evaluation_version: string;
+  overall_status: 'PASSED' | 'BLOCKED' | string;
+  gates: ReleaseGateItem[];
+  evaluated_at: string;
+  evaluated_by_name: string;
+  signed_off_by_owner: boolean;
+  signoff_notes?: string | null;
+  signed_off_at?: string | null;
+}
+
+export interface OperationalRunbook {
+  id: string;
+  runbook_type: string;
+  title: string;
+  content_markdown: string;
+  metadata: Record<string, any>;
+  last_verified_at: string;
+  verified_by_name: string;
 }
 

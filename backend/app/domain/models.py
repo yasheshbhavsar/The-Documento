@@ -54,6 +54,11 @@ class Organization(Base):
     completed_application_summaries: Mapped[list["CompletedApplicationSummary"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     case_withdrawal_tombstones: Mapped[list["CaseWithdrawalTombstone"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     firm_export_requests: Mapped[list["FirmExportRequest"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    pilot_cohorts: Mapped[list["PilotCohort"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    pilot_stress_test_executions: Mapped[list["PilotStressTestExecution"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    pilot_kpi_benchmarks: Mapped[list["PilotKPIBenchmark"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    release_gate_evaluations: Mapped[list["ReleaseGateEvaluation"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    operational_runbooks: Mapped[list["OperationalRunbook"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
 
 
 class Branch(Base):
@@ -1608,5 +1613,154 @@ class PrivacyLegalReview(Base):
     mandatory_safeguards_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+
+class PilotCohort(Base):
+    """
+    Phase 13 Pilot Cohort Governance Model.
+    Tracks pilot cohorts for small/medium firms with deliberately limited validated pathways,
+    strict synthetic data attestations, and unapproved AI upload prevention.
+    """
+    __tablename__ = "pilot_cohorts"
+    __table_args__ = (
+        Index("ix_pilot_cohort_org_status", "organization_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    cohort_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    firm_tier: Mapped[str] = mapped_column(String(32), default="small_firm", nullable=False)  # small_firm, medium_firm, boutique
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)  # active, completed, suspended, paused
+    max_cases_allowed: Mapped[int] = mapped_column(Integer, default=25, nullable=False)
+    allowed_pathways_json: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    synthetic_data_attestation: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    unapproved_ai_block_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    assigned_lead_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    target_end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="pilot_cohorts")
+    stress_tests: Mapped[list["PilotStressTestExecution"]] = relationship(back_populates="cohort", cascade="all, delete-orphan")
+    benchmarks: Mapped[list["PilotKPIBenchmark"]] = relationship(back_populates="cohort", cascade="all, delete-orphan")
+
+
+class PilotStressTestExecution(Base):
+    """
+    Phase 13 Stress-Testing Execution Ledger.
+    Tracks execution and deterministic verification across all 13 required stress scenarios:
+    combined PDFs, poor scans, multi-family, spelling mismatch, expired docs, missing evidence,
+    caseworker reassignment, hold, withdrawal, completion, failed download, purge failure, bypass prevention.
+    """
+    __tablename__ = "pilot_stress_test_executions"
+    __table_args__ = (
+        Index("ix_stress_exec_org_scenario", "organization_id", "scenario_key"),
+        Index("ix_stress_exec_date", "organization_id", "executed_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    cohort_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pilot_cohorts.id", ondelete="SET NULL"), nullable=True, index=True)
+    scenario_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    scenario_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="passed", nullable=False)  # passed, failed, warning, in_progress
+    execution_notes: Mapped[str] = mapped_column(Text, nullable=False)
+    metrics_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    executed_by_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="pilot_stress_test_executions")
+    cohort: Mapped[PilotCohort | None] = relationship(back_populates="stress_tests")
+
+
+class PilotKPIBenchmark(Base):
+    """
+    Phase 13 Comparative Workflow KPI Benchmark.
+    Compares baseline traditional firm workflow against Documento platform metrics.
+    Tracks time saved, correction rate, false positives, missed exceptions, package rework, and operational failures.
+    """
+    __tablename__ = "pilot_kpi_benchmarks"
+    __table_args__ = (
+        Index("ix_kpi_benchmark_org", "organization_id", "period_label"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    cohort_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pilot_cohorts.id", ondelete="SET NULL"), nullable=True, index=True)
+    period_label: Mapped[str] = mapped_column(String(64), nullable=False)
+    pathway_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    baseline_workflow_hours: Mapped[float] = mapped_column(Float, nullable=False)
+    documento_workflow_hours: Mapped[float] = mapped_column(Float, nullable=False)
+    time_saved_hours: Mapped[float] = mapped_column(Float, nullable=False)
+    time_saved_percentage: Mapped[float] = mapped_column(Float, nullable=False)
+    correction_rate_percentage: Mapped[float] = mapped_column(Float, nullable=False)
+    false_positive_flags_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    missed_exceptions_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    package_rework_rate_percentage: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    operational_failures_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    operational_recovery_rate_percentage: Mapped[float] = mapped_column(Float, default=100.0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="pilot_kpi_benchmarks")
+    cohort: Mapped[PilotCohort | None] = relationship(back_populates="benchmarks")
+
+
+class ReleaseGateEvaluation(Base):
+    """
+    Phase 13 Automated Release Gates Evaluation.
+    Evaluates all 8 mandatory release gates:
+    1. Critical security & tenant isolation
+    2. Package eligibility bypass prevention
+    3. Retention & deletion failure recovery
+    4. 6-role core flow coverage (client, officer, senior/lawyer, manager, owner, accounts)
+    5. Country & pathway support state visibility
+    6. Privacy notices & processor agreements
+    7. Operational readiness documentation
+    8. CI backend tests & frontend build pass
+    """
+    __tablename__ = "release_gate_evaluations"
+    __table_args__ = (
+        Index("ix_release_gate_org_eval", "organization_id", "evaluation_version"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    evaluated_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    evaluated_by_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    evaluation_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    overall_status: Mapped[str] = mapped_column(String(32), default="PASSED", nullable=False)  # PASSED, FAILED, BLOCKED
+    gates_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    signed_off_by_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    signoff_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signed_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    organization: Mapped[Organization] = relationship(back_populates="release_gate_evaluations")
+    evaluated_by: Mapped[User | None] = relationship()
+
+
+class OperationalRunbook(Base):
+    """
+    Phase 13 Pre-Launch Operational Safety Pack.
+    Governs rollback plan, migration backup attestation, incident response contacts,
+    L1-L3 support runbooks, and known-limitations catalog.
+    """
+    __tablename__ = "operational_runbooks"
+    __table_args__ = (
+        Index("ix_runbook_org_type", "organization_id", "runbook_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    runbook_type: Mapped[str] = mapped_column(String(64), nullable=False)  # rollback_plan, incident_response_roster, support_runbook, known_limitations_catalog
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    last_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    verified_by_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="operational_runbooks")
 
 

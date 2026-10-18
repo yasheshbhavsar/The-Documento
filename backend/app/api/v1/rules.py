@@ -29,9 +29,12 @@ from backend.app.rules.pilot_data import seed_eb1a_pilot
 try:
     from backend.app.rules.taxonomy import (
         CoverageStatus,
+        PathwayCategory,
         get_country_registry,
         get_pathways_by_jurisdiction,
+        get_pathways_by_category,
         get_pathway_coverage,
+        get_pathway_dossier,
         get_coverage_matrix,
         PATHWAY_TAXONOMY,
         COUNTRY_REGISTRY,
@@ -46,9 +49,12 @@ try:
 except ImportError:
     from app.rules.taxonomy import (
         CoverageStatus,
+        PathwayCategory,
         get_country_registry,
         get_pathways_by_jurisdiction,
+        get_pathways_by_category,
         get_pathway_coverage,
+        get_pathway_dossier,
         get_coverage_matrix,
         PATHWAY_TAXONOMY,
         COUNTRY_REGISTRY,
@@ -1237,11 +1243,31 @@ def get_countries_registry_endpoint():
 
 
 @router.get("/taxonomy")
-def get_pathway_taxonomy_endpoint(jurisdiction: Optional[str] = Query(None)):
+def get_pathway_taxonomy_endpoint(
+    jurisdiction: Optional[str] = Query(None, description="Filter by 2-letter country code"),
+    category: Optional[str] = Query(None, description="Filter by broad application family"),
+    coverage_status: Optional[str] = Query(None, description="Filter by SUPPORTED, PARTIAL, UNVERIFIED, UNSUPPORTED"),
+):
     """Returns official pathway taxonomy across visitor, study, work, family, PR/residence, citizenship, humanitarian/protection, extensions."""
+    items = list(PATHWAY_TAXONOMY.values())
     if jurisdiction:
-        return [p.model_dump() for p in get_pathways_by_jurisdiction(jurisdiction)]
-    return [p.model_dump() for p in PATHWAY_TAXONOMY.values()]
+        items = [p for p in items if p.jurisdiction == jurisdiction.upper()]
+    if category:
+        cat_lower = category.lower()
+        items = [p for p in items if p.category == cat_lower or p.category.value == cat_lower]
+    if coverage_status:
+        cov_upper = coverage_status.upper()
+        items = [p for p in items if p.coverage_status == cov_upper or p.coverage_status.value == cov_upper]
+    return [p.model_dump() for p in items]
+
+
+@router.get("/pathway/{pathway_key}/dossier")
+def get_pathway_dossier_endpoint(pathway_key: str):
+    """Returns full validation dossier for an immigration pathway (official citations, reviewer sign-off, safe-stop status)."""
+    dossier = get_pathway_dossier(pathway_key)
+    if not dossier:
+        raise NotFoundError(f"Pathway '{pathway_key}' not found in official taxonomy")
+    return dossier
 
 
 @router.get("/coverage-matrix")

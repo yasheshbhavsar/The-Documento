@@ -14,6 +14,13 @@ $alembicExe = Join-Path $venvScripts "alembic.exe"
 $uvicornExe = Join-Path $venvScripts "uvicorn.exe"
 $alembicIni = Join-Path $backendDir "alembic.ini"
 
+if (-not $env:DATABASE_URL) {
+    $dbPath = (Join-Path $scriptDir "ai_immigration.db").Replace("\", "/")
+    $env:DATABASE_URL = "sqlite:///$dbPath"
+    Write-Host "No DATABASE_URL set. Using local SQLite: $env:DATABASE_URL" -ForegroundColor Gray
+}
+
+$env:PYTHONPATH = $scriptDir
 Set-Location $backendDir
 
 Write-Host "Running Alembic migrations to head..." -ForegroundColor Cyan

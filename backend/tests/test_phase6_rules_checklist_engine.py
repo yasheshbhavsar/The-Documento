@@ -183,6 +183,9 @@ def test_production_rule_pack_seeding_and_no_placeholders(db: Session, phase6_se
             or "doleta.gov" in req.source_url
             or "homeaffairs.gov.au" in req.source_url
             or "immigration.govt.nz" in req.source_url
+            or "gov.uk" in req.source_url
+            or "bamf.de" in req.source_url
+            or "make-it-in-germany.com" in req.source_url
             or req.source_url.endswith(".gov")
         ), f"Rule {req.code} has unverified source URL: {req.source_url}"
 
