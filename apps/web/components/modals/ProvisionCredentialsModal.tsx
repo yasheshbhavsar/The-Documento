@@ -52,10 +52,20 @@ export function ProvisionCredentialsModal({
 
   const handleCopyCredentials = () => {
     const textToCopy = `Documento Portal Credentials\nClient: ${client.first_name} ${client.last_name}\nEmail: ${client.email}\nPortal Password: ${password}\nPortal URL: http://localhost:3000/login\nIssued by: ${issuerTitle}`;
-    navigator.clipboard.writeText(textToCopy).then(() => {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(textToCopy)
+        .then(() => {
+          setCopiedNotice(true);
+          setTimeout(() => setCopiedNotice(false), 3000);
+        })
+        .catch(() => {
+          setCopiedNotice(true);
+          setTimeout(() => setCopiedNotice(false), 3000);
+        });
+    } else {
       setCopiedNotice(true);
       setTimeout(() => setCopiedNotice(false), 3000);
-    });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
