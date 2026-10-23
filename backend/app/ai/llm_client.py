@@ -200,6 +200,148 @@ class GeminiVisionClient(BaseAIClient):
             return fallback.extract_document_entities(content, filename, category, mime_type)
 
 
+class ClaudeSonnetClient(BaseAIClient):
+    """Direct integration with Anthropic Claude 3.5 Sonnet Vision & Multimodal API."""
+
+    def __init__(self, api_key: str, model: str = "claude-3-5-sonnet-20241022"):
+        self.api_key = api_key
+        self.model = model
+        self.api_url = "https://api.anthropic.com/v1/messages"
+
+    def _rasterize_pages(self, content: bytes, max_pages: int = 3) -> List[tuple[str, str]]:
+        """Converts initial PDF pages to base64 JPEG images for Claude multimodal analysis."""
+        images: List[tuple[str, str]] = []
+        if pymupdf is None:
+            logger.warning("PyMuPDF is not installed; skipping PDF rasterization")
+            return images
+        try:
+            doc = pymupdf.open(stream=content, filetype="pdf")
+            for page_idx in range(min(len(doc), max_pages)):
+                page = doc[page_idx]
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("jpeg")
+                b64 = base64.b64encode(img_bytes).decode("ascii")
+                images.append(("image/jpeg", b64))
+            doc.close()
+        except Exception as e:
+            logger.warning(f"Could not rasterize PDF for Claude vision analysis: {e}")
+        return images
+
+    def extract_document_entities(
+        self,
+        content: bytes,
+        filename: str,
+        category: str,
+        mime_type: str = "application/pdf",
+        db: Optional[Any] = None,
+        organization_id: Optional[Any] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> VisionExtractionResult:
+        if not self.api_key or not self.api_key.strip():
+            logger.warning("Claude API key not configured, falling back to local deterministic model")
+            return MockLocalVisionClient().extract_document_entities(content, filename, category, mime_type)
+
+        prompt_text = (
+            f"You are an expert immigration legal document analyst. Analyze this legal document '{filename}' "
+            f"(expected category: '{category}'). Extract all key entities (full names, passport numbers, birth dates, "
+            f"degrees, dates, financial balances, MRZ codes) with high precision.\n"
+            f"Return ONLY valid JSON matching this schema:\n"
+            "{\n"
+            '  "detected_category": "string",\n'
+            '  "summary": "string",\n'
+            '  "confidence": 0.98,\n'
+            '  "entities": [\n'
+            '    {\n'
+            '      "field_name": "full_name|passport_number|date_of_birth|degree_title|closing_balance",\n'
+            '      "field_label": "Human Readable Label",\n'
+            '      "original_value": "exact verbatim string",\n'
+            '      "normalized_value": "ISO-standard formatted string",\n'
+            '      "confidence": 0.99,\n'
+            '      "source_page": 1\n'
+            "    }\n"
+            "  ],\n"
+            '  "anomalies": ["potential redaction", "expired passport"]\n'
+            "}"
+        )
+
+        content_blocks: List[Dict[str, Any]] = []
+        if mime_type == "application/pdf":
+            pages = self._rasterize_pages(content, max_pages=3)
+            for media_type, b64_data in pages:
+                content_blocks.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": media_type, "data": b64_data},
+                })
+        elif mime_type.startswith("image/"):
+            b64_img = base64.b64encode(content).decode("ascii")
+            media_type = "image/jpeg" if "jpeg" in mime_type or "jpg" in mime_type else "image/png"
+            content_blocks.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": b64_img},
+            })
+
+        content_blocks.append({"type": "text", "text": prompt_text})
+
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        body = {
+            "model": self.model,
+            "max_tokens": 2048,
+            "messages": [{"role": "user", "content": content_blocks}],
+        }
+
+        try:
+            with httpx.Client(timeout=45.0) as client:
+                res = client.post(self.api_url, headers=headers, json=body)
+                res.raise_for_status()
+                data = res.json()
+                content_text = ""
+                for part in data.get("content", []):
+                    if part.get("type") == "text":
+                        content_text += part.get("text", "")
+
+                cleaned = content_text.strip()
+                if cleaned.startswith("```json"):
+                    cleaned = cleaned[7:]
+                if cleaned.startswith("```"):
+                    cleaned = cleaned[3:]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3]
+                parsed = json.loads(cleaned.strip())
+
+                entities: List[ExtractedEntity] = []
+                for item in parsed.get("entities", []):
+                    entities.append(
+                        ExtractedEntity(
+                            field_name=item["field_name"],
+                            field_label=item.get("field_label", item["field_name"].replace("_", " ").title()),
+                            original_value=str(item["original_value"]),
+                            normalized_value=str(item.get("normalized_value", item["original_value"])),
+                            confidence=float(item.get("confidence", 0.95)),
+                            source_page=int(item.get("source_page", 1)),
+                            extraction_method=f"claude_vision_{self.model}",
+                        )
+                    )
+
+                return VisionExtractionResult(
+                    model_name=self.model,
+                    detected_category=parsed.get("detected_category", category),
+                    summary=parsed.get("summary", f"Extracted via {self.model}"),
+                    entities=entities,
+                    anomalies=parsed.get("anomalies", []),
+                    raw_response=parsed,
+                    confidence=float(parsed.get("confidence", 0.96)),
+                )
+        except Exception as e:
+            logger.error(f"Claude Vision extraction failed, using deterministic fallback: {e}")
+            fallback = MockLocalVisionClient()
+            return fallback.extract_document_entities(content, filename, category, mime_type)
+
+
 class MockLocalVisionClient(BaseAIClient):
     """
     High-fidelity deterministic neural vision simulation.
@@ -320,6 +462,8 @@ class MockLocalVisionClient(BaseAIClient):
 def get_ai_client() -> BaseAIClient:
     """Factory returning active AI vision client based on environment configuration."""
     settings = get_settings()
-    if settings.ai_provider == "gemini" and settings.gemini_api_key.strip():
+    if settings.ai_provider in ("anthropic", "claude") and settings.anthropic_api_key.strip():
+        return ClaudeSonnetClient(api_key=settings.anthropic_api_key, model=settings.anthropic_model)
+    elif settings.ai_provider == "gemini" and settings.gemini_api_key.strip():
         return GeminiVisionClient(api_key=settings.gemini_api_key, model=settings.gemini_model)
     return MockLocalVisionClient()

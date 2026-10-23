@@ -1,6 +1,6 @@
 import React from "react";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "outline" | "outline-inverted" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -43,6 +43,12 @@ export function Button({
           background: "transparent",
           color: "var(--text, #172322)",
           border: "1px solid var(--border-strong, #BDCDC7)",
+        };
+      case "outline-inverted":
+        return {
+          background: "rgba(255, 255, 255, 0.1)",
+          color: "#ffffff",
+          border: "1px solid rgba(255, 255, 255, 0.35)",
         };
       case "ghost":
         return {

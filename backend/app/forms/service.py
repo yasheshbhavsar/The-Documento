@@ -18,6 +18,8 @@ from backend.app.domain.models import (
 )
 
 # Standard Seed Schemas
+from backend.app.forms.schemas_catalog import DOS_DS160_SCHEMA, IRCC_IMM5257_SCHEMA
+
 USCIS_I140_SCHEMA = {
     "sections": [
         {
@@ -205,38 +207,78 @@ USCIS_I140_SCHEMA = {
 class FormService:
     @staticmethod
     def ensure_default_schemas(db: Session, organization_id: uuid.UUID) -> FormSchema:
-        """Seeds standard versioned form schemas for the organization if not present."""
-        stmt = select(FormSchema).where(
-            FormSchema.organization_id == organization_id,
-            FormSchema.form_code == "USCIS_I140",
-        )
-        existing = db.execute(stmt).scalar_one_or_none()
-        if existing:
-            return existing
+        """Seeds standard versioned form schemas (USCIS I-140, DOS DS-160, IRCC IMM 5257) for the organization."""
+        from backend.app.forms.schemas_catalog import DOS_DS160_SCHEMA, IRCC_IMM5257_SCHEMA
 
-        schema = FormSchema(
-            organization_id=organization_id,
-            form_code="USCIS_I140",
-            name="Immigrant Petition for Alien Worker (Form I-140)",
-            jurisdiction="US",
-            pathway="EB-1A",
-            edition_date="04/01/24",
-            status="active",
-        )
-        db.add(schema)
-        db.flush()
+        seed_configs = [
+            {
+                "form_code": "USCIS_I140",
+                "name": "Immigrant Petition for Alien Worker (Form I-140)",
+                "jurisdiction": "US",
+                "pathway": "EB-1A",
+                "edition_date": "04/01/24",
+                "version_number": "v2026.1",
+                "schema_json": USCIS_I140_SCHEMA,
+            },
+            {
+                "form_code": "DOS_DS160",
+                "name": "Online Nonimmigrant Visa Application (Form DS-160)",
+                "jurisdiction": "US",
+                "pathway": "ALL",
+                "edition_date": "10/01/25",
+                "version_number": "v2026.1",
+                "schema_json": DOS_DS160_SCHEMA,
+            },
+            {
+                "form_code": "IRCC_IMM5257",
+                "name": "Application for Visitor Visa / Study Permit (Form IMM 5257)",
+                "jurisdiction": "CA",
+                "pathway": "TRV_STUDY",
+                "edition_date": "11/2025",
+                "version_number": "v2026.1",
+                "schema_json": IRCC_IMM5257_SCHEMA,
+            },
+        ]
 
-        version = FormSchemaVersion(
-            schema_id=schema.id,
-            version_number="v2026.1",
-            schema_json=USCIS_I140_SCHEMA,
-            is_active=True,
-            published_at=now_utc(),
-        )
-        db.add(version)
+        primary_schema = None
+        for cfg in seed_configs:
+            stmt = select(FormSchema).where(
+                FormSchema.organization_id == organization_id,
+                FormSchema.form_code == cfg["form_code"],
+            )
+            existing = db.execute(stmt).scalar_one_or_none()
+            if not existing:
+                schema = FormSchema(
+                    organization_id=organization_id,
+                    form_code=cfg["form_code"],
+                    name=cfg["name"],
+                    jurisdiction=cfg["jurisdiction"],
+                    pathway=cfg["pathway"],
+                    edition_date=cfg["edition_date"],
+                    status="active",
+                )
+                db.add(schema)
+                db.flush()
+
+                version = FormSchemaVersion(
+                    schema_id=schema.id,
+                    version_number=cfg["version_number"],
+                    schema_json=cfg["schema_json"],
+                    is_active=True,
+                    published_at=now_utc(),
+                )
+                db.add(version)
+                if not primary_schema:
+                    primary_schema = schema
+            else:
+                if not primary_schema:
+                    primary_schema = existing
+
         db.commit()
-        db.refresh(schema)
-        return schema
+        if primary_schema:
+            db.refresh(primary_schema)
+        return primary_schema
+
 
     @staticmethod
     def populate_form_draft(

@@ -40,6 +40,20 @@ export function CreateClientModal({
   const [duplicateMatches, setDuplicateMatches] = useState<DuplicateCandidate[]>([]);
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
 
+  // Portal credentials state (Owner / Lead Paralegal provisioned)
+  const [grantPortalAccess, setGrantPortalAccess] = useState(true);
+  const [portalPassword, setPortalPassword] = useState("ClientPass2026!");
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleGeneratePassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+    let gen = "";
+    for (let i = 0; i < 6; i++) {
+      gen += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setPortalPassword(`Doc2026!${gen}`);
+  };
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,6 +106,9 @@ export function CreateClientModal({
           email,
           phone: phone || undefined,
           nationality,
+          portal_credentials_provided: grantPortalAccess,
+          portal_access_enabled: grantPortalAccess,
+          temporary_password: grantPortalAccess ? portalPassword : undefined,
         },
         activeRole
       );
@@ -249,6 +266,93 @@ export function CreateClientModal({
           value={passportNumber}
           onChange={(e) => setPassportNumber(e.target.value)}
         />
+
+        {/* Retained Client Portal Credentials Provisioning */}
+        <div
+          style={{
+            padding: "12px 14px",
+            background: "#F4FAF7",
+            border: "1px solid #B9DED4",
+            borderRadius: "8px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D" }}>
+              🔑 Client Portal Login Credentials (Owner / Lead Paralegal Provisioned):
+            </span>
+            <Badge variant={grantPortalAccess ? "success" : "neutral"} size="sm">
+              {grantPortalAccess ? "Credentials Active" : "No Access"}
+            </Badge>
+          </div>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer", fontWeight: 600, color: "#0D6866" }}>
+            <input
+              type="checkbox"
+              id="provision-portal-credentials-toggle"
+              checked={grantPortalAccess}
+              onChange={(e) => setGrantPortalAccess(e.target.checked)}
+            />
+            <span>Provide portal login credentials now (enables client to sign in)</span>
+          </label>
+
+          {grantPortalAccess && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+                <div style={{ flex: 1 }}>
+                  <TextInput
+                    label="Assigned Client Portal Password"
+                    type={showPassword ? "text" : "password"}
+                    value={portalPassword}
+                    onChange={(e) => setPortalPassword(e.target.value)}
+                    required={grantPortalAccess}
+                    placeholder="Set temporary password"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    padding: "8px 12px",
+                    background: "#FFFFFF",
+                    border: "1px solid #B9DED4",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    color: "#0D6866",
+                    height: "36px",
+                  }}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGeneratePassword}
+                  style={{
+                    padding: "8px 12px",
+                    background: "#EAF6F0",
+                    border: "1px solid #B9DED4",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    color: "#063C3D",
+                    height: "36px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  🎲 Generate
+                </button>
+              </div>
+              <span style={{ fontSize: "11px", color: "#6E7F7C" }}>
+                ℹ️ Credentials for the retained client must be provided by the Owner or Lead Paralegal only. Until credentials are set, this client cannot log in or access the portal.
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Legal Consent Checkboxes */}
         <div

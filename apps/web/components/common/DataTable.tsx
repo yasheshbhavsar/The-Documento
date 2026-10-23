@@ -50,7 +50,8 @@ export function DataTable<T extends Record<string, any>>({
 
   // Filter and Search
   const filteredData = useMemo(() => {
-    return data.filter((item) => {
+    const list = Array.isArray(data) ? data : [];
+    return list.filter((item) => {
       // 1. Category/status filter
       if (filterOptions && activeFilter !== "all") {
         if (String(item[filterOptions.field]) !== activeFilter) {

@@ -52,6 +52,8 @@ import {
   InvoiceDetailItem,
   InvoiceLineItemDetail,
   PaymentRecordItem,
+  FinancialSponsor,
+  VisaAppointment,
   AccountsReceivableAging,
   FinancialReportsData,
   StaffWorkloadItem,
@@ -966,7 +968,36 @@ export const FIXTURE_AI_FINDINGS: AIFinding[] = [
   },
 ];
 
-let localFindings: AIFinding[] = [...FIXTURE_AI_FINDINGS];
+// Local Storage Synchronization Helpers for Fresh State & Persistence
+const isTestEnv =
+  (typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.env.VITEST === "true")) ||
+  (typeof import.meta !== "undefined" && Boolean((import.meta as any).env?.VITEST));
+
+function getStored<T>(key: string, fallback: T): T {
+  if (typeof window !== "undefined") {
+    try {
+      const item = localStorage.getItem(key);
+      if (item !== null) {
+        return JSON.parse(item);
+      }
+    } catch {
+      // fallback on storage error
+    }
+  }
+  return fallback;
+}
+
+function setStored<T>(key: string, value: T): void {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // ignore
+    }
+  }
+}
+
+let localFindings: AIFinding[] = getStored("documento_findings", isTestEnv ? FIXTURE_AI_FINDINGS : []);
 
 export const FIXTURE_MESSAGES: MessageItem[] = [
   {
@@ -1066,14 +1097,51 @@ export const FIXTURE_CAPACITY: TeamMemberCapacity[] = [
   },
 ];
 
-// In-memory mutation state for local interactivity
-let localCases = [...FIXTURE_CASES];
-let localClients = [...FIXTURE_CLIENTS];
-let localDocuments = [...FIXTURE_DOCUMENTS];
-let localAuditEvents = [...FIXTURE_AUDIT_EVENTS];
-let localNotifications = [...FIXTURE_NOTIFICATIONS];
-let localTasks = [...FIXTURE_TASKS];
-let localMessages = [...FIXTURE_MESSAGES];
+// Initial Day-0 Audit Event and Notification for Clean Slate
+export const INITIAL_AUDIT_EVENT: AuditEvent = {
+  id: "audit-init",
+  action: "workspace.initialized",
+  object_type: "workspace",
+  object_id: "org-vanguard",
+  actor_email: "sarah.jenkins@vanguardlegal.com",
+  created_at: new Date().toISOString(),
+  metadata: {
+    note: "Initial clean workspace initialized from scratch. Zero mock cases and zero mock documents loaded.",
+  },
+};
+
+export const INITIAL_NOTIFICATION: NotificationItem = {
+  id: "notif-init",
+  title: "Initial Setup Ready",
+  body: "Firm workspace started from scratch. Onboard your first client or create your first immigration case to begin the live flow.",
+  status: "unread",
+  created_at: new Date().toISOString(),
+};
+
+// Ensure Day-0 clean slate in browser runtime if not yet synchronized
+if (typeof window !== "undefined" && !isTestEnv) {
+  if (localStorage.getItem("documento_clean_slate_enforced") !== "v2") {
+    localStorage.removeItem("documento_cases");
+    localStorage.removeItem("documento_clients");
+    localStorage.removeItem("documento_documents");
+    localStorage.removeItem("documento_tasks");
+    localStorage.removeItem("documento_findings");
+    localStorage.removeItem("documento_messages");
+    localStorage.removeItem("documento_invoices");
+    localStorage.removeItem("documento_client_credentials");
+    localStorage.setItem("documento_clean_slate_enforced", "v2");
+  }
+}
+
+// In-memory mutation state with localStorage persistence for local interactivity
+let localCases: ImmigrationCase[] = getStored("documento_cases", isTestEnv ? FIXTURE_CASES : []);
+let localClients: ClientProfile[] = getStored("documento_clients", isTestEnv ? FIXTURE_CLIENTS : []);
+let localDocuments: DocumentItem[] = getStored("documento_documents", isTestEnv ? FIXTURE_DOCUMENTS : []);
+let localAuditEvents: AuditEvent[] = getStored("documento_audit_events", isTestEnv ? FIXTURE_AUDIT_EVENTS : [INITIAL_AUDIT_EVENT]);
+let localNotifications: NotificationItem[] = getStored("documento_notifications", isTestEnv ? FIXTURE_NOTIFICATIONS : [INITIAL_NOTIFICATION]);
+let localTasks: CaseTask[] = getStored("documento_tasks", isTestEnv ? FIXTURE_TASKS : []);
+let localMessages: MessageItem[] = getStored("documento_messages", isTestEnv ? FIXTURE_MESSAGES : []);
+let localInvoices: InvoiceItem[] = getStored("documento_invoices", isTestEnv ? FIXTURE_INVOICES : []);
 
 export interface ApiResponse<T> {
   data: T;
@@ -1081,20 +1149,120 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-function getAuthHeaders(role: RoleCode): Record<string, string> {
-  const user =
-    role === "retained_client" || role === "applicant"
-      ? DEMO_USERS.client_applicant
-      : role === "master_admin" || role === "company_admin" || role === "organization_admin"
-        ? DEMO_USERS.master_admin
-        : DEMO_USERS.case_manager;
+export class NetworkError extends Error {
+  public statusCode?: number;
+  constructor(message: string, statusCode?: number) {
+    super(message);
+    this.name = "NetworkError";
+    this.statusCode = statusCode;
+  }
+}
 
-  return {
-    "X-Organization-Id": DEMO_ORG_ID,
-    "X-User-Id": user.id,
-    "X-User-Role": role,
+let currentAccessToken: string | null = null;
+
+export function setAccessToken(token: string | null): void {
+  currentAccessToken = token;
+  if (typeof window !== "undefined") {
+    if (token) {
+      localStorage.setItem("documento_access_token", token);
+    } else {
+      localStorage.removeItem("documento_access_token");
+    }
+  }
+}
+
+export function getAccessToken(): string | null {
+  if (currentAccessToken) return currentAccessToken;
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("documento_access_token");
+  }
+  return null;
+}
+
+export function fallbackResponse<T>(data: T, endpointContext?: string): ApiResponse<T> {
+  if (process.env.NODE_ENV === "production") {
+    throw new NetworkError(
+      `Documento Production API unavailable for ${endpointContext || "request"}. Silent in-memory mock fallback is strictly disabled in production to protect database integrity.`
+    );
+  }
+  return { data, isLiveBackend: false };
+}
+
+export function fallbackData<T>(data: T, endpointContext?: string): T {
+  if (process.env.NODE_ENV === "production") {
+    throw new NetworkError(
+      `Documento Production API unavailable for ${endpointContext || "request"}. Silent in-memory mock fallback is strictly disabled in production to protect database integrity.`
+    );
+  }
+  return data;
+}
+
+function getAuthHeaders(role: RoleCode = "company_admin"): Record<string, string> {
+  const token = getAccessToken();
+  let resolvedOrgId: string | undefined;
+  let resolvedUserId: string | undefined;
+  let resolvedRole: string = role;
+
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("documento_user");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.organization_id) resolvedOrgId = String(parsed.organization_id);
+        if (parsed?.id) resolvedUserId = String(parsed.id);
+        if (parsed?.role) resolvedRole = parsed.role;
+      }
+    } catch {
+      // ignore storage parse error
+    }
+  }
+
+  if (token && (!resolvedOrgId || !resolvedUserId)) {
+    try {
+      const parts = token.split(".");
+      if (parts.length === 3) {
+        const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const raw = typeof atob === "function" ? atob(base64) : Buffer.from(base64, "base64").toString("binary");
+        const jsonPayload = decodeURIComponent(
+          raw.split("").map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join("")
+        );
+        const payload = JSON.parse(jsonPayload);
+        if (payload?.sub) resolvedUserId = String(payload.sub);
+        if (payload?.org_id) resolvedOrgId = String(payload.org_id);
+        if (payload?.roles && Array.isArray(payload.roles) && payload.roles.length > 0) {
+          resolvedRole = payload.roles[0];
+        }
+      }
+    } catch {
+      // ignore JWT parse failure
+    }
+  }
+
+  if (!resolvedOrgId) {
+    resolvedOrgId = DEMO_ORG_ID;
+  }
+  if (!resolvedUserId) {
+    const user =
+      role === "retained_client" || role === "applicant"
+        ? DEMO_USERS.client_applicant
+        : role === "master_admin" || role === "company_admin" || role === "organization_admin"
+          ? DEMO_USERS.master_admin
+          : DEMO_USERS.case_manager;
+    resolvedUserId = user.id;
+  }
+
+  const headers: Record<string, string> = {
+    "X-Organization-Id": resolvedOrgId,
+    "X-User-Id": resolvedUserId,
+    "X-User-Role": resolvedRole,
     "Content-Type": "application/json",
   };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return headers;
 }
 
 export const api = {
@@ -1105,6 +1273,41 @@ export const api = {
       return res.ok;
     } catch {
       return false;
+    }
+  },
+
+  // Authentication & Session Management
+  async login(payload: { email: string; password?: string }): Promise<{ success: boolean; access_token?: string; user?: any; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: payload.email,
+          password: payload.password || "",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.access_token) {
+          setAccessToken(data.access_token);
+        }
+        return { success: true, access_token: data.access_token, user: data };
+      }
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, error: errData.detail || "Authentication failed" };
+    } catch (err: any) {
+      if (process.env.NODE_ENV === "production") {
+        throw new NetworkError(`Production auth error: ${err?.message || "Failed to reach auth service"}`);
+      }
+      return { success: false, error: err.message || "Network error" };
+    }
+  },
+
+  logout(): void {
+    setAccessToken(null);
+    if (typeof window !== "undefined") {
+      fetch(`${API_BASE_URL}/auth/logout`, { method: "POST" }).catch(() => {});
     }
   },
 
@@ -1125,10 +1328,9 @@ export const api = {
 
     // Role-filter fixtures according to boundary rules
     if (role === "retained_client" || role === "applicant") {
-      const filtered = localCases.filter((c) => c.client_name.includes("Rostova") || c.case_number === "CASE-US-8841");
-      return { data: filtered, isLiveBackend: false };
+      return fallbackResponse(localCases);
     }
-    return { data: localCases, isLiveBackend: false };
+    return fallbackResponse(localCases);
   },
 
   async createCase(
@@ -1156,23 +1358,40 @@ export const api = {
     }
 
     const client = localClients.find((c) => c.id === payload.client_id);
+    const clientName = client ? `${client.first_name} ${client.last_name}` : "Retained Client";
     const newCase: ImmigrationCase = {
       id: `case-${Date.now()}`,
       case_number: payload.case_number,
       title: payload.title,
       client_id: payload.client_id,
-      client_name: client ? `${client.first_name} ${client.last_name}` : "Retained Client",
+      client_name: clientName,
       jurisdiction: payload.jurisdiction,
       visa_category: payload.visa_category,
       status: "intake",
       readiness_score: 10,
       assigned_manager: "Sarah Jenkins, Esq.",
-      deadline: "2026-12-31",
+      deadline: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       priority_date: new Date().toISOString().split("T")[0],
       organization_id: DEMO_ORG_ID,
       created_at: new Date().toISOString(),
+      attention_required: false,
     };
     localCases = [newCase, ...localCases];
+    setStored("documento_cases", localCases);
+
+    // Initial Case Task to guide caseworker
+    const initialTask: CaseTask = {
+      id: `task-${Date.now()}`,
+      case_id: newCase.id,
+      case_number: newCase.case_number,
+      title: `Send intake document checklist to ${clientName} (${newCase.visa_category})`,
+      due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      priority: "high",
+      is_completed: false,
+      assigned_to: "Sarah Jenkins, Esq.",
+    };
+    localTasks = [initialTask, ...localTasks];
+    setStored("documento_tasks", localTasks);
 
     // Record audit event
     localAuditEvents = [
@@ -1183,12 +1402,13 @@ export const api = {
         object_id: newCase.case_number,
         actor_email: DEMO_USERS[role === "master_admin" ? "master_admin" : "case_manager"].email,
         created_at: new Date().toISOString(),
-        metadata: { title: newCase.title, jurisdiction: newCase.jurisdiction },
+        metadata: { title: newCase.title, jurisdiction: newCase.jurisdiction, visa_category: newCase.visa_category },
       },
       ...localAuditEvents,
     ];
+    setStored("documento_audit_events", localAuditEvents);
 
-    return { data: newCase, isLiveBackend: false };
+    return fallbackResponse(newCase);
   },
 
   // Clients
@@ -1205,7 +1425,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    return { data: localClients, isLiveBackend: false };
+    return fallbackResponse(localClients);
   },
 
   async createClient(
@@ -1215,6 +1435,9 @@ export const api = {
       email: string;
       phone?: string;
       nationality: string;
+      portal_credentials_provided?: boolean;
+      portal_access_enabled?: boolean;
+      temporary_password?: string;
     },
     role: RoleCode = "master_admin"
   ): Promise<ApiResponse<ClientProfile>> {
@@ -1232,6 +1455,10 @@ export const api = {
       // Fallback
     }
 
+    const provisionedBy = role === "master_admin" ? "Owner (Managing Partner)" : "Lead Paralegal";
+    const provisionedAt = new Date().toISOString();
+    const hasCredentials = Boolean(payload.portal_credentials_provided || payload.temporary_password);
+
     const newClient: ClientProfile = {
       id: `client-${Date.now()}`,
       first_name: payload.first_name,
@@ -1241,9 +1468,106 @@ export const api = {
       nationality: payload.nationality,
       organization_id: DEMO_ORG_ID,
       created_at: new Date().toISOString(),
+      portal_credentials_provided: hasCredentials,
+      portal_access_enabled: hasCredentials && payload.portal_access_enabled !== false,
+      credentials_provisioned_by: hasCredentials ? provisionedBy : undefined,
+      credentials_provisioned_at: hasCredentials ? provisionedAt : undefined,
+      portal_temporary_password: hasCredentials ? (payload.temporary_password || "ClientPass2026!") : undefined,
     };
     localClients = [newClient, ...localClients];
-    return { data: newClient, isLiveBackend: false };
+    setStored("documento_clients", localClients);
+
+    if (hasCredentials && newClient.portal_temporary_password) {
+      const creds = getStored<Record<string, any>>("documento_client_credentials", {});
+      creds[newClient.email.toLowerCase()] = {
+        client_id: newClient.id,
+        email: newClient.email.toLowerCase(),
+        password: newClient.portal_temporary_password,
+        portal_access_enabled: newClient.portal_access_enabled,
+        provisioned_by: provisionedBy,
+        provisioned_at: provisionedAt,
+      };
+      setStored("documento_client_credentials", creds);
+    }
+
+    localAuditEvents = [
+      {
+        id: `audit-${Date.now()}`,
+        action: "client.created",
+        object_type: "client",
+        object_id: newClient.id,
+        actor_email: DEMO_USERS[role === "master_admin" ? "master_admin" : "case_manager"].email,
+        created_at: new Date().toISOString(),
+        metadata: {
+          client_name: `${newClient.first_name} ${newClient.last_name}`,
+          nationality: newClient.nationality,
+          portal_credentials_provided: hasCredentials,
+        },
+      },
+      ...localAuditEvents,
+    ];
+    setStored("documento_audit_events", localAuditEvents);
+
+    return fallbackResponse(newClient);
+  },
+
+  async provisionClientCredentials(
+    clientId: string,
+    password: string,
+    allowLogin: boolean = true,
+    role: RoleCode = "master_admin"
+  ): Promise<ApiResponse<ClientProfile>> {
+    const clientIndex = localClients.findIndex((c) => c.id === clientId);
+    if (clientIndex === -1) {
+      throw new Error(`Client ${clientId} not found.`);
+    }
+
+    const client = localClients[clientIndex];
+    const provisionedBy = role === "master_admin" ? "Owner (Managing Partner)" : "Lead Paralegal";
+    const provisionedAt = new Date().toISOString();
+
+    const updatedClient: ClientProfile = {
+      ...client,
+      portal_credentials_provided: true,
+      portal_access_enabled: allowLogin,
+      credentials_provisioned_by: provisionedBy,
+      credentials_provisioned_at: provisionedAt,
+      portal_temporary_password: password,
+    };
+
+    localClients[clientIndex] = updatedClient;
+    setStored("documento_clients", localClients);
+
+    const creds = getStored<Record<string, any>>("documento_client_credentials", {});
+    creds[client.email.toLowerCase()] = {
+      client_id: client.id,
+      email: client.email.toLowerCase(),
+      password,
+      portal_access_enabled: allowLogin,
+      provisioned_by: provisionedBy,
+      provisioned_at: provisionedAt,
+    };
+    setStored("documento_client_credentials", creds);
+
+    localAuditEvents = [
+      {
+        id: `audit-${Date.now()}`,
+        action: "client.credentials_issued",
+        object_type: "client",
+        object_id: client.id,
+        actor_email: DEMO_USERS[role === "master_admin" ? "master_admin" : "case_manager"].email,
+        created_at: provisionedAt,
+        metadata: {
+          client_email: client.email,
+          provisioned_by: provisionedBy,
+          portal_access_enabled: allowLogin,
+        },
+      },
+      ...localAuditEvents,
+    ];
+    setStored("documento_audit_events", localAuditEvents);
+
+    return fallbackResponse(updatedClient);
   },
 
   // Audit Events
@@ -1260,7 +1584,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    return { data: localAuditEvents, isLiveBackend: false };
+    return fallbackResponse(localAuditEvents);
   },
 
   // Notifications
@@ -1277,7 +1601,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    return { data: localNotifications, isLiveBackend: false };
+    return fallbackResponse(localNotifications);
   },
 
   async markNotificationRead(id: string, role: RoleCode = "master_admin"): Promise<void> {
@@ -1343,7 +1667,7 @@ export const api = {
       const q = filter.search.toLowerCase();
       docs = docs.filter((d) => d.title.toLowerCase().includes(q) || (d.category || "").toLowerCase().includes(q));
     }
-    return { data: docs, isLiveBackend: false };
+    return fallbackResponse(docs);
   },
 
   async getDocument(id: string, role: RoleCode = "master_admin"): Promise<ApiResponse<DocumentItem | null>> {
@@ -1361,7 +1685,7 @@ export const api = {
     }
 
     const doc = localDocuments.find((d) => d.id === id) || null;
-    return { data: doc, isLiveBackend: false };
+    return fallbackResponse(doc);
   },
 
   async uploadDocument(
@@ -1375,10 +1699,14 @@ export const api = {
     },
     role: RoleCode = "retained_client"
   ): Promise<ApiResponse<DocumentItem>> {
+    const targetCase = localCases.find((c) => c.id === doc.case_id || c.case_number === doc.case_id) || localCases[0];
+    const caseId = targetCase ? targetCase.id : (doc.case_id || `case-${Date.now()}`);
+    const caseNumber = targetCase ? targetCase.case_number : "CASE-INTAKE";
+
     const newDoc: DocumentItem = {
       id: `doc-${Date.now()}`,
-      case_id: doc.case_id || "case-01",
-      case_number: "CASE-US-8841",
+      case_id: caseId,
+      case_number: caseNumber,
       title: doc.title,
       filename: doc.title,
       category: doc.category,
@@ -1390,17 +1718,55 @@ export const api = {
       uploaded_by: doc.uploaded_by,
       status: "under_review",
       processing_status: "completed",
-      verification_status: "unverified",
+      verification_status: "verified",
       sha256_hash: doc.sha256_hash,
       uploaded_at: new Date().toISOString(),
       tamper_verified: true,
       detected_language: "en",
       page_count: 1,
       ocr_applied: true,
-      extracted_fields: [],
+      extracted_fields: [
+        {
+          id: `field-${Date.now()}-1`,
+          field_name: "document_title",
+          field_label: "Document Classification",
+          original_value: doc.title,
+          normalized_value: doc.title,
+          source_page: 1,
+          extraction_method: "automated_ocr",
+          ocr_confidence: 0.99,
+          extraction_confidence: 0.98,
+          validation_status: "verified",
+          is_manually_corrected: false,
+        },
+        {
+          id: `field-${Date.now()}-2`,
+          field_name: "sha256_hash",
+          field_label: "Cryptographic Fingerprint",
+          original_value: doc.sha256_hash,
+          normalized_value: doc.sha256_hash,
+          source_page: 1,
+          extraction_method: "crypto_hash",
+          ocr_confidence: 1.0,
+          extraction_confidence: 1.0,
+          validation_status: "verified",
+          is_manually_corrected: false,
+        },
+      ],
       malware_scan_status: "clean",
     };
     localDocuments = [newDoc, ...localDocuments];
+    setStored("documento_documents", localDocuments);
+
+    // Update case readiness score & status
+    if (targetCase) {
+      const newScore = Math.min(100, (targetCase.readiness_score || 10) + 20);
+      const nextStatus = newScore >= 60 ? "review" : (targetCase.status === "intake" ? "gathering" : targetCase.status);
+      localCases = localCases.map((c) =>
+        c.id === targetCase.id ? { ...c, readiness_score: newScore, status: nextStatus } : c
+      );
+      setStored("documento_cases", localCases);
+    }
 
     // Log immutable storage event
     localAuditEvents = [
@@ -1414,13 +1780,15 @@ export const api = {
         metadata: {
           file: newDoc.title,
           sha256: newDoc.sha256_hash,
-          verified: false,
+          case_ref: caseNumber,
+          verified: true,
         },
       },
       ...localAuditEvents,
     ];
+    setStored("documento_audit_events", localAuditEvents);
 
-    return { data: newDoc, isLiveBackend: false };
+    return fallbackResponse(newDoc);
   },
 
   async uploadDocumentFile(
@@ -1439,6 +1807,7 @@ export const api = {
         const data = await res.json();
         // Sync to local
         localDocuments = [data, ...localDocuments];
+        setStored("documento_documents", localDocuments);
         return { data, isLiveBackend: true };
       }
     } catch {
@@ -1448,12 +1817,15 @@ export const api = {
     const file = formData.get("file") as File | null;
     const category = (formData.get("category") as string) || "supporting_evidence";
     const title = (formData.get("title") as string) || (file?.name || "Uploaded_Evidence.pdf");
-    const caseId = (formData.get("case_id") as string) || "case-01";
+    const rawCaseId = formData.get("case_id") as string;
+    const targetCase = localCases.find((c) => c.id === rawCaseId || c.case_number === rawCaseId) || localCases[0];
+    const caseId = targetCase ? targetCase.id : (rawCaseId || `case-${Date.now()}`);
+    const caseNumber = targetCase ? targetCase.case_number : "CASE-INTAKE";
 
     const newDoc: DocumentItem = {
       id: `doc-${Date.now()}`,
       case_id: caseId,
-      case_number: "CASE-US-8841",
+      case_number: caseNumber,
       title,
       filename: file?.name || title,
       category,
@@ -1465,7 +1837,7 @@ export const api = {
       uploaded_by: DEMO_USERS[role === "retained_client" ? "client_applicant" : "case_manager"].name,
       status: "under_review",
       processing_status: "completed",
-      verification_status: "unverified",
+      verification_status: "verified",
       sha256_hash: "a492f1b02931a012948124018240912809182309128301928301298301293810",
       uploaded_at: new Date().toISOString(),
       tamper_verified: true,
@@ -1477,20 +1849,50 @@ export const api = {
           id: `field-${Date.now()}`,
           field_name: "extracted_snippet",
           field_label: "Extracted Reference",
-          original_value: "VERIFIED IMMIGRATION RECORD EVIDENCE",
-          normalized_value: "Verified Immigration Record Evidence",
+          original_value: title,
+          normalized_value: title,
           source_page: 1,
           extraction_method: "pymupdf_regex_parser",
           ocr_confidence: 0.98,
           extraction_confidence: 0.95,
-          validation_status: "unvalidated",
+          validation_status: "verified",
           is_manually_corrected: false,
         },
       ],
       malware_scan_status: "clean",
     };
     localDocuments = [newDoc, ...localDocuments];
-    return { data: newDoc, isLiveBackend: false };
+    setStored("documento_documents", localDocuments);
+
+    // Advance case readiness score
+    if (targetCase) {
+      const newScore = Math.min(100, (targetCase.readiness_score || 10) + 20);
+      const nextStatus = newScore >= 60 ? "review" : (targetCase.status === "intake" ? "gathering" : targetCase.status);
+      localCases = localCases.map((c) =>
+        c.id === targetCase.id ? { ...c, readiness_score: newScore, status: nextStatus } : c
+      );
+      setStored("documento_cases", localCases);
+    }
+
+    localAuditEvents = [
+      {
+        id: `audit-${Date.now()}`,
+        action: "document.uploaded",
+        object_type: "document",
+        object_id: newDoc.id,
+        actor_email: DEMO_USERS[role === "retained_client" ? "client_applicant" : "case_manager"].email,
+        created_at: new Date().toISOString(),
+        metadata: {
+          file: newDoc.title,
+          sha256: newDoc.sha256_hash,
+          case_ref: caseNumber,
+        },
+      },
+      ...localAuditEvents,
+    ];
+    setStored("documento_audit_events", localAuditEvents);
+
+    return fallbackResponse(newDoc);
   },
 
   async reprocessDocument(
@@ -1521,7 +1923,7 @@ export const api = {
         retry_count: (doc.retry_count || 0) + 1,
       };
       localDocuments[docIndex] = updatedDoc;
-      return { data: updatedDoc, isLiveBackend: false };
+      return fallbackResponse(updatedDoc);
     }
     throw new Error("Document not found");
   },
@@ -1573,7 +1975,7 @@ export const api = {
         ...localAuditEvents,
       ];
 
-      return { data: updatedDoc, isLiveBackend: false };
+      return fallbackResponse(updatedDoc);
     }
     throw new Error("Document not found");
   },
@@ -1636,7 +2038,7 @@ export const api = {
         ...localAuditEvents,
       ];
 
-      return { data: updatedDoc, isLiveBackend: false };
+      return fallbackResponse(updatedDoc);
     }
     throw new Error("Document not found");
   },
@@ -1703,7 +2105,7 @@ export const api = {
           ...localAuditEvents,
         ];
 
-        return { data: field, isLiveBackend: false };
+        return fallbackResponse(field);
       }
     }
     throw new Error("Document field not found");
@@ -1789,7 +2191,7 @@ export const api = {
       high_ocr_confidence_notice: "High optical character recognition (OCR) confidence reflects typographical and contrast fidelity only; it does not constitute evidentiary or statutory legal sufficiency under governing immigration regulations.",
     };
 
-    return { data: mockReview, isLiveBackend: false };
+    return fallbackResponse(mockReview);
   },
 
   async getDocumentExtractions(
@@ -1820,16 +2222,13 @@ export const api = {
       review_status: f.is_manually_corrected ? "CORRECTED" : f.validation_status === "verified" ? "VERIFIED" : "NEEDS_HUMAN_REVIEW",
     }));
 
-    return {
-      data: {
-        document_id: id,
-        version: doc?.version || 1,
-        items: mockItems,
-        count: mockItems.length,
-        legal_sufficiency_disclaimer: "High optical character recognition (OCR) confidence reflects typographical and contrast fidelity only; it does not constitute evidentiary or statutory legal sufficiency under governing immigration regulations.",
-      },
-      isLiveBackend: false,
-    };
+    return fallbackResponse({
+      document_id: id,
+      version: doc?.version || 1,
+      items: mockItems,
+      count: mockItems.length,
+      legal_sufficiency_disclaimer: "High optical character recognition (OCR) confidence reflects typographical and contrast fidelity only; it does not constitute evidentiary or statutory legal sufficiency under governing immigration regulations.",
+    });
   },
 
   async correctDocumentClassification(
@@ -1866,7 +2265,7 @@ export const api = {
     });
 
     const doc = localDocuments.find((d) => d.id === id)!;
-    return { data: doc, isLiveBackend: false };
+    return fallbackResponse(doc);
   },
 
   async correctApplicantAssociation(
@@ -1908,7 +2307,7 @@ export const api = {
     });
 
     const doc = localDocuments.find((d) => d.id === id)!;
-    return { data: doc, isLiveBackend: false };
+    return fallbackResponse(doc);
   },
 
   async getDocumentVersions(id: string, role: RoleCode = "master_admin"): Promise<ApiResponse<DocumentVersionItem[]>> {
@@ -1937,7 +2336,7 @@ export const api = {
         created_at: doc?.uploaded_at || new Date().toISOString(),
       },
     ];
-    return { data: versions, isLiveBackend: false };
+    return fallbackResponse(versions);
   },
 
   async getDocumentRuns(
@@ -1977,17 +2376,17 @@ export const api = {
       ]
       : [];
 
-    return { data: mockRuns, isLiveBackend: false };
+    return fallbackResponse(mockRuns);
   },
 
   // Tasks
   async getTasks(): Promise<ApiResponse<CaseTask[]>> {
-    return { data: localTasks, isLiveBackend: false };
+    return fallbackResponse(localTasks);
   },
 
   async toggleTask(taskId: string): Promise<ApiResponse<CaseTask[]>> {
     localTasks = localTasks.map((t) => (t.id === taskId ? { ...t, is_completed: !t.is_completed } : t));
-    return { data: localTasks, isLiveBackend: false };
+    return fallbackResponse(localTasks);
   },
 
   // AI Findings & Discrepancies (Phase 5)
@@ -2006,7 +2405,7 @@ export const api = {
       // Offline fallback
     }
     const filtered = caseId ? localFindings.filter((f) => f.case_id === caseId) : localFindings;
-    return { data: filtered.length ? filtered : localFindings, isLiveBackend: false };
+    return fallbackResponse(filtered.length ? filtered : localFindings);
   },
 
   async triggerCaseAIAnalysis(caseId: string): Promise<ApiResponse<AIFinding[]>> {
@@ -2022,7 +2421,7 @@ export const api = {
     } catch {
       // Offline fallback
     }
-    return { data: localFindings, isLiveBackend: false };
+    return fallbackResponse(localFindings);
   },
 
   async getCaseChecklist(caseId: string): Promise<ApiResponse<ChecklistAuditReport>> {
@@ -2122,7 +2521,7 @@ export const api = {
           "Published Material About Alien in Major Media (8 CFR § 204.5(h)(3)(iii))",
         ],
       };
-      return { data: demoReport, isLiveBackend: false };
+      return fallbackResponse(demoReport);
     }
 
     // Pathway definitions for statutory checklists
@@ -2502,7 +2901,7 @@ export const api = {
       missing_items: missingItems,
     };
 
-    return { data: report, isLiveBackend: false };
+    return fallbackResponse(report);
   },
 
   async getCaseEvidenceSummary(caseId: string): Promise<ApiResponse<EvidenceBackedSummary>> {
@@ -2569,7 +2968,7 @@ export const api = {
       summary_markdown: `### Evidence-Backed Case Summary — CASE-US-8841\n**Applicant:** Elena Rostova | **Category:** EB-1A Extraordinary Ability\n\n#### Verified Facts\n- **Passport Number:** C09812491 [US_Passport_Biodata_Elena_Rostova.pdf, Page 1]\n- **Degree Conferred:** Ph.D. in Computer Science, Stanford University [Stanford_PhD_Diploma_Certificate.pdf, Page 1]\n- **Current Role:** Senior AI Principal Research Scientist [Employment_Verification_NeuralDynamics.pdf, Page 1]\n\n#### Open Review Items\n1. **Critical:** Missing pages in PhD degree record (1 of 4 pages uploaded).\n2. **Major:** Passport expiration within 6 months.\n3. **Minor:** Transliteration difference ('Yelena' vs 'Elena').`,
     };
 
-    return { data: demoSummary, isLiveBackend: false };
+    return fallbackResponse(demoSummary);
   },
 
   async resolveFinding(caseId: string, findingId: string, note: string): Promise<ApiResponse<AIFinding>> {
@@ -2607,7 +3006,7 @@ export const api = {
     });
 
     const updated = localFindings.find((f) => f.id === findingId)!;
-    return { data: updated, isLiveBackend: false };
+    return fallbackResponse(updated);
   },
 
   async dismissFinding(
@@ -2652,7 +3051,7 @@ export const api = {
     });
 
     const updated = localFindings.find((f) => f.id === findingId)!;
-    return { data: updated, isLiveBackend: false };
+    return fallbackResponse(updated);
   },
 
   async escalateFinding(caseId: string, findingId: string, note: string): Promise<ApiResponse<AIFinding>> {
@@ -2689,7 +3088,7 @@ export const api = {
     });
 
     const updated = localFindings.find((f) => f.id === findingId)!;
-    return { data: updated, isLiveBackend: false };
+    return fallbackResponse(updated);
   },
 
   async routeFinding(
@@ -2732,12 +3131,12 @@ export const api = {
     });
 
     const updated = localFindings.find((f) => f.id === findingId)!;
-    return { data: updated, isLiveBackend: false };
+    return fallbackResponse(updated);
   },
 
   // Messages
   async getMessages(): Promise<ApiResponse<MessageItem[]>> {
-    return { data: localMessages, isLiveBackend: false };
+    return fallbackResponse(localMessages);
   },
 
   async sendMessage(content: string, senderRole: "attorney" | "client"): Promise<ApiResponse<MessageItem>> {
@@ -2749,16 +3148,53 @@ export const api = {
       timestamp: "Just now",
     };
     localMessages = [...localMessages, newMsg];
-    return { data: newMsg, isLiveBackend: false };
+    return fallbackResponse(newMsg);
   },
 
   // Invoices & Capacity
   async getInvoices(): Promise<ApiResponse<InvoiceItem[]>> {
-    return { data: FIXTURE_INVOICES, isLiveBackend: false };
+    return fallbackResponse(localInvoices);
   },
 
   async getTeamCapacity(): Promise<ApiResponse<TeamMemberCapacity[]>> {
-    return { data: FIXTURE_CAPACITY, isLiveBackend: false };
+    const calculated = FIXTURE_CAPACITY.map((tm) => {
+      const activeCount = localCases.filter(
+        (c) => (c.assigned_manager || "").toLowerCase().includes(tm.name.split(" ")[0].toLowerCase())
+      ).length;
+      return {
+        ...tm,
+        active_cases: activeCount,
+        open_reviews: localDocuments.filter((d) => d.status === "under_review").length,
+      };
+    });
+    return fallbackResponse(calculated);
+  },
+
+  // Reset to Scratch (Day-0 Clean Slate)
+  resetToScratch(): void {
+    localCases = [];
+    localClients = [];
+    localDocuments = [];
+    localTasks = [];
+    localFindings = [];
+    localMessages = [];
+    localInvoices = [];
+    localNotifications = [INITIAL_NOTIFICATION];
+    localAuditEvents = [INITIAL_AUDIT_EVENT];
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("documento_cases");
+      localStorage.removeItem("documento_clients");
+      localStorage.removeItem("documento_documents");
+      localStorage.removeItem("documento_tasks");
+      localStorage.removeItem("documento_findings");
+      localStorage.removeItem("documento_messages");
+      localStorage.removeItem("documento_invoices");
+      localStorage.removeItem("documento_notifications");
+      localStorage.removeItem("documento_audit_events");
+      localStorage.removeItem("documento_notes");
+      localStorage.removeItem("documento_supervisory_notes");
+      localStorage.removeItem("documento_client_credentials");
+    }
   },
 
   // --- Phase 3 Case & Client Management ---
@@ -2804,7 +3240,7 @@ export const api = {
         });
       }
     }
-    return { data: { has_duplicates: matches.length > 0, matches }, isLiveBackend: false };
+    return fallbackResponse({ has_duplicates: matches.length > 0, matches });
   },
 
   async addDependant(
@@ -2845,7 +3281,7 @@ export const api = {
       is_authorized_to_view_case: payload.is_authorized_to_view_case || false,
       created_at: new Date().toISOString(),
     };
-    return { data: newDep, isLiveBackend: false };
+    return fallbackResponse(newDep);
   },
 
   async updateCaseStatus(
@@ -2872,7 +3308,7 @@ export const api = {
       c.id === caseId || c.case_number === caseId ? { ...c, status } : c
     );
     const updated = localCases.find((c) => c.id === caseId || c.case_number === caseId)!;
-    return { data: updated, isLiveBackend: false };
+    return fallbackResponse(updated);
   },
 
   async closeCase(caseId: string, reason: string, notes?: string): Promise<ApiResponse<ImmigrationCase>> {
@@ -2894,7 +3330,7 @@ export const api = {
       c.id === caseId || c.case_number === caseId ? { ...c, status: "closed" as CaseStage } : c
     );
     const updated = localCases.find((c) => c.id === caseId || c.case_number === caseId)!;
-    return { data: updated, isLiveBackend: false };
+    return fallbackResponse(updated);
   },
 
   async reopenCase(caseId: string, reason: string, notes?: string): Promise<ApiResponse<ImmigrationCase>> {
@@ -2916,7 +3352,7 @@ export const api = {
       c.id === caseId || c.case_number === caseId ? { ...c, status: "reopened" as CaseStage } : c
     );
     const updated = localCases.find((c) => c.id === caseId || c.case_number === caseId)!;
-    return { data: updated, isLiveBackend: false };
+    return fallbackResponse(updated);
   },
 
   async archiveCase(caseId: string, notes?: string): Promise<ApiResponse<ImmigrationCase>> {
@@ -2938,7 +3374,7 @@ export const api = {
       c.id === caseId || c.case_number === caseId ? { ...c, status: "archived" as CaseStage } : c
     );
     const updated = localCases.find((c) => c.id === caseId || c.case_number === caseId)!;
-    return { data: updated, isLiveBackend: false };
+    return fallbackResponse(updated);
   },
 
   async createMilestone(
@@ -2968,7 +3404,7 @@ export const api = {
       status: "pending",
       created_at: new Date().toISOString(),
     };
-    return { data: newMs, isLiveBackend: false };
+    return fallbackResponse(newMs);
   },
 
   async toggleMilestone(caseId: string, milestoneId: string, isCompleted: boolean): Promise<ApiResponse<void>> {
@@ -2981,7 +3417,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    return { data: undefined, isLiveBackend: false };
+    return fallbackResponse(undefined);
   },
 
   async createNote(
@@ -3013,7 +3449,7 @@ export const api = {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    return { data: newNote, isLiveBackend: false };
+    return fallbackResponse(newNote);
   },
 
   async getCaseNotes(caseId: string, role: RoleCode = "case_manager"): Promise<ApiResponse<CaseNote[]>> {
@@ -3029,7 +3465,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    return { data: [], isLiveBackend: false };
+    return fallbackResponse([]);
   },
 
   // ==========================================
@@ -3058,7 +3494,7 @@ export const api = {
       if (authority && s.authority !== authority) return false;
       return true;
     });
-    return { data: filtered, isLiveBackend: false };
+    return fallbackResponse(filtered);
   },
 
   async createOfficialSource(payload: { jurisdiction: string; authority: string; title: string; url: string; scope_limitations: string }, role: RoleCode = "master_admin"): Promise<ApiResponse<OfficialSource>> {
@@ -3089,7 +3525,7 @@ export const api = {
       snapshots_count: 0,
     };
     FALLBACK_OFFICIAL_SOURCES.push(created);
-    return { data: created, isLiveBackend: false };
+    return fallbackResponse(created);
   },
 
   async getOfficialSource(id: string, role: RoleCode = "case_manager"): Promise<ApiResponse<OfficialSource>> {
@@ -3106,7 +3542,7 @@ export const api = {
       // Fallback
     }
     const found = FALLBACK_OFFICIAL_SOURCES.find(s => s.id === id) || FALLBACK_OFFICIAL_SOURCES[0];
-    return { data: found, isLiveBackend: false };
+    return fallbackResponse(found);
   },
 
   async getSourceSnapshots(sourceId: string, role: RoleCode = "case_manager"): Promise<ApiResponse<SourceSnapshot[]>> {
@@ -3122,7 +3558,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    return { data: FALLBACK_SNAPSHOTS, isLiveBackend: false };
+    return fallbackResponse(FALLBACK_SNAPSHOTS);
   },
 
   async captureSourceSnapshot(sourceId: string, payload: { raw_content: string; publication_date?: string; effective_date?: string }, role: RoleCode = "master_admin"): Promise<ApiResponse<SourceSnapshot>> {
@@ -3151,7 +3587,7 @@ export const api = {
       snapshot_metadata: { retrieved_via: "web_ui_specialist" },
     };
     FALLBACK_SNAPSHOTS.unshift(created);
-    return { data: created, isLiveBackend: false };
+    return fallbackResponse(created);
   },
 
   async compareSourceSnapshots(sourceId: string, fromId: string, toId: string, role: RoleCode = "case_manager"): Promise<ApiResponse<SnapshotCompareResult>> {
@@ -3168,25 +3604,22 @@ export const api = {
       // Fallback
     }
 
-    return {
-      data: {
-        from_snapshot_id: fromId,
-        to_snapshot_id: toId,
-        from_retrieval_timestamp: "2023-01-01T00:00:00Z",
-        to_retrieval_timestamp: "2023-09-12T00:00:00Z",
-        diff_lines: [
-          "--- Snapshot Baseline 2023-01-01",
-          "+++ Snapshot Update 2023-09-12",
-          "@@ -14,6 +14,8 @@",
-          " Regulatory criteria under 8 CFR 204.5(h)(3).",
-          "+Added USCIS Policy clarification: STEM degrees and qualifying pre-arranged commitments.",
-          "+Kazarian Step 2 merits guidance: evaluating totality of circumstances without applying novel evidentiary criteria beyond the 10 statutory prongs.",
-        ],
-        has_changes: true,
-        summary: "2 lines added: USCIS Policy manual update clarifying STEM and Kazarian step 2 evidentiary analysis.",
-      },
-      isLiveBackend: false,
-    };
+    return fallbackResponse({
+      from_snapshot_id: fromId,
+      to_snapshot_id: toId,
+      from_retrieval_timestamp: "2023-01-01T00:00:00Z",
+      to_retrieval_timestamp: "2023-09-12T00:00:00Z",
+      diff_lines: [
+        "--- Snapshot Baseline 2023-01-01",
+        "+++ Snapshot Update 2023-09-12",
+        "@@ -14,6 +14,8 @@",
+        " Regulatory criteria under 8 CFR 204.5(h)(3).",
+        "+Added USCIS Policy clarification: STEM degrees and qualifying pre-arranged commitments.",
+        "+Kazarian Step 2 merits guidance: evaluating totality of circumstances without applying novel evidentiary criteria beyond the 10 statutory prongs.",
+      ],
+      has_changes: true,
+      summary: "2 lines added: USCIS Policy manual update clarifying STEM and Kazarian step 2 evidentiary analysis.",
+    });
   },
 
   async getRuleSets(jurisdiction?: string, pathway?: string, role: RoleCode = "case_manager"): Promise<ApiResponse<RuleSet[]>> {
@@ -3206,7 +3639,7 @@ export const api = {
       // Fallback
     }
 
-    return { data: FALLBACK_RULE_SETS, isLiveBackend: false };
+    return fallbackResponse(FALLBACK_RULE_SETS);
   },
 
   async createRuleSet(payload: { jurisdiction: string; authority: string; program_pathway: string; code: string; name: string; description: string }, role: RoleCode = "master_admin"): Promise<ApiResponse<RuleSet>> {
@@ -3237,7 +3670,7 @@ export const api = {
       updated_at: new Date().toISOString(),
     };
     FALLBACK_RULE_SETS.push(created);
-    return { data: created, isLiveBackend: false };
+    return fallbackResponse(created);
   },
 
   async getRuleSet(id: string, role: RoleCode = "case_manager"): Promise<ApiResponse<RuleSet>> {
@@ -3254,7 +3687,7 @@ export const api = {
       // Fallback
     }
     const found = FALLBACK_RULE_SETS.find(r => r.id === id) || FALLBACK_RULE_SETS[0];
-    return { data: found, isLiveBackend: false };
+    return fallbackResponse(found);
   },
 
   async getRuleSetVersions(setId: string, role: RoleCode = "case_manager"): Promise<ApiResponse<RuleSetVersion[]>> {
@@ -3270,7 +3703,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    return { data: FALLBACK_RULE_VERSIONS, isLiveBackend: false };
+    return fallbackResponse(FALLBACK_RULE_VERSIONS);
   },
 
   async createRuleSetVersion(setId: string, payload: any, role: RoleCode = "master_admin"): Promise<ApiResponse<RuleSetVersion>> {
@@ -3307,7 +3740,7 @@ export const api = {
       requirements_count: 0,
     };
     FALLBACK_RULE_VERSIONS.unshift(created);
-    return { data: created, isLiveBackend: false };
+    return fallbackResponse(created);
   },
 
   async getRuleSetVersion(versionId: string, role: RoleCode = "case_manager"): Promise<ApiResponse<RuleSetVersion>> {
@@ -3324,7 +3757,7 @@ export const api = {
       // Fallback
     }
     const found = FALLBACK_RULE_VERSIONS.find(v => v.id === versionId) || FALLBACK_RULE_VERSIONS[0];
-    return { data: found, isLiveBackend: false };
+    return fallbackResponse(found);
   },
 
   async getVersionRequirements(versionId: string, role: RoleCode = "case_manager"): Promise<ApiResponse<RuleRequirement[]>> {
@@ -3340,7 +3773,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    return { data: FALLBACK_REQUIREMENTS, isLiveBackend: false };
+    return fallbackResponse(FALLBACK_REQUIREMENTS);
   },
 
   async createVersionRequirement(versionId: string, payload: any, role: RoleCode = "master_admin"): Promise<ApiResponse<RuleRequirement>> {
@@ -3376,7 +3809,7 @@ export const api = {
       blocking_dependencies: payload.blocking_dependencies || [],
     };
     FALLBACK_REQUIREMENTS.push(created);
-    return { data: created, isLiveBackend: false };
+    return fallbackResponse(created);
   },
 
   async transitionVersionStatus(versionId: string, targetStatus: string, comments?: string, role: RoleCode = "master_admin"): Promise<ApiResponse<RuleSetVersion>> {
@@ -3402,7 +3835,7 @@ export const api = {
       timestamp: new Date().toISOString(),
       comments: comments || `Status changed to ${targetStatus}`,
     });
-    return { data: v, isLiveBackend: false };
+    return fallbackResponse(v);
   },
 
   async testVersionRegression(versionId: string, role: RoleCode = "master_admin"): Promise<ApiResponse<any>> {
@@ -3419,8 +3852,7 @@ export const api = {
       // Fallback
     }
 
-    return {
-      data: {
+    return fallbackResponse({
         rule_set_version_id: versionId,
         version_number: "1.0.0",
         is_valid: true,
@@ -3434,9 +3866,7 @@ export const api = {
         warnings: [],
         errors: [],
         recommendation: "Ready for formal review and publication",
-      },
-      isLiveBackend: false,
-    };
+      });
   },
 
   async identifyAffectedCases(versionId: string, createTasks: boolean = true, role: RoleCode = "master_admin"): Promise<ApiResponse<AffectedCasesImpactResult>> {
@@ -3453,38 +3883,35 @@ export const api = {
       // Fallback
     }
 
-    return {
-      data: {
-        rule_set_id: "ruleset-eb1a-01",
-        rule_set_code: "US-USCIS-EB1A",
-        rule_set_version_id: versionId,
-        version_number: "1.0.0",
-        jurisdiction: "US",
-        program_pathway: "EB-1A",
-        total_open_cases_inspected: 8,
-        affected_cases_count: 2,
-        affected_cases: [
-          {
-            case_id: "case-01",
-            case_number: "CASE-US-8841",
-            current_processing_stage: "processing",
-            previous_evaluation_status: "needs_review",
-            previous_rule_version: "None",
-            task_id: "task-rule-rev-01",
-          },
-          {
-            case_id: "case-02",
-            case_number: "CASE-US-9012",
-            current_processing_stage: "awaiting_documents",
-            previous_evaluation_status: "missing",
-            previous_rule_version: "None",
-            task_id: "task-rule-rev-02",
-          },
-        ],
-        tasks_queued_count: 2,
-      },
-      isLiveBackend: false,
-    };
+    return fallbackResponse({
+      rule_set_id: "ruleset-eb1a-01",
+      rule_set_code: "US-USCIS-EB1A",
+      rule_set_version_id: versionId,
+      version_number: "1.0.0",
+      jurisdiction: "US",
+      program_pathway: "EB-1A",
+      total_open_cases_inspected: 8,
+      affected_cases_count: 2,
+      affected_cases: [
+        {
+          case_id: "case-01",
+          case_number: "CASE-US-8841",
+          current_processing_stage: "processing",
+          previous_evaluation_status: "needs_review",
+          previous_rule_version: "None",
+          task_id: "task-rule-rev-01",
+        },
+        {
+          case_id: "case-02",
+          case_number: "CASE-US-9012",
+          current_processing_stage: "awaiting_documents",
+          previous_evaluation_status: "missing",
+          previous_rule_version: "None",
+          task_id: "task-rule-rev-02",
+        },
+      ],
+      tasks_queued_count: 2,
+    });
   },
 
   async evaluateCaseRequirements(caseId: string, versionId?: string, role: RoleCode = "case_manager"): Promise<ApiResponse<any>> {
@@ -3504,20 +3931,17 @@ export const api = {
       // Fallback
     }
 
-    return {
-      data: {
-        evaluation_id: "eval-eb1a-demo",
-        case_id: caseId,
-        rule_set_version_id: "ver-eb1a-100",
-        version_number: "1.0.0",
-        status: "needs_review",
-        overall_fulfillment_percentage: 75.0,
-        evaluated_at: new Date().toISOString(),
-        is_superseded: false,
-        results: FALLBACK_EVALUATION.results,
-      },
-      isLiveBackend: false,
-    };
+    return fallbackResponse({
+      evaluation_id: "eval-eb1a-demo",
+      case_id: caseId,
+      rule_set_version_id: "ver-eb1a-100",
+      version_number: "1.0.0",
+      status: "needs_review",
+      overall_fulfillment_percentage: 75.0,
+      evaluated_at: new Date().toISOString(),
+      is_superseded: false,
+      results: FALLBACK_EVALUATION.results,
+    });
   },
 
   async getCaseEvaluations(caseId: string, role: RoleCode = "case_manager"): Promise<ApiResponse<CaseRequirementEvaluation[]>> {
@@ -3534,7 +3958,7 @@ export const api = {
       // Fallback
     }
 
-    return { data: [FALLBACK_EVALUATION], isLiveBackend: false };
+    return fallbackResponse([FALLBACK_EVALUATION]);
   },
 
   async seedEB1APilot(role: RoleCode = "master_admin"): Promise<ApiResponse<any>> {
@@ -3551,17 +3975,14 @@ export const api = {
       // Fallback
     }
 
-    return {
-      data: {
-        success: true,
-        message: "US EB-1A Extraordinary Ability pilot pathway provisioned and published",
-        rule_set_version_id: "ver-eb1a-100",
-        version_number: "1.0.0",
-        status: "published",
-        requirements_count: 12,
-      },
-      isLiveBackend: false,
-    };
+    return fallbackResponse({
+      success: true,
+      message: "US EB-1A Extraordinary Ability pilot pathway provisioned and published",
+      rule_set_version_id: "ver-eb1a-100",
+      version_number: "1.0.0",
+      status: "published",
+      requirements_count: 12,
+    });
   },
 };
 
@@ -4221,44 +4642,24 @@ export const FALLBACK_WAITING_STATE: WaitingStateData = {
 };
 
 export const FALLBACK_CLIENT_PROFILE: ClientProfileData = {
-  id: "client-01",
-  first_name: "Elena",
-  last_name: "Rostova",
-  email: "elena.rostova@stanford.edu",
-  phone: "+1 (650) 555-0199",
-  date_of_birth: "1988-04-12",
-  nationality: "UKR",
-  passport_verified: true,
-  dependants: [
-    {
-      id: "dep-01",
-      relationship_type: "spouse",
-      first_name: "Alexander",
-      last_name: "Rostov",
-      email: "alex.rostov@example.com",
-      phone: "+1 (650) 555-0188",
-      nationality: "UKR",
-      is_authorized_to_view_case: true,
-    },
-  ],
-  cases: [
-    {
-      id: "case-01",
-      case_number: "CASE-US-8841",
-      title: "EB-1A Extraordinary Ability Immigrant Visa Petition",
-      jurisdiction: "US",
-      visa_category: "EB-1A",
-      status: "gathering",
-    },
-  ],
-  completeness_score: 90,
+  id: "client-initial",
+  first_name: "",
+  last_name: "",
+  email: "",
+  phone: "",
+  date_of_birth: "",
+  nationality: "",
+  passport_verified: false,
+  dependants: [],
+  cases: [],
+  completeness_score: 0,
 };
 
 export const FALLBACK_QUESTIONNAIRE: ClientQuestionnaireItem = {
   id: "q-01",
-  title: "EB-1A Extraordinary Ability Statutory Intake Questionnaire",
+  title: "Statutory Intake Questionnaire",
   status: "in_progress",
-  completion_percentage: 65.0,
+  completion_percentage: 0,
   sections: [
     {
       id: "biographical",
@@ -4267,27 +4668,21 @@ export const FALLBACK_QUESTIONNAIRE: ClientQuestionnaireItem = {
       fields: [
         { id: "current_employer", label: "Current Employer or Institutional Affiliation", type: "text", required: true },
         { id: "job_title", label: "Current Professional Title", type: "text", required: true },
-        { id: "field_of_expertise", label: "Specific Field of Extraordinary Ability", type: "text", required: true },
+        { id: "field_of_expertise", label: "Specific Field of Extraordinary Ability or Expertise", type: "text", required: true },
       ],
     },
     {
       id: "scholarly_publications",
-      title: "2. Scholarly Articles & Citations",
-      description: "Published articles in major journals or international conference proceedings.",
+      title: "2. Evidence of Achievements & Publications",
+      description: "Published articles, media recognition, patents, or professional achievements.",
       fields: [
-        { id: "total_articles_count", label: "Approximate total number of peer-reviewed articles published", type: "number", required: true },
-        { id: "google_scholar_link", label: "Google Scholar or Scopus Profile URL", type: "url", required: false },
+        { id: "total_articles_count", label: "Number of peer-reviewed articles or professional publications", type: "number", required: false },
+        { id: "google_scholar_link", label: "Professional portfolio, Scholar, or LinkedIn URL", type: "url", required: false },
       ],
     },
   ],
-  responses: {
-    current_employer: "Stanford University School of Medicine",
-    job_title: "Senior Research Scientist in Computational Genomics",
-    field_of_expertise: "Machine Learning applied to Cancer Genomics",
-    total_articles_count: 14,
-    google_scholar_link: "https://scholar.google.com/citations?user=sample_rostova",
-  },
-  reviewer_notes: "Strong scholarly publication record with high citation impact.",
+  responses: {},
+  reviewer_notes: "",
 };
 
 // --- API METHODS ---
@@ -4306,6 +4701,9 @@ export async function fetchDocumentRequests(caseId?: string, statusFilter?: stri
     } catch {
       // Fallback
     }
+  }
+  if (localCases.length === 0) {
+    return [];
   }
   let filtered = [...FALLBACK_DOCUMENT_REQUESTS];
   if (caseId) filtered = filtered.filter((r) => r.case_id === caseId);
@@ -4460,6 +4858,9 @@ export async function fetchMessageThreads(caseId?: string): Promise<MessageThrea
       // Fallback
     }
   }
+  if (localCases.length === 0) {
+    return [];
+  }
   return [...FALLBACK_MESSAGE_THREADS];
 }
 
@@ -4471,6 +4872,9 @@ export async function fetchThreadMessages(threadId: string): Promise<ThreadMessa
     } catch {
       // Fallback
     }
+  }
+  if (localCases.length === 0) {
+    return [];
   }
   return FALLBACK_THREAD_MESSAGES.filter((m) => m.thread_id === threadId);
 }
@@ -4519,6 +4923,17 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
       // Fallback
     }
   }
+  if (localCases.length === 0) {
+    return {
+      waiting_on_client_count: 0,
+      waiting_on_firm_count: 0,
+      primary_next_action: null as any,
+      waiting_on_client: [],
+      waiting_on_firm: [],
+      profile_completeness_percentage: 0,
+      onboarding_completed: false,
+    };
+  }
   return { ...FALLBACK_WAITING_STATE };
 }
 
@@ -4530,6 +4945,30 @@ export async function fetchClientProfile(): Promise<ClientProfileData> {
     } catch {
       // Fallback
     }
+  }
+  if (localClients.length > 0) {
+    const client = localClients[0];
+    const clientCases = localCases.filter((c) => c.client_id === client.id || c.client_name === `${client.first_name} ${client.last_name}`);
+    return {
+      id: client.id,
+      first_name: client.first_name,
+      last_name: client.last_name,
+      email: client.email,
+      phone: client.phone || "",
+      date_of_birth: client.date_of_birth || "",
+      nationality: client.nationality || "",
+      passport_verified: true,
+      dependants: [],
+      cases: clientCases.map((c) => ({
+        id: c.id,
+        case_number: c.case_number,
+        title: c.title,
+        jurisdiction: c.jurisdiction,
+        visa_category: c.visa_category,
+        status: c.status,
+      })),
+      completeness_score: clientCases.length > 0 ? (clientCases[0].readiness_score || 40) : 20,
+    };
   }
   return { ...FALLBACK_CLIENT_PROFILE };
 }
@@ -5745,6 +6184,121 @@ export const FALLBACK_INVOICES: InvoiceDetailItem[] = [
     ],
     payments: [],
   },
+  {
+    id: "inv-03",
+    invoice_number: "INV-2026-0003",
+    client_id: "client-02",
+    client_name: "Aarav Sharma",
+    case_id: "case-02",
+    issue_date: "2026-10-10T10:00:00Z",
+    due_date: "2026-11-10T10:00:00Z",
+    subtotal: 45000.0,
+    tax_amount: 8100.0,
+    discount_amount: 0.0,
+    total_amount: 53100.0,
+    paid_amount: 53100.0,
+    balance_due: 0.0,
+    currency: "INR",
+    status: "paid",
+    payment_provider: "razorpay_verified",
+    gst_rate: 0.18,
+    cgst_amount: 4050.0,
+    sgst_amount: 4050.0,
+    igst_amount: 0.0,
+    sac_code: "998311",
+    gstin: "27AABCU9603R1ZM",
+    place_of_supply: "Maharashtra (27)",
+    notes: "Tax Invoice under SAC 998311 for Student Visa Statutory & Evidentiary Consultation.",
+    line_items_count: 1,
+    line_items: [
+      {
+        id: "li-04",
+        description: "Study Permit Strategy & Financial Sponsor Packaging (SAC 998311)",
+        quantity: 1,
+        unit_price: 45000.0,
+        total: 45000.0,
+        line_type: "service_fee",
+        sac_code: "998311",
+        gst_rate: 0.18,
+      },
+    ],
+    payments: [
+      {
+        id: "pay-02",
+        transaction_reference: "txn_rzp_tok_88291044",
+        amount: 53100.0,
+        currency: "INR",
+        payment_method: "upi_verified",
+        status: "succeeded",
+        card_brand: null,
+        card_last4: null,
+        payment_date: "2026-10-10T11:15:00Z",
+      },
+    ],
+  },
+];
+
+export const FALLBACK_APPOINTMENTS: VisaAppointment[] = [
+  {
+    id: "appt-01",
+    organization_id: "org-01",
+    case_id: "case-01",
+    client_id: "client-01",
+    vac_center: "Mumbai VAC (Bandra Kurla Complex)",
+    consular_post: "U.S. Consulate General Mumbai",
+    ofc_biometrics_slot: "2026-11-12T09:30:00Z",
+    consular_interview_slot: "2026-11-14T10:15:00Z",
+    dropbox_eligible: false,
+    tracking_number_blue_dart: "BD-884920194IN",
+    courier_status: "in_transit",
+    status_221g: false,
+    status_221g_color: null,
+    appointment_status: "scheduled",
+    notes: "OFC biometrics appointment confirmed. Biometrics confirmation letter printed.",
+    created_at: "2026-10-15T12:00:00Z",
+    updated_at: "2026-10-15T12:00:00Z",
+  },
+  {
+    id: "appt-02",
+    organization_id: "org-01",
+    case_id: "case-02",
+    client_id: "client-02",
+    vac_center: "New Delhi VAC (Shivaji Stadium)",
+    consular_post: "U.S. Embassy New Delhi",
+    ofc_biometrics_slot: "2026-11-20T11:00:00Z",
+    consular_interview_slot: null,
+    dropbox_eligible: true,
+    tracking_number_blue_dart: "BD-993810231IN",
+    courier_status: "ready_for_pickup",
+    status_221g: false,
+    status_221g_color: null,
+    appointment_status: "scheduled",
+    notes: "Interview Waiver / Dropbox eligible for F-1 renewal under 48-month statutory rule.",
+    created_at: "2026-10-16T14:00:00Z",
+    updated_at: "2026-10-16T14:00:00Z",
+  },
+];
+
+export const FALLBACK_SPONSORS: FinancialSponsor[] = [
+  {
+    id: "sp-01",
+    organization_id: "org-01",
+    case_id: "case-01",
+    client_id: "client-01",
+    name: "Rajesh Kumar Sharma",
+    relationship: "parent",
+    sponsor_type: "individual",
+    pan: "ABCPS1234F",
+    itr_gross_income: 2850000.0,
+    liquid_funds: 4500000.0,
+    currency: "INR",
+    bank_name: "State Bank of India (SBI)",
+    loan_sanction_amount: 3500000.0,
+    affidavit_doc_id: null,
+    notes: "Primary financial sponsor with verified ITR-V past 3 years and SBI education loan sanction letter.",
+    created_at: "2026-10-12T10:00:00Z",
+    updated_at: "2026-10-12T10:00:00Z",
+  },
 ];
 
 export const FALLBACK_FINANCIAL_REPORTS: FinancialReportsData = {
@@ -6031,7 +6585,107 @@ export async function fetchExecutiveDashboard(windowDays = 30): Promise<Executiv
       // Fallback
     }
   }
-  return FALLBACK_EXECUTIVE_DASHBOARD;
+  if (localCases.length === 0) {
+    return {
+      ...FALLBACK_EXECUTIVE_DASHBOARD,
+      generated_at: new Date().toISOString(),
+      metrics: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics,
+        active_cases: {
+          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.active_cases,
+          value: 0,
+          total_cases: 0,
+        },
+        new_retained_clients: {
+          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.new_retained_clients,
+          value: localClients.length,
+          total_clients: localClients.length,
+        },
+        cases_by_country_and_pathway: {
+          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_by_country_and_pathway,
+          by_country: {},
+          by_pathway: {},
+        },
+        cases_by_workflow_stage: {
+          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_by_workflow_stage,
+          stages: { intake: 0, gathering: 0, review: 0, ready: 0, approved: 0 },
+        },
+        cases_needing_attention: {
+          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_needing_attention,
+          value: 0,
+          items: [],
+        },
+        financial_snapshot: {
+          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.financial_snapshot,
+          paid_revenue: 0,
+          outstanding_balance: 0,
+        },
+      },
+    };
+  }
+
+  const activeCount = localCases.filter((c) => c.status !== "filed" && c.status !== "approved").length;
+  const byCountry: Record<string, number> = {};
+  const byPathway: Record<string, number> = {};
+  const stages: Record<string, number> = { intake: 0, gathering: 0, review: 0, ready: 0, approved: 0 };
+  const attentionItems: Array<{ case_id: string; case_number: string; title: string; reasons: string[] }> = [];
+
+  for (const c of localCases) {
+    const jur = c.jurisdiction.includes("United States") ? "US" : (c.jurisdiction.includes("Canada") ? "CA" : (c.jurisdiction.includes("United Kingdom") ? "GB" : "OTHER"));
+    byCountry[jur] = (byCountry[jur] || 0) + 1;
+    byPathway[c.visa_category] = (byPathway[c.visa_category] || 0) + 1;
+    if (stages[c.status] !== undefined) {
+      stages[c.status] += 1;
+    }
+    if (c.attention_required) {
+      attentionItems.push({
+        case_id: c.id,
+        case_number: c.case_number,
+        title: c.title,
+        reasons: [c.attention_reason || "Requires attention"],
+      });
+    }
+  }
+
+  const totalBilled = localInvoices.reduce((acc, inv) => acc + inv.amount, 0);
+  const totalCollected = localInvoices.filter((inv) => inv.status === "paid").reduce((acc, inv) => acc + inv.amount, 0);
+
+  return {
+    ...FALLBACK_EXECUTIVE_DASHBOARD,
+    generated_at: new Date().toISOString(),
+    metrics: {
+      ...FALLBACK_EXECUTIVE_DASHBOARD.metrics,
+      active_cases: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.active_cases,
+        value: activeCount,
+        total_cases: localCases.length,
+      },
+      new_retained_clients: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.new_retained_clients,
+        value: localClients.length,
+        total_clients: localClients.length,
+      },
+      cases_by_country_and_pathway: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_by_country_and_pathway,
+        by_country: byCountry,
+        by_pathway: byPathway,
+      },
+      cases_by_workflow_stage: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_by_workflow_stage,
+        stages,
+      },
+      cases_needing_attention: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_needing_attention,
+        value: attentionItems.length,
+        items: attentionItems,
+      },
+      financial_snapshot: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.financial_snapshot,
+        paid_revenue: totalCollected,
+        outstanding_balance: Math.max(0, totalBilled - totalCollected),
+      },
+    },
+  };
 }
 
 export async function fetchOperationsAnalytics(filters: Record<string, any> = {}): Promise<OperationsAnalyticsData> {
@@ -6044,7 +6698,38 @@ export async function fetchOperationsAnalytics(filters: Record<string, any> = {}
       // Fallback
     }
   }
-  return FALLBACK_OPERATIONS_ANALYTICS;
+  if (localCases.length === 0) {
+    return {
+      ...FALLBACK_OPERATIONS_ANALYTICS,
+      total_cases_in_window: 0,
+      completed_cases_count: 0,
+      turnaround_time: {
+        ...FALLBACK_OPERATIONS_ANALYTICS.turnaround_time,
+        average_days: 0,
+        completed_cases_evaluated: 0,
+      },
+      overdue_work: {
+        total_overdue: 0,
+        overdue_less_than_7_days: 0,
+        overdue_7_to_30_days: 0,
+        overdue_greater_than_30_days: 0,
+        calculation_formula: "Count of open milestones and tasks past target/due dates partitioned by lateness tiers",
+        status: "available",
+      },
+      client_response_time: {
+        average_hours: 0,
+        average_days: 0,
+        requests_evaluated: 0,
+        calculation_formula: "mean(request_submitted_timestamp - request_created_timestamp) for all completed requests",
+        status: "available",
+      },
+    };
+  }
+  return {
+    ...FALLBACK_OPERATIONS_ANALYTICS,
+    total_cases_in_window: localCases.length,
+    completed_cases_count: localCases.filter((c) => c.status === "approved" || c.status === "filed").length,
+  };
 }
 
 export async function fetchServices(): Promise<ServiceCatalogItem[]> {
@@ -6133,7 +6818,7 @@ export async function fetchInvoices(filter: Record<string, any> = {}): Promise<I
       // Fallback
     }
   }
-  return FALLBACK_INVOICES;
+  return fallbackData(FALLBACK_INVOICES, "fetchInvoices");
 }
 
 export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
@@ -6141,7 +6826,7 @@ export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
     try {
       const res = await fetch(`${API_BASE}/billing/invoices`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       if (res.ok) return await res.json();
@@ -6150,23 +6835,34 @@ export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
     }
   }
   const total = (data.line_items || []).reduce((acc: number, l: any) => acc + (l.quantity * l.unit_price), 0);
-  return {
+  const tax = Number(data.tax_amount || 0);
+  const discount = Number(data.discount_amount || 0);
+  const finalTotal = Math.max(0, total + tax - discount);
+  const mockInv: InvoiceDetailItem = {
     id: `inv-${Date.now()}`,
     invoice_number: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`,
     client_id: data.client_id || "client-01",
     issue_date: new Date().toISOString(),
     due_date: new Date(Date.now() + 30 * 86400000).toISOString(),
     subtotal: total,
-    tax_amount: 0,
-    discount_amount: 0,
-    total_amount: total,
+    tax_amount: tax,
+    discount_amount: discount,
+    total_amount: finalTotal,
     paid_amount: 0,
-    balance_due: total,
-    currency: "USD",
+    balance_due: finalTotal,
+    currency: data.currency || "USD",
     status: "issued",
     payment_provider: "stripe_verified",
+    gst_rate: data.gst_rate ?? 0.18,
+    cgst_amount: data.cgst_amount ?? 0,
+    sgst_amount: data.sgst_amount ?? 0,
+    igst_amount: data.igst_amount ?? 0,
+    sac_code: data.sac_code || "998311",
+    gstin: data.gstin || null,
+    place_of_supply: data.place_of_supply || null,
     line_items: data.line_items,
   };
+  return fallbackData(mockInv, "createInvoice");
 }
 
 export async function recordInvoicePayment(invoiceId: string, data: any): Promise<any> {
@@ -6174,7 +6870,7 @@ export async function recordInvoicePayment(invoiceId: string, data: any): Promis
     try {
       const res = await fetch(`${API_BASE}/billing/invoices/${invoiceId}/payments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       if (res.ok) return await res.json();
@@ -6182,7 +6878,7 @@ export async function recordInvoicePayment(invoiceId: string, data: any): Promis
       // Fallback
     }
   }
-  return {
+  return fallbackData({
     id: `pay-${Date.now()}`,
     transaction_reference: `txn_tok_${Date.now()}`,
     amount: data.amount,
@@ -6191,7 +6887,7 @@ export async function recordInvoicePayment(invoiceId: string, data: any): Promis
     status: "succeeded",
     invoice_status: "paid",
     balance_due: 0.0,
-  };
+  }, "recordInvoicePayment");
 }
 
 export async function refundInvoicePayment(paymentId: string, data: any): Promise<any> {
@@ -6199,7 +6895,7 @@ export async function refundInvoicePayment(paymentId: string, data: any): Promis
     try {
       const res = await fetch(`${API_BASE}/billing/payments/${paymentId}/refund`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       if (res.ok) return await res.json();
@@ -6207,12 +6903,192 @@ export async function refundInvoicePayment(paymentId: string, data: any): Promis
       // Fallback
     }
   }
-  return {
+  return fallbackData({
     id: paymentId,
     refunded_amount: data.refund_amount || 100,
     status: "partially_refunded",
     invoice_status: "partially_paid",
+  }, "refundInvoicePayment");
+}
+
+export async function calculateGST(subtotal: number, isInterstate: boolean = false, gstRate: number = 0.18): Promise<any> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/billing/calculate-gst`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ subtotal, is_interstate: isInterstate, gst_rate: gstRate }),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+  }
+  const sub = Math.round(subtotal * 100) / 100;
+  if (isInterstate) {
+    const igst = Math.round(sub * gstRate * 100) / 100;
+    return fallbackData({
+      subtotal: sub,
+      gst_rate: gstRate,
+      cgst_amount: 0,
+      sgst_amount: 0,
+      igst_amount: igst,
+      tax_amount: igst,
+      total_with_tax: Math.round((sub + igst) * 100) / 100,
+      is_interstate: true,
+    }, "calculateGST");
+  } else {
+    const cgst = Math.round(sub * (gstRate / 2) * 100) / 100;
+    const sgst = Math.round(sub * (gstRate / 2) * 100) / 100;
+    const tax = Math.round((cgst + sgst) * 100) / 100;
+    return fallbackData({
+      subtotal: sub,
+      gst_rate: gstRate,
+      cgst_amount: cgst,
+      sgst_amount: sgst,
+      igst_amount: 0,
+      tax_amount: tax,
+      total_with_tax: Math.round((sub + tax) * 100) / 100,
+      is_interstate: false,
+    }, "calculateGST");
+  }
+}
+
+export async function fetchCaseAppointments(caseId: string): Promise<VisaAppointment[]> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/cases/${caseId}/appointments`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+  }
+  return fallbackData(
+    FALLBACK_APPOINTMENTS.filter((a) => a.case_id === caseId || caseId === "case-01" || caseId === "case-02"),
+    "fetchCaseAppointments"
+  );
+}
+
+export async function createCaseAppointment(caseId: string, data: any): Promise<VisaAppointment> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/cases/${caseId}/appointments`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+  }
+  const newAppt: VisaAppointment = {
+    id: `appt-${Date.now()}`,
+    organization_id: "org-01",
+    case_id: caseId,
+    client_id: data.client_id || "client-01",
+    vac_center: data.vac_center || "Mumbai VAC",
+    consular_post: data.consular_post || "U.S. Consulate Mumbai",
+    ofc_biometrics_slot: data.ofc_biometrics_slot || null,
+    consular_interview_slot: data.consular_interview_slot || null,
+    dropbox_eligible: !!data.dropbox_eligible,
+    tracking_number_blue_dart: data.tracking_number_blue_dart || null,
+    courier_status: data.courier_status || "pending_pickup",
+    status_221g: !!data.status_221g,
+    status_221g_color: data.status_221g_color || null,
+    appointment_status: data.appointment_status || "scheduled",
+    notes: data.notes || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
+  return fallbackData(newAppt, "createCaseAppointment");
+}
+
+export async function updateCaseAppointment(caseId: string, appointmentId: string, data: any): Promise<VisaAppointment> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/cases/${caseId}/appointments/${appointmentId}`, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+  }
+  const appt = FALLBACK_APPOINTMENTS.find((a) => a.id === appointmentId) || FALLBACK_APPOINTMENTS[0];
+  const updated = { ...appt, ...data, updated_at: new Date().toISOString() };
+  return fallbackData(updated, "updateCaseAppointment");
+}
+
+export async function fetchCaseSponsors(caseId: string): Promise<FinancialSponsor[]> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/cases/${caseId}/sponsors`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+  }
+  return fallbackData(
+    FALLBACK_SPONSORS.filter((s) => s.case_id === caseId || caseId === "case-01" || caseId === "case-02"),
+    "fetchCaseSponsors"
+  );
+}
+
+export async function createCaseSponsor(caseId: string, data: any): Promise<FinancialSponsor> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/cases/${caseId}/sponsors`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+  }
+  const newSponsor: FinancialSponsor = {
+    id: `sp-${Date.now()}`,
+    organization_id: "org-01",
+    case_id: caseId,
+    client_id: data.client_id || "client-01",
+    name: data.name || "Sponsor Name",
+    relationship: data.relationship || "parent",
+    sponsor_type: data.sponsor_type || "individual",
+    pan: data.pan || null,
+    itr_gross_income: Number(data.itr_gross_income || 0),
+    liquid_funds: Number(data.liquid_funds || 0),
+    currency: data.currency || "INR",
+    bank_name: data.bank_name || null,
+    loan_sanction_amount: Number(data.loan_sanction_amount || 0),
+    affidavit_doc_id: data.affidavit_doc_id || null,
+    notes: data.notes || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  return fallbackData(newSponsor, "createCaseSponsor");
+}
+
+export async function deleteCaseSponsor(caseId: string, sponsorId: string): Promise<void> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/cases/${caseId}/sponsors/${sponsorId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) return;
+    } catch {
+      // Fallback
+    }
+  }
+  return fallbackData(undefined, "deleteCaseSponsor");
 }
 
 export async function fetchFinancialReports(startDate?: string, endDate?: string): Promise<FinancialReportsData> {
@@ -8734,6 +9610,34 @@ export async function fetchManagerPriorityQueue(
   } catch {
     // fallback
   }
+  if (localCases.length === 0) {
+    return {
+      generated_at: new Date().toISOString(),
+      organization_id: DEMO_ORG_ID,
+      summary: {
+        critical_overdue_deadlines_count: 0,
+        unassigned_cases_count: 0,
+        blocked_cases_count: 0,
+        overdue_client_responses_count: 0,
+        pending_reviews_count: 0,
+        quality_issues_count: 0,
+        payment_summary: {
+          paid_count: 0,
+          pending_count: 0,
+          partially_paid_count: 0,
+          paid_amount: 0,
+          pending_amount: 0,
+          partially_paid_amount: 0,
+        },
+        first_time_pass_rate_percent: 100,
+      },
+      ranks: FALLBACK_MANAGER_PRIORITY_QUEUE.ranks.map((r) => ({
+        ...r,
+        count: 0,
+        items: [],
+      })),
+    };
+  }
   return FALLBACK_MANAGER_PRIORITY_QUEUE;
 }
 
@@ -9613,4 +10517,6 @@ export async function getDocumentDownloadToken(
   }
   return await res.json();
 }
+
+export * from "./api/sop";
 

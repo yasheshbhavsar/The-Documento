@@ -36,6 +36,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 # Copy application source code into /app/backend
 COPY --chown=appuser:appgroup . /app/backend
+RUN chmod +x /app/backend/entrypoint.sh
 
 USER appuser
 
@@ -44,4 +45,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health/live || exit 1
 
-ENTRYPOINT ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]
+ENTRYPOINT ["/app/backend/entrypoint.sh"]
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]

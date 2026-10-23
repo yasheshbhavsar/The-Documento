@@ -33,6 +33,39 @@ def ensure_utc(dt: datetime | None) -> datetime | None:
 
 class BillingService:
     @staticmethod
+    def calculate_gst(
+        subtotal: float,
+        is_interstate: bool = False,
+        gst_rate: float = 0.18,
+    ) -> dict[str, float]:
+        """Calculates 18% Indian GST (SAC 998311 - Legal & Consulting Support Services).
+        Intra-state supply: 9% CGST + 9% SGST.
+        Inter-state supply: 18% IGST.
+        """
+        sub = round(float(subtotal), 2)
+        rate = float(gst_rate)
+        if is_interstate:
+            igst = round(sub * rate, 2)
+            cgst = 0.0
+            sgst = 0.0
+            tax_amount = igst
+        else:
+            cgst = round(sub * (rate / 2.0), 2)
+            sgst = round(sub * (rate / 2.0), 2)
+            igst = 0.0
+            tax_amount = round(cgst + sgst, 2)
+        return {
+            "subtotal": sub,
+            "gst_rate": rate,
+            "cgst_amount": cgst,
+            "sgst_amount": sgst,
+            "igst_amount": igst,
+            "tax_amount": tax_amount,
+            "total_with_tax": round(sub + tax_amount, 2),
+            "total_amount": round(sub + tax_amount, 2),
+        }
+
+    @staticmethod
     def seed_default_services(db: Session, organization_id: uuid.UUID) -> list[ServiceItem]:
         """Seeds standard immigration legal service items if none exist."""
         existing = db.query(ServiceItem).filter(ServiceItem.organization_id == organization_id).count()
@@ -50,6 +83,8 @@ class BillingService:
                 "base_fee": 8500.0,
                 "currency": "USD",
                 "estimated_duration_days": 90,
+                "sac_code": "998311",
+                "gst_rate": 0.18,
             },
             {
                 "code": "EB2_NIW_PETITION",
@@ -61,6 +96,8 @@ class BillingService:
                 "base_fee": 7500.0,
                 "currency": "USD",
                 "estimated_duration_days": 75,
+                "sac_code": "998311",
+                "gst_rate": 0.18,
             },
             {
                 "code": "O1A_PETITION",
@@ -72,6 +109,8 @@ class BillingService:
                 "base_fee": 6500.0,
                 "currency": "USD",
                 "estimated_duration_days": 45,
+                "sac_code": "998311",
+                "gst_rate": 0.18,
             },
             {
                 "code": "CONSULTATION_INITIAL",
@@ -83,6 +122,60 @@ class BillingService:
                 "base_fee": 350.0,
                 "currency": "USD",
                 "estimated_duration_days": 1,
+                "sac_code": "998311",
+                "gst_rate": 0.18,
+            },
+            {
+                "code": "IN_STUDENT_VISA",
+                "name": "India to Canada/US Student Visa Consultation & Financial Packaging",
+                "description": "Comprehensive study permit filing, GIC verification, sponsor affidavit, and ITR reconciliation under SAC 998311.",
+                "jurisdiction": "IN",
+                "visa_category": "STUDENT_F1_SP",
+                "pricing_model": "fixed",
+                "base_fee": 45000.0,
+                "currency": "INR",
+                "estimated_duration_days": 30,
+                "sac_code": "998311",
+                "gst_rate": 0.18,
+            },
+            {
+                "code": "IN_LEGAL_CONSULT",
+                "name": "Immigration Strategic Legal Advisory (India Desk)",
+                "description": "Senior attorney evaluation, evidentiary gap analysis, and document verification.",
+                "jurisdiction": "IN",
+                "visa_category": "ALL",
+                "pricing_model": "fixed",
+                "base_fee": 15000.0,
+                "currency": "INR",
+                "estimated_duration_days": 7,
+                "sac_code": "998311",
+                "gst_rate": 0.18,
+            },
+            {
+                "code": "CA_STUDENT_PERMIT",
+                "name": "Canada Study Permit Application & Custodianship Package",
+                "description": "IRCC study permit representation, SDS eligibility appraisal, and statement of purpose drafting.",
+                "jurisdiction": "CA",
+                "visa_category": "STUDY_PERMIT",
+                "pricing_model": "fixed",
+                "base_fee": 3500.0,
+                "currency": "CAD",
+                "estimated_duration_days": 45,
+                "sac_code": "998311",
+                "gst_rate": 0.18,
+            },
+            {
+                "code": "UK_SKILLED_WORKER",
+                "name": "UK Skilled Worker Visa & Certificate of Sponsorship Review",
+                "description": "Home Office points-based immigration brief and sponsorship compliance check.",
+                "jurisdiction": "GB",
+                "visa_category": "SKILLED_WORKER",
+                "pricing_model": "fixed",
+                "base_fee": 4000.0,
+                "currency": "GBP",
+                "estimated_duration_days": 30,
+                "sac_code": "998311",
+                "gst_rate": 0.18,
             },
             {
                 "code": "USCIS_FILING_FEE_I140",
@@ -94,6 +187,8 @@ class BillingService:
                 "base_fee": 715.0,
                 "currency": "USD",
                 "estimated_duration_days": 1,
+                "sac_code": "998311",
+                "gst_rate": 0.0,
             },
         ]
 
@@ -112,6 +207,8 @@ class BillingService:
                 currency=d["currency"],
                 estimated_duration_days=d["estimated_duration_days"],
                 is_active=True,
+                sac_code=d.get("sac_code", "998311"),
+                gst_rate=d.get("gst_rate", 0.18),
                 created_at=now,
                 updated_at=now,
             )
@@ -142,6 +239,8 @@ class BillingService:
             currency=data.get("currency", "USD").upper(),
             estimated_duration_days=int(data.get("estimated_duration_days", 60)),
             is_active=data.get("is_active", True),
+            sac_code=str(data.get("sac_code", "998311")),
+            gst_rate=float(data.get("gst_rate", 0.18)),
             created_at=now,
             updated_at=now,
         )
@@ -219,6 +318,15 @@ class BillingService:
         elif not due_date:
             due_date = now + timedelta(days=30)
 
+        currency = data.get("currency", "USD").upper()
+        apply_gst = bool(data.get("apply_gst", False))
+        is_interstate = bool(data.get("is_interstate", False))
+        provided_gst_rate = data.get("gst_rate")
+        gst_rate = float(provided_gst_rate) if provided_gst_rate is not None else (0.18 if (currency == "INR" or apply_gst) else 0.0)
+        sac_code = str(data.get("sac_code", "998311"))
+        gstin = data.get("gstin")
+        place_of_supply = data.get("place_of_supply")
+
         # Calculate line items
         line_items_data = data.get("line_items", [])
         subtotal = 0.0
@@ -236,10 +344,32 @@ class BillingService:
                     unit_price=price,
                     total=line_tot,
                     line_type=item_data.get("line_type", "service_fee"),
+                    sac_code=str(item_data.get("sac_code", sac_code)),
+                    gst_rate=float(item_data.get("gst_rate", gst_rate)),
                 )
             )
 
-        tax_amount = float(data.get("tax_amount", 0.0))
+        # Tax logic: Auto-calculate Indian GST if currency is INR or apply_gst requested, and explicit tax_amount was not supplied
+        should_calc_gst = (apply_gst or currency == "INR") and data.get("tax_amount") is None
+        tax_amount = float(data.get("tax_amount") or 0.0)
+        cgst_amount = float(data.get("cgst_amount") or 0.0)
+        sgst_amount = float(data.get("sgst_amount") or 0.0)
+        igst_amount = float(data.get("igst_amount") or 0.0)
+
+        if should_calc_gst and subtotal > 0:
+            effective_rate = gst_rate if gst_rate > 0 else 0.18
+            gst_calc = BillingService.calculate_gst(subtotal, is_interstate=is_interstate, gst_rate=effective_rate)
+            tax_amount = gst_calc["tax_amount"]
+            cgst_amount = gst_calc["cgst_amount"]
+            sgst_amount = gst_calc["sgst_amount"]
+            igst_amount = gst_calc["igst_amount"]
+            gst_rate = effective_rate
+        elif not should_calc_gst and not apply_gst and currency != "INR":
+            gst_rate = 0.0
+            cgst_amount = 0.0
+            sgst_amount = 0.0
+            igst_amount = 0.0
+
         discount_amount = float(data.get("discount_amount", 0.0))
         total_amount = max(0.0, subtotal + tax_amount - discount_amount)
 
@@ -257,9 +387,16 @@ class BillingService:
             total_amount=round(total_amount, 2),
             paid_amount=0.0,
             balance_due=round(total_amount, 2),
-            currency=data.get("currency", "USD").upper(),
+            currency=currency,
             status="issued" if data.get("auto_issue", True) else "draft",
             payment_provider=data.get("payment_provider", "stripe_verified"),
+            gst_rate=round(gst_rate, 4),
+            cgst_amount=round(cgst_amount, 2),
+            sgst_amount=round(sgst_amount, 2),
+            igst_amount=round(igst_amount, 2),
+            sac_code=sac_code,
+            gstin=gstin,
+            place_of_supply=place_of_supply,
             notes=data.get("notes"),
             line_items=line_items,
             created_at=now,

@@ -16,6 +16,7 @@ export interface UserContext {
   id: string;
   email: string;
   full_name: string;
+  name?: string;
   role: RoleCode;
   organization_id: string;
   organization_name: string;
@@ -350,11 +351,31 @@ export interface ClientProfile {
   nationality: string;
   date_of_birth?: string;
   organization_id: string;
+  aadhaar_number_masked?: string;
+  pan_number?: string;
+  voter_id?: string;
+  passport_ecr_status?: "ECR" | "NON_ECR";
   created_at: string;
   dependants?: ClientDependant[];
   consents?: ClientConsent[];
   dependants_count?: number;
   cases_count?: number;
+  portal_credentials_provided?: boolean;
+  portal_access_enabled?: boolean;
+  credentials_provisioned_at?: string;
+  credentials_provisioned_by?: string;
+  portal_temporary_password?: string;
+}
+
+export interface RetainedClientCredential {
+  client_id?: string;
+  email: string;
+  password?: string;
+  portal_access_enabled: boolean;
+  provisioned_by: string; // "Owner" | "Lead Paralegal"
+  provisioned_at: string;
+  temporary_password?: string;
+  last_login_at?: string;
 }
 
 export interface DuplicateCandidate {
@@ -709,6 +730,7 @@ export interface InvoiceItem {
   id: string;
   invoice_number: string;
   case_number: string;
+  case_id?: string;
   client_name: string;
   amount: number;
   status: "paid" | "outstanding" | "in_trust";
@@ -1039,6 +1061,10 @@ export interface ClientProfileData {
   date_of_birth?: string;
   nationality: string;
   passport_verified: boolean;
+  aadhaar_number_masked?: string;
+  pan_number?: string;
+  voter_id?: string;
+  passport_ecr_status?: "ECR" | "NON_ECR";
   dependants: Array<{
     id: string;
     relationship_type: string;
@@ -1340,6 +1366,8 @@ export interface InvoiceLineItemDetail {
   unit_price: number;
   total: number;
   line_type: "service_fee" | "filing_fee" | "translation" | "courier" | "discount";
+  sac_code?: string;
+  gst_rate?: number;
 }
 
 export interface PaymentRecordItem {
@@ -1373,9 +1401,56 @@ export interface InvoiceDetailItem {
   status: "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "void" | "refunded";
   payment_provider?: string | null;
   notes?: string | null;
+  gst_rate?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  sac_code?: string;
+  gstin?: string | null;
+  place_of_supply?: string | null;
   line_items?: InvoiceLineItemDetail[];
   line_items_count?: number;
   payments?: PaymentRecordItem[];
+}
+
+export interface FinancialSponsor {
+  id: string;
+  organization_id: string;
+  case_id?: string | null;
+  client_id: string;
+  name: string;
+  relationship: string;
+  sponsor_type: "individual" | "corporate" | "institutional";
+  pan?: string | null;
+  itr_gross_income: number;
+  liquid_funds: number;
+  currency: string;
+  bank_name?: string | null;
+  loan_sanction_amount: number;
+  affidavit_doc_id?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VisaAppointment {
+  id: string;
+  organization_id: string;
+  case_id: string;
+  client_id: string;
+  vac_center: string;
+  consular_post: string;
+  ofc_biometrics_slot?: string | null;
+  consular_interview_slot?: string | null;
+  dropbox_eligible: boolean;
+  tracking_number_blue_dart?: string | null;
+  courier_status: "pending_pickup" | "in_transit" | "delivered_to_consulate" | "ready_for_pickup" | "delivered_to_applicant";
+  status_221g: boolean;
+  status_221g_color?: string | null;
+  appointment_status: "scheduled" | "completed" | "cancelled" | "rescheduled" | "no_show";
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AccountsReceivableAging {

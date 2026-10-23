@@ -6,6 +6,7 @@ interface WorkspaceHeaderProps {
   currentUser: UserContext;
   onLogout: () => void;
   onSwitchRole: (role: UserExperience) => void;
+  onResetToScratch?: () => void;
   isLiveBackend?: boolean;
 }
 
@@ -13,6 +14,7 @@ export function WorkspaceHeader({
   currentUser,
   onLogout,
   onSwitchRole,
+  onResetToScratch,
   isLiveBackend = true,
 }: WorkspaceHeaderProps) {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
@@ -137,6 +139,36 @@ export function WorkspaceHeader({
           <span>{isLiveBackend ? "FastAPI Live" : "Sandbox"}</span>
         </div>
 
+        {/* Day 0 Reset Button */}
+        {onResetToScratch && (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("Reset firm workspace back to Day 0 setup? This will clear active cases, documents, and clients so you can experience the workflow completely from scratch.")) {
+                onResetToScratch();
+              }
+            }}
+            style={{
+              background: "rgba(255, 255, 255, 0.12)",
+              border: "1px dashed rgba(185, 222, 212, 0.5)",
+              color: "#EAF6F0",
+              fontSize: "11px",
+              fontWeight: 600,
+              padding: "4px 10px",
+              borderRadius: "16px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              transition: "all 0.15s ease",
+            }}
+            title="Wipe mock/saved data and restart from Day 0 setup"
+          >
+            <span>🔄</span>
+            <span>Day 0 Reset</span>
+          </button>
+        )}
+
         {/* User Profile Dropdown Button */}
         <div ref={profileMenuRef} style={{ position: "relative" }}>
           <button
@@ -242,86 +274,38 @@ export function WorkspaceHeader({
                 </div>
               </div>
 
-              {/* Demo Role Switcher Section (inside menu for evaluators) */}
-              <div style={{ padding: "8px 12px", borderBottom: "1px solid #F1F6F4" }}>
-                <div style={{ fontSize: "11px", fontWeight: 650, color: "#6E7F7C", marginBottom: "6px", textTransform: "uppercase" }}>
-                  Switch Persona (Demo):
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              {/* Day 0 Reset Option */}
+              {onResetToScratch && (
+                <div style={{ padding: "6px 4px 4px 4px", borderBottom: "1px solid #F1F6F4" }}>
                   <button
                     type="button"
                     onClick={() => {
-                      onSwitchRole("master_admin");
                       setIsProfileMenuOpen(false);
+                      if (window.confirm("Reset firm workspace back to Day 0 setup? This will clear active cases, documents, and clients so you can experience the workflow completely from scratch.")) {
+                        onResetToScratch();
+                      }
                     }}
                     style={{
-                      padding: "6px 8px",
+                      width: "100%",
+                      padding: "7px 10px",
                       borderRadius: "6px",
-                      border: "none",
-                      background: currentUser.experience === "master_admin" ? "#EAF6F0" : "transparent",
-                      color: currentUser.experience === "master_admin" ? "#176B50" : "#445451",
-                      fontSize: "12px",
-                      fontWeight: 550,
-                      textAlign: "left",
+                      border: "1px dashed #DCE5E1",
+                      background: "#F8F7F2",
+                      color: "#445451",
+                      fontSize: "11px",
+                      fontWeight: 650,
                       cursor: "pointer",
+                      textAlign: "left",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "space-between",
+                      gap: "6px",
                     }}
                   >
-                    <span>🏛️ Managing Partner</span>
-                    {currentUser.experience === "master_admin" && <span>✓</span>}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSwitchRole("case_manager");
-                      setIsProfileMenuOpen(false);
-                    }}
-                    style={{
-                      padding: "6px 8px",
-                      borderRadius: "6px",
-                      border: "none",
-                      background: currentUser.experience === "case_manager" ? "#EAF6F0" : "transparent",
-                      color: currentUser.experience === "case_manager" ? "#176B50" : "#445451",
-                      fontSize: "12px",
-                      fontWeight: 550,
-                      textAlign: "left",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <span>⚖️ Lead Paralegal</span>
-                    {currentUser.experience === "case_manager" && <span>✓</span>}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSwitchRole("client_applicant");
-                      setIsProfileMenuOpen(false);
-                    }}
-                    style={{
-                      padding: "6px 8px",
-                      borderRadius: "6px",
-                      border: "none",
-                      background: currentUser.experience === "client_applicant" ? "#EAF6F0" : "transparent",
-                      color: currentUser.experience === "client_applicant" ? "#176B50" : "#445451",
-                      fontSize: "12px",
-                      fontWeight: 550,
-                      textAlign: "left",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <span>👤 Retained Client</span>
-                    {currentUser.experience === "client_applicant" && <span>✓</span>}
+                    <span>🔄</span>
+                    <span>Reset Workspace (Day 0 Clean Slate)</span>
                   </button>
                 </div>
-              </div>
+              )}
 
               {/* Logout button */}
               <div style={{ padding: "6px 4px 2px 4px" }}>

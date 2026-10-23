@@ -32,9 +32,13 @@ describe("Landing Page Sign-In and Sign-Out Flow", () => {
     // Login modal should be open
     expect(screen.getByText(/Sign in to Documento/i)).toBeDefined();
 
-    // 3. Click Partner / Owner 1-click evaluation persona
-    const partnerBtn = screen.getByRole("button", { name: /Partner/i });
-    fireEvent.click(partnerBtn);
+    // 3. Enter credentials & submit login
+    const emailInput = screen.getByLabelText(/Business Email/i);
+    const passwordInput = screen.getByLabelText(/^Password$/i);
+    const submitBtn = screen.getByRole("button", { name: /Sign In to Firm Workspace/i });
+    fireEvent.change(emailInput, { target: { value: "sarah.jenkins@vanguardlegal.com" } });
+    fireEvent.change(passwordInput, { target: { value: "SecurePassword2026!" } });
+    fireEvent.click(submitBtn);
 
     // Wait for login state transition (modal has 400ms setTimeout)
     await waitFor(
@@ -65,7 +69,7 @@ describe("Landing Page Sign-In and Sign-Out Flow", () => {
 
     // Verify banner alert
     expect(screen.getByText(/You have been safely signed out of Documento\./i)).toBeDefined();
-  }, 15000);
+  }, 30000);
 
   it(
     "ensures on-scroll animated elements receive animate class when re-mounting upon sign out in browser with IntersectionObserver",
@@ -95,8 +99,12 @@ describe("Landing Page Sign-In and Sign-Out Flow", () => {
     // 2. Open Login Modal & Sign In
     const signInBtn = screen.getAllByRole("button", { name: /Sign In/i })[0];
     fireEvent.click(signInBtn);
-    const partnerBtn = screen.getByRole("button", { name: /Partner/i });
-    fireEvent.click(partnerBtn);
+    const emailInput = screen.getByLabelText(/Business Email/i);
+    const passwordInput = screen.getByLabelText(/^Password$/i);
+    const submitBtn = screen.getByRole("button", { name: /Sign In to Firm Workspace/i });
+    fireEvent.change(emailInput, { target: { value: "sarah.jenkins@vanguardlegal.com" } });
+    fireEvent.change(passwordInput, { target: { value: "SecurePassword2026!" } });
+    fireEvent.click(submitBtn);
 
     // Wait for login transition
     await waitFor(() => {

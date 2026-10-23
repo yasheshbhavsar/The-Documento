@@ -13,6 +13,8 @@ from backend.app.core.middleware import (
     SecurityHeadersMiddleware,
     SimpleRateLimiterMiddleware,
 )
+from starlette.responses import PlainTextResponse
+from backend.app.observability import metrics_collector, PrometheusMetricsMiddleware
 
 # Route imports
 from backend.app.api.v1.health import router as health_router
@@ -78,6 +80,7 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SimpleRateLimiterMiddleware, max_requests=settings.rate_limit_per_minute)
 app.add_middleware(CorrelationIdMiddleware)
+app.add_middleware(PrometheusMetricsMiddleware)
 
 # Versioned API routes
 app.include_router(health_router, prefix="/api/v1")
@@ -112,3 +115,13 @@ def root() -> dict[str, str]:
         "version": "1.0.0",
         "environment": settings.environment,
     }
+
+
+@app.get("/metrics", response_class=PlainTextResponse, tags=["health"])
+def metrics() -> PlainTextResponse:
+    """Exposes real-time Prometheus metrics for telemetry and alerting."""
+    return PlainTextResponse(
+        content=metrics_collector.generate_prometheus_text(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
+

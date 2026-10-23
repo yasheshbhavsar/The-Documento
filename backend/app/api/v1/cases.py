@@ -33,9 +33,12 @@ from backend.app.domain.models import (
     ClientConsent,
     ClientDependant,
     ClientProfile,
+    FinancialSponsor,
     ImmigrationCase,
     User,
+    VisaAppointment,
 )
+from backend.app.ai.sop_auditor import SOPAuditor, SOPAuditResult, SOPFinding
 from backend.app.security.auth import AuthContext, get_auth_context, require_permission
 from backend.app.security.rbac import RoleCode
 
@@ -333,6 +336,34 @@ class PaginatedCasesResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class SOPAuditRequest(BaseModel):
+    sop_text: str = Field(..., min_length=10)
+    jurisdiction: str = Field(default="CA", min_length=2, max_length=10)
+    applicant_profile: dict | None = None
+    has_study_gap: bool | None = False
+
+
+class SOPFindingResponse(BaseModel):
+    dimension: str
+    severity: str
+    issue_code: str
+    title: str
+    description: str
+    remediation: str
+    statutory_reference: str | None = None
+
+
+class SOPAuditResponse(BaseModel):
+    overall_score: float
+    is_statutorily_sound: bool
+    verdict: str
+    jurisdiction: str
+    dimension_scores: dict[str, float]
+    strengths: list[str]
+    findings: list[SOPFindingResponse]
+    remediation_summary: list[str]
 
 
 def _get_authorized_dependant_ids(case: ImmigrationCase) -> list[uuid.UUID]:
@@ -738,6 +769,44 @@ def create_case(
     db.refresh(case)
 
     return _to_case_detail_response(case)
+
+
+@router.post("/sop/audit", response_model=SOPAuditResponse)
+def audit_standalone_sop(
+    payload: SOPAuditRequest,
+    ctx: AuthContext = Depends(require_permission("case:read")),
+):
+    """Evaluates an SOP against statutory immigration standards (IRPA s.22(2), INA 214(b), ties, progression)."""
+    profile = payload.applicant_profile or {}
+    if payload.has_study_gap:
+        profile["has_study_gap"] = True
+
+    result = SOPAuditor.audit_statement(
+        sop_text=payload.sop_text,
+        applicant_profile=profile,
+        jurisdiction=payload.jurisdiction,
+    )
+    return SOPAuditResponse(
+        overall_score=result.overall_score,
+        is_statutorily_sound=result.is_statutorily_sound,
+        verdict=result.verdict,
+        jurisdiction=result.jurisdiction,
+        dimension_scores=result.dimension_scores,
+        strengths=result.strengths,
+        findings=[
+            SOPFindingResponse(
+                dimension=f.dimension,
+                severity=f.severity,
+                issue_code=f.issue_code,
+                title=f.title,
+                description=f.description,
+                remediation=f.remediation,
+                statutory_reference=f.statutory_reference,
+            )
+            for f in result.findings
+        ],
+        remediation_summary=result.remediation_summary,
+    )
 
 
 @router.get("/{case_id}", response_model=CaseDetailResponse)
@@ -2045,4 +2114,412 @@ def migrate_case_firm_config(
         target_version=payload.target_version,
     )
     return _to_case_detail_response(updated)
+
+
+# --- Visa Appointment & Financial Sponsor Endpoints (Phase 2) ---
+
+class VisaAppointmentCreateRequest(BaseModel):
+    vac_center: str = Field(..., min_length=2, max_length=120)
+    consular_post: str = Field(..., min_length=2, max_length=120)
+    ofc_biometrics_slot: datetime | None = None
+    consular_interview_slot: datetime | None = None
+    dropbox_eligible: bool = False
+    tracking_number_blue_dart: str | None = None
+    courier_status: str = Field(default="pending_pickup", max_length=64)
+    status_221g: bool = False
+    status_221g_color: str | None = Field(default=None, max_length=32)
+    appointment_status: str = Field(default="scheduled", max_length=32)
+    notes: str | None = None
+
+
+class VisaAppointmentUpdateRequest(BaseModel):
+    vac_center: str | None = None
+    consular_post: str | None = None
+    ofc_biometrics_slot: datetime | None = None
+    consular_interview_slot: datetime | None = None
+    dropbox_eligible: bool | None = None
+    tracking_number_blue_dart: str | None = None
+    courier_status: str | None = None
+    status_221g: bool | None = None
+    status_221g_color: str | None = None
+    appointment_status: str | None = None
+    notes: str | None = None
+
+
+class VisaAppointmentResponse(BaseModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    case_id: uuid.UUID
+    client_id: uuid.UUID
+    vac_center: str
+    consular_post: str
+    ofc_biometrics_slot: datetime | None
+    consular_interview_slot: datetime | None
+    dropbox_eligible: bool
+    tracking_number_blue_dart: str | None
+    courier_status: str
+    status_221g: bool
+    status_221g_color: str | None
+    appointment_status: str
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FinancialSponsorCreateRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=200)
+    relationship: str = Field(..., min_length=2, max_length=64)
+    sponsor_type: str = Field(default="individual", max_length=32)
+    pan: str | None = Field(default=None, max_length=32)
+    itr_gross_income: float = Field(default=0.0, ge=0.0)
+    liquid_funds: float = Field(default=0.0, ge=0.0)
+    currency: str = Field(default="INR", max_length=3)
+    bank_name: str | None = Field(default=None, max_length=120)
+    loan_sanction_amount: float = Field(default=0.0, ge=0.0)
+    affidavit_doc_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class FinancialSponsorResponse(BaseModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    case_id: uuid.UUID | None
+    client_id: uuid.UUID
+    name: str
+    relationship: str
+    sponsor_type: str
+    pan: str | None
+    itr_gross_income: float
+    liquid_funds: float
+    currency: str
+    bank_name: str | None
+    loan_sanction_amount: float
+    affidavit_doc_id: uuid.UUID | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@router.get("/{case_id}/appointments", response_model=list[VisaAppointmentResponse])
+def list_case_appointments(
+    case_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Lists visa interview and VAC biometrics appointments for a case."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    appointments = (
+        db.query(VisaAppointment)
+        .filter(
+            VisaAppointment.organization_id == case.organization_id,
+            VisaAppointment.case_id == case_id,
+        )
+        .order_by(VisaAppointment.created_at.desc())
+        .all()
+    )
+    return [
+        VisaAppointmentResponse(
+            id=a.id,
+            organization_id=a.organization_id,
+            case_id=a.case_id,
+            client_id=a.client_id,
+            vac_center=a.vac_center,
+            consular_post=a.consular_post,
+            ofc_biometrics_slot=a.ofc_biometrics_slot,
+            consular_interview_slot=a.consular_interview_slot,
+            dropbox_eligible=a.dropbox_eligible,
+            tracking_number_blue_dart=a.tracking_number_blue_dart,
+            courier_status=a.courier_status,
+            status_221g=a.status_221g,
+            status_221g_color=a.status_221g_color,
+            appointment_status=a.appointment_status,
+            notes=a.notes,
+            created_at=a.created_at,
+            updated_at=a.updated_at,
+        )
+        for a in appointments
+    ]
+
+
+@router.post("/{case_id}/appointments", response_model=VisaAppointmentResponse, status_code=status.HTTP_201_CREATED)
+def create_case_appointment(
+    case_id: uuid.UUID,
+    payload: VisaAppointmentCreateRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Schedules or logs a VAC biometrics or Consular interview appointment for a case."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    now = datetime.now(timezone.utc)
+    apppointment = VisaAppointment(
+        organization_id=case.organization_id,
+        case_id=case.id,
+        client_id=case.client_id,
+        vac_center=payload.vac_center.strip(),
+        consular_post=payload.consular_post.strip(),
+        ofc_biometrics_slot=payload.ofc_biometrics_slot,
+        consular_interview_slot=payload.consular_interview_slot,
+        dropbox_eligible=payload.dropbox_eligible,
+        tracking_number_blue_dart=payload.tracking_number_blue_dart.strip() if payload.tracking_number_blue_dart else None,
+        courier_status=payload.courier_status,
+        status_221g=payload.status_221g,
+        status_221g_color=payload.status_221g_color,
+        appointment_status=payload.appointment_status,
+        notes=payload.notes,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(apppointment)
+    db.commit()
+    db.refresh(apppointment)
+    return VisaAppointmentResponse(
+        id=apppointment.id,
+        organization_id=apppointment.organization_id,
+        case_id=apppointment.case_id,
+        client_id=apppointment.client_id,
+        vac_center=apppointment.vac_center,
+        consular_post=apppointment.consular_post,
+        ofc_biometrics_slot=apppointment.ofc_biometrics_slot,
+        consular_interview_slot=apppointment.consular_interview_slot,
+        dropbox_eligible=apppointment.dropbox_eligible,
+        tracking_number_blue_dart=apppointment.tracking_number_blue_dart,
+        courier_status=apppointment.courier_status,
+        status_221g=apppointment.status_221g,
+        status_221g_color=apppointment.status_221g_color,
+        appointment_status=apppointment.appointment_status,
+        notes=apppointment.notes,
+        created_at=apppointment.created_at,
+        updated_at=apppointment.updated_at,
+    )
+
+
+@router.patch("/{case_id}/appointments/{appointment_id}", response_model=VisaAppointmentResponse)
+def update_case_appointment(
+    case_id: uuid.UUID,
+    appointment_id: uuid.UUID,
+    payload: VisaAppointmentUpdateRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Updates appointment logistics (VAC, interview date, Blue Dart tracking, 221(g) slip)."""
+    appt = db.query(VisaAppointment).filter(
+        VisaAppointment.id == appointment_id,
+        VisaAppointment.case_id == case_id,
+        VisaAppointment.organization_id == ctx.organization_id,
+    ).first()
+    if not appt:
+        raise EntityNotFoundError("VisaAppointment", appointment_id)
+
+    for field, val in payload.model_dump(exclude_unset=True).items():
+        if val is not None:
+            setattr(appt, field, val)
+    appt.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(appt)
+    return VisaAppointmentResponse(
+        id=appt.id,
+        organization_id=appt.organization_id,
+        case_id=appt.case_id,
+        client_id=appt.client_id,
+        vac_center=appt.vac_center,
+        consular_post=appt.consular_post,
+        ofc_biometrics_slot=appt.ofc_biometrics_slot,
+        consular_interview_slot=appt.consular_interview_slot,
+        dropbox_eligible=appt.dropbox_eligible,
+        tracking_number_blue_dart=appt.tracking_number_blue_dart,
+        courier_status=appt.courier_status,
+        status_221g=appt.status_221g,
+        status_221g_color=appt.status_221g_color,
+        appointment_status=appt.appointment_status,
+        notes=appt.notes,
+        created_at=appt.created_at,
+        updated_at=appt.updated_at,
+    )
+
+
+@router.get("/{case_id}/sponsors", response_model=list[FinancialSponsorResponse])
+def list_case_sponsors(
+    case_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """Lists financial sponsors / guarantors linked to a case."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    sponsors = (
+        db.query(FinancialSponsor)
+        .filter(
+            FinancialSponsor.organization_id == case.organization_id,
+            FinancialSponsor.case_id == case_id,
+        )
+        .order_by(FinancialSponsor.created_at.desc())
+        .all()
+    )
+    return [
+        FinancialSponsorResponse(
+            id=s.id,
+            organization_id=s.organization_id,
+            case_id=s.case_id,
+            client_id=s.client_id,
+            name=s.name,
+            relationship=s.relationship,
+            sponsor_type=s.sponsor_type,
+            pan=s.pan,
+            itr_gross_income=s.itr_gross_income,
+            liquid_funds=s.liquid_funds,
+            currency=s.currency,
+            bank_name=s.bank_name,
+            loan_sanction_amount=s.loan_sanction_amount,
+            affidavit_doc_id=s.affidavit_doc_id,
+            notes=s.notes,
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+        )
+        for s in sponsors
+    ]
+
+
+@router.post("/{case_id}/sponsors", response_model=FinancialSponsorResponse, status_code=status.HTTP_201_CREATED)
+def create_case_sponsor(
+    case_id: uuid.UUID,
+    payload: FinancialSponsorCreateRequest,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Registers a financial sponsor (ITR, funds, education loan, affidavit) for a case."""
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+    ctx.assert_organization_access(case.organization_id)
+
+    now = datetime.now(timezone.utc)
+    sponsor = FinancialSponsor(
+        organization_id=case.organization_id,
+        case_id=case.id,
+        client_id=case.client_id,
+        name=payload.name.strip(),
+        relationship_type=payload.relationship.strip(),
+        sponsor_type=payload.sponsor_type,
+        pan=payload.pan.upper().strip() if payload.pan else None,
+        itr_gross_income=payload.itr_gross_income,
+        liquid_funds=payload.liquid_funds,
+        currency=payload.currency.upper().strip(),
+        bank_name=payload.bank_name.strip() if payload.bank_name else None,
+        loan_sanction_amount=payload.loan_sanction_amount,
+        affidavit_doc_id=payload.affidavit_doc_id,
+        notes=payload.notes,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(sponsor)
+    db.commit()
+    db.refresh(sponsor)
+    return FinancialSponsorResponse(
+        id=sponsor.id,
+        organization_id=sponsor.organization_id,
+        case_id=sponsor.case_id,
+        client_id=sponsor.client_id,
+        name=sponsor.name,
+        relationship=sponsor.relationship,
+        sponsor_type=sponsor.sponsor_type,
+        pan=sponsor.pan,
+        itr_gross_income=sponsor.itr_gross_income,
+        liquid_funds=sponsor.liquid_funds,
+        currency=sponsor.currency,
+        bank_name=sponsor.bank_name,
+        loan_sanction_amount=sponsor.loan_sanction_amount,
+        affidavit_doc_id=sponsor.affidavit_doc_id,
+        notes=sponsor.notes,
+        created_at=sponsor.created_at,
+        updated_at=sponsor.updated_at,
+    )
+
+
+@router.delete("/{case_id}/sponsors/{sponsor_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_case_sponsor(
+    case_id: uuid.UUID,
+    sponsor_id: uuid.UUID,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Removes a financial sponsor linked to a case."""
+    sponsor = db.query(FinancialSponsor).filter(
+        FinancialSponsor.id == sponsor_id,
+        FinancialSponsor.case_id == case_id,
+        FinancialSponsor.organization_id == ctx.organization_id,
+    ).first()
+    if not sponsor:
+        raise EntityNotFoundError("FinancialSponsor", sponsor_id)
+    db.delete(sponsor)
+    db.commit()
+    return None
+
+
+@router.post("/{case_id}/sop/audit", response_model=SOPAuditResponse)
+def audit_case_sop(
+    case_id: uuid.UUID,
+    payload: SOPAuditRequest,
+    ctx: AuthContext = Depends(require_permission("case:read")),
+    db: Session = Depends(get_db),
+):
+    """Evaluates an SOP in the context of an existing case with sponsor and jurisdiction awareness."""
+    case = db.query(ImmigrationCase).filter(
+        ImmigrationCase.id == case_id,
+        ImmigrationCase.organization_id == ctx.organization_id,
+    ).first()
+    if not case:
+        raise EntityNotFoundError("Case", case_id)
+
+    profile = dict(payload.applicant_profile or {})
+    if payload.has_study_gap:
+        profile["has_study_gap"] = True
+
+    # Enrich with linked financial sponsors
+    sponsors = db.query(FinancialSponsor).filter(
+        FinancialSponsor.case_id == case_id,
+        FinancialSponsor.organization_id == ctx.organization_id,
+    ).all()
+    if sponsors and "has_financial_sponsor" not in profile:
+        profile["has_financial_sponsor"] = True
+        profile["sponsors_count"] = len(sponsors)
+
+    target_jurisdiction = payload.jurisdiction or case.jurisdiction or "CA"
+    result = SOPAuditor.audit_statement(
+        sop_text=payload.sop_text,
+        applicant_profile=profile,
+        jurisdiction=target_jurisdiction,
+    )
+    return SOPAuditResponse(
+        overall_score=result.overall_score,
+        is_statutorily_sound=result.is_statutorily_sound,
+        verdict=result.verdict,
+        jurisdiction=result.jurisdiction,
+        dimension_scores=result.dimension_scores,
+        strengths=result.strengths,
+        findings=[
+            SOPFindingResponse(
+                dimension=f.dimension,
+                severity=f.severity,
+                issue_code=f.issue_code,
+                title=f.title,
+                description=f.description,
+                remediation=f.remediation,
+                statutory_reference=f.statutory_reference,
+            )
+            for f in result.findings
+        ],
+        remediation_summary=result.remediation_summary,
+    )
+
 

@@ -7,27 +7,29 @@ interface GuidedQuestionnaireModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved: () => void;
+  applicantName?: string;
 }
 
 export function GuidedQuestionnaireModal({
   isOpen,
   onClose,
   onSaved,
+  applicantName = "",
 }: GuidedQuestionnaireModalProps) {
   const [step, setStep] = useState(1);
   const totalSteps = 4;
 
   // Form State
-  const [formData, setFormData] = useState({
-    fullName: "Dr. Elena Rostova",
-    currentField: "Biomedical Artificial Intelligence & Oncology",
-    highestDegree: "Ph.D. in Computational Biology, Stanford University (2018)",
-    publicationsCount: "14 first-author peer-reviewed papers in Nature Biotech, Lancet",
-    citationCount: "842 verified Google Scholar citations",
-    peerReviewCount: "28 formal manuscript reviews for 4 journals",
-    criticalRoleDescription: "Principal Investigator leading the Oncology Vision Team at DeepHealth Labs",
-    confirmedOriginality: true,
-  });
+  const [formData, setFormData] = useState(() => ({
+    fullName: applicantName,
+    currentField: "",
+    highestDegree: "",
+    publicationsCount: "",
+    citationCount: "",
+    peerReviewCount: "",
+    criticalRoleDescription: "",
+    confirmedOriginality: false,
+  }));
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 

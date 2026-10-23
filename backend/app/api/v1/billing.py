@@ -30,6 +30,8 @@ class ServiceItemCreateRequest(BaseModel):
     currency: str = Field(default="USD", max_length=3)
     estimated_duration_days: int = Field(default=60, ge=1)
     is_active: bool = True
+    sac_code: str = Field(default="998311", max_length=16)
+    gst_rate: float = Field(default=0.18, ge=0.0)
 
 
 class LineItemInput(BaseModel):
@@ -38,6 +40,8 @@ class LineItemInput(BaseModel):
     quantity: float = Field(default=1.0, gt=0.0)
     unit_price: float = Field(..., ge=0.0)
     line_type: str = Field(default="service_fee", max_length=32)
+    sac_code: str | None = Field(default="998311", max_length=16)
+    gst_rate: float | None = Field(default=0.18, ge=0.0)
 
 
 class InvoiceCreateRequest(BaseModel):
@@ -45,13 +49,28 @@ class InvoiceCreateRequest(BaseModel):
     case_id: str | None = None
     engagement_id: str | None = None
     due_date: str | None = None
-    tax_amount: float = Field(default=0.0, ge=0.0)
+    tax_amount: float | None = None
     discount_amount: float = Field(default=0.0, ge=0.0)
     currency: str = Field(default="USD", max_length=3)
     payment_provider: str = Field(default="stripe_verified", max_length=64)
     notes: str | None = None
     line_items: list[LineItemInput] = Field(..., min_length=1)
     auto_issue: bool = True
+    gst_rate: float | None = None
+    sac_code: str = Field(default="998311", max_length=16)
+    gstin: str | None = Field(default=None, max_length=32)
+    place_of_supply: str | None = Field(default=None, max_length=64)
+    is_interstate: bool = False
+    apply_gst: bool = False
+    cgst_amount: float = Field(default=0.0, ge=0.0)
+    sgst_amount: float = Field(default=0.0, ge=0.0)
+    igst_amount: float = Field(default=0.0, ge=0.0)
+
+
+class GSTCalculateRequest(BaseModel):
+    subtotal: float = Field(..., ge=0.0)
+    is_interstate: bool = False
+    gst_rate: float = Field(default=0.18, ge=0.0)
 
 
 class ClientEngagementCreateRequest(BaseModel):
@@ -107,6 +126,8 @@ def list_services(
             "currency": i.currency,
             "estimated_duration_days": i.estimated_duration_days,
             "is_active": i.is_active,
+            "sac_code": getattr(i, "sac_code", "998311"),
+            "gst_rate": getattr(i, "gst_rate", 0.18),
         }
         for i in items
     ]
@@ -215,6 +236,13 @@ def list_invoices(
             "currency": inv.currency,
             "status": inv.status,
             "payment_provider": inv.payment_provider,
+            "gst_rate": getattr(inv, "gst_rate", 0.18),
+            "cgst_amount": getattr(inv, "cgst_amount", 0.0),
+            "sgst_amount": getattr(inv, "sgst_amount", 0.0),
+            "igst_amount": getattr(inv, "igst_amount", 0.0),
+            "sac_code": getattr(inv, "sac_code", "998311"),
+            "gstin": getattr(inv, "gstin", None),
+            "place_of_supply": getattr(inv, "place_of_supply", None),
             "line_items_count": len(inv.line_items),
         })
     return results
@@ -234,8 +262,18 @@ def create_invoice(
         "id": str(inv.id),
         "invoice_number": inv.invoice_number,
         "total_amount": inv.total_amount,
+        "subtotal": inv.subtotal,
+        "tax_amount": inv.tax_amount,
+        "discount_amount": inv.discount_amount,
         "balance_due": inv.balance_due,
+        "currency": inv.currency,
         "status": inv.status,
+        "cgst_amount": getattr(inv, "cgst_amount", 0.0),
+        "sgst_amount": getattr(inv, "sgst_amount", 0.0),
+        "igst_amount": getattr(inv, "igst_amount", 0.0),
+        "sac_code": getattr(inv, "sac_code", "998311"),
+        "gstin": getattr(inv, "gstin", None),
+        "place_of_supply": getattr(inv, "place_of_supply", None),
     }
 
 
@@ -261,6 +299,8 @@ def get_invoice_detail(
             "unit_price": li.unit_price,
             "total": li.total,
             "line_type": li.line_type,
+            "sac_code": getattr(li, "sac_code", "998311"),
+            "gst_rate": getattr(li, "gst_rate", 0.18),
         }
         for li in inv.line_items
     ]
@@ -298,10 +338,30 @@ def get_invoice_detail(
         "currency": inv.currency,
         "status": inv.status,
         "payment_provider": inv.payment_provider,
+        "gst_rate": getattr(inv, "gst_rate", 0.18),
+        "cgst_amount": getattr(inv, "cgst_amount", 0.0),
+        "sgst_amount": getattr(inv, "sgst_amount", 0.0),
+        "igst_amount": getattr(inv, "igst_amount", 0.0),
+        "sac_code": getattr(inv, "sac_code", "998311"),
+        "gstin": getattr(inv, "gstin", None),
+        "place_of_supply": getattr(inv, "place_of_supply", None),
         "notes": inv.notes,
         "line_items": line_items,
         "payments": payments,
     }
+
+
+@router.post("/calculate-gst")
+def calculate_gst_estimate(
+    payload: GSTCalculateRequest,
+    ctx: AuthContext = Depends(require_permission("billing:read")),
+):
+    """Calculates GST breakdown (CGST/SGST vs IGST) for a given subtotal under SAC 998311."""
+    return BillingService.calculate_gst(
+        subtotal=payload.subtotal,
+        is_interstate=payload.is_interstate,
+        gst_rate=payload.gst_rate,
+    )
 
 
 @router.post("/invoices/{invoice_id}/payments", status_code=status.HTTP_201_CREATED)

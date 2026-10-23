@@ -198,14 +198,14 @@ export function DocumentInspectorModal({
     >
       <div className="space-y-4">
         {/* View Mode Switcher Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded-lg border border-slate-800">
+        <div className="flex items-center justify-between border-b border-[#EAF0ED] pb-3">
+          <div className="flex items-center gap-1.5 p-1 bg-[#F8FAF9] rounded-lg border border-[#DCE5E1]">
             <button
               onClick={() => setViewMode("workbench")}
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                 viewMode === "workbench"
                   ? "bg-[#0D6866] text-white font-semibold shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
+                  : "text-[#526360] hover:text-[#063C3D]"
               }`}
             >
               ⚡ Side-by-Side OCR Bounding Box Workbench
@@ -215,7 +215,7 @@ export function DocumentInspectorModal({
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                 viewMode === "matrix"
                   ? "bg-[#0D6866] text-white font-semibold shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
+                  : "text-[#526360] hover:text-[#063C3D]"
               }`}
             >
               ▦ Tabular Data Matrix
@@ -233,26 +233,26 @@ export function DocumentInspectorModal({
         ) : (
           <div className="space-y-6">
         {/* Header Metadata Bar */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+        <div className="bg-[#F8FAF9] border border-[#DCE5E1] rounded-xl p-5 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                <span className="font-semibold text-lg text-slate-100">{doc.title}</span>
-                <span className="px-2.5 py-0.5 text-xs rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                <span className="font-bold text-lg text-[#063C3D]">{doc.title}</span>
+                <span className="px-2.5 py-0.5 text-xs rounded-full bg-white text-[#2C3E3A] border border-[#DCE5E1]">
                   v{doc.version || 1} {doc.is_current_version ? "(Current)" : "(Superseded)"}
                 </span>
-                <span className="px-2.5 py-0.5 text-xs rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 font-medium">
+                <span className="px-2.5 py-0.5 text-xs rounded-full bg-teal-50 text-[#0D6866] border border-teal-200 font-medium">
                   {formatCategoryName(doc.category)}
                 </span>
               </div>
-              <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
-                <span>SHA-256: <code className="bg-slate-950 px-1.5 py-0.5 rounded text-slate-300 font-mono text-[11px]">{doc.sha256_hash ? `${doc.sha256_hash.slice(0, 16)}...` : "N/A"}</code></span>
+              <div className="flex items-center gap-3 text-xs text-[#526360] flex-wrap">
+                <span>SHA-256: <code className="bg-white px-1.5 py-0.5 rounded text-[#2C3E3A] font-mono text-[11px] border border-[#DCE5E1]">{doc.sha256_hash ? `${doc.sha256_hash.slice(0, 16)}...` : "N/A"}</code></span>
                 <span>•</span>
-                <span>Language: <strong className="text-slate-300 uppercase">{doc.detected_language || "EN"}</strong></span>
+                <span>Language: <strong className="text-[#172322] uppercase">{doc.detected_language || "EN"}</strong></span>
                 <span>•</span>
-                <span>Pages: <strong className="text-slate-300">{doc.page_count || 1}</strong></span>
+                <span>Pages: <strong className="text-[#172322]">{doc.page_count || 1}</strong></span>
                 <span>•</span>
-                <span>Method: <strong className="text-slate-300">{doc.ocr_applied ? "OCR Engine" : "Native Vector"}</strong></span>
+                <span>Method: <strong className="text-[#172322]">{doc.ocr_applied ? "OCR Engine" : "Native Vector"}</strong></span>
               </div>
             </div>
 
@@ -296,7 +296,7 @@ export function DocumentInspectorModal({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+              <div className="flex items-center gap-2 pl-2 border-l border-[#DCE5E1]">
                 {isStaff && (
                   <Button
                     variant="outline"
@@ -312,7 +312,7 @@ export function DocumentInspectorModal({
                     href={doc.download_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                    className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#0D6866] hover:bg-[#0A4D4A] text-white shadow-sm transition-colors"
                   >
                     Download
                   </a>
@@ -323,16 +323,16 @@ export function DocumentInspectorModal({
 
           {/* Feedback banner */}
           {feedbackMessage && (
-            <div className="mt-3 p-2.5 bg-emerald-950/80 border border-emerald-800/80 text-emerald-200 text-xs rounded-lg flex items-center justify-between">
-              <span>{feedbackMessage}</span>
-              <button onClick={() => setFeedbackMessage(null)} className="text-emerald-400 hover:text-emerald-200 font-bold ml-2">×</button>
+            <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs rounded-lg flex items-center justify-between shadow-sm">
+              <span className="font-medium">{feedbackMessage}</span>
+              <button onClick={() => setFeedbackMessage(null)} className="text-emerald-700 hover:text-emerald-950 font-bold ml-2">×</button>
             </div>
           )}
 
           {/* Failure Alert if document failed processing */}
           {doc.processing_status === "failed" && (
-            <div className="mt-3 p-3 bg-rose-950/80 border border-rose-800/80 text-rose-200 text-xs rounded-lg flex items-start gap-2">
-              <span className="text-rose-400 font-bold text-sm">⚠️</span>
+            <div className="mt-3 p-3 bg-rose-50 border border-rose-300 text-rose-900 text-xs rounded-lg flex items-start gap-2 shadow-sm">
+              <span className="text-rose-600 font-bold text-sm">⚠️</span>
               <div>
                 <strong>Processing Error:</strong> {doc.processing_error || "Document processing failed. Please verify file integrity or re-upload high-resolution scan."}
               </div>
@@ -341,13 +341,13 @@ export function DocumentInspectorModal({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 gap-1">
+        <div className="flex border-b border-[#EAF0ED] gap-1">
           <button
             onClick={() => setActiveTab("fields")}
             className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
               activeTab === "fields"
-                ? "border-indigo-500 text-indigo-400 font-semibold"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-[#0D6866] text-[#0D6866] font-bold"
+                : "border-transparent text-[#526360] hover:text-[#063C3D]"
             }`}
           >
             Extracted Fields & Provenance ({doc.extracted_fields?.length || 0})
@@ -356,8 +356,8 @@ export function DocumentInspectorModal({
             onClick={() => setActiveTab("preview")}
             className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
               activeTab === "preview"
-                ? "border-indigo-500 text-indigo-400 font-semibold"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-[#0D6866] text-[#0D6866] font-bold"
+                : "border-transparent text-[#526360] hover:text-[#063C3D]"
             }`}
           >
             Preview & Extracted OCR Text
@@ -366,8 +366,8 @@ export function DocumentInspectorModal({
             onClick={() => setActiveTab("verification")}
             className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
               activeTab === "verification"
-                ? "border-indigo-500 text-indigo-400 font-semibold"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-[#0D6866] text-[#0D6866] font-bold"
+                : "border-transparent text-[#526360] hover:text-[#063C3D]"
             }`}
           >
             Human Verification & Audit Trail
@@ -376,8 +376,8 @@ export function DocumentInspectorModal({
             onClick={() => setActiveTab("versions")}
             className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
               activeTab === "versions"
-                ? "border-indigo-500 text-indigo-400 font-semibold"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-[#0D6866] text-[#0D6866] font-bold"
+                : "border-transparent text-[#526360] hover:text-[#063C3D]"
             }`}
           >
             Version History
@@ -394,14 +394,14 @@ export function DocumentInspectorModal({
             </div>
 
             {(!doc.extracted_fields || doc.extracted_fields.length === 0) ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-sm">
+              <div className="bg-[#F8FAF9] border border-[#DCE5E1] rounded-xl p-8 text-center text-[#526360] text-sm">
                 No structured fields extracted yet. If the document is still processing, fields will appear once analysis completes.
               </div>
             ) : (
-              <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 shadow-inner">
+              <div className="border border-[#DCE5E1] rounded-xl overflow-hidden bg-white shadow-sm">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-300">
-                    <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold text-[10px] tracking-wider">
+                  <table className="w-full text-left text-xs text-[#172322]">
+                    <thead className="bg-[#F8FAF9] text-[#526360] border-b border-[#DCE5E1] uppercase font-semibold text-[10px] tracking-wider">
                       <tr>
                         <th className="py-3 px-4">Field Name</th>
                         <th className="py-3 px-4">Original Extracted</th>
@@ -412,58 +412,58 @@ export function DocumentInspectorModal({
                         {isStaff && <th className="py-3 px-4 text-right">Action</th>}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60 font-sans">
+                    <tbody className="divide-y divide-[#EAF0ED] font-sans">
                       {doc.extracted_fields.map((field) => (
-                        <tr key={field.id} className="hover:bg-slate-800/40 transition-colors">
+                        <tr key={field.id} className="hover:bg-[#F8FAF9] transition-colors">
                           <td className="py-3 px-4">
-                            <div className="font-medium text-slate-200">{field.field_label}</div>
-                            <div className="text-[10px] text-slate-500 font-mono">{field.field_name}</div>
+                            <div className="font-bold text-[#063C3D]">{field.field_label}</div>
+                            <div className="text-[10px] text-[#526360] font-mono">{field.field_name}</div>
                           </td>
-                          <td className="py-3 px-4 font-mono text-[11px] text-slate-300 max-w-[160px] truncate" title={field.original_value}>
+                          <td className="py-3 px-4 font-mono text-[11px] text-[#2C3E3A] max-w-[160px] truncate" title={field.original_value}>
                             {field.original_value}
                           </td>
                           <td className="py-3 px-4">
                             {field.is_manually_corrected ? (
                               <div>
-                                <span className="font-semibold text-amber-300 font-mono text-[11px]">
+                                <span className="font-bold text-amber-800 font-mono text-[11px]">
                                   {field.corrected_value}
                                 </span>
-                                <span className="block text-[10px] text-amber-400/80 mt-0.5">
+                                <span className="block text-[10px] text-amber-700 mt-0.5">
                                   Manual Correction ({field.correction_reason})
                                 </span>
                               </div>
                             ) : (
-                              <span className="font-mono text-[11px] text-emerald-300 font-medium">
+                              <span className="font-mono text-[11px] text-[#0D6866] font-bold">
                                 {field.normalized_value}
                               </span>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-[11px] text-slate-400">
+                          <td className="py-3 px-4 text-[11px] text-[#526360]">
                             <div>Page {field.source_page || 1}</div>
                             {field.source_location && (
-                              <div className="text-[10px] text-slate-500 font-mono">
+                              <div className="text-[10px] text-[#526360] font-mono">
                                 [{Math.round(field.source_location.x0 || 0)}, {Math.round(field.source_location.y0 || 0)}, {Math.round(field.source_location.x1 || 0)}, {Math.round(field.source_location.y1 || 0)}]
                               </div>
                             )}
                           </td>
                           <td className="py-3 px-4 text-center">
                             <div className="flex items-center justify-center gap-1 text-[11px]">
-                              <span className="text-slate-300" title="OCR confidence">{Math.round((field.ocr_confidence || 0.95) * 100)}%</span>
-                              <span className="text-slate-600">/</span>
-                              <span className="text-indigo-400 font-medium" title="Extraction model confidence">{Math.round((field.extraction_confidence || 0.95) * 100)}%</span>
+                              <span className="text-[#172322]" title="OCR confidence">{Math.round((field.ocr_confidence || 0.95) * 100)}%</span>
+                              <span className="text-[#8E9F9C]">/</span>
+                              <span className="text-[#0D6866] font-bold" title="Extraction model confidence">{Math.round((field.extraction_confidence || 0.95) * 100)}%</span>
                             </div>
-                            <div className="text-[9px] text-slate-500 font-mono">{field.extraction_method || "regex"}</div>
+                            <div className="text-[9px] text-[#526360] font-mono">{field.extraction_method || "regex"}</div>
                           </td>
                           <td className="py-3 px-4 text-center">
                             <span
                               className={`inline-block px-2 py-0.5 text-[10px] rounded-full border font-medium ${
                                 field.validation_status === "verified"
-                                  ? "bg-emerald-950/80 text-emerald-300 border-emerald-800"
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-300"
                                   : field.validation_status === "corrected"
-                                  ? "bg-amber-950/80 text-amber-300 border-amber-800"
+                                  ? "bg-amber-50 text-amber-800 border-amber-300"
                                   : field.validation_status === "flagged"
-                                  ? "bg-rose-950/80 text-rose-300 border-rose-800"
-                                  : "bg-slate-800 text-slate-400 border-slate-700"
+                                  ? "bg-rose-50 text-rose-800 border-rose-300"
+                                  : "bg-slate-100 text-slate-700 border-slate-300"
                               }`}
                             >
                               {field.validation_status}
@@ -473,7 +473,7 @@ export function DocumentInspectorModal({
                             <td className="py-3 px-4 text-right">
                               <button
                                 onClick={() => handleStartFieldEdit(field)}
-                                className="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium"
+                                className="text-xs text-[#0D6866] hover:text-[#063C3D] font-bold underline"
                               >
                                 Edit
                               </button>
@@ -489,19 +489,19 @@ export function DocumentInspectorModal({
 
             {/* Field Correction Sub-Panel Modal */}
             {selectedFieldForEdit && (
-              <div className="bg-slate-950 border border-indigo-900/60 rounded-xl p-5 shadow-lg mt-4 animate-in fade-in">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <div className="bg-[#F8FAF9] border border-[#DCE5E1] rounded-xl p-5 shadow-md mt-4 animate-in fade-in">
+                <div className="flex items-center justify-between pb-3 border-b border-[#EAF0ED] mb-4">
                   <div>
-                    <h4 className="font-semibold text-slate-200 text-sm">
+                    <h4 className="font-bold text-[#063C3D] text-sm">
                       Manual Field Correction: {selectedFieldForEdit.field_label}
                     </h4>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-[#526360]">
                       All human edits are recorded in the provenance audit trail.
                     </p>
                   </div>
                   <button
                     onClick={() => setSelectedFieldForEdit(null)}
-                    className="text-slate-400 hover:text-slate-200 text-sm"
+                    className="text-[#526360] hover:text-[#063C3D] text-sm font-semibold"
                   >
                     Cancel
                   </button>
@@ -509,40 +509,40 @@ export function DocumentInspectorModal({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   <div>
-                    <label className="block text-slate-400 mb-1">Original Extracted Value</label>
+                    <label className="block text-[#526360] mb-1 font-semibold">Original Extracted Value</label>
                     <input
                       type="text"
                       disabled
                       value={selectedFieldForEdit.original_value}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 font-mono text-slate-400 cursor-not-allowed"
+                      className="w-full bg-[#EAF0ED] border border-[#DCE5E1] rounded-lg p-2 font-mono text-[#526360] cursor-not-allowed"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-300 mb-1 font-medium">New Corrected Value *</label>
+                    <label className="block text-[#374744] mb-1 font-semibold">New Corrected Value *</label>
                     <input
                       type="text"
                       value={correctedValue}
                       onChange={(e) => setCorrectedValue(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono focus:border-indigo-500 focus:outline-none"
+                      className="w-full bg-white border border-[#DCE5E1] rounded-lg p-2 text-[#172322] font-mono focus:border-[#0D6866] focus:outline-none shadow-sm"
                       placeholder="Enter legal / standard value..."
                     />
                   </div>
                 </div>
 
                 <div className="mt-3 text-xs">
-                  <label className="block text-slate-300 mb-1 font-medium">Reason for Correction *</label>
+                  <label className="block text-[#374744] mb-1 font-semibold">Reason for Correction *</label>
                   <input
                     type="text"
                     value={correctionReason}
                     onChange={(e) => setCorrectionReason(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 focus:border-indigo-500 focus:outline-none"
+                    className="w-full bg-white border border-[#DCE5E1] rounded-lg p-2 text-[#172322] focus:border-[#0D6866] focus:outline-none shadow-sm"
                     placeholder="e.g., Standardized date format to match USCIS petition index"
                   />
                 </div>
 
                 {correctionError && (
-                  <div className="mt-3 p-2 bg-rose-950/80 border border-rose-800 text-rose-300 text-xs rounded-lg">
+                  <div className="mt-3 p-2 bg-rose-50 border border-rose-300 text-rose-800 text-xs rounded-lg">
                     {correctionError}
                   </div>
                 )}
@@ -568,16 +568,16 @@ export function DocumentInspectorModal({
 
                 {/* Field Correction History */}
                 {selectedFieldForEdit.correction_history && selectedFieldForEdit.correction_history.length > 0 && (
-                  <div className="mt-4 pt-3 border-t border-slate-800 text-xs">
-                    <h5 className="font-medium text-slate-300 mb-2">Previous Correction History</h5>
+                  <div className="mt-4 pt-3 border-t border-[#EAF0ED] text-xs">
+                    <h5 className="font-bold text-[#063C3D] mb-2">Previous Correction History</h5>
                     <div className="space-y-1.5">
                       {selectedFieldForEdit.correction_history.map((hist, idx) => (
-                        <div key={idx} className="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between text-[11px]">
+                        <div key={idx} className="bg-white p-2 rounded border border-[#DCE5E1] flex justify-between text-[11px]">
                           <div>
-                            <span className="text-slate-400">{hist.old_value}</span> → <strong className="text-amber-300">{hist.new_value}</strong>
-                            <div className="text-[10px] text-slate-500">{hist.reason}</div>
+                            <span className="text-[#526360]">{hist.old_value}</span> → <strong className="text-amber-800">{hist.new_value}</strong>
+                            <div className="text-[10px] text-[#526360]">{hist.reason}</div>
                           </div>
-                          <div className="text-right text-[10px] text-slate-500">
+                          <div className="text-right text-[10px] text-[#526360]">
                             <div>{hist.corrected_by || "Staff"}</div>
                             <div>{new Date(hist.corrected_at).toLocaleDateString()}</div>
                           </div>
@@ -840,41 +840,41 @@ export function DocumentInspectorModal({
               In compliance with professional immigration representation standards, automated OCR and structured LLM extraction do not automatically certify a document as verified. Authorized legal staff must review evidence and record notes prior to petition submission.
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
-              <h4 className="font-semibold text-slate-200 text-sm">Legal Certification Status</h4>
+            <div className="bg-[#F8FAF9] border border-[#DCE5E1] rounded-xl p-5 space-y-4 text-xs">
+              <h4 className="font-bold text-[#063C3D] text-sm">Legal Certification Status</h4>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <span className="text-slate-400 block mb-1">Current State</span>
-                  <span className="font-semibold text-slate-200 uppercase text-sm">
+                  <span className="text-[#526360] block mb-1 font-semibold">Current State</span>
+                  <span className="font-bold text-[#172322] uppercase text-sm">
                     {doc.verification_status || "UNVERIFIED"}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block mb-1">Verified By</span>
-                  <span className="text-slate-200">{doc.verified_by_user_id ? "Staff Reviewer" : "Pending Review"}</span>
+                  <span className="text-[#526360] block mb-1 font-semibold">Verified By</span>
+                  <span className="text-[#172322]">{doc.verified_by_user_id ? "Staff Reviewer" : "Pending Review"}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block mb-1">Certification Timestamp</span>
-                  <span className="text-slate-200">
+                  <span className="text-[#526360] block mb-1 font-semibold">Certification Timestamp</span>
+                  <span className="text-[#172322]">
                     {doc.verified_at ? new Date(doc.verified_at).toLocaleString() : "Not yet verified"}
                   </span>
                 </div>
               </div>
 
               {doc.verification_notes && (
-                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block mb-1 font-medium">Caseworker Review Notes:</span>
-                  <p className="text-slate-200 italic">{doc.verification_notes}</p>
+                <div className="p-3 bg-white rounded-lg border border-[#DCE5E1]">
+                  <span className="text-[#526360] block mb-1 font-semibold">Caseworker Review Notes:</span>
+                  <p className="text-[#172322] italic">{doc.verification_notes}</p>
                 </div>
               )}
 
               {/* Caseworker Actions */}
               {isStaff ? (
-                <div className="pt-4 border-t border-slate-800 space-y-4">
-                  <h5 className="font-medium text-slate-200">Update Document Certification</h5>
+                <div className="pt-4 border-t border-[#EAF0ED] space-y-4">
+                  <h5 className="font-bold text-[#063C3D]">Update Document Certification</h5>
                   <div className="flex gap-4 flex-wrap">
-                    <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                    <label className="flex items-center gap-2 cursor-pointer text-[#2C3E3A] font-medium">
                       <input
                         type="radio"
                         name="verifyStatus"
@@ -887,7 +887,7 @@ export function DocumentInspectorModal({
                       />
                       <span>Certify & Mark Verified</span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                    <label className="flex items-center gap-2 cursor-pointer text-[#2C3E3A] font-medium">
                       <input
                         type="radio"
                         name="verifyStatus"
@@ -900,7 +900,7 @@ export function DocumentInspectorModal({
                       />
                       <span>Mark Under Review</span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer text-rose-300 font-semibold">
+                    <label className="flex items-center gap-2 cursor-pointer text-rose-700 font-bold">
                       <input
                         type="radio"
                         name="verifyStatus"
@@ -917,24 +917,24 @@ export function DocumentInspectorModal({
 
                   {/* STRUCTURED REJECTION WORKFLOW (Strictly Enforced When Rejecting) */}
                   {verifyStatus === "rejected" ? (
-                    <div className="p-4 bg-rose-950/40 border border-rose-800/80 rounded-xl space-y-4">
-                      <div className="flex items-center gap-2 text-rose-300 font-semibold text-sm">
+                    <div className="p-4 bg-rose-50 border border-rose-300 rounded-xl space-y-4 shadow-sm">
+                      <div className="flex items-center gap-2 text-rose-900 font-bold text-sm">
                         <span>⚠️</span>
                         <span>Structured Document Rejection Form</span>
                       </div>
-                      <p className="text-[11px] text-rose-200/80 leading-relaxed">
+                      <p className="text-[11px] text-rose-800 leading-relaxed">
                         To maintain client trust and evidentiary quality, rejections require a structured classification code and a clear, client-friendly explanation explaining what needs to be fixed.
                       </p>
 
                       {/* 1. Structured Reason Code Dropdown */}
                       <div>
-                        <label className="block text-slate-200 font-medium mb-1.5">
+                        <label className="block text-[#374744] font-semibold mb-1.5">
                           Structured Rejection Reason Code *
                         </label>
                         <select
                           value={rejectionReasonCode}
                           onChange={(e) => setRejectionReasonCode(e.target.value as StructuredRejectionReasonCode)}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-slate-100 text-xs focus:outline-none focus:border-rose-500 font-sans"
+                          className="w-full bg-white border border-[#DCE5E1] rounded-lg p-2.5 text-[#172322] text-xs focus:outline-none focus:border-rose-500 font-sans shadow-sm"
                         >
                           {STRUCTURED_REJECTION_REASONS.map((r) => (
                             <option key={r.code} value={r.code}>
@@ -947,10 +947,10 @@ export function DocumentInspectorModal({
                       {/* 2. Client-Facing Explanation Textarea (Validation min 5 chars) */}
                       <div>
                         <div className="flex justify-between items-center mb-1.5">
-                          <label className="block text-slate-200 font-medium">
+                          <label className="block text-[#374744] font-semibold">
                             Customizable Client-Facing Explanation * (Min 5 chars)
                           </label>
-                          <span className={`text-[10px] font-mono ${clientExplanation.trim().length >= 5 ? "text-emerald-400" : "text-amber-400"}`}>
+                          <span className={`text-[10px] font-mono font-bold ${clientExplanation.trim().length >= 5 ? "text-emerald-700" : "text-amber-700"}`}>
                             {clientExplanation.trim().length} chars
                           </span>
                         </div>
@@ -964,9 +964,9 @@ export function DocumentInspectorModal({
                             }
                           }}
                           placeholder="e.g., The scan of page 2 has excessive glare over the passport issue date. Please upload a flat, high-resolution color scan without flash reflections."
-                          className="w-full bg-slate-950 border border-rose-800/80 rounded-lg p-2.5 text-slate-100 placeholder-slate-500 text-xs focus:outline-none focus:border-rose-400"
+                          className="w-full bg-white border border-rose-300 rounded-lg p-2.5 text-[#172322] placeholder:text-rose-400 text-xs focus:outline-none focus:border-rose-500 shadow-sm"
                         />
-                        <span className="text-[10px] text-slate-400 block mt-1">
+                        <span className="text-[10px] text-[#526360] block mt-1">
                           This explanation will be prominently displayed to the applicant on their portal checklist to guide re-upload.
                         </span>
                       </div>
@@ -974,10 +974,10 @@ export function DocumentInspectorModal({
                       {/* 3. Optional Internal Legal Notes (Quarantined) */}
                       <div>
                         <div className="flex items-center gap-2 mb-1.5">
-                          <label className="block text-slate-200 font-medium">
+                          <label className="block text-[#374744] font-semibold">
                             Internal Legal Notes (Optional)
                           </label>
-                          <span className="text-[9px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                          <span className="text-[9px] px-2 py-0.5 rounded bg-slate-100 text-[#526360] font-mono border border-slate-200">
                             🔒 Quarantined from Client View
                           </span>
                         </div>
@@ -986,12 +986,12 @@ export function DocumentInspectorModal({
                           value={internalNotes}
                           onChange={(e) => setInternalNotes(e.target.value)}
                           placeholder="e.g., Flagged for supervising attorney: passport expires in 4 months, consider asking client for renewed credential before filing."
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-white border border-[#DCE5E1] rounded-lg p-2.5 text-[#172322] placeholder-[#8E9F9C] text-xs focus:outline-none focus:border-[#0D6866] shadow-sm"
                         />
                       </div>
 
                       {rejectionValidationError && (
-                        <div className="p-2.5 bg-rose-950 border border-rose-700 text-rose-200 text-xs rounded-lg flex items-center gap-2">
+                        <div className="p-2.5 bg-rose-100 border border-rose-300 text-rose-900 text-xs rounded-lg flex items-center gap-2 font-medium">
                           <span>⚠️</span>
                           <span>{rejectionValidationError}</span>
                         </div>
@@ -1011,13 +1011,13 @@ export function DocumentInspectorModal({
                     </div>
                   ) : (
                     <div>
-                      <label className="block text-slate-300 mb-1">Certification Justification / Notes *</label>
+                      <label className="block text-[#374744] font-semibold mb-1">Certification Justification / Notes *</label>
                       <textarea
                         rows={3}
                         value={verificationNotes}
                         onChange={(e) => setVerificationNotes(e.target.value)}
                         placeholder="e.g., Physical biometric passport matched against government verification database without discrepancies."
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500 text-xs"
+                        className="w-full bg-white border border-[#DCE5E1] rounded-lg p-2.5 text-[#172322] focus:outline-none focus:border-[#0D6866] text-xs shadow-sm"
                       />
 
                       <div className="flex justify-end mt-3">
@@ -1034,7 +1034,7 @@ export function DocumentInspectorModal({
                   )}
                 </div>
               ) : (
-                <p className="text-slate-500 italic">
+                <p className="text-[#526360] italic">
                   Only retained legal staff or managing attorneys can certify document verification.
                 </p>
               )}
@@ -1045,13 +1045,13 @@ export function DocumentInspectorModal({
         {/* TAB 4: VERSION HISTORY */}
         {activeTab === "versions" && (
           <div className="space-y-4">
-            <div className="text-xs text-slate-400">
+            <div className="text-xs text-[#526360]">
               Document revisions and lineage tracking. Superseded versions are preserved immutably for compliance audits.
             </div>
 
-            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold text-[10px] tracking-wider">
+            <div className="border border-[#DCE5E1] rounded-xl overflow-hidden bg-white shadow-sm">
+              <table className="w-full text-left text-xs text-[#172322]">
+                <thead className="bg-[#F8FAF9] text-[#526360] border-b border-[#DCE5E1] uppercase font-semibold text-[10px] tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Version</th>
                     <th className="py-3 px-4">Filename</th>
@@ -1060,7 +1060,7 @@ export function DocumentInspectorModal({
                     <th className="py-3 px-4">Uploaded</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800 font-sans">
+                <tbody className="divide-y divide-[#EAF0ED] font-sans">
                   {(versions.length > 0 ? versions : [
                     {
                       id: doc.id,
@@ -1072,28 +1072,28 @@ export function DocumentInspectorModal({
                       created_at: doc.uploaded_at,
                     }
                   ]).map((v) => (
-                    <tr key={v.id} className="hover:bg-slate-800/40">
-                      <td className="py-3 px-4 font-semibold text-slate-200">
+                    <tr key={v.id} className="hover:bg-[#F8FAF9] transition-colors">
+                      <td className="py-3 px-4 font-bold text-[#063C3D]">
                         v{v.version}
                       </td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-slate-300">
+                      <td className="py-3 px-4 font-mono text-[11px] text-[#2C3E3A]">
                         {v.filename}
                       </td>
-                      <td className="py-3 px-4 font-mono text-[10px] text-slate-400">
+                      <td className="py-3 px-4 font-mono text-[10px] text-[#526360]">
                         {v.sha256_hash ? `${v.sha256_hash.slice(0, 16)}...` : "N/A"}
                       </td>
                       <td className="py-3 px-4">
                         <span
                           className={`px-2 py-0.5 text-[10px] rounded-full border ${
                             v.is_current_version
-                              ? "bg-emerald-950/80 text-emerald-300 border-emerald-800 font-semibold"
-                              : "bg-slate-800 text-slate-400 border-slate-700"
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-300 font-bold"
+                              : "bg-slate-100 text-slate-700 border-slate-300"
                           }`}
                         >
                           {v.is_current_version ? "Current Active" : "Superseded"}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-slate-400 text-[11px]">
+                      <td className="py-3 px-4 text-[#526360] text-[11px]">
                         {v.created_at ? new Date(v.created_at).toLocaleDateString() : "N/A"}
                       </td>
                     </tr>
@@ -1104,7 +1104,7 @@ export function DocumentInspectorModal({
           </div>
         )}
 
-        <div className="flex justify-end pt-2 border-t border-slate-800">
+        <div className="flex justify-end pt-2 border-t border-[#EAF0ED]">
           <Button variant="outline" size="sm" onClick={onClose}>
             Close Dossier
           </Button>

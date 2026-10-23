@@ -59,6 +59,8 @@ class Organization(Base):
     pilot_kpi_benchmarks: Mapped[list["PilotKPIBenchmark"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     release_gate_evaluations: Mapped[list["ReleaseGateEvaluation"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     operational_runbooks: Mapped[list["OperationalRunbook"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    sponsors: Mapped[list["FinancialSponsor"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    appointments: Mapped[list["VisaAppointment"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
 
 
 class Branch(Base):
@@ -226,6 +228,10 @@ class ClientProfile(Base):
     date_of_birth: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     nationality: Mapped[str] = mapped_column(String(3), nullable=False)  # ISO Alpha-3
     passport_number_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    aadhaar_number_masked: Mapped[str | None] = mapped_column(String(16), nullable=True)  # e.g. XXXX-XXXX-1234
+    pan_number: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    voter_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    passport_ecr_status: Mapped[str] = mapped_column(String(16), default="NON_ECR", nullable=False)  # ECR, NON_ECR
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
     organization: Mapped[Organization] = relationship(back_populates="client_profiles")
@@ -238,6 +244,8 @@ class ClientProfile(Base):
     questionnaires: Mapped[list["ClientQuestionnaire"]] = relationship(back_populates="client", cascade="all, delete-orphan")
     engagements: Mapped[list["ClientEngagement"]] = relationship(back_populates="client", cascade="all, delete-orphan")
     invoices: Mapped[list["Invoice"]] = relationship(back_populates="client", cascade="all, delete-orphan")
+    sponsors: Mapped[list["FinancialSponsor"]] = relationship(back_populates="client", cascade="all, delete-orphan")
+    appointments: Mapped[list["VisaAppointment"]] = relationship(back_populates="client", cascade="all, delete-orphan")
 
 
 class ImmigrationCase(Base):
@@ -323,6 +331,8 @@ class ImmigrationCase(Base):
     prior_case: Mapped["ImmigrationCase | None"] = relationship(remote_side=[id], foreign_keys=[prior_case_id])
     hold_history: Mapped[list["CaseHoldHistory"]] = relationship(back_populates="case", cascade="all, delete-orphan")
     interim_reports: Mapped[list["CaseInterimReport"]] = relationship(back_populates="case", cascade="all, delete-orphan")
+    sponsors: Mapped[list["FinancialSponsor"]] = relationship(back_populates="case", cascade="all, delete-orphan")
+    appointments: Mapped[list["VisaAppointment"]] = relationship(back_populates="case", cascade="all, delete-orphan")
 
 
 class CaseAssignment(Base):
@@ -1327,6 +1337,8 @@ class ServiceItem(Base):
     currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
     estimated_duration_days: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sac_code: Mapped[str] = mapped_column(String(16), default="998311", nullable=False)
+    gst_rate: Mapped[float] = mapped_column(Float, default=0.18, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 
@@ -1391,6 +1403,13 @@ class Invoice(Base):
     currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)  # draft, issued, partially_paid, paid, overdue, void, refunded
     payment_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)  # stripe_verified, manual_wire, check, ach
+    gst_rate: Mapped[float] = mapped_column(Float, default=0.18, nullable=False)
+    cgst_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    sgst_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    igst_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    sac_code: Mapped[str] = mapped_column(String(16), default="998311", nullable=False)
+    gstin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    place_of_supply: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
@@ -1414,6 +1433,8 @@ class InvoiceLineItem(Base):
     unit_price: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     total: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     line_type: Mapped[str] = mapped_column(String(32), default="service_fee", nullable=False)  # service_fee, filing_fee, translation, courier, discount
+    sac_code: Mapped[str] = mapped_column(String(16), default="998311", nullable=False)
+    gst_rate: Mapped[float] = mapped_column(Float, default=0.18, nullable=False)
 
     invoice: Mapped[Invoice] = relationship(back_populates="line_items")
     service: Mapped[ServiceItem | None] = relationship()
@@ -1762,5 +1783,84 @@ class OperationalRunbook(Base):
     verified_by_name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     organization: Mapped[Organization] = relationship(back_populates="operational_runbooks")
+
+
+class FinancialSponsor(Base):
+    """
+    Phase 2 Financial Sponsor / Guarantor for Education and Visitor Visas.
+    Captures sponsor KYC (PAN), annual ITR gross income, verifiable liquid funds,
+    education loan sanction letters, and affidavits of support.
+    """
+    __tablename__ = "financial_sponsors"
+    __table_args__ = (
+        Index("ix_sponsors_org_client", "organization_id", "client_id"),
+        Index("ix_sponsors_case", "organization_id", "case_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("client_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    case_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("immigration_cases.id", ondelete="CASCADE"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    relationship_type: Mapped[str] = mapped_column("relationship", String(64), nullable=False)  # parent, spouse, sibling, employer, relative, self
+    sponsor_type: Mapped[str] = mapped_column(String(32), default="individual", nullable=False)  # individual, corporate, institutional
+    pan: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    itr_gross_income: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    liquid_funds: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
+    bank_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    loan_sanction_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    affidavit_doc_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="sponsors")
+    client: Mapped[ClientProfile] = relationship(back_populates="sponsors")
+    case: Mapped[ImmigrationCase | None] = relationship(back_populates="sponsors")
+
+    @property
+    def relationship(self) -> str:
+        return self.relationship_type
+
+    @relationship.setter
+    def relationship(self, value: str) -> None:
+        self.relationship_type = value
+
+
+class VisaAppointment(Base):
+    """
+    Phase 2 Visa Appointment & VAC Logistics Desk.
+    Tracks VAC biometrics (OFC) and Consular interview appointments, Dropbox eligibility,
+    2-way courier / Blue Dart tracking numbers, and 221(g) administrative processing slips.
+    """
+    __tablename__ = "visa_appointments"
+    __table_args__ = (
+        Index("ix_appointments_org_case", "organization_id", "case_id"),
+        Index("ix_appointments_status", "organization_id", "appointment_status"),
+        Index("ix_appointments_vac", "organization_id", "vac_center"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("immigration_cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("client_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    vac_center: Mapped[str] = mapped_column(String(120), nullable=False)
+    consular_post: Mapped[str] = mapped_column(String(120), nullable=False)
+    ofc_biometrics_slot: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consular_interview_slot: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dropbox_eligible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    tracking_number_blue_dart: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    courier_status: Mapped[str] = mapped_column(String(64), default="pending_pickup", nullable=False)  # pending_pickup, in_transit, delivered_to_consulate, ready_for_pickup, delivered_to_applicant
+    status_221g: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    status_221g_color: Mapped[str | None] = mapped_column(String(32), nullable=True)  # white, pink, blue, yellow
+    appointment_status: Mapped[str] = mapped_column(String(32), default="scheduled", nullable=False)  # scheduled, completed, cancelled, rescheduled, no_show
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="appointments")
+    case: Mapped[ImmigrationCase] = relationship(back_populates="appointments")
+    client: Mapped[ClientProfile] = relationship(back_populates="appointments")
 
 

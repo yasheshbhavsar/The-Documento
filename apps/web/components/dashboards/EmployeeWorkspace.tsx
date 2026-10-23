@@ -16,6 +16,7 @@ import {
   PackageReadinessChecklist,
   FilingPackageItem,
   RouteFindingPayload,
+  UserContext,
 } from "../../lib/types";
 import {
   api,
@@ -43,6 +44,7 @@ import { PackageBuilderView } from "../packages/PackageBuilderView";
 import { PackageApprovalWorkflowModal } from "../packages/PackageApprovalWorkflowModal";
 import { CaseDiscrepancyAlertCenter } from "../cases/CaseDiscrepancyAlertCenter";
 import { ApprovalGatesCard } from "../cases/ApprovalGatesCard";
+import { ProvisionCredentialsModal } from "../modals/ProvisionCredentialsModal";
 
 interface EmployeeWorkspaceProps {
   cases: ImmigrationCase[];
@@ -55,11 +57,14 @@ interface EmployeeWorkspaceProps {
   onSendMessage: (content: string) => void;
   onSelectCase: (c: ImmigrationCase) => void;
   onOpenUploadModal: (caseId: string) => void;
+  onOpenCreateClient?: () => void;
   onDocumentUpdated?: (doc: DocumentItem) => void;
   onResolveFinding?: (findingId: string, note: string) => Promise<void>;
   onDismissFinding?: (findingId: string, reason: string, note: string) => Promise<void>;
   onEscalateFinding?: (findingId: string, note: string) => Promise<void>;
   onTriggerAnalysis?: (caseId: string) => Promise<void>;
+  onClientUpdated?: (c: ClientProfile) => void;
+  currentUser?: UserContext;
 }
 
 export function EmployeeWorkspace({
@@ -73,12 +78,16 @@ export function EmployeeWorkspace({
   onSendMessage,
   onSelectCase,
   onOpenUploadModal,
+  onOpenCreateClient,
   onDocumentUpdated,
+  onClientUpdated,
   onResolveFinding,
   onDismissFinding,
   onEscalateFinding,
   onTriggerAnalysis,
 }: EmployeeWorkspaceProps) {
+  const [selectedClientForCredentials, setSelectedClientForCredentials] = useState<ClientProfile | null>(null);
+  const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
     | "my_work"
     | "exception_queue"
@@ -98,7 +107,14 @@ export function EmployeeWorkspace({
   >("my_work");
 
   const [messageInput, setMessageInput] = useState("");
-  const [selectedCaseForWorkspace, setSelectedCaseForWorkspace] = useState<ImmigrationCase>(cases[0] || null);
+  const [selectedCaseForWorkspace, setSelectedCaseForWorkspace] = useState<ImmigrationCase | null>(cases[0] || null);
+
+  useEffect(() => {
+    if (!selectedCaseForWorkspace && cases.length > 0) {
+      setSelectedCaseForWorkspace(cases[0]);
+    }
+  }, [cases, selectedCaseForWorkspace]);
+
   const [showAssignedOnly, setShowAssignedOnly] = useState<boolean>(true);
   const [exceptionCategoryFilter, setExceptionCategoryFilter] = useState<"all" | "blockers" | "documents" | "client_actions" | "deadlines" | "reviews">("all");
   const [formReviewAccepted, setFormReviewAccepted] = useState(false);
@@ -109,24 +125,15 @@ export function EmployeeWorkspace({
   const [internalNoteInput, setInternalNoteInput] = useState("");
   const [internalNotes, setInternalNotes] = useState<
     Array<{ id: string; author: string; role: string; content: string; timestamp: string }>
-  >([
-    {
-      id: "note-1",
-      author: "Sarah Vance, Esq.",
-      role: "Lead Immigration Attorney",
-      content:
-        "Client has strong citation count (h-index 24) for O-1A / EB-1A. Need to verify that letters from referees are independent and not co-authors.",
-      timestamp: "2026-03-24T14:30:00Z",
-    },
-    {
-      id: "note-2",
-      author: "Marcus Jenkin",
-      role: "Senior Paralegal",
-      content:
-        "Contacted translation agency for Dmitri's marriage cert. Awaiting signed cert of translation by Friday.",
-      timestamp: "2026-03-25T09:15:00Z",
-    },
-  ]);
+  >(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("documento_internal_notes");
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
+    return [];
+  });
   const [allInOneChatMode, setAllInOneChatMode] = useState<"client" | "internal_notes">("client");
   const [allInOneSubView, setAllInOneSubView] = useState<
     "all" | "checklist" | "tasks" | "chat" | "package" | "timeline"
@@ -430,7 +437,7 @@ export function EmployeeWorkspace({
 
   const navItems = [
     { key: "my_work", label: "My Work", icon: "💼", count: null },
-    { key: "exception_queue", label: "Exception-First Queue", icon: "🚨", count: 7 },
+    { key: "exception_queue", label: "Exception-First Queue", icon: "🚨", count: cases.length === 0 ? 0 : 7 },
     { key: "all_in_one_workspace", label: "All-in-One Studio", icon: "⚡", count: null },
     { key: "assigned_cases", label: "Assigned Cases", icon: "📁", count: visibleCases.length },
     { key: "team_queues", label: "Team Queues", icon: "⏳", count: null },
@@ -564,27 +571,27 @@ export function EmployeeWorkspace({
                   letterSpacing: "0.02em",
                 }}
               >
-                Case #{selectedCaseForWorkspace?.case_number || "CASE-US-8841"}
+                {selectedCaseForWorkspace ? `Case #${selectedCaseForWorkspace.case_number}` : "Day 0 Initial Setup"}
               </span>
               <span
                 style={{
-                  background: "#EAF6F0",
-                  color: "#176B50",
+                  background: selectedCaseForWorkspace ? "#EAF6F0" : "#F1F5F9",
+                  color: selectedCaseForWorkspace ? "#176B50" : "#475569",
                   fontSize: "10px",
                   fontWeight: 650,
                   padding: "2px 6px",
                   borderRadius: "4px",
-                  border: "1px solid #B9DED4",
+                  border: selectedCaseForWorkspace ? "1px solid #B9DED4" : "1px solid #CBD5E1",
                 }}
               >
-                Active
+                {selectedCaseForWorkspace ? "Active" : "Practice Ready"}
               </span>
             </div>
             <div style={{ fontSize: "12px", fontWeight: 650, color: "#172322", lineHeight: 1.3 }}>
-              {selectedCaseForWorkspace?.visa_category || "EB-1A Extraordinary Ability"}
+              {selectedCaseForWorkspace ? selectedCaseForWorkspace.visa_category : "Zero Petitions Assigned"}
             </div>
             <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>
-              Stage: {selectedCaseForWorkspace?.status ? selectedCaseForWorkspace.status.toUpperCase() : "Evidence Gathering"}
+              Stage: {selectedCaseForWorkspace?.status ? selectedCaseForWorkspace.status.toUpperCase() : "Awaiting New Matters"}
             </div>
           </div>
         </div>
@@ -1151,156 +1158,153 @@ export function EmployeeWorkspace({
 
           {/* Exception Items List */}
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {[
-              {
-                id: "exc-01",
-                category: "blockers",
-                title: "Missing Mandatory Regulatory Criteria (O-1A)",
-                caseNumber: "US-O1A-2026-091",
-                clientName: "Dr. Elena Rostova",
-                severity: "critical",
-                description:
-                  "Only 2 of 3 required regulatory criteria documented. Outstanding original contributions letter missing evidence of widespread field adoption.",
-                statutoryCitation: "8 CFR § 204.5(h)(3)",
-                dueBadge: "48h until filing cutoff",
-                actionLabel: "Resolve Blocker",
-                actionType: "blocker",
-              },
-              {
-                id: "exc-02",
-                category: "blockers",
-                title: "Potential J-1 2-Year Foreign Residence Requirement",
-                caseNumber: "EB2-NIW-8821",
-                clientName: "Dmitri Rostov",
-                severity: "critical",
-                description:
-                  "Previous DS-2019 indicates subject to Section 212(e). J-1 waiver approval (Form I-612) or Advisory Opinion not yet uploaded.",
-                statutoryCitation: "INA § 212(e)",
-                dueBadge: "Prerequisite for I-485",
-                actionLabel: "Resolve Blocker",
-                actionType: "blocker",
-              },
-              {
-                id: "exc-03",
-                category: "documents",
-                title: "Passport Identity Page Rejected",
-                caseNumber: "US-O1A-2026-091",
-                clientName: "Dr. Elena Rostova",
-                severity: "high",
-                description:
-                  "Rejected with code [BLURRY_IMAGE]: Machine-readable zone (MRZ) characters 28-44 unreadable due to glare. Replacement requested.",
-                statutoryCitation: "8 CFR § 103.2(b)(1)",
-                dueBadge: "Client re-upload requested",
-                actionLabel: "Inspect Document",
-                actionType: "document",
-                docId: documents[0]?.id || "doc-01",
-              },
-              {
-                id: "exc-04",
-                category: "documents",
-                title: "Birth Certificate Missing Certified Translation",
-                caseNumber: "EB2-NIW-8821",
-                clientName: "Sofia Rostova",
-                severity: "high",
-                description:
-                  "Rejected with code [MISSING_PAGES]: Foreign-language birth certificate uploaded without certified English translator declaration.",
-                statutoryCitation: "8 CFR § 103.2(b)(3)",
-                dueBadge: "Awaiting certified translation",
-                actionLabel: "Inspect Document",
-                actionType: "document",
-                docId: documents[1]?.id || "doc-02",
-              },
-              {
-                id: "exc-05",
-                category: "client_actions",
-                title: "Form I-140 Questionnaire Incomplete (Stalled > 72h)",
-                caseNumber: "US-O1A-2026-091",
-                clientName: "Dr. Elena Rostova",
-                severity: "high",
-                description:
-                  "Client questionnaire progress stalled at 65% for 4 consecutive days. Part 4 (Alien Information) requires completion.",
-                statutoryCitation: "Firm Casework SLA (Stall > 72h)",
-                dueBadge: "Overdue by 2 days",
-                actionLabel: "Send Client Reminder",
-                actionType: "reminder",
-              },
-              {
-                id: "exc-06",
-                category: "client_actions",
-                title: "Dependent Biometrics Declaration Awaiting Confirmation",
-                caseNumber: "EB2-NIW-8821",
-                clientName: "Dmitri Rostov",
-                severity: "medium",
-                description:
-                  "Physical presence history and travel log pending client digital confirmation before Form I-485 filing.",
-                statutoryCitation: "Form I-485 Supplement A",
-                dueBadge: "3 days remaining",
-                actionLabel: "Send Client Reminder",
-                actionType: "reminder",
-              },
-              {
-                id: "exc-07",
-                category: "deadlines",
-                title: "USCIS Premium Processing 15-Day Milestone",
-                caseNumber: "US-O1A-2026-091",
-                clientName: "Dr. Elena Rostova",
-                severity: "critical",
-                description:
-                  "Form I-907 Premium Processing clock reaches Day 12. Complete final evidentiary audit and assemble filing package before Day 14 cutoff.",
-                statutoryCitation: "8 CFR § 106.4",
-                dueBadge: "3 calendar days left",
-                actionLabel: "Review Package",
-                actionType: "package",
-              },
-              {
-                id: "exc-08",
-                category: "deadlines",
-                title: "IRCC Provincial Nominee ITA Acceptance Window",
-                caseNumber: "CA-PR-4019",
-                clientName: "Marcus Vance",
-                severity: "critical",
-                description:
-                  "Express Entry ITA submission window expires in 6 days. Police clearance certificate and proof of funds pending final validation.",
-                statutoryCitation: "IRPA § 10.2",
-                dueBadge: "6 calendar days left",
-                actionLabel: "Send Client Reminder",
-                actionType: "reminder",
-              },
-              {
-                id: "exc-09",
-                category: "reviews",
-                title: "Form I-140 Petition Package Ready for Senior Attorney Sign-Off",
-                caseNumber: "US-O1A-2026-091",
-                clientName: "Dr. Elena Rostova",
-                severity: "high",
-                description:
-                  "Forms I-140 & G-28 fully populated with 100% confirmed fields. Ready for legal partner review and cryptographic package seal.",
-                statutoryCitation: "Firm QC Rule 4.2",
-                dueBadge: "Sign-off queue: #1",
-                actionLabel: "Review Form",
-                actionType: "form",
-              },
-              {
-                id: "exc-10",
-                category: "reviews",
-                title: "Form ETA-9089 Labor Certification Final Verification",
-                caseNumber: "EB2-NIW-8821",
-                clientName: "Dmitri Rostov",
-                severity: "medium",
-                description:
-                  "Prevailing wage determination and SOC classification match verified. Caseworker sign-off pending.",
-                statutoryCitation: "20 CFR § 656.17",
-                dueBadge: "Review queue: #2",
-                actionLabel: "Review Form",
-                actionType: "form",
-              },
-            ]
-              .filter(
-                (item) =>
-                  exceptionCategoryFilter === "all" ||
-                  item.category === exceptionCategoryFilter
-              )
-              .map((item) => {
+            {cases.length === 0 ? (
+              <div
+                style={{
+                  padding: "48px 24px",
+                  textAlign: "center",
+                  background: "#FFFFFF",
+                  borderRadius: "10px",
+                  border: "1px dashed #CBD5E1",
+                }}
+              >
+                <div style={{ fontSize: "32px", marginBottom: "8px" }}>✅</div>
+                <div style={{ fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
+                  Zero Exceptions Pending • Day 0 Initial State
+                </div>
+                <p style={{ fontSize: "13px", color: "#6E7F7C", maxWidth: "480px", margin: "8px auto 0 auto", lineHeight: "1.5" }}>
+                  There are currently no document verification rejections, blocked statutory requirements, or urgent agency notices. Open your first case or upload documents to start triage.
+                </p>
+              </div>
+            ) : (() => {
+              type ExceptionItemType = {
+                id: string;
+                category: "blockers" | "documents" | "client_actions" | "deadlines" | "reviews";
+                title: string;
+                caseNumber: string;
+                clientName: string;
+                severity: "critical" | "high" | "medium";
+                description: string;
+                statutoryCitation: string;
+                dueBadge: string;
+                actionLabel: string;
+                actionType: "blocker" | "document" | "reminder" | "package" | "form";
+                docId?: string;
+              };
+
+              const allExceptions: ExceptionItemType[] =
+                cases.length === 0
+                  ? []
+                  : [
+                      {
+                        id: "exc-1",
+                        category: "blockers",
+                        title: "Missing Mandatory Regulatory Criteria (O-1A)",
+                        caseNumber: cases[0]?.case_number || "CASE-US-8841",
+                        clientName: cases[0]?.client_name || "Dr. Elena Rostova",
+                        severity: "critical",
+                        description: "Only 2 of required 3 regulatory evidentiary categories satisfied (Published Material & High Remuneration). Missing third criterion.",
+                        statutoryCitation: "8 CFR § 214.2(o)(3)(iii)",
+                        dueBadge: "Overdue 2d",
+                        actionLabel: "Resolve Blocker",
+                        actionType: "blocker",
+                      },
+                      {
+                        id: "exc-2",
+                        category: "blockers",
+                        title: "Potential J-1 2-Year Foreign Residence Requirement",
+                        caseNumber: cases[0]?.case_number || "CASE-US-8841",
+                        clientName: cases[0]?.client_name || "Dr. Elena Rostova",
+                        severity: "critical",
+                        description: "Prior J-1 exchange visitor visa subject to INA § 212(e). Verification of Advisory Opinion or waiver required.",
+                        statutoryCitation: "INA § 212(e)",
+                        dueBadge: "Immediate",
+                        actionLabel: "Review Advisory Opinion",
+                        actionType: "blocker",
+                      },
+                      {
+                        id: "exc-3",
+                        category: "documents",
+                        title: "Passport Identity Page Rejected",
+                        caseNumber: cases[0]?.case_number || "CASE-US-8841",
+                        clientName: cases[0]?.client_name || "Dr. Elena Rostova",
+                        severity: "high",
+                        description: "Resolution failure: Glare detected over MRZ zone. Applicant requested to re-upload clear color PDF.",
+                        statutoryCitation: "9 FAM 504.4-4(A)",
+                        dueBadge: "Action Required",
+                        actionLabel: "Request Re-upload",
+                        actionType: "document",
+                      },
+                      {
+                        id: "exc-4",
+                        category: "deadlines",
+                        title: "USCIS Premium Processing 15-Day Milestone",
+                        caseNumber: cases[3]?.case_number || "CASE-US-8844",
+                        clientName: cases[3]?.client_name || "Kenji Sato",
+                        severity: "high",
+                        description: "Form I-907 clock running. Day 11 of 15. USCIS adjudication or RFE expected within 4 calendar days.",
+                        statutoryCitation: "8 CFR § 103.7(e)",
+                        dueBadge: "Day 11/15",
+                        actionLabel: "View Receipt Status",
+                        actionType: "reminder",
+                      },
+                      {
+                        id: "exc-5",
+                        category: "reviews",
+                        title: "Employment Letter Evidentiary Review",
+                        caseNumber: cases[4]?.case_number || "CASE-CA-1904",
+                        clientName: cases[4]?.client_name || "Carlos Gomez",
+                        severity: "high",
+                        description: "Foreign work experience verification requires senior partner sign-off before submission.",
+                        statutoryCitation: "IRPR § 87.1",
+                        dueBadge: "Review Pending",
+                        actionLabel: "Sign-off Review",
+                        actionType: "package",
+                      },
+                      ...cases
+                        .filter((c) => c.attention_required && c.case_number !== "CASE-US-8841")
+                        .map((c) => ({
+                          id: `exc-case-${c.id}`,
+                          category: "blockers" as const,
+                          title: c.attention_reason || "Statutory Evidentiary Review Required",
+                          caseNumber: c.case_number,
+                          clientName: c.client_name,
+                          severity: "critical" as const,
+                          description: c.attention_reason || "Evidentiary gap flagged for review.",
+                          statutoryCitation: c.visa_category,
+                          dueBadge: c.deadline ? `Due ${c.deadline}` : "Approaching deadline",
+                          actionLabel: "Resolve Blocker",
+                          actionType: "blocker" as const,
+                        })),
+                    ];
+
+              const dynamicExceptions = allExceptions.filter(
+                (item: ExceptionItemType) => exceptionCategoryFilter === "all" || item.category === exceptionCategoryFilter
+              );
+
+              if (dynamicExceptions.length === 0) {
+                return (
+                  <div
+                    style={{
+                      padding: "36px 24px",
+                      textAlign: "center",
+                      background: "#FFFFFF",
+                      borderRadius: "10px",
+                      border: "1px dashed #CBD5E1",
+                    }}
+                  >
+                    <div style={{ fontSize: "28px", marginBottom: "8px" }}>✅</div>
+                    <div style={{ fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>
+                      Zero Exceptions Pending • Day 0 Initial State
+                    </div>
+                    <p style={{ fontSize: "13px", color: "#6E7F7C", margin: "4px 0 0 0" }}>
+                      Your docket currently has no active blockers or document deficiencies. Retain a client or open a case to begin tracking.
+                    </p>
+                  </div>
+                );
+              }
+
+              return dynamicExceptions.map((item) => {
                 const isCrit = item.severity === "critical";
                 const isHigh = item.severity === "high";
                 const borderLeftColor = isCrit
@@ -1426,7 +1430,8 @@ export function EmployeeWorkspace({
                     </div>
                   </div>
                 );
-              })}
+              });
+            })()}
           </div>
         </div>
       )}
@@ -1551,45 +1556,33 @@ export function EmployeeWorkspace({
                 subtitle="Requirements grouped per applicant with status and structured rejection reasons."
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  {[
-                    {
-                      applicant: "Dr. Elena Rostova (Primary Applicant)",
-                      role: "Primary Beneficiary",
-                      items: [
-                        { name: "Passport Identity Page", status: "accepted", note: "Valid through 2031" },
-                        { name: "Ph.D. Academic Evaluation & Degree", status: "accepted", note: "US Equivalency certified" },
-                        { name: "Peer-Reviewed Publications & Citations", status: "under_review", note: "h-index 24 documented" },
-                        {
-                          name: "Reference Letters (3 Letters)",
-                          status: "correction_required",
-                          reasonCode: "INCOMPLETE_DOCUMENT",
-                          explanation: "Letter 2 lacks referee CV and proof of independence.",
-                        },
-                      ],
-                    },
-                    {
-                      applicant: "Dmitri Rostov (Spouse)",
-                      role: "Derivative Beneficiary",
-                      items: [
-                        { name: "Passport Identity Page", status: "accepted", note: "Valid through 2030" },
-                        { name: "Marriage Certificate", status: "accepted", note: "Authenticated apostille verified" },
-                        {
-                          name: "Foreign Language Certified Translation",
-                          status: "rejected",
-                          reasonCode: "MISSING_PAGES",
-                          explanation: "Translator declaration page omitted from PDF submission.",
-                        },
-                      ],
-                    },
-                    {
-                      applicant: "Sofia Rostova (Child)",
-                      role: "Derivative Child",
-                      items: [
-                        { name: "Passport Identity Page", status: "accepted", note: "Valid through 2029" },
-                        { name: "Birth Certificate", status: "required", note: "Required for I-485 filing" },
-                      ],
-                    },
-                  ].map((group) => (
+                  {!selectedCaseForWorkspace ? (
+                    <div style={{ padding: "32px 16px", textAlign: "center", color: "#6E7F7C" }}>
+                      <p style={{ margin: "0 0 4px 0", fontWeight: 650, color: "#063C3D" }}>No Case Selected</p>
+                      <p style={{ margin: 0, fontSize: "12px" }}>Select or create an active immigration case to view applicant evidentiary checklist.</p>
+                    </div>
+                  ) : (() => {
+                    const caseDocs = documents.filter((d) => d.case_id === selectedCaseForWorkspace.id || d.case_number === selectedCaseForWorkspace.case_number);
+                    const docItems = caseDocs.length > 0 ? caseDocs.map((d) => ({
+                      name: d.title,
+                      status: d.verification_status === "verified" ? "accepted" : (d.verification_status === "rejected" ? "rejected" : "under_review"),
+                      note: `Category: ${d.category} • Size: ${d.file_size}`,
+                      reasonCode: d.verification_status === "rejected" ? "VERIFICATION_FAILED" : undefined,
+                      explanation: d.verification_status === "rejected" ? "Flagged during document intake." : undefined,
+                    })) : [
+                      { name: "Government Identity Passport", status: "required", note: "Primary statutory identity document" },
+                      { name: "Evidence of Exceptional Ability or Petition Support", status: "required", note: "Required for petition brief" },
+                    ];
+
+                    const groups = [
+                      {
+                        applicant: `${selectedCaseForWorkspace.client_name} (Primary Applicant)`,
+                        role: "Primary Beneficiary",
+                        items: docItems,
+                      },
+                    ];
+
+                    return groups.map((group) => (
                     <div
                       key={group.applicant}
                       style={{
@@ -1673,7 +1666,8 @@ export function EmployeeWorkspace({
                         ))}
                       </div>
                     </div>
-                  ))}
+                  ));
+                })()}
                 </div>
               </Card>
             )}
@@ -2147,18 +2141,97 @@ export function EmployeeWorkspace({
 
       {/* 4. CLIENT DIRECTORY */}
       {activeTab === "clients" && (
-        <Card title="Retained Applicant Directory" subtitle="All registered clients under organization tenancy.">
-          <DataTable
-            columns={[
-              { key: "name", header: "Applicant Name", render: (c) => <strong>{c.first_name} {c.last_name}</strong> },
-              { key: "email", header: "Email Address", render: (c) => <span>{c.email}</span> },
-              { key: "nationality", header: "Nationality", render: (c) => <Badge variant="neutral">{c.nationality}</Badge> },
-              { key: "phone", header: "Telephone", render: (c) => <span>{c.phone || "Not recorded"}</span> },
-              { key: "created_at", header: "Retained Date", render: (c) => <span suppressHydrationWarning>{new Date(c.created_at).toLocaleDateString()}</span> },
-            ]}
-            data={clients}
-            keyExtractor={(c) => c.id}
-          />
+        <Card
+          title="Retained Applicant Directory & Credentials"
+          subtitle="All registered clients under organization tenancy. Credentials must be provided by Lead Paralegal or Owner for client portal sign-in."
+          actions={
+            onOpenCreateClient ? (
+              <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
+                + Retain Client
+              </Button>
+            ) : undefined
+          }
+        >
+          {clients.length === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "48px 24px",
+                background: "#F8F7F2",
+                border: "2px dashed #B9DED4",
+                borderRadius: "12px",
+                margin: "12px 0",
+              }}
+            >
+              <div style={{ fontSize: "36px", marginBottom: "12px" }}>👤</div>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", marginBottom: "6px" }}>
+                No Retained Clients in Firm Directory (Clean Slate)
+              </h3>
+              <p style={{ fontSize: "13px", color: "#6E7F7C", maxWidth: "520px", margin: "0 auto 20px auto", lineHeight: 1.5 }}>
+                Zero client profiles are currently registered. Retained clients cannot log into Documento until an Owner or Lead Paralegal retains their record and provides their secure portal credentials.
+              </p>
+              {onOpenCreateClient && (
+                <Button variant="primary" onClick={onOpenCreateClient}>
+                  + Retain First Client & Issue Credentials
+                </Button>
+              )}
+            </div>
+          ) : (
+            <DataTable
+              columns={[
+                {
+                  key: "name",
+                  header: "Applicant Name",
+                  render: (c) => (
+                    <div>
+                      <strong>{c.first_name} {c.last_name}</strong>
+                      <span style={{ fontSize: "11px", color: "#6E7F7C", display: "block" }}>ID: {c.id}</span>
+                    </div>
+                  ),
+                },
+                { key: "email", header: "Email Address", render: (c) => <span style={{ fontWeight: 550, color: "#0D6866" }}>{c.email}</span> },
+                { key: "nationality", header: "Nationality", render: (c) => <Badge variant="neutral">{c.nationality}</Badge> },
+                { key: "phone", header: "Telephone", render: (c) => <span>{c.phone || "Not recorded"}</span> },
+                { key: "created_at", header: "Retained Date", render: (c) => <span suppressHydrationWarning>{new Date(c.created_at).toLocaleDateString()}</span> },
+                {
+                  key: "credentials_status",
+                  header: "Portal Access",
+                  render: (c) => (
+                    <div>
+                      {c.portal_credentials_provided ? (
+                        <Badge variant="success" size="sm">Credentials Active</Badge>
+                      ) : (
+                        <Badge variant="warning" size="sm">No Credentials (Blocked)</Badge>
+                      )}
+                      {c.credentials_provisioned_by && (
+                        <div style={{ fontSize: "10px", color: "#6E7F7C", marginTop: "2px" }}>
+                          By {c.credentials_provisioned_by}
+                        </div>
+                      )}
+                    </div>
+                  ),
+                },
+                {
+                  key: "actions",
+                  header: "Action",
+                  render: (c) => (
+                    <Button
+                      variant={c.portal_credentials_provided ? "outline" : "primary"}
+                      size="sm"
+                      onClick={() => {
+                        setSelectedClientForCredentials(c);
+                        setIsProvisionModalOpen(true);
+                      }}
+                    >
+                      🔑 {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
+                    </Button>
+                  ),
+                },
+              ]}
+              data={clients}
+              keyExtractor={(c) => c.id}
+            />
+          )}
         </Card>
       )}
 
@@ -3037,6 +3110,22 @@ export function EmployeeWorkspace({
         isOpen={isSummaryModalOpen}
         onClose={() => setIsSummaryModalOpen(false)}
         summary={evidenceSummary}
+      />
+
+      {/* Provision Client Portal Credentials Modal */}
+      <ProvisionCredentialsModal
+        isOpen={isProvisionModalOpen}
+        onClose={() => {
+          setIsProvisionModalOpen(false);
+          setSelectedClientForCredentials(null);
+        }}
+        client={selectedClientForCredentials}
+        onCredentialsUpdated={(updated) => {
+          onClientUpdated?.(updated);
+          setIsProvisionModalOpen(false);
+          setSelectedClientForCredentials(null);
+        }}
+        activeRole="case_manager"
       />
     </div>
   );

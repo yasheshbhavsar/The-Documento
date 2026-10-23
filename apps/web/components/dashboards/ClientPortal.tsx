@@ -162,10 +162,10 @@ export function DocumentProgressionStepper({
 
 interface ClientPortalProps {
   myCase: ImmigrationCase | null;
-  documents: DocumentItem[];
-  messages: MessageItem[];
-  notifications: NotificationItem[];
-  invoices: InvoiceItem[];
+  documents?: DocumentItem[];
+  messages?: MessageItem[];
+  notifications?: NotificationItem[];
+  invoices?: InvoiceItem[];
   onOpenUploadModal: () => void;
   onOpenQuestionnaireModal: () => void;
   onSendMessage: (content: string) => void;
@@ -175,10 +175,10 @@ interface ClientPortalProps {
 
 export function ClientPortal({
   myCase,
-  documents,
-  messages,
-  notifications,
-  invoices,
+  documents = [],
+  messages = [],
+  notifications = [],
+  invoices = [],
   onOpenUploadModal,
   onOpenQuestionnaireModal,
   onSendMessage,
@@ -218,70 +218,74 @@ export function ClientPortal({
   const [rescheduleNotice, setRescheduleNotice] = useState<string | null>(null);
 
   // In-Progress Questionnaires & Forms
-  const [inProgressForms, setInProgressForms] = useState<InProgressFormItem[]>([
-    {
-      form_id: "form-i140",
-      form_title: "Form I-140 Immigrant Petition Questionnaire",
-      completion_percentage: 65,
-      last_saved_at: "2026-03-24T18:40:00Z",
-      applicant_name: "Dr. Elena Rostova",
-      estimated_minutes_remaining: 15,
-    },
-    {
-      form_id: "form-i485-dep",
-      form_title: "Form I-485 Derivative Biographic Questionnaire",
-      completion_percentage: 30,
-      last_saved_at: "2026-03-22T11:20:00Z",
-      applicant_name: "Dmitri Rostov",
-      estimated_minutes_remaining: 25,
-    },
-  ]);
+  const [inProgressForms, setInProgressForms] = useState<InProgressFormItem[]>(() => {
+    if (!myCase) return [];
+    return [
+      {
+        form_id: `form-intake-${myCase.id}`,
+        form_title:
+          myCase.case_number === "CASE-US-8841" || myCase.visa_category.includes("EB-1")
+            ? "Form I-140 Immigrant Petition Questionnaire"
+            : `${myCase.visa_category} Statutory Intake Questionnaire`,
+        completion_percentage: myCase.case_number === "CASE-US-8841" ? 65 : (myCase.readiness_score || 20),
+        last_saved_at: new Date().toISOString(),
+        applicant_name: myCase.client_name,
+        estimated_minutes_remaining: 15,
+      },
+    ];
+  });
 
   // Pending Actions
-  const [pendingActions, setPendingActions] = useState<ClientPendingActionItem[]>([
-    {
-      id: "act-1",
-      title: "Re-upload Certified Translation of Foreign Marriage Record",
-      description: "Cyrillic marriage record requires complete certified English translator declaration.",
-      due_date: "In 3 days (April 10, 2026)",
-      priority: "high",
-      action_type: "document_upload",
-      target_applicant: "Dmitri Rostov",
-    },
-    {
-      id: "act-2",
-      title: "Digital Sign-off on Premium Processing Retainer Addendum",
-      description: "Authorize Form I-907 upgrade for 15-day USCIS adjudication window.",
-      due_date: "In 5 days",
-      priority: "medium",
-      action_type: "esign",
-      target_applicant: "Dr. Elena Rostova",
-    },
-  ]);
+  const [pendingActions, setPendingActions] = useState<ClientPendingActionItem[]>(() => {
+    if (!myCase) return [];
+    return [
+      {
+        id: "act-1",
+        title:
+          myCase.case_number === "CASE-US-8841"
+            ? "Re-upload Certified Translation of Foreign Marriage Record"
+            : "Upload Government Passport Identity Page",
+        description:
+          myCase.case_number === "CASE-US-8841"
+            ? "Paralegal flagged blurry signature on translation certification. Please upload a clear 300 DPI scan."
+            : "Submit a high-resolution scan of your biographical passport page matching official records.",
+        due_date: myCase.case_number === "CASE-US-8841" ? "In 2 days (Oct 22)" : (myCase.deadline ? `Before ${myCase.deadline}` : "Pending initial intake"),
+        priority: "high",
+        action_type: "document_upload",
+        target_applicant: myCase.case_number === "CASE-US-8841" ? "Dmitri Rostova (Spouse)" : myCase.client_name,
+      },
+    ];
+  });
 
   // Upcoming Appointments
-  const [upcomingAppointments, setUpcomingAppointments] = useState<ClientAppointmentItem[]>([
-    {
-      id: "apt-1",
-      title: "USCIS Biometrics Appointment",
-      appointment_type: "biometrics",
-      date_time: "Tuesday, April 14, 2026 at 10:00 AM EST",
-      location: "USCIS Application Support Center • 8830 Richmond Hwy, Alexandria, VA",
-      officer_or_venue: "ASC Officer Station 4",
-      instructions: "Bring unexpired foreign passport and official Form I-797C appointment notice.",
-      can_reschedule: true,
-    },
-    {
-      id: "apt-2",
-      title: "Strategy Video Consultation with Lead Attorney",
-      appointment_type: "attorney_strategy",
-      date_time: "Friday, April 17, 2026 at 02:30 PM EST",
-      location: "Secure Firm Zoom Conference Room",
-      officer_or_venue: "Sarah Vance, Esq. (Lead Partner)",
-      instructions: "Review final exhibit list and expert witness endorsement statements.",
-      can_reschedule: true,
-    },
-  ]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<ClientAppointmentItem[]>(() => {
+    if (!myCase) return [];
+    if (myCase.case_number === "CASE-US-8841") {
+      return [
+        {
+          id: "appt-1",
+          title: "USCIS Biometrics Appointment",
+          appointment_type: "biometrics",
+          date_time: "November 04, 2026 at 09:30 AM PST",
+          location: "USCIS Application Support Center — San Jose, CA",
+          officer_or_venue: "ASC Officer / Biometrics Tech",
+          instructions: "Bring unexpired passport and Form I-797C appointment notice.",
+          can_reschedule: true,
+        },
+        {
+          id: "appt-2",
+          title: "Strategy Video Consultation with Lead Attorney",
+          appointment_type: "attorney_strategy",
+          date_time: "October 28, 2026 at 02:00 PM PST",
+          location: "Secure Video Conference Link (LexImmigration)",
+          officer_or_venue: "Sarah Jenkins, Esq.",
+          instructions: "Review petition exhibit list prior to video consultation.",
+          can_reschedule: true,
+        },
+      ];
+    }
+    return [];
+  });
 
   const missingDocs = documents.filter((d) => d.status === "missing" || d.status === "action_needed");
   const unreadCount = notifications.filter((n) => n.status === "unread").length;
@@ -307,16 +311,16 @@ export function ClientPortal({
     {
       key: "updates" as const,
       label: t.navUpdates,
-      buttonText: `📑 ${t.navUpdates} (5)`,
+      buttonText: `📑 ${t.navUpdates}${myCase ? " (5)" : ""}`,
       icon: "📑",
-      count: 5,
+      count: myCase ? 5 : null,
     },
     {
       key: "checklist" as const,
       label: "Per-Applicant Checklist",
-      buttonText: `✅ Per-Applicant Checklist (8)`,
+      buttonText: `✅ Per-Applicant Checklist${myCase ? " (8)" : ""}`,
       icon: "✅",
-      count: 8,
+      count: myCase ? 8 : null,
     },
     {
       key: "documents" as const,
@@ -435,27 +439,27 @@ export function ClientPortal({
                   letterSpacing: "0.02em",
                 }}
               >
-                {t.caseLabel} #{myCase?.case_number || "CASE-US-8841"}
+                {myCase ? `${t.caseLabel} #${myCase.case_number}` : "No Active Case"}
               </span>
               <span
                 style={{
-                  background: "#EAF6F0",
-                  color: "#176B50",
+                  background: myCase ? "#EAF6F0" : "#F1F5F9",
+                  color: myCase ? "#176B50" : "#64748B",
                   fontSize: "10px",
                   fontWeight: 650,
                   padding: "2px 6px",
                   borderRadius: "4px",
-                  border: "1px solid #B9DED4",
+                  border: myCase ? "1px solid #B9DED4" : "1px solid #CBD5E1",
                 }}
               >
-                {t.activeStatus}
+                {myCase ? t.activeStatus : "Pending Intake"}
               </span>
             </div>
             <div style={{ fontSize: "12px", fontWeight: 650, color: "#172322", lineHeight: 1.3 }}>
-              {myCase?.visa_category || "EB-1A Extraordinary Ability"}
+              {myCase ? myCase.visa_category : "Initial Client Intake"}
             </div>
             <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>
-              {t.stageLabel}
+              {myCase ? t.stageLabel : "Awaiting Counsel Scoping"}
             </div>
           </div>
         </div>
@@ -605,13 +609,13 @@ export function ClientPortal({
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {myCase?.assigned_manager || "Sarah Jenkins, Esq."}
+                {myCase?.assigned_manager || (myCase ? "Sarah Jenkins, Esq." : "Unassigned Counsel")}
               </div>
               <div style={{ fontSize: "11px", color: "#0D6866", fontWeight: 650, lineHeight: 1.2 }}>
                 {t.assignedOfficerTitle}
               </div>
               <div style={{ fontSize: "10px", color: "#6E7F7C", marginTop: "1px" }}>
-                🟢 {t.onlineNowText}
+                {t.onlineNowText}
               </div>
             </div>
           </div>
@@ -632,7 +636,7 @@ export function ClientPortal({
               transition: "all 0.15s ease",
             }}
           >
-            💬 {t.chatWithOfficerButton}
+            {t.chatWithOfficerButton}
           </button>
         </div>
       </aside>
@@ -802,7 +806,7 @@ export function ClientPortal({
                       border: "1px solid #B9DED4",
                     }}
                   >
-                    EB-1A Extraordinary Ability
+                    {myCase?.visa_category || "Initial Client Intake"}
                   </span>
                 </div>
                 <p
@@ -813,7 +817,15 @@ export function ClientPortal({
                     lineHeight: 1.4,
                   }}
                 >
-                  Welcome to Your Immigration Transparency Portal, Dr. Rostova • <strong>Case Ref: {myCase?.case_number || "CASE-US-8841"}</strong> • Jurisdiction: <strong>United States (USCIS)</strong>
+                  {myCase ? (
+                    <>
+                      Welcome to Your Immigration Transparency Portal, {myCase.client_name} • <strong>Case Ref: {myCase.case_number}</strong> • Jurisdiction: <strong>{myCase.jurisdiction}</strong>
+                    </>
+                  ) : (
+                    <>
+                      Welcome to Your Immigration Transparency Portal • <strong>Initial Setup Ready</strong> • Onboard your first matter to begin tracking
+                    </>
+                  )}
                 </p>
               </div>
 
@@ -839,18 +851,20 @@ export function ClientPortal({
                   }}
                 >
                   <span>📑 {t.navUpdates}</span>
-                  <span
-                    style={{
-                      background: "#22C55E",
-                      color: "#FFFFFF",
-                      fontSize: "10px",
-                      fontWeight: 800,
-                      padding: "1px 6px",
-                      borderRadius: "10px",
-                    }}
-                  >
-                    5
-                  </span>
+                  {myCase && (
+                    <span
+                      style={{
+                        background: "#22C55E",
+                        color: "#FFFFFF",
+                        fontSize: "10px",
+                        fontWeight: 800,
+                        padding: "1px 6px",
+                        borderRadius: "10px",
+                      }}
+                    >
+                      5
+                    </span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -927,8 +941,8 @@ export function ClientPortal({
               </div>
             </div>
 
-            {/* Contextual Onboarding Checklist (Only shown when genuinely incomplete) */}
-            {!onboardingDismissed && (
+            {/* Contextual Onboarding Checklist (Only shown when genuinely incomplete and case is active) */}
+            {!onboardingDismissed && myCase && (
               <div
                 style={{
                   background: "#F8F7F2",
@@ -1049,17 +1063,37 @@ export function ClientPortal({
             )}
 
             {/* Primary Next-Action Card & Task Ownership Separation */}
-            <WaitingStateBanner
-              waitingState={FALLBACK_WAITING_STATE}
-              caseId={myCase?.id}
-              onActionClick={(item) => {
-                if (item.type === "document_request") {
-                  setActiveTab("documents");
-                } else if (item.type === "questionnaire") {
-                  setIsOnboardingModalOpen(true);
-                }
-              }}
-            />
+            {myCase ? (
+              <WaitingStateBanner
+                waitingState={FALLBACK_WAITING_STATE}
+                caseId={myCase.id}
+                onActionClick={(item) => {
+                  if (item.type === "document_request") {
+                    setActiveTab("documents");
+                  } else if (item.type === "questionnaire") {
+                    setIsOnboardingModalOpen(true);
+                  }
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  border: "1px dashed #B9DED4",
+                  borderRadius: "14px",
+                  padding: "32px 24px",
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: "36px", marginBottom: "12px" }}>📂</div>
+                <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
+                  Awaiting Case File Setup by Legal Team
+                </h3>
+                <p style={{ margin: 0, fontSize: "13px", color: "#64748B", maxWidth: "560px", marginInline: "auto", lineHeight: 1.5 }}>
+                  Your secure portal account is active. Your legal team (firm Owner or Lead Paralegal) will configure your immigration matter, upload initial petition filings, and assign required checklists. You will be notified as soon as actions are ready.
+                </p>
+              </div>
+            )}
 
             {/* In-Progress Forms, Pending Actions & Upcoming Appointments Card */}
             <div
@@ -1152,7 +1186,12 @@ export function ClientPortal({
                       <span style={{ fontSize: "11px", color: "#64748B" }}>Auto-Saved</span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                      {inProgressForms.map((frm) => (
+                      {inProgressForms.length === 0 ? (
+                        <div style={{ padding: "16px 12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
+                          No questionnaires currently pending.
+                        </div>
+                      ) : (
+                        inProgressForms.map((frm) => (
                         <div
                           key={frm.form_id}
                           style={{
@@ -1209,7 +1248,7 @@ export function ClientPortal({
                             </button>
                           </div>
                         </div>
-                      ))}
+                      )))}
                     </div>
                   </div>
                 </div>
@@ -1244,7 +1283,12 @@ export function ClientPortal({
                       </span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {pendingActions.map((act) => (
+                      {pendingActions.length === 0 ? (
+                        <div style={{ padding: "16px 12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
+                          No urgent client actions pending at this stage.
+                        </div>
+                      ) : (
+                        pendingActions.map((act) => (
                         <div
                           key={act.id}
                           style={{
@@ -1294,7 +1338,7 @@ export function ClientPortal({
                             </button>
                           </div>
                         </div>
-                      ))}
+                      )))}
                     </div>
                   </div>
                 </div>
@@ -1318,7 +1362,12 @@ export function ClientPortal({
                       <span style={{ fontSize: "11px", color: "#166534", fontWeight: 650 }}>Confirmed</span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {upcomingAppointments.map((apt) => (
+                      {upcomingAppointments.length === 0 ? (
+                        <div style={{ padding: "16px 12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
+                          No upcoming appointments scheduled.
+                        </div>
+                      ) : (
+                        upcomingAppointments.map((apt) => (
                         <div
                           key={apt.id}
                           style={{
@@ -1390,7 +1439,7 @@ export function ClientPortal({
                             )}
                           </div>
                         </div>
-                      ))}
+                      )))}
                     </div>
                   </div>
                 </div>
@@ -1452,7 +1501,12 @@ export function ClientPortal({
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {FALLBACK_VISA_FILE_UPDATES.slice(0, 2).map((item) => (
+                {!myCase || FALLBACK_VISA_FILE_UPDATES.length === 0 ? (
+                  <div style={{ padding: "20px 16px", textAlign: "center", color: "#6E7F7C", fontSize: "13px", background: "#F8F7F2", borderRadius: "8px", border: "1px dashed #DCE5E1" }}>
+                    No visa docket updates yet. Official government notifications will populate here once your petition is filed with immigration authorities.
+                  </div>
+                ) : (
+                  FALLBACK_VISA_FILE_UPDATES.slice(0, 2).map((item) => (
                   <div
                     key={item.id}
                     onClick={() => setActiveTab("updates")}
@@ -1514,11 +1568,12 @@ export function ClientPortal({
                       </span>
                     </div>
                   </div>
-                ))}
+                )))}
               </div>
             </div>
 
             {/* Documented Case Progress Stepper */}
+            {myCase && (
             <div
               style={{
                 background: "#FFFFFF",
@@ -1613,6 +1668,7 @@ export function ClientPortal({
                 ))}
               </div>
             </div>
+            )}
 
             {/* Balanced Lower Section: Case Details & Notifications */}
             <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: "20px" }}>
@@ -1628,7 +1684,7 @@ export function ClientPortal({
                         CASE NUMBER
                       </span>
                       <strong style={{ fontSize: "15px", color: "#063C3D" }}>
-                        {myCase?.case_number || "CASE-US-8841"}
+                        {myCase?.case_number || "Pending Case Opening"}
                       </strong>
                     </div>
                     <div style={{ background: "#F8F7F2", padding: "12px 14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
@@ -1636,7 +1692,7 @@ export function ClientPortal({
                         PETITION TYPE
                       </span>
                       <strong style={{ color: "#063C3D" }}>
-                        {myCase?.visa_category || "EB-1A Extraordinary Ability"}
+                        {myCase?.visa_category || "Initial Intake Scoping"}
                       </strong>
                     </div>
                     <div style={{ background: "#F8F7F2", padding: "12px 14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
@@ -1644,7 +1700,7 @@ export function ClientPortal({
                         PRIMARY LAWYER
                       </span>
                       <span style={{ color: "#172322", fontWeight: 600 }}>
-                        {myCase?.assigned_manager || "Sarah Jenkins, Esq."}
+                        {myCase?.assigned_manager || "Unassigned (Intake Pending)"}
                       </span>
                     </div>
                     <div style={{ background: "#F8F7F2", padding: "12px 14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
@@ -1652,7 +1708,7 @@ export function ClientPortal({
                         TARGET JURISDICTION
                       </span>
                       <span style={{ color: "#172322", fontWeight: 600 }}>
-                        {myCase?.jurisdiction || "United States (USCIS)"}
+                        {myCase?.jurisdiction || "Pending Determination"}
                       </span>
                     </div>
                   </div>
@@ -1660,10 +1716,10 @@ export function ClientPortal({
                   <div style={{ borderTop: "1px solid #DCE5E1", paddingTop: "14px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "6px" }}>
                       <span style={{ fontWeight: 650, color: "#063C3D" }}>Petition Filing Readiness</span>
-                      <strong style={{ color: "#0D6866" }}>{myCase?.readiness_score || 82}% Complete</strong>
+                      <strong style={{ color: "#0D6866" }}>{myCase ? `${myCase.readiness_score}% Complete` : "0% (Setup Phase)"}</strong>
                     </div>
                     <div style={{ width: "100%", height: "8px", backgroundColor: "#E7EFEB", borderRadius: "4px", overflow: "hidden" }}>
-                      <div style={{ width: `${myCase?.readiness_score || 82}%`, height: "100%", backgroundColor: "#0D6866" }} />
+                      <div style={{ width: `${myCase ? (myCase.readiness_score || 0) : 0}%`, height: "100%", backgroundColor: "#0D6866" }} />
                     </div>
                     <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "6px", lineHeight: 1.4 }}>
                       Workflow progress measures evidentiary milestone completion and does not predict USCIS processing time or statutory approval outcome.
@@ -1678,7 +1734,12 @@ export function ClientPortal({
                 subtitle="Official case updates from your legal team."
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {notifications.map((n) => (
+                  {notifications.length === 0 ? (
+                    <div style={{ padding: "20px 14px", textAlign: "center", color: "#6E7F7C", fontSize: "12px", background: "#F8F7F2", borderRadius: "8px", border: "1px dashed #DCE5E1" }}>
+                      No notifications yet. Direct notices from your legal team will appear here.
+                    </div>
+                  ) : (
+                    notifications.map((n) => (
                     <div
                       key={n.id}
                       onClick={() => onMarkNotificationRead(n.id)}
@@ -1710,7 +1771,7 @@ export function ClientPortal({
                       </div>
                       <p style={{ margin: 0, fontSize: "12px", color: "#445451", lineHeight: 1.4 }}>{n.body}</p>
                     </div>
-                  ))}
+                  )))}
                 </div>
               </Card>
             </div>
@@ -1733,7 +1794,29 @@ export function ClientPortal({
             TAB: PER-APPLICANT EVIDENTIARY CHECKLIST
             ========================================================================= */}
         {activeTab === "checklist" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          !myCase ? (
+            <div
+              data-testid="checklist-empty-state"
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "40px auto",
+              }}
+            >
+              <div style={{ fontSize: "40px", marginBottom: "14px" }}>📋</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                No Evidentiary Checklist Configured
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                Your legal team (firm Owner or Lead Paralegal) has not yet published an evidentiary checklist for your matter. Once your petition file is configured, per-applicant requirements and verification stages will appear here.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* Header Card */}
             <div
               style={{
@@ -2055,17 +2138,40 @@ export function ClientPortal({
                   </div>
                 </div>
               ))}
-          </div>
+            </div>
+          )
         )}
 
         {/* =========================================================================
             TAB 2: UPLOAD DOCUMENTS (Evidence & Uploads)
             ========================================================================= */}
         {activeTab === "documents" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          !myCase ? (
+            <div
+              data-testid="documents-empty-state"
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "40px auto",
+              }}
+            >
+              <div style={{ fontSize: "40px", marginBottom: "14px" }}>📄</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                No Documents Requested Yet
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                Your legal team (firm Owner or Lead Paralegal) has not yet activated a petition matter or issued document requests for your account. You will receive an alert as soon as evidence collection checklists are configured.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* Phase 4 — Family Intake & Mobile-First Camera Scanning Hub */}
             <FamilyDocumentIntakeHub
-              caseId={myCase?.id || "case-01"}
+              caseId={myCase.id}
               onDocumentUploaded={() => {
                 // Trigger refresh if needed
               }}
@@ -2204,133 +2310,226 @@ export function ClientPortal({
               />
             </Card>
           </div>
-        )}
+        )
+      )}
 
         {/* =========================================================================
             TAB 3: GUIDED QUESTIONNAIRE
             ========================================================================= */}
         {activeTab === "questionnaire" && (
-          <Card
-            title="Guided Statutory Evidentiary Questionnaire"
-            subtitle="Map your career accomplishments directly against USCIS 8 CFR § 204.5(h)(3) criteria."
-            actions={
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={onOpenQuestionnaireModal}
-                style={{ background: "#0D6866", color: "#FFFFFF" }}
-              >
-                Open Guided Wizard →
-              </Button>
-            }
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {[
-                { criterion: "1. Scholarly Articles & Scientific Publications", status: "Completed (14 papers submitted)", verified: true },
-                { criterion: "2. Participation as a Judge / Peer Reviewer", status: "Completed (28 verified reviews)", verified: true },
-                { criterion: "3. Original Scientific Contributions of Major Significance", status: "In Review by Attorney", verified: false },
-                { criterion: "4. Leading or Critical Role in Distinguished Organizations", status: "Draft Saved (Awaiting CEO letter)", verified: false },
-              ].map((item) => (
-                <div
-                  key={item.criterion}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "14px 16px",
-                    background: "#F8F7F2",
-                    border: "1px solid #DCE5E1",
-                    borderRadius: "8px",
-                  }}
-                >
-                  <div>
-                    <strong style={{ fontSize: "14px", color: "#063C3D", display: "block" }}>{item.criterion}</strong>
-                    <span style={{ fontSize: "13px", color: "#445451" }}>{item.status}</span>
-                  </div>
-                  <Badge variant={item.verified ? "success" : "review"}>
-                    {item.verified ? "VERIFIED ✓" : "IN PROGRESS"}
-                  </Badge>
-                </div>
-              ))}
+          !myCase ? (
+            <div
+              data-testid="questionnaire-empty-state"
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "40px auto",
+              }}
+            >
+              <div style={{ fontSize: "40px", marginBottom: "14px" }}>📝</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                No Questionnaire Configured
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                Your legal team has not assigned any questionnaires to your matter yet.
+              </p>
             </div>
-          </Card>
+          ) : (
+            <Card
+              title="Guided Statutory Evidentiary Questionnaire"
+              subtitle="Map your career accomplishments directly against USCIS 8 CFR § 204.5(h)(3) criteria."
+              actions={
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={onOpenQuestionnaireModal}
+                  style={{ background: "#0D6866", color: "#FFFFFF" }}
+                >
+                  Open Guided Wizard →
+                </Button>
+              }
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {[
+                  { criterion: "1. Scholarly Articles & Scientific Publications", status: "Completed (14 papers submitted)", verified: true },
+                  { criterion: "2. Participation as a Judge / Peer Reviewer", status: "Completed (28 verified reviews)", verified: true },
+                  { criterion: "3. Original Scientific Contributions of Major Significance", status: "In Review by Attorney", verified: false },
+                  { criterion: "4. Leading or Critical Role in Distinguished Organizations", status: "Draft Saved (Awaiting CEO letter)", verified: false },
+                ].map((item) => (
+                  <div
+                    key={item.criterion}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "14px 16px",
+                      background: "#F8F7F2",
+                      border: "1px solid #DCE5E1",
+                      borderRadius: "8px",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: "14px", color: "#063C3D", display: "block" }}>{item.criterion}</strong>
+                      <span style={{ fontSize: "13px", color: "#445451" }}>{item.status}</span>
+                    </div>
+                    <Badge variant={item.verified ? "success" : "review"}>
+                      {item.verified ? "VERIFIED ✓" : "IN PROGRESS"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )
         )}
 
         {/* =========================================================================
             TAB 4: FORMS REVIEW
             ========================================================================= */}
         {activeTab === "forms" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <ConfigurableFormViewer
-              submission={FALLBACK_FORM_SUBMISSION}
-              userRole="retained_client"
-            />
-          </div>
+          !myCase ? (
+            <div
+              data-testid="forms-empty-state"
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "40px auto",
+              }}
+            >
+              <div style={{ fontSize: "40px", marginBottom: "14px" }}>📋</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                No Forms Ready for Review
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                Your petition forms will be generated once your legal team compiles your evidentiary materials.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <ConfigurableFormViewer
+                submission={FALLBACK_FORM_SUBMISSION}
+                userRole="retained_client"
+              />
+            </div>
+          )
         )}
 
         {/* =========================================================================
             TAB 5: CASE MILESTONES
             ========================================================================= */}
         {activeTab === "milestones" && (
-          <Card
-            title="Immigration Pathway Milestones"
-            subtitle="Transparent progress tracking towards petition filing and adjudication."
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {milestones.map((m, idx) => (
-                <div key={m.name} style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
-                  <div
-                    style={{
-                      width: "28px",
-                      height: "28px",
-                      borderRadius: "50%",
-                      background: m.done ? "#176B50" : "#F1F6F4",
-                      border: `2px solid ${m.done ? "#176B50" : "#BDCDC7"}`,
-                      color: m.done ? "#FFFFFF" : "#6E7F7C",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {m.done ? "✓" : idx + 1}
-                  </div>
-                  <div style={{ flex: 1, paddingBottom: "12px", borderBottom: idx < milestones.length - 1 ? "1px solid #DCE5E1" : "none" }}>
-                    <strong style={{ fontSize: "14px", color: m.done ? "#063C3D" : "#445451", display: "block" }}>
-                      {m.name}
-                    </strong>
-                    <span style={{ fontSize: "12px", color: "#6E7F7C" }}>{m.date}</span>
-                  </div>
-                </div>
-              ))}
+          !myCase ? (
+            <div
+              data-testid="milestones-empty-state"
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "40px auto",
+              }}
+            >
+              <div style={{ fontSize: "40px", marginBottom: "14px" }}>🏁</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                No Case Milestones Initialized
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                Your legal pathway milestones will be displayed here once your petition matter is opened by your law firm.
+              </p>
             </div>
-          </Card>
+          ) : (
+            <Card
+              title="Immigration Pathway Milestones"
+              subtitle="Transparent progress tracking towards petition filing and adjudication."
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {milestones.map((m, idx) => (
+                  <div key={m.name} style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+                    <div
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        background: m.done ? "#176B50" : "#F1F6F4",
+                        border: `2px solid ${m.done ? "#176B50" : "#BDCDC7"}`,
+                        color: m.done ? "#FFFFFF" : "#6E7F7C",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {m.done ? "✓" : idx + 1}
+                    </div>
+                    <div style={{ flex: 1, paddingBottom: "12px", borderBottom: idx < milestones.length - 1 ? "1px solid #DCE5E1" : "none" }}>
+                      <strong style={{ fontSize: "14px", color: m.done ? "#063C3D" : "#445451", display: "block" }}>
+                        {m.name}
+                      </strong>
+                      <span style={{ fontSize: "12px", color: "#6E7F7C" }}>{m.date}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )
         )}
 
         {/* =========================================================================
             TAB 6: CHAT WITH CASE PROCESSING OFFICER (Lawyer Messages)
             ========================================================================= */}
         {activeTab === "messages" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <CaseOfficerChatBanner
-              caseNumber={myCase?.case_number}
-              visaCategory={myCase?.visa_category}
-              language={clientLanguage}
-              onSelectPrompt={(prompt) => {
-                setChatPromptText(prompt);
+          !myCase ? (
+            <div
+              data-testid="messages-empty-state"
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "40px auto",
               }}
-            />
+            >
+              <div style={{ fontSize: "40px", marginBottom: "14px" }}>💬</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                Direct Attorney Communication Pending
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                Direct encrypted messaging with your supervising attorney and lead paralegal will activate once your immigration petition is formally initialized.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <CaseOfficerChatBanner
+                caseNumber={myCase?.case_number}
+                visaCategory={myCase?.visa_category}
+                language={clientLanguage}
+                onSelectPrompt={(prompt) => {
+                  setChatPromptText(prompt);
+                }}
+              />
 
-            <SecureMessagingHub
-              caseId={myCase?.id}
-              isStaffMode={false}
-              language={clientLanguage}
-              initialReplyText={chatPromptText}
-              onSendMessage={(content) => onSendMessage?.(content)}
-            />
-          </div>
+              <SecureMessagingHub
+                caseId={myCase?.id}
+                isStaffMode={false}
+                language={clientLanguage}
+                initialReplyText={chatPromptText}
+                onSendMessage={(content) => onSendMessage?.(content)}
+              />
+            </div>
+          )
         )}
 
         {/* =========================================================================
@@ -2353,32 +2552,46 @@ export function ClientPortal({
               >
                 <div>
                   <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600 }}>LEGAL NAME</span>
-                  <strong style={{ color: "#063C3D", fontSize: "14px" }}>Dr. Elena Rostova</strong>
+                  <strong style={{ color: "#063C3D", fontSize: "14px" }}>
+                    {myCase ? myCase.client_name : "Applicant Name Pending"}
+                  </strong>
                 </div>
                 <div>
                   <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600 }}>DATE OF BIRTH</span>
-                  <span style={{ color: "#172322" }}>1988-04-12</span>
+                  <span style={{ color: "#172322" }}>
+                    {myCase?.case_number === "CASE-US-8841" ? "1988-04-12" : (myCase ? "Verified on Passport" : "Pending Intake Submission")}
+                  </span>
                 </div>
                 <div>
                   <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600 }}>CITIZENSHIP / NATIONALITY</span>
-                  <span style={{ color: "#172322" }}>Ukraine</span>
+                  <span style={{ color: "#172322" }}>
+                    {myCase?.case_number === "CASE-US-8841" ? "Ukraine" : (myCase ? myCase.jurisdiction : "Pending Intake")}
+                  </span>
                 </div>
                 <div>
                   <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600 }}>CURRENT RESIDENCE</span>
-                  <span style={{ color: "#172322" }}>Palo Alto, California, United States</span>
+                  <span style={{ color: "#172322" }}>
+                    {myCase?.case_number === "CASE-US-8841" ? "Palo Alto, California, United States" : (myCase ? "Primary Residence on Record" : "Pending Intake")}
+                  </span>
                 </div>
               </div>
 
               <h4 style={{ margin: "6px 0 0", fontSize: "14px", color: "#063C3D", fontWeight: 700 }}>
-                Dependents (Form I-485 Derivative Applicants)
+                Dependents (Derivative Beneficiaries)
               </h4>
-              <div style={{ padding: "12px 14px", border: "1px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", background: "#FFFFFF" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <strong style={{ color: "#063C3D" }}>Alexander Rostova (Spouse)</strong>
-                  <Badge variant="neutral">Derivative Beneficiary</Badge>
+              {myCase?.case_number === "CASE-US-8841" ? (
+                <div style={{ padding: "12px 14px", border: "1px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", background: "#FFFFFF" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <strong style={{ color: "#063C3D" }}>Alexander Rostova (Spouse)</strong>
+                    <Badge variant="neutral">Derivative Beneficiary</Badge>
+                  </div>
+                  <small style={{ color: "#6E7F7C" }}>DOB: 1987-11-04 • Nationality: Ukraine • Marriage Certificate verified</small>
                 </div>
-                <small style={{ color: "#6E7F7C" }}>DOB: 1987-11-04 • Nationality: Ukraine • Marriage Certificate verified</small>
-              </div>
+              ) : (
+                <div style={{ padding: "16px", border: "1px dashed #CBD5E1", borderRadius: "8px", fontSize: "12px", color: "#64748B", textAlign: "center", background: "#FFFFFF" }}>
+                  No derivative beneficiaries on file for this petition.
+                </div>
+              )}
             </div>
           </Card>
         )}
@@ -2388,25 +2601,47 @@ export function ClientPortal({
             ========================================================================= */}
         {activeTab === "billing" && (
           <Card title="Retainer Account & Payment Ledger" subtitle="Attorney trust account balances and fee invoices.">
-            <DataTable
-              columns={[
-                { key: "invoice_number", header: "Invoice #", render: (i) => <strong style={{ color: "#063C3D" }}>{i.invoice_number}</strong> },
-                { key: "case_number", header: "Case Reference", render: (i) => <span>{i.case_number}</span> },
-                { key: "amount", header: "Amount", render: (i) => <strong style={{ color: "#0D6866" }}>${i.amount.toLocaleString()}.00</strong> },
-                {
-                  key: "status",
-                  header: "Status",
-                  render: (i) => (
-                    <Badge variant={i.status === "paid" ? "success" : i.status === "in_trust" ? "info" : "warning"}>
-                      {i.status.toUpperCase()}
-                    </Badge>
-                  ),
-                },
-                { key: "due_date", header: "Date", render: (i) => <span>{i.due_date}</span> },
-              ]}
-              data={invoices.filter((i) => i.client_name.includes("Rostova") || true)}
-              keyExtractor={(i) => i.id}
-            />
+            {invoices.length === 0 ? (
+              <div
+                data-testid="billing-empty-state"
+                style={{
+                  padding: "48px 24px",
+                  textAlign: "center",
+                  color: "#64748B",
+                  background: "#F8FAF9",
+                  borderRadius: "8px",
+                  border: "1px dashed #CBD5E1",
+                }}
+              >
+                <div style={{ fontSize: "36px", marginBottom: "8px" }}>💳</div>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: "15px", fontWeight: 700, color: "#1E293B" }}>
+                  No Invoices or Retainer Ledgers
+                </h4>
+                <p style={{ margin: 0, fontSize: "13px" }}>
+                  No trust retainer invoices have been issued by the firm yet. Invoices published by your legal team will appear here with instant receipt verification.
+                </p>
+              </div>
+            ) : (
+              <DataTable
+                columns={[
+                  { key: "invoice_number", header: "Invoice #", render: (i) => <strong style={{ color: "#063C3D" }}>{i.invoice_number}</strong> },
+                  { key: "case_number", header: "Case Reference", render: (i) => <span>{i.case_number}</span> },
+                  { key: "amount", header: "Amount", render: (i) => <strong style={{ color: "#0D6866" }}>${i.amount.toLocaleString()}.00</strong> },
+                  {
+                    key: "status",
+                    header: "Status",
+                    render: (i) => (
+                      <Badge variant={i.status === "paid" ? "success" : i.status === "in_trust" ? "info" : "warning"}>
+                        {i.status.toUpperCase()}
+                      </Badge>
+                    ),
+                  },
+                  { key: "due_date", header: "Date", render: (i) => <span>{i.due_date}</span> },
+                ]}
+                data={invoices}
+                keyExtractor={(i) => i.id}
+              />
+            )}
           </Card>
         )}
 

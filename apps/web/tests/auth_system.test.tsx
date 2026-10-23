@@ -41,7 +41,7 @@ describe("Documento Authentication System", () => {
       vi.useRealTimers();
     });
 
-    it("renders dual portal tabs and evaluation demo buttons", () => {
+    it("renders dual portal tabs and credentials input fields", () => {
       const onClose = vi.fn();
       const onLoginSuccess = vi.fn();
 
@@ -59,9 +59,10 @@ describe("Documento Authentication System", () => {
       expect(screen.getByText("Firm & Attorney")).toBeDefined();
       expect(screen.getByText("Client & Applicant")).toBeDefined();
 
-      // Verify 1-click evaluation personas
-      expect(screen.getByText(/Partner/i)).toBeDefined();
-      expect(screen.getByText(/Paralegal/i)).toBeDefined();
+      // Verify secure form inputs
+      expect(screen.getByLabelText(/Business Email/i)).toBeDefined();
+      expect(screen.getByLabelText(/^Password$/i)).toBeDefined();
+      expect(screen.getByRole("button", { name: /Sign In to Firm Workspace/i })).toBeDefined();
     });
 
     it("switches to client portal tab and updates email label", () => {
@@ -83,7 +84,7 @@ describe("Documento Authentication System", () => {
       expect(screen.getByText("Applicant Email Address")).toBeDefined();
     });
 
-    it("executes 1-click login and passes authenticated user", () => {
+    it("executes credentials login and passes authenticated user", async () => {
       const onClose = vi.fn();
       const onLoginSuccess = vi.fn();
 
@@ -96,11 +97,15 @@ describe("Documento Authentication System", () => {
         />
       );
 
-      const partnerDemoBtn = screen.getByRole("button", { name: /Partner/i });
-      fireEvent.click(partnerDemoBtn);
+      const emailInput = screen.getByLabelText(/Business Email/i);
+      const passwordInput = screen.getByLabelText(/^Password$/i);
+      const submitBtn = screen.getByRole("button", { name: /Sign In to Firm Workspace/i });
 
-      act(() => {
-        vi.advanceTimersByTime(500);
+      fireEvent.change(emailInput, { target: { value: "sarah.jenkins@vanguardlegal.com" } });
+      fireEvent.change(passwordInput, { target: { value: "SecureFirmPassword2026!" } });
+
+      await act(async () => {
+        fireEvent.click(submitBtn);
       });
 
       expect(onLoginSuccess).toHaveBeenCalledWith(

@@ -76,6 +76,10 @@ class ClientProfileCreate(BaseModel):
     nationality: str = Field(..., min_length=2, max_length=3)
     passport_number: str | None = Field(default=None, description="Plain passport number will be hashed, never stored raw")
     user_id: uuid.UUID | None = None
+    aadhaar_number_masked: str | None = Field(default=None, max_length=16)
+    pan_number: str | None = Field(default=None, max_length=16)
+    voter_id: str | None = Field(default=None, max_length=32)
+    passport_ecr_status: str = Field(default="NON_ECR", max_length=16)
     dependants: list[DependantCreateRequest] = []
     consents: list[ConsentCreateRequest] = []
 
@@ -90,6 +94,10 @@ class ClientProfileResponse(BaseModel):
     phone: str | None
     date_of_birth: datetime | None
     nationality: str
+    aadhaar_number_masked: str | None = None
+    pan_number: str | None = None
+    voter_id: str | None = None
+    passport_ecr_status: str = "NON_ECR"
     created_at: datetime
     dependants_count: int = 0
     cases_count: int = 0
@@ -165,6 +173,10 @@ def list_clients(
             phone=c.phone,
             date_of_birth=c.date_of_birth,
             nationality=c.nationality,
+            aadhaar_number_masked=c.aadhaar_number_masked,
+            pan_number=c.pan_number,
+            voter_id=c.voter_id,
+            passport_ecr_status=c.passport_ecr_status or "NON_ECR",
             created_at=c.created_at,
             dependants_count=len(c.dependants),
             cases_count=len(c.cases),
@@ -194,6 +206,10 @@ def create_client_profile(
         date_of_birth=payload.date_of_birth,
         nationality=payload.nationality.upper().strip(),
         passport_number_hash=passport_hash,
+        aadhaar_number_masked=payload.aadhaar_number_masked.strip() if payload.aadhaar_number_masked else None,
+        pan_number=payload.pan_number.upper().strip() if payload.pan_number else None,
+        voter_id=payload.voter_id.strip() if payload.voter_id else None,
+        passport_ecr_status=payload.passport_ecr_status.upper().strip() if payload.passport_ecr_status else "NON_ECR",
         created_at=now,
     )
     db.add(client)

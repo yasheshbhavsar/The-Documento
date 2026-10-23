@@ -24,6 +24,20 @@ import {
   fetchFinancialReports,
 } from "../../lib/api";
 
+export function formatCurrency(amount: number, currency: string = "USD"): string {
+  const symMap: Record<string, string> = {
+    INR: "₹",
+    USD: "$",
+    CAD: "CA$",
+    GBP: "£",
+    EUR: "€",
+    AUD: "A$",
+  };
+  const sym = symMap[currency?.toUpperCase()] || `${currency} `;
+  const locale = currency?.toUpperCase() === "INR" ? "en-IN" : "en-US";
+  return `${sym}${Number(amount || 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 interface BillingManagerProps {
   userRole?: string;
   isLiveBackend: boolean;
@@ -63,15 +77,25 @@ export function BillingManager({
     case_id: string;
     due_days: number;
     notes: string;
+    currency: string;
+    is_interstate: boolean;
+    sac_code: string;
+    gstin: string;
+    place_of_supply: string;
     line_items: InvoiceLineItemDetail[];
   }>({
     client_id: "client-01",
     case_id: "case-01",
     due_days: 30,
     notes: "Filing and statutory petition services",
+    currency: "USD",
+    is_interstate: false,
+    sac_code: "998311",
+    gstin: "",
+    place_of_supply: "",
     line_items: [
-      { description: "Primary Petition Preparation & Statutory Strategy", quantity: 1, unit_price: 3500, line_type: "service_fee", total: 3500 },
-      { description: "USCIS Government Statutory Filing Fee (I-129 / I-140)", quantity: 1, unit_price: 700, line_type: "filing_fee", total: 700 },
+      { description: "Primary Petition Preparation & Statutory Strategy", quantity: 1, unit_price: 3500, line_type: "service_fee", total: 3500, sac_code: "998311", gst_rate: 0.18 },
+      { description: "USCIS Government Statutory Filing Fee (I-129 / I-140)", quantity: 1, unit_price: 700, line_type: "filing_fee", total: 700, sac_code: "998311", gst_rate: 0.0 },
     ],
   });
 
@@ -169,16 +193,41 @@ export function BillingManager({
   // Invoice Handlers
   const handleCreateInvoice = async () => {
     try {
+      const sub = newInvoiceData.line_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+      let tax = 0;
+      let cgst = 0;
+      let sgst = 0;
+      let igst = 0;
+      if (newInvoiceData.currency === "INR" || newInvoiceData.is_interstate) {
+        if (newInvoiceData.is_interstate) {
+          igst = Math.round(sub * 0.18 * 100) / 100;
+          tax = igst;
+        } else {
+          cgst = Math.round(sub * 0.09 * 100) / 100;
+          sgst = Math.round(sub * 0.09 * 100) / 100;
+          tax = Math.round((cgst + sgst) * 100) / 100;
+        }
+      }
       const created = await createInvoice({
         client_id: newInvoiceData.client_id,
         case_id: newInvoiceData.case_id,
         due_date: new Date(Date.now() + newInvoiceData.due_days * 86400000).toISOString(),
+        currency: newInvoiceData.currency,
         notes: newInvoiceData.notes,
         line_items: newInvoiceData.line_items,
+        tax_amount: tax,
+        cgst_amount: cgst,
+        sgst_amount: sgst,
+        igst_amount: igst,
+        gst_rate: 0.18,
+        sac_code: newInvoiceData.sac_code || "998311",
+        gstin: newInvoiceData.gstin || null,
+        place_of_supply: newInvoiceData.place_of_supply || null,
+        is_interstate: newInvoiceData.is_interstate,
       });
       setInvoices([created, ...invoices]);
       setIsCreateInvoiceOpen(false);
-      showNotification(`✓ Invoice ${created.invoice_number} successfully issued for $${created.total_amount}.`);
+      showNotification(`✓ Invoice ${created.invoice_number} successfully issued for ${formatCurrency(created.total_amount, created.currency)}.`);
       loadAllBillingData();
     } catch (err) {
       alert("Failed to issue invoice");
@@ -265,7 +314,7 @@ export function BillingManager({
       sortable: true,
       render: (inv) => (
         <span style={{ fontWeight: 600 }}>
-          ${inv.total_amount.toLocaleString()} {inv.currency}
+          {formatCurrency(inv.total_amount, inv.currency)}
         </span>
       ),
     },
@@ -274,7 +323,7 @@ export function BillingManager({
       header: "Paid Amount",
       render: (inv) => (
         <span style={{ color: "var(--success, #16a34a)", fontWeight: 600 }}>
-          ${inv.paid_amount.toLocaleString()} {inv.currency}
+          {formatCurrency(inv.paid_amount, inv.currency)}
         </span>
       ),
     },
@@ -284,7 +333,7 @@ export function BillingManager({
       sortable: true,
       render: (inv) => (
         <strong style={{ color: inv.balance_due > 0 ? "var(--critical, #e11d48)" : "var(--muted)" }}>
-          ${inv.balance_due.toLocaleString()} {inv.currency}
+          {formatCurrency(inv.balance_due, inv.currency)}
         </strong>
       ),
     },
@@ -757,6 +806,86 @@ export function BillingManager({
             </Button>
           </div>
 
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
+            <div>
+              <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                Currency
+              </label>
+              <select
+                id="select-invoice-currency"
+                value={newInvoiceData.currency}
+                onChange={(e) => setNewInvoiceData({ ...newInvoiceData, currency: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+              >
+                <option value="USD">USD ($ - US Dollar)</option>
+                <option value="INR">INR (₹ - Indian Rupee with 18% GST)</option>
+                <option value="CAD">CAD (CA$ - Canadian Dollar)</option>
+                <option value="GBP">GBP (£ - British Pound)</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                SAC Classification Code
+              </label>
+              <input
+                type="text"
+                value={newInvoiceData.sac_code}
+                onChange={(e) => setNewInvoiceData({ ...newInvoiceData, sac_code: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+                placeholder="998311"
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                Payment Terms (Days)
+              </label>
+              <input
+                type="number"
+                value={newInvoiceData.due_days}
+                onChange={(e) => setNewInvoiceData({ ...newInvoiceData, due_days: Number(e.target.value) })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+              />
+            </div>
+          </div>
+
+          {newInvoiceData.currency === "INR" && (
+            <div style={{ padding: "12px", background: "rgba(22, 163, 74, 0.05)", border: "1px solid rgba(22, 163, 74, 0.2)", borderRadius: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <strong style={{ fontSize: "13px", color: "var(--text)" }}>Indian GST Compliance (SAC 998311 - 18%)</strong>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={newInvoiceData.is_interstate}
+                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, is_interstate: e.target.checked })}
+                  />
+                  <span>Inter-state Supply (IGST 18%)</span>
+                </label>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: 600, display: "block", marginBottom: "2px" }}>Client GSTIN (Optional)</label>
+                  <input
+                    type="text"
+                    value={newInvoiceData.gstin}
+                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, gstin: e.target.value })}
+                    placeholder="27AABCU9603R1ZM"
+                    style={{ width: "100%", padding: "6px 8px", borderRadius: "4px", border: "1px solid var(--border)", fontSize: "12px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: 600, display: "block", marginBottom: "2px" }}>Place of Supply</label>
+                  <input
+                    type="text"
+                    value={newInvoiceData.place_of_supply}
+                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, place_of_supply: e.target.value })}
+                    placeholder="Maharashtra (27)"
+                    style={{ width: "100%", padding: "6px 8px", borderRadius: "4px", border: "1px solid var(--border)", fontSize: "12px" }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div
             style={{
               padding: "12px",
@@ -767,9 +896,22 @@ export function BillingManager({
               alignItems: "center",
             }}
           >
-            <span style={{ fontWeight: 600 }}>Total Computed Balance:</span>
+            <div>
+              <span style={{ fontWeight: 600, display: "block" }}>Total Computed Balance:</span>
+              {newInvoiceData.currency === "INR" && (
+                <small style={{ color: "var(--quiet)" }}>
+                  {newInvoiceData.is_interstate
+                    ? `Includes 18% IGST (${formatCurrency(newInvoiceData.line_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0) * 0.18, "INR")})`
+                    : `Includes 9% CGST + 9% SGST (${formatCurrency(newInvoiceData.line_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0) * 0.18, "INR")})`}
+                </small>
+              )}
+            </div>
             <strong style={{ fontSize: "18px", color: "var(--text)" }}>
-              ${newInvoiceData.line_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0).toLocaleString()} USD
+              {formatCurrency(
+                newInvoiceData.line_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0) *
+                  (newInvoiceData.currency === "INR" ? 1.18 : 1.0),
+                newInvoiceData.currency
+              )}
             </strong>
           </div>
 
@@ -906,15 +1048,46 @@ export function BillingManager({
               </div>
               <div>
                 <span style={{ fontSize: "11px", color: "var(--muted)" }}>TOTAL INVOICED</span>
-                <strong style={{ display: "block", fontSize: "16px" }}>${selectedInvoice.total_amount.toLocaleString()} {selectedInvoice.currency}</strong>
+                <strong style={{ display: "block", fontSize: "16px" }}>{formatCurrency(selectedInvoice.total_amount, selectedInvoice.currency)}</strong>
               </div>
               <div>
                 <span style={{ fontSize: "11px", color: "var(--muted)" }}>REMAINING DUE</span>
                 <strong style={{ display: "block", fontSize: "16px", color: selectedInvoice.balance_due > 0 ? "var(--critical)" : "var(--success)" }}>
-                  ${selectedInvoice.balance_due.toLocaleString()} {selectedInvoice.currency}
+                  {formatCurrency(selectedInvoice.balance_due, selectedInvoice.currency)}
                 </strong>
               </div>
             </div>
+
+            {/* Indian GST Breakdown */}
+            {(selectedInvoice.tax_amount > 0 || selectedInvoice.currency === "INR" || selectedInvoice.sac_code) && (
+              <div style={{ padding: "10px 12px", background: "var(--surface-subtle)", borderRadius: "6px", fontSize: "12px", border: "1px solid var(--border)" }}>
+                <strong style={{ display: "block", marginBottom: "4px", color: "var(--text)" }}>
+                  GST Breakdown (SAC {selectedInvoice.sac_code || "998311"} - Legal & Consulting Support)
+                </strong>
+                {selectedInvoice.igst_amount && selectedInvoice.igst_amount > 0 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", margin: "2px 0" }}>
+                    <span>IGST (18% Inter-state):</span>
+                    <strong>{formatCurrency(selectedInvoice.igst_amount, selectedInvoice.currency)}</strong>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>CGST (9% Central GST):</span>
+                      <strong>{formatCurrency(selectedInvoice.cgst_amount || selectedInvoice.tax_amount / 2, selectedInvoice.currency)}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>SGST (9% State GST):</span>
+                      <strong>{formatCurrency(selectedInvoice.sgst_amount || selectedInvoice.tax_amount / 2, selectedInvoice.currency)}</strong>
+                    </div>
+                  </div>
+                )}
+                {selectedInvoice.gstin && (
+                  <div style={{ marginTop: "4px", color: "var(--quiet)", fontSize: "11px" }}>
+                    GSTIN: <code>{selectedInvoice.gstin}</code> | Place of Supply: {selectedInvoice.place_of_supply || "N/A"}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Line items */}
             <div>

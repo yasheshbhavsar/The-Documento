@@ -19,6 +19,7 @@ import { BillingManager } from "../billing/BillingManager";
 import { BusinessOperationsHub } from "../operations/BusinessOperationsHub";
 import { OperationalReliabilityHub } from "../operations/OperationalReliabilityHub";
 import { FirmConfigurationHub } from "../firm/FirmConfigurationHub";
+import { ProvisionCredentialsModal } from "../modals/ProvisionCredentialsModal";
 import {
   fetchManagerPriorityQueue,
   FALLBACK_MANAGER_PRIORITY_QUEUE,
@@ -28,24 +29,26 @@ interface OwnerMasterDashboardProps {
   cases: ImmigrationCase[];
   clients: ClientProfile[];
   auditEvents: AuditEvent[];
-  invoices: InvoiceItem[];
-  capacity: TeamMemberCapacity[];
-  isLiveBackend: boolean;
+  invoices?: InvoiceItem[];
+  capacity?: TeamMemberCapacity[];
+  isLiveBackend?: boolean;
   onOpenCreateCase: () => void;
   onOpenCreateClient: () => void;
   onSelectCase: (c: ImmigrationCase) => void;
+  onClientUpdated?: (c: ClientProfile) => void;
 }
 
 export function OwnerMasterDashboard({
-  cases,
-  clients,
-  auditEvents,
-  invoices,
-  capacity,
+  cases = [],
+  clients = [],
+  auditEvents = [],
+  invoices = [],
+  capacity = [],
   isLiveBackend,
   onOpenCreateCase,
   onOpenCreateClient,
   onSelectCase,
+  onClientUpdated,
 }: OwnerMasterDashboardProps) {
   const [activeTab, setActiveTab] = useState<
     | "overview"
@@ -58,24 +61,29 @@ export function OwnerMasterDashboard({
     | "operations"
     | "billing"
     | "cases"
+    | "clients"
     | "team"
     | "financials"
     | "audit"
     | "rules"
   >("overview");
 
+  const [selectedClientForCredentials, setSelectedClientForCredentials] = useState<ClientProfile | null>(null);
+  const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
+
   const [priorityQueueData, setPriorityQueueData] = useState<ManagerPriorityQueueResponse>(FALLBACK_MANAGER_PRIORITY_QUEUE);
-  const [selectedInspectorCaseId, setSelectedInspectorCaseId] = useState<string>(cases[0]?.id || "case-01");
+  const [selectedInspectorCaseId, setSelectedInspectorCaseId] = useState<string>(cases[0]?.id || "");
   const [inspectorChannelFilter, setInspectorChannelFilter] = useState<"all" | "client_chat" | "internal_notes">("all");
   const [supervisoryNoteInput, setSupervisoryNoteInput] = useState("");
-  const [supervisoryNotes, setSupervisoryNotes] = useState<Array<{ id: string; author: string; note: string; timestamp: string }>>([
-    {
-      id: "sup-1",
-      author: "Managing Partner",
-      note: "Reviewed O-1A referee letters for Dr. Rostova. Ensure independent letter from Prof. Zhang emphasizes widespread commercial adoption.",
-      timestamp: "2026-03-24T16:00:00Z",
-    },
-  ]);
+  const [supervisoryNotes, setSupervisoryNotes] = useState<Array<{ id: string; author: string; note: string; timestamp: string }>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("documento_supervisory_notes");
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
+    return [];
+  });
 
   React.useEffect(() => {
     let isMounted = true;
@@ -196,7 +204,8 @@ export function OwnerMasterDashboard({
     { key: "operations", id: "tab-btn-operations", label: "Operations Hub", icon: "👥", count: null },
     { key: "billing", id: "tab-btn-billing", label: "Billing & Retainers", icon: "💳", count: null },
     { key: "cases", id: "tab-btn-cases", label: "All Cases", icon: "📋", count: cases.length },
-    { key: "team", id: "tab-btn-team", label: "Team Capacity", icon: "👥", count: capacity.length },
+    { key: "clients", id: "tab-btn-clients", label: "Retained Clients", icon: "👥", count: clients.length },
+    { key: "team", id: "tab-btn-team", label: "Team Capacity", icon: "👥", count: capacity?.length || 0 },
     { key: "financials", id: "tab-btn-financials", label: "Revenue & Billing", icon: "💳", count: null },
     { key: "audit", id: "tab-btn-audit", label: "Audit Alerts", icon: "🛡️", count: auditEvents.length },
     { key: "rules", id: "tab-btn-rules", label: "Rules & Authorities", icon: "⚖️", count: null },
@@ -242,6 +251,10 @@ export function OwnerMasterDashboard({
     cases: {
       title: "All Cases",
       subtitle: `Comprehensive Caseload Management (${cases.length} active and in-progress petitions)`,
+    },
+    clients: {
+      title: "Retained Clients & Portal Access Control",
+      subtitle: `Directory of Retained Applicants (${clients.length} profiles under representation). Credentials must be provided by Owner or Lead Paralegal for portal login.`,
     },
     team: {
       title: "Team Capacity",
@@ -680,6 +693,66 @@ export function OwnerMasterDashboard({
       {/* OVERVIEW TAB */}
       {activeTab === "overview" && (
         <>
+          {cases.length === 0 && (
+            <div
+              style={{
+                padding: "24px 28px",
+                borderRadius: "12px",
+                background: "linear-gradient(135deg, #0A4A48 0%, #063C3D 100%)",
+                color: "#FFFFFF",
+                boxShadow: "0 4px 16px rgba(6, 60, 61, 0.15)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "16px",
+                marginBottom: "8px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "20px" }}>🚀</span>
+                    <h2 style={{ fontSize: "17px", fontWeight: 700, margin: 0, letterSpacing: "-0.01em" }}>
+                      Clean Slate Initial Setup • Day 0 Practice Ready
+                    </h2>
+                    <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: "rgba(255,255,255,0.2)" }}>
+                      0 Mock Cases Loaded
+                    </span>
+                  </div>
+                  <p style={{ margin: "6px 0 0 0", fontSize: "13px", color: "#D1E7E1", maxWidth: "800px", lineHeight: "1.5" }}>
+                    Your legal practice workspace is ready from scratch with zero pre-loaded cases or documents. Start by onboarding an applicant client, opening an immigration petition, and uploading evidence to experience the complete legal workflow.
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  <Button variant="secondary" size="sm" onClick={onOpenCreateClient}>
+                    1. + Retain Client
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={onOpenCreateCase}>
+                    2. + New Case Record
+                  </Button>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px", borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: "14px" }}>
+                <div>
+                  <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#8AE0C8", letterSpacing: "0.05em" }}>Step 1: Retain Client</div>
+                  <div style={{ fontSize: "12px", color: "#E0F2EE", marginTop: "2px" }}>Create applicant profile with contact, nationality, and passport verification.</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#8AE0C8", letterSpacing: "0.05em" }}>Step 2: Open Petition</div>
+                  <div style={{ fontSize: "12px", color: "#E0F2EE", marginTop: "2px" }}>Select USCIS/IRCC/UK visa category, lead paralegal, and statutory deadline.</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#8AE0C8", letterSpacing: "0.05em" }}>Step 3: Upload Evidence</div>
+                  <div style={{ fontSize: "12px", color: "#E0F2EE", marginTop: "2px" }}>Upload degree certificates, job letters, or passports for automated OCR parsing.</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#8AE0C8", letterSpacing: "0.05em" }}>Step 4: Real-time Readiness</div>
+                  <div style={{ fontSize: "12px", color: "#E0F2EE", marginTop: "2px" }}>Track dynamic readiness scores advancing as statutory criteria are verified.</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Key Metric Indicators with DEFINED MEANINGS and DRILL-DOWNS */}
           <div
             style={{
@@ -788,12 +861,18 @@ export function OwnerMasterDashboard({
               subtitle="Breakdown of petitions by target immigration authority."
             >
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {Object.entries(countryCounts).map(([country, count]) => (
-                  <div key={country} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "13px" }}>
-                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{country}</span>
-                    <Badge variant="neutral">{count} petitions</Badge>
+                {Object.entries(countryCounts).length === 0 ? (
+                  <div style={{ padding: "16px", textAlign: "center", color: "#64748B", fontSize: "12px", border: "1px dashed #CBD5E1", borderRadius: "6px" }}>
+                    No applicant nationalities registered yet
                   </div>
-                ))}
+                ) : (
+                  Object.entries(countryCounts).map(([country, count]) => (
+                    <div key={country} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "13px" }}>
+                      <span style={{ color: "var(--text)", fontWeight: 600 }}>{country}</span>
+                      <Badge variant="neutral">{count} petitions</Badge>
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
 
@@ -802,33 +881,39 @@ export function OwnerMasterDashboard({
               subtitle="Agency filing clocks and RFE response deadlines."
             >
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {cases.slice(0, 3).map((c) => (
-                  <div
-                    key={c.id}
-                    onClick={() => onSelectCase(c)}
-                    style={{
-                      padding: "10px 12px",
-                      background: "var(--surface-subtle, #f8fafc)",
-                      border: "1px solid var(--border, #e2e8f0)",
-                      borderRadius: "6px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div>
-                      <strong style={{ fontSize: "13px", display: "block" }}>{c.case_number}</strong>
-                      <span style={{ fontSize: "12px", color: "var(--muted)" }}>{c.client_name}</span>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: c.attention_required ? "var(--critical)" : "var(--accent)" }}>
-                        {c.deadline || "Standard"}
-                      </span>
-                      <small style={{ display: "block", color: "var(--quiet)" }}>Deadline</small>
-                    </div>
+                {cases.length === 0 ? (
+                  <div style={{ padding: "16px", textAlign: "center", color: "#64748B", fontSize: "12px", border: "1px dashed #CBD5E1", borderRadius: "6px" }}>
+                    No Active Cases in Firm Workspace
                   </div>
-                ))}
+                ) : (
+                  cases.slice(0, 3).map((c) => (
+                    <div
+                      key={c.id}
+                      onClick={() => onSelectCase(c)}
+                      style={{
+                        padding: "10px 12px",
+                        background: "var(--surface-subtle, #f8fafc)",
+                        border: "1px solid var(--border, #e2e8f0)",
+                        borderRadius: "6px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div>
+                        <strong style={{ fontSize: "13px", display: "block" }}>{c.case_number}</strong>
+                        <span style={{ fontSize: "12px", color: "var(--muted)" }}>{c.client_name}</span>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: c.attention_required ? "var(--critical)" : "var(--accent)" }}>
+                          {c.deadline || "Standard"}
+                        </span>
+                        <small style={{ display: "block", color: "var(--quiet)" }}>Deadline</small>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
           </div>
@@ -900,6 +985,118 @@ export function OwnerMasterDashboard({
             }}
             onRowClick={(c) => onSelectCase(c)}
           />
+        </Card>
+      )}
+
+      {/* RETAINED CLIENTS TAB */}
+      {activeTab === "clients" && (
+        <Card
+          title="Retained Applicant Directory & Portal Access Control"
+          subtitle="All registered clients under organization representation. Credentials must be provided by Owner or Lead Paralegal for client portal sign-in."
+          actions={
+            <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
+              + Retain Client
+            </Button>
+          }
+        >
+          {clients.length === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "48px 24px",
+                background: "#F8F7F2",
+                border: "2px dashed #B9DED4",
+                borderRadius: "12px",
+                margin: "12px 0",
+              }}
+            >
+              <div style={{ fontSize: "36px", marginBottom: "12px" }}>👤</div>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", marginBottom: "6px" }}>
+                No Retained Clients in Firm Directory (Clean Slate)
+              </h3>
+              <p style={{ fontSize: "13px", color: "#6E7F7C", maxWidth: "520px", margin: "0 auto 20px auto", lineHeight: 1.5 }}>
+                Zero client profiles are currently registered. Retained clients cannot log into Documento until an Owner or Lead Paralegal retains their record and provides their secure portal credentials.
+              </p>
+              <Button variant="primary" onClick={onOpenCreateClient}>
+                + Retain First Client & Issue Credentials
+              </Button>
+            </div>
+          ) : (
+            <DataTable
+              columns={[
+                {
+                  key: "name",
+                  header: "Applicant Name",
+                  render: (c) => (
+                    <div>
+                      <strong style={{ color: "#063C3D", display: "block" }}>{c.first_name} {c.last_name}</strong>
+                      <span style={{ fontSize: "11px", color: "#6E7F7C" }}>ID: {c.id}</span>
+                    </div>
+                  ),
+                },
+                {
+                  key: "email",
+                  header: "Email Address",
+                  render: (c) => <span style={{ fontWeight: 550, color: "#0D6866" }}>{c.email}</span>,
+                },
+                {
+                  key: "nationality",
+                  header: "Nationality",
+                  render: (c) => <Badge variant="neutral">{c.nationality}</Badge>,
+                },
+                {
+                  key: "phone",
+                  header: "Telephone",
+                  render: (c) => <span>{c.phone || "Not recorded"}</span>,
+                },
+                {
+                  key: "created_at",
+                  header: "Retained Date",
+                  render: (c) => <span suppressHydrationWarning>{new Date(c.created_at).toLocaleDateString()}</span>,
+                },
+                {
+                  key: "credentials_status",
+                  header: "Portal Access",
+                  render: (c) => (
+                    <div>
+                      {c.portal_credentials_provided ? (
+                        <Badge variant="success" size="sm">
+                          Active Credentials
+                        </Badge>
+                      ) : (
+                        <Badge variant="warning" size="sm">
+                          No Credentials (Blocked)
+                        </Badge>
+                      )}
+                      {c.credentials_provisioned_by && (
+                        <div style={{ fontSize: "10px", color: "#6E7F7C", marginTop: "2px" }}>
+                          By {c.credentials_provisioned_by}
+                        </div>
+                      )}
+                    </div>
+                  ),
+                },
+                {
+                  key: "actions",
+                  header: "Action",
+                  render: (c) => (
+                    <Button
+                      variant={c.portal_credentials_provided ? "outline" : "primary"}
+                      size="sm"
+                      onClick={() => {
+                        setSelectedClientForCredentials(c);
+                        setIsProvisionModalOpen(true);
+                      }}
+                    >
+                      🔑 {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
+                    </Button>
+                  ),
+                },
+              ]}
+              data={clients}
+              keyExtractor={(c) => c.id}
+            />
+          )}
         </Card>
       )}
 
@@ -1515,80 +1712,117 @@ export function OwnerMasterDashboard({
 
           {/* Conversation Log Card */}
           <Card
-            title={`Conversation History: ${cases.find((c) => c.id === selectedInspectorCaseId)?.case_number || "US-O1A-2026-091"}`}
-            subtitle="Complete immutable transcript of applicant messaging and assigned officer communications."
+            title={`Conversation History & Supervisory Log: ${cases.find((c) => c.id === selectedInspectorCaseId)?.case_number || (cases[0]?.case_number || "All Active Files")}`}
+            subtitle="Immutable transcript of applicant messaging, caseworker updates, and managing partner directives."
           >
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {[
-                {
-                  id: "msg-1",
-                  sender: "Dr. Elena Rostova",
-                  role: "client",
-                  text: "Hello Sarah, I have uploaded the revised Google Scholar citation analysis and our university press release for the O-1A filing.",
-                  time: "March 24, 2026 at 10:15 AM",
-                  avatar: "ER",
-                },
-                {
-                  id: "msg-2",
-                  sender: "Sarah Vance, Esq.",
-                  role: "staff",
-                  text: "Thank you Dr. Rostova. I have confirmed your citation count (h-index 24). Our paralegal Marcus is checking the referee independence documentation.",
-                  time: "March 24, 2026 at 11:30 AM",
-                  avatar: "SV",
-                },
-                {
-                  id: "msg-3",
-                  sender: "Marcus Jenkin",
-                  role: "staff",
-                  text: "Notice: The translation certificate for Dmitri's marriage record needs a certified translator signature. I have flagged this on the portal checklist.",
-                  time: "March 24, 2026 at 02:45 PM",
-                  avatar: "MJ",
-                },
-                {
-                  id: "msg-4",
-                  sender: "Sarah Vance, Esq.",
-                  role: "internal_note",
-                  text: "🔒 [QUARANTINED INTERNAL NOTE] Client's referee letters look solid for Criterion 5 (Major Significance). We need to ensure we distinguish referee independence under Kazarian v. USCIS.",
-                  time: "March 24, 2026 at 04:00 PM",
-                  avatar: "SV",
-                },
-              ]
-                .filter((m) => {
-                  if (inspectorChannelFilter === "client_chat") return m.role !== "internal_note";
-                  if (inspectorChannelFilter === "internal_notes") return m.role === "internal_note";
-                  return true;
-                })
-                .map((m) => {
-                  const isInternal = m.role === "internal_note";
-                  const isClient = m.role === "client";
+              {cases.length === 0 ? (
+                <div style={{ padding: "36px 20px", textAlign: "center", color: "#6E7F7C", background: "#F8F7F2", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "24px", marginBottom: "6px" }}>💬</div>
+                  <strong style={{ fontSize: "14px", color: "#063C3D", display: "block" }}>No Conversation Messages Recorded</strong>
+                  <p style={{ margin: "4px 0 0 0", fontSize: "12px" }}>
+                    Day 0 Initial State: Retain a client or open a case to record immutable communications and supervisory directives.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {[
+                    {
+                      id: "msg-1",
+                      sender: cases.find((c) => c.id === selectedInspectorCaseId)?.client_name || "Dr. Elena Rostova",
+                      role: "client",
+                      text: "Hello Sarah, I have uploaded the revised Google Scholar citation analysis and our university press release for the O-1A filing.",
+                      time: "March 24, 2026 at 10:15 AM",
+                      avatar: "ER",
+                    },
+                    {
+                      id: "msg-2",
+                      sender: "Sarah Vance, Esq.",
+                      role: "staff",
+                      text: "Thank you Dr. Rostova. I have confirmed your citation count (h-index 24). Our paralegal Marcus is checking the referee independence documentation.",
+                      time: "March 24, 2026 at 11:30 AM",
+                      avatar: "SV",
+                    },
+                    {
+                      id: "msg-3",
+                      sender: "Marcus Jenkin",
+                      role: "staff",
+                      text: "Notice: The translation certificate for Dmitri's marriage record needs a certified translator signature. I have flagged this on the portal checklist.",
+                      time: "March 24, 2026 at 02:45 PM",
+                      avatar: "MJ",
+                    },
+                    {
+                      id: "msg-4",
+                      sender: "Sarah Vance, Esq.",
+                      role: "internal_note",
+                      text: "🔒 [QUARANTINED INTERNAL NOTE] Client's referee letters look solid for Criterion 5 (Major Significance). We need to ensure we distinguish referee independence under Kazarian v. USCIS.",
+                      time: "March 24, 2026 at 04:00 PM",
+                      avatar: "SV",
+                    },
+                  ]
+                    .filter((m) => {
+                      if (inspectorChannelFilter === "client_chat") return m.role !== "internal_note";
+                      if (inspectorChannelFilter === "internal_notes") return m.role === "internal_note";
+                      return true;
+                    })
+                    .map((m) => {
+                      const isInternal = m.role === "internal_note";
+                      const isClient = m.role === "client";
 
-                  return (
+                      return (
+                        <div
+                          key={m.id}
+                          style={{
+                            padding: "12px 16px",
+                            borderRadius: "10px",
+                            background: isInternal ? "#FEF3C7" : isClient ? "#F1F5F9" : "#EAF6F0",
+                            border: `1px solid ${isInternal ? "#FDE68A" : isClient ? "#CBD5E1" : "#B9DED4"}`,
+                            alignSelf: isClient ? "flex-start" : "flex-end",
+                            maxWidth: "85%",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <strong style={{ fontSize: "12px", color: "#063C3D" }}>{m.sender}</strong>
+                              <Badge variant={isInternal ? "warning" : isClient ? "neutral" : "success"} size="sm">
+                                {isInternal ? "INTERNAL WORK NOTE" : isClient ? "APPLICANT" : "CASE OFFICER"}
+                              </Badge>
+                            </div>
+                            <span style={{ fontSize: "11px", color: "#64748B" }}>{m.time}</span>
+                          </div>
+                          <p style={{ margin: 0, fontSize: "13px", color: isInternal ? "#78350F" : "#1E293B", lineHeight: "1.4" }}>
+                            {m.text}
+                          </p>
+                        </div>
+                      );
+                    })}
+
+                  {supervisoryNotes.map((n) => (
                     <div
-                      key={m.id}
+                      key={n.id}
                       style={{
                         padding: "12px 16px",
                         borderRadius: "10px",
-                        background: isInternal ? "#FEF3C7" : isClient ? "#F1F5F9" : "#EAF6F0",
-                        border: `1px solid ${isInternal ? "#FDE68A" : isClient ? "#CBD5E1" : "#B9DED4"}`,
-                        alignSelf: isClient ? "flex-start" : "flex-end",
+                        background: "#FEF3C7",
+                        border: "1px solid #FDE68A",
+                        alignSelf: "flex-end",
                         maxWidth: "85%",
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <strong style={{ fontSize: "12px", color: "#063C3D" }}>{m.sender}</strong>
-                          <Badge variant={isInternal ? "warning" : isClient ? "neutral" : "success"} size="sm">
-                            {isInternal ? "INTERNAL WORK NOTE" : isClient ? "APPLICANT" : "CASE OFFICER"}
-                          </Badge>
+                          <strong style={{ fontSize: "12px", color: "#063C3D" }}>{n.author}</strong>
+                          <Badge variant="warning" size="sm">SUPERVISORY DIRECTIVE</Badge>
                         </div>
-                        <span style={{ fontSize: "11px", color: "#64748B" }}>{m.time}</span>
+                        <span style={{ fontSize: "11px", color: "#64748B" }}>{new Date(n.timestamp).toLocaleDateString()}</span>
                       </div>
-                      <p style={{ margin: 0, fontSize: "13px", color: isInternal ? "#78350F" : "#1E293B", lineHeight: "1.4" }}>
-                        {m.text}
+                      <p style={{ margin: 0, fontSize: "13px", color: "#78350F", lineHeight: "1.4" }}>
+                        {n.note}
                       </p>
                     </div>
-                  );
-                })}
+                  ))}
+                </>
+              )}
 
               {/* Supervisory Partner Guidance Input */}
               <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: "14px", marginTop: "8px" }}>
@@ -1614,15 +1848,17 @@ export function OwnerMasterDashboard({
                     size="sm"
                     onClick={() => {
                       if (!supervisoryNoteInput.trim()) return;
-                      setSupervisoryNotes((prev) => [
-                        ...prev,
-                        {
-                          id: `sup-${Date.now()}`,
-                          author: "Managing Partner",
-                          note: supervisoryNoteInput.trim(),
-                          timestamp: new Date().toISOString(),
-                        },
-                      ]);
+                      const newNote = {
+                        id: `sup-${Date.now()}`,
+                        author: "Managing Partner",
+                        note: supervisoryNoteInput.trim(),
+                        timestamp: new Date().toISOString(),
+                      };
+                      const updated = [...supervisoryNotes, newNote];
+                      setSupervisoryNotes(updated);
+                      if (typeof window !== "undefined") {
+                        localStorage.setItem("documento_supervisory_notes", JSON.stringify(updated));
+                      }
                       setSupervisoryNoteInput("");
                     }}
                   >
@@ -1635,6 +1871,22 @@ export function OwnerMasterDashboard({
         </div>
       )}
     </main>
+
+    {/* Provision Client Portal Credentials Modal */}
+    <ProvisionCredentialsModal
+      isOpen={isProvisionModalOpen}
+      onClose={() => {
+        setIsProvisionModalOpen(false);
+        setSelectedClientForCredentials(null);
+      }}
+      client={selectedClientForCredentials}
+      onCredentialsUpdated={(updated) => {
+        onClientUpdated?.(updated);
+        setIsProvisionModalOpen(false);
+        setSelectedClientForCredentials(null);
+      }}
+      activeRole="master_admin"
+    />
   </div>
   );
 }

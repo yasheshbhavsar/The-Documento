@@ -168,9 +168,25 @@ export function CreateCaseModal({
           </div>
         )}
 
+        {clients.length === 0 && (
+          <div
+            style={{
+              padding: "12px 14px",
+              background: "#FEF3C7",
+              color: "#92400E",
+              borderRadius: "8px",
+              fontSize: "13px",
+              lineHeight: 1.4,
+              border: "1px solid #FDE68A",
+            }}
+          >
+            <strong>Initial Setup (Day 0):</strong> No retained clients are registered in the firm directory yet. Please click <strong>&quot;+ Retain Client&quot;</strong> first to create your client profile before opening a case record.
+          </div>
+        )}
+
         <SelectInput
           label="Retained Client"
-          options={clientOptions.length > 0 ? clientOptions : [{ label: "No clients registered yet", value: "" }]}
+          options={clientOptions.length > 0 ? clientOptions : [{ label: "No clients registered yet — Retain Client first", value: "" }]}
           value={clientId}
           onChange={(e) => setClientId(e.target.value)}
           required

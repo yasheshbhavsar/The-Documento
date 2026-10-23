@@ -271,6 +271,49 @@ export function VisaFileUpdatesView({
     setTimeout(() => setCopiedRef(null), 2000);
   };
 
+  if (!myCase) {
+    return (
+      <div
+        data-testid="visa-updates-empty-state"
+        style={{
+          background: "#FFFFFF",
+          border: "1px dashed #CBD5E1",
+          borderRadius: "16px",
+          padding: "48px 32px",
+          textAlign: "center",
+          maxWidth: "680px",
+          margin: "40px auto",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+        }}
+      >
+        <div style={{ fontSize: "44px", marginBottom: "14px" }}>⚖️</div>
+        <h2 style={{ fontSize: "20px", fontWeight: 700, color: "#0F172A", margin: "0 0 8px 0" }}>
+          No Case Docket Registered Yet
+        </h2>
+        <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 20px 0" }}>
+          Your legal team (Owner or Lead Paralegal) has not yet activated a petition docket or filed submissions for your account. Once your case is entered into the system, all official USCIS receipt notices, milestone tracking, and officer actions will appear here in real time.
+        </p>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            background: "#F1F5F9",
+            padding: "8px 16px",
+            borderRadius: "20px",
+            fontSize: "12px",
+            color: "#475569",
+            fontWeight: 600,
+          }}
+        >
+          <span>🔒 Secured Client Portal</span>
+          <span>•</span>
+          <span>Awaiting firm filing</span>
+        </div>
+      </div>
+    );
+  }
+
   const filteredUpdates = FALLBACK_VISA_FILE_UPDATES.filter((item) => {
     const matchesFilter = selectedFilter === "all" || item.category === selectedFilter;
     const matchesSearch =

@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { DocumentoLogo } from "../../components/common/DocumentoLogo";
 import { DEMO_USERS, authenticateUser } from "../../lib/auth";
 import { UserExperience } from "../../lib/types";
+import { api } from "../../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
   const [portal, setPortal] = useState<"firm" | "client">("firm");
-  const [email, setEmail] = useState<string>("sarah.jenkins@vanguardlegal.com");
-  const [password, setPassword] = useState<string>("••••••••••••");
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -21,29 +22,6 @@ export default function LoginPage() {
     setPortal(newPortal);
     setErrorMessage(null);
     setForgotPasswordNotice(null);
-    if (newPortal === "client") {
-      setEmail("dr.thorne@cambridge.edu");
-    } else {
-      setEmail("sarah.jenkins@vanguardlegal.com");
-    }
-  };
-
-  const handleQuickDemoSelect = (roleKey: UserExperience) => {
-    const demoUser = DEMO_USERS[roleKey];
-    setEmail(demoUser.email);
-    setPassword("DocumentoDemo2026!");
-    setPortal(roleKey === "client_applicant" ? "client" : "firm");
-    setErrorMessage(null);
-
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      // Store session and redirect to main app
-      if (typeof window !== "undefined") {
-        localStorage.setItem("documento_user", JSON.stringify(demoUser));
-      }
-      router.push("/");
-    }, 450);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -61,31 +39,82 @@ export default function LoginPage() {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      const res = authenticateUser(email, portal);
-      if (res.success && res.user) {
-        if (typeof window !== "undefined") {
-          if (rememberMe) {
-            localStorage.setItem("documento_user", JSON.stringify(res.user));
-            sessionStorage.removeItem("documento_user");
-          } else {
-            sessionStorage.setItem("documento_user", JSON.stringify(res.user));
-            localStorage.removeItem("documento_user");
+
+    api.login({ email, password })
+      .then((liveRes) => {
+        setIsLoading(false);
+        if (liveRes.success && liveRes.access_token) {
+          const fallbackUser = authenticateUser(email, portal, password).user;
+          const userObj = {
+            ...(fallbackUser || DEMO_USERS.master_admin),
+            id: String(liveRes.user?.user_id || fallbackUser?.id || "usr-01"),
+            organization_id: String(liveRes.user?.organization_id || fallbackUser?.organization_id || "ten-vanguard"),
+            email: email.trim().toLowerCase(),
+          };
+          if (typeof window !== "undefined") {
+            if (rememberMe) {
+              localStorage.setItem("documento_user", JSON.stringify(userObj));
+              sessionStorage.removeItem("documento_user");
+            } else {
+              sessionStorage.setItem("documento_user", JSON.stringify(userObj));
+              localStorage.removeItem("documento_user");
+            }
           }
+          router.push("/");
+          return;
         }
-        router.push("/");
-      } else {
-        setErrorMessage(res.error || "Authentication failed. Please verify credentials.");
-      }
-    }, 500);
+        if (liveRes.error) {
+          setErrorMessage(liveRes.error);
+          return;
+        }
+        const res = authenticateUser(email, portal, password);
+        if (res.success && res.user) {
+          if (typeof window !== "undefined") {
+            if (rememberMe) {
+              localStorage.setItem("documento_user", JSON.stringify(res.user));
+              sessionStorage.removeItem("documento_user");
+            } else {
+              sessionStorage.setItem("documento_user", JSON.stringify(res.user));
+              localStorage.removeItem("documento_user");
+            }
+          }
+          router.push("/");
+        } else {
+          setErrorMessage(res.error || "Authentication failed. Please verify credentials.");
+        }
+      })
+      .catch((err) => {
+        setIsLoading(false);
+        if (process.env.NODE_ENV === "production") {
+          setErrorMessage(err.message || "Failed to reach Documento authentication server.");
+        }
+        const res = authenticateUser(email, portal, password);
+        if (res.success && res.user) {
+          if (typeof window !== "undefined") {
+            if (rememberMe) {
+              localStorage.setItem("documento_user", JSON.stringify(res.user));
+              sessionStorage.removeItem("documento_user");
+            } else {
+              sessionStorage.setItem("documento_user", JSON.stringify(res.user));
+              localStorage.removeItem("documento_user");
+            }
+          }
+          router.push("/");
+        } else {
+          setErrorMessage(res.error || "Authentication failed. Please verify credentials.");
+        }
+      });
   };
 
   const handleSsoClick = (provider: string) => {
+    if (portal === "client") {
+      setErrorMessage("Retained client portal access is locked until temporary credentials are provided directly by your law firm Owner or Lead Paralegal.");
+      return;
+    }
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      const targetUser = portal === "client" ? DEMO_USERS.client_applicant : DEMO_USERS.master_admin;
+      const targetUser = DEMO_USERS.master_admin;
       const user = {
         ...targetUser,
         email: `${provider.toLowerCase().replace(/\s+/g, "")}@sso.vanguardlegal.com`,
@@ -211,113 +240,29 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {/* One-Click Demo Personas */}
-          <div
-            style={{
-              background: "#F8F7F2",
-              border: "1px solid #B9DED4",
-              borderRadius: "10px",
-              padding: "12px 14px",
-              marginBottom: "22px",
-            }}
-          >
+          {/* Retained Client Credentials Policy Banner */}
+          {portal === "client" && (
             <div
               style={{
-                fontSize: "11px",
-                fontWeight: 650,
-                color: "#0D6866",
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                marginBottom: "8px",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                background: "#F1F6F4",
+                border: "1px solid #B9DED4",
+                color: "#063C3D",
+                fontSize: "12px",
+                lineHeight: 1.45,
+                marginBottom: "16px",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: "8px",
               }}
             >
-              <span>Instant Demo Sign-In:</span>
-              <span style={{ color: "#6E7F7C", textTransform: "none", fontWeight: 400 }}>1-click access</span>
+              <span style={{ fontSize: "14px", marginTop: "1px" }}>🔒</span>
+              <span>
+                <strong>Owner &amp; Lead Paralegal Provisioned:</strong> Client portal access requires temporary credentials issued directly by your firm Owner or Lead Paralegal. Until provided, sign-in is disabled.
+              </span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
-              <button
-                type="button"
-                onClick={() => handleQuickDemoSelect("master_admin")}
-                style={{
-                  background: "#FFFFFF",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "6px",
-                  padding: "6px 8px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  color: "#063C3D",
-                  cursor: "pointer",
-                  textAlign: "center",
-                  transition: "all 0.15s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#0D6866";
-                  e.currentTarget.style.background = "#DDEFE8";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#DCE5E1";
-                  e.currentTarget.style.background = "#FFFFFF";
-                }}
-              >
-                🏛️ Partner
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemoSelect("case_manager")}
-                style={{
-                  background: "#FFFFFF",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "6px",
-                  padding: "6px 8px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  color: "#063C3D",
-                  cursor: "pointer",
-                  textAlign: "center",
-                  transition: "all 0.15s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#0D6866";
-                  e.currentTarget.style.background = "#DDEFE8";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#DCE5E1";
-                  e.currentTarget.style.background = "#FFFFFF";
-                }}
-              >
-                ⚖️ Paralegal
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemoSelect("client_applicant")}
-                style={{
-                  background: "#FFFFFF",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "6px",
-                  padding: "6px 8px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  color: "#063C3D",
-                  cursor: "pointer",
-                  textAlign: "center",
-                  transition: "all 0.15s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#0D6866";
-                  e.currentTarget.style.background = "#DDEFE8";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#DCE5E1";
-                  e.currentTarget.style.background = "#FFFFFF";
-                }}
-              >
-                👤 Client
-              </button>
-            </div>
-          </div>
+          )}
 
           {/* Error Message */}
           {errorMessage && (

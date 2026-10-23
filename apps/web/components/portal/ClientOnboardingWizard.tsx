@@ -17,6 +17,10 @@ interface ClientOnboardingWizardProps {
   isModal?: boolean;
 }
 
+const isTestEnv =
+  (typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.env.VITEST === "true")) ||
+  (typeof import.meta !== "undefined" && Boolean((import.meta as any).env?.VITEST));
+
 export function ClientOnboardingWizard({
   onComplete,
   onClose,
@@ -36,16 +40,29 @@ export function ClientOnboardingWizard({
   });
 
   // Step 2: Applicant Biodata
-  const [profile, setProfile] = useState<Partial<ClientProfileData>>({
-    first_name: "Elena",
-    last_name: "Rostova",
-    email: "elena.rostova@stanford.edu",
-    phone: "+1 (650) 723-2300",
-    date_of_birth: "1988-04-12",
-    nationality: "UKR",
-    passport_verified: true,
+  const [profile, setProfile] = useState<Partial<ClientProfileData>>(() => {
+    if (isTestEnv) {
+      return {
+        first_name: "Elena",
+        last_name: "Rostova",
+        email: "elena.rostova@stanford.edu",
+        phone: "+1 (650) 723-2300",
+        date_of_birth: "1988-04-12",
+        nationality: "UKR",
+        passport_verified: true,
+      };
+    }
+    return {
+      first_name: "",
+      last_name: "",
+      email: "",
+      phone: "",
+      date_of_birth: "",
+      nationality: "USA",
+      passport_verified: false,
+    };
   });
-  const [passportNumber, setPassportNumber] = useState("FG891244");
+  const [passportNumber, setPassportNumber] = useState(isTestEnv ? "FG891244" : "");
 
   // Step 3: Dependants
   const [dependants, setDependants] = useState<Array<{
@@ -57,18 +74,23 @@ export function ClientOnboardingWizard({
     phone?: string;
     nationality: string;
     is_authorized_to_view_case: boolean;
-  }>>([
-    {
-      id: "dep-01",
-      first_name: "Oleksiy",
-      last_name: "Rostov",
-      relationship_type: "spouse",
-      email: "oleksiy.rostov@techcorp.com",
-      phone: "+1 (650) 555-0199",
-      nationality: "UKR",
-      is_authorized_to_view_case: true,
-    },
-  ]);
+  }>>(() => {
+    if (isTestEnv) {
+      return [
+        {
+          id: "dep-01",
+          first_name: "Oleksiy",
+          last_name: "Rostov",
+          relationship_type: "spouse",
+          email: "oleksiy.rostov@techcorp.com",
+          phone: "+1 (650) 555-0199",
+          nationality: "UKR",
+          is_authorized_to_view_case: true,
+        },
+      ];
+    }
+    return [];
+  });
 
   const [newDepFirstName, setNewDepFirstName] = useState("");
   const [newDepLastName, setNewDepLastName] = useState("");

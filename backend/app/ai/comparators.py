@@ -43,6 +43,9 @@ TRANSLITERATION_MAP = {
     "liu": "lew",
 }
 
+FNU_TOKENS = {"fnu", "lnu", "nosurname", "nogivenname", "unknown", "none", "na"}
+ARABIC_PARTICLES = {"al", "el", "bin", "bint", "ibn", "abu", "abd"}
+
 
 def _levenshtein_distance(s1: str, s2: str) -> int:
     if len(s1) < len(s2):
@@ -110,6 +113,72 @@ def compare_names(
             variation_type=None,
             explanation=f"Names '{name_a}' and '{name_b}' match with complete concordance.",
         )
+
+    # 2. Check Single Name / FNU (First Name Unknown) consular conventions
+    fnu_filtered_a = [t for t in tokens_a if t not in FNU_TOKENS]
+    fnu_filtered_b = [t for t in tokens_b if t not in FNU_TOKENS]
+    has_fnu = (len(fnu_filtered_a) < len(tokens_a)) or (len(fnu_filtered_b) < len(tokens_b))
+    if has_fnu and fnu_filtered_a and fnu_filtered_b:
+        if fnu_filtered_a == fnu_filtered_b or set(fnu_filtered_a) == set(fnu_filtered_b):
+            return FieldComparisonResult(
+                is_concordant=True,
+                is_confirmed_contradiction=False,
+                similarity_score=0.98,
+                variation_type="cultural_single_name_fnu",
+                explanation=f"Name variance between '{name_a}' and '{name_b}' matches standard consular FNU/LNU notation for single-name applicants.",
+                suggested_clarification="Ensure consistency across DS-160 / IMM 5257 by entering single name in Surname and 'FNU' in Given Name as required.",
+            )
+
+    # 3. Check Transposed / Reversed name order (e.g., East Asian or South Asian surname-first conventions)
+    if len(tokens_a) >= 2 and sorted(tokens_a) == sorted(tokens_b):
+        return FieldComparisonResult(
+            is_concordant=True,
+            is_confirmed_contradiction=False,
+            similarity_score=0.95,
+            variation_type="reversed_name_order",
+            explanation=f"Names '{name_a}' and '{name_b}' contain identical components in transposed or reversed order (common in East Asian / South Asian records).",
+            suggested_clarification="Verify Given Name vs Surname fields on passport biodata MRZ to ensure correct order on official government filings.",
+        )
+
+    # 4. Check Arabic / Middle Eastern particle assimilation (Al/El/Bin/Bint/Ibn/Abu)
+    particle_stripped_a = [t for t in tokens_a if t not in ARABIC_PARTICLES]
+    particle_stripped_b = [t for t in tokens_b if t not in ARABIC_PARTICLES]
+    if particle_stripped_a and particle_stripped_b and particle_stripped_a == particle_stripped_b and (particle_stripped_a != tokens_a or particle_stripped_b != tokens_b):
+        return FieldComparisonResult(
+            is_concordant=True,
+            is_confirmed_contradiction=False,
+            similarity_score=0.93,
+            variation_type="cultural_particle_variation",
+            explanation=f"Names '{name_a}' and '{name_b}' match with standard Arabic/Semitic particle assimilation (Al/El/Bin/Bint).",
+            suggested_clarification="Confirm exact particle spelling as printed on passport machine-readable zone.",
+        )
+
+    # 5. Check Patronymic / Initial contraction or expansion (e.g. K. Ramesh vs Kumar Ramesh)
+    if len(tokens_a) >= 2 and len(tokens_b) >= 2:
+        initial_match = False
+        if len(tokens_a) == len(tokens_b):
+            for i in range(len(tokens_a)):
+                ta, tb = tokens_a[i], tokens_b[i]
+                if (len(ta) == 1 and tb.startswith(ta)) or (len(tb) == 1 and ta.startswith(tb)):
+                    other_a = [tokens_a[j] for j in range(len(tokens_a)) if j != i]
+                    other_b = [tokens_b[j] for j in range(len(tokens_b)) if j != i]
+                    if other_a == other_b:
+                        initial_match = True
+                        break
+        if not initial_match and len(tokens_a) == 2 and len(tokens_b) == 2:
+            if (len(tokens_a[1]) == 1 and tokens_b[0].startswith(tokens_a[1]) and tokens_a[0] == tokens_b[1]) or \
+               (len(tokens_b[1]) == 1 and tokens_a[0].startswith(tokens_b[1]) and tokens_b[0] == tokens_a[1]):
+                initial_match = True
+
+        if initial_match:
+            return FieldComparisonResult(
+                is_concordant=True,
+                is_confirmed_contradiction=False,
+                similarity_score=0.90,
+                variation_type="patronymic_initial_variant",
+                explanation=f"Names '{name_a}' and '{name_b}' represent a recognized patronymic initial contraction or expansion.",
+                suggested_clarification="Provide secondary identity document (e.g., Aadhaar, voter ID, birth certificate) confirming initial expansion.",
+            )
 
     # 2. Check transliteration equivalence
     set_a = set(tokens_a)

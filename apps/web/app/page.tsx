@@ -83,38 +83,52 @@ export default function Home() {
   // Initial data loading when role changes
   useEffect(() => {
     async function loadData() {
-      const isHealthy = await api.checkBackendHealth();
-      setIsLiveBackend(isHealthy);
+      try {
+        const isHealthy = await api.checkBackendHealth();
+        setIsLiveBackend(isHealthy);
+        if (!isHealthy && process.env.NODE_ENV === "production") {
+          setBannerAlert({
+            type: "warning",
+            message: "Documento Production API is unreachable. In-memory fallback is disabled in production to protect data integrity.",
+          });
+          return;
+        }
 
-      const casesRes = await api.getCases(currentRole);
-      setCases(casesRes.data);
+        const casesRes = await api.getCases(currentRole);
+        setCases(casesRes.data);
 
-      const clientsRes = await api.getClients(currentRole);
-      setClients(clientsRes.data);
+        const clientsRes = await api.getClients(currentRole);
+        setClients(clientsRes.data);
 
-      const docsRes = await api.getDocuments();
-      setDocuments(docsRes.data);
+        const docsRes = await api.getDocuments();
+        setDocuments(docsRes.data);
 
-      const auditRes = await api.getAuditEvents(currentRole);
-      setAuditEvents(auditRes.data);
+        const auditRes = await api.getAuditEvents(currentRole);
+        setAuditEvents(auditRes.data);
 
-      const notifsRes = await api.getNotifications(currentRole);
-      setNotifications(notifsRes.data);
+        const notifsRes = await api.getNotifications(currentRole);
+        setNotifications(notifsRes.data);
 
-      const tasksRes = await api.getTasks();
-      setTasks(tasksRes.data);
+        const tasksRes = await api.getTasks();
+        setTasks(tasksRes.data);
 
-      const findingsRes = await api.getAIFindings();
-      setAiFindings(findingsRes.data);
+        const findingsRes = await api.getAIFindings();
+        setAiFindings(findingsRes.data);
 
-      const msgsRes = await api.getMessages();
-      setMessages(msgsRes.data);
+        const msgsRes = await api.getMessages();
+        setMessages(msgsRes.data);
 
-      const invsRes = await api.getInvoices();
-      setInvoices(invsRes.data);
+        const invsRes = await api.getInvoices();
+        setInvoices(invsRes.data);
 
-      const capRes = await api.getTeamCapacity();
-      setCapacity(capRes.data);
+        const capRes = await api.getTeamCapacity();
+        setCapacity(capRes.data);
+      } catch (err: any) {
+        setBannerAlert({
+          type: "warning",
+          message: err?.message || "Error communicating with Documento API",
+        });
+      }
     }
 
     loadData();
@@ -197,6 +211,14 @@ export default function Home() {
     });
   };
 
+  const handleClientUpdated = (updatedClient: ClientProfile) => {
+    setClients((prev) => prev.map((c) => (c.id === updatedClient.id ? updatedClient : c)));
+    setBannerAlert({
+      type: "success",
+      message: `Credentials provisioned for client ${updatedClient.first_name} ${updatedClient.last_name}. Portal access status: ${updatedClient.portal_access_enabled ? "Active" : "Disabled"}.`,
+    });
+  };
+
   const handleCaseUpdated = (updatedCase: ImmigrationCase) => {
     setCases((prev) => prev.map((c) => (c.id === updatedCase.id ? updatedCase : c)));
     setBannerAlert({
@@ -258,6 +280,43 @@ export default function Home() {
     );
   };
 
+  const handleResetToScratch = () => {
+    api.resetToScratch();
+    setCases([]);
+    setClients([]);
+    setDocuments([]);
+    setTasks([]);
+    setAiFindings([]);
+    setMessages([]);
+    setInvoices([]);
+    setAuditEvents([
+      {
+        id: "audit-init",
+        action: "workspace.initialized",
+        object_type: "workspace",
+        object_id: "org-vanguard",
+        actor_email: currentUser?.email || "sarah.jenkins@vanguardlegal.com",
+        created_at: new Date().toISOString(),
+        metadata: {
+          note: "Firm workspace started from scratch (Day 0). Zero mock cases and zero mock documents.",
+        },
+      },
+    ]);
+    setNotifications([
+      {
+        id: "notif-init",
+        title: "Initial Setup Ready",
+        body: "Firm workspace started from scratch. Onboard your first client or create your first immigration case to begin the live flow.",
+        status: "unread",
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    setBannerAlert({
+      type: "info",
+      message: "Workspace successfully reset to Day 0 clean slate (0 cases, 0 documents, 0 clients).",
+    });
+  };
+
   return (
     <div className="min-h-screen" style={{ background: "var(--bg, #F8F7F2)" }}>
       {/* Global Alert Notification (Floating Toast Notification) */}
@@ -277,6 +336,54 @@ export default function Home() {
             message={bannerAlert.message}
             onDismiss={() => setBannerAlert(null)}
           />
+        </div>
+      )}
+
+      {/* Actionable Production Disconnected Banner */}
+      {!isLiveBackend && process.env.NODE_ENV === "production" && (
+        <div
+          role="alert"
+          style={{
+            background: "#991B1B",
+            color: "#FFFFFF",
+            padding: "10px 24px",
+            fontSize: "13px",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+            position: "sticky",
+            top: 0,
+            zIndex: 9999,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span>⚠️</span>
+            <span>
+              <strong>Production Alert:</strong> Documento API is currently unreachable. Mock fallback is disabled to protect database integrity.
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              api.checkBackendHealth().then((h) => {
+                setIsLiveBackend(h);
+                if (h) window.location.reload();
+              });
+            }}
+            style={{
+              background: "#FFFFFF",
+              color: "#991B1B",
+              border: "none",
+              padding: "4px 12px",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontWeight: 700,
+              fontSize: "12px",
+            }}
+          >
+            Reconnect
+          </button>
         </div>
       )}
 
@@ -321,6 +428,7 @@ export default function Home() {
             currentUser={currentUser}
             onLogout={handleLogout}
             onSwitchRole={handleSwitchRoleInWorkspace}
+            onResetToScratch={handleResetToScratch}
             isLiveBackend={isLiveBackend}
           />
 
@@ -336,6 +444,7 @@ export default function Home() {
                 onOpenCreateCase={() => setIsCreateCaseOpen(true)}
                 onOpenCreateClient={() => setIsCreateClientOpen(true)}
                 onSelectCase={(c) => setSelectedCaseForDrawer(c)}
+                onClientUpdated={handleClientUpdated}
               />
             )}
 
@@ -351,27 +460,55 @@ export default function Home() {
                 onSendMessage={handleSendMessage}
                 onSelectCase={(c) => setSelectedCaseForDrawer(c)}
                 onOpenUploadModal={() => setIsUploadModalOpen(true)}
+                onOpenCreateClient={() => setIsCreateClientOpen(true)}
                 onDocumentUpdated={handleDocumentUpdated}
+                onClientUpdated={handleClientUpdated}
                 onResolveFinding={handleResolveFinding}
                 onDismissFinding={handleDismissFinding}
                 onEscalateFinding={handleEscalateFinding}
               />
             )}
 
-            {activeExp === "client_applicant" && (
-              <ClientPortal
-                myCase={cases[0] || null}
-                documents={documents}
-                messages={messages}
-                notifications={notifications}
-                invoices={invoices}
-                onOpenUploadModal={() => setIsUploadModalOpen(true)}
-                onOpenQuestionnaireModal={() => setIsQuestionnaireOpen(true)}
-                onSendMessage={handleSendMessage}
-                onMarkNotificationRead={handleMarkNotificationRead}
-                onDocumentUpdated={handleDocumentUpdated}
-              />
-            )}
+            {activeExp === "client_applicant" && (() => {
+              // Retained client must only see data manually assigned/updated for them by Owner/Paralegal
+              const clientCase =
+                cases.find(
+                  (c) =>
+                    c.client_id === currentUser?.id ||
+                    (c.client_name &&
+                      currentUser?.full_name &&
+                      c.client_name.toLowerCase().includes(currentUser.full_name.toLowerCase()))
+                ) || null;
+
+              const clientDocuments = clientCase
+                ? documents.filter((d) => d.case_id === clientCase.id)
+                : [];
+              const clientMessages = clientCase
+                ? messages.filter((m) => m.sender_role === "client" || m.sender_role === "attorney")
+                : [];
+              const clientInvoices = clientCase
+                ? invoices.filter(
+                    (inv) =>
+                      inv.case_number === clientCase.case_number ||
+                      (inv.case_id && inv.case_id === clientCase.id)
+                  )
+                : [];
+
+              return (
+                <ClientPortal
+                  myCase={clientCase}
+                  documents={clientDocuments}
+                  messages={clientMessages}
+                  notifications={clientCase ? notifications : []}
+                  invoices={clientInvoices}
+                  onOpenUploadModal={() => setIsUploadModalOpen(true)}
+                  onOpenQuestionnaireModal={() => setIsQuestionnaireOpen(true)}
+                  onSendMessage={handleSendMessage}
+                  onMarkNotificationRead={handleMarkNotificationRead}
+                  onDocumentUpdated={handleDocumentUpdated}
+                />
+              );
+            })()}
           </main>
         </div>
       )}
