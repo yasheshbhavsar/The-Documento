@@ -15,9 +15,30 @@ $uvicornExe = Join-Path $venvScripts "uvicorn.exe"
 $alembicIni = Join-Path $backendDir "alembic.ini"
 
 if (-not $env:DATABASE_URL) {
-    $dbPath = (Join-Path $scriptDir "ai_immigration.db").Replace("\", "/")
-    $env:DATABASE_URL = "sqlite:///$dbPath"
-    Write-Host "No DATABASE_URL set. Using local SQLite: $env:DATABASE_URL" -ForegroundColor Gray
+    $envFile = Join-Path $scriptDir ".env"
+    $backendEnv = Join-Path $backendDir ".env"
+    if (Test-Path $envFile) {
+        Get-Content $envFile | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+                $parts = $line.Split("=", 2)
+                [Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim(), "Process")
+            }
+        }
+    } elseif (Test-Path $backendEnv) {
+        Get-Content $backendEnv | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+                $parts = $line.Split("=", 2)
+                [Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim(), "Process")
+            }
+        }
+    }
+}
+
+if (-not $env:DATABASE_URL) {
+    $env:DATABASE_URL = "postgresql+psycopg://ai_immigration:local_dev_only@localhost:5432/ai_immigration"
+    Write-Host "No DATABASE_URL set. Defaulting to local PostgreSQL: $env:DATABASE_URL" -ForegroundColor Gray
 }
 
 $env:PYTHONPATH = $scriptDir

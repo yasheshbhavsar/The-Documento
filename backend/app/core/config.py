@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     rate_limit_per_minute: int = 120
 
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_file=(".env", "../.env"), env_prefix="", extra="ignore")
 
     @property
     def cors_origin_list(self) -> list[str]:

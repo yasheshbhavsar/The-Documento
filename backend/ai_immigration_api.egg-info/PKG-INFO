@@ -4,7 +4,7 @@ Version: 0.1.0
 Summary: AI Immigration backend
 Requires-Python: >=3.12
 Requires-Dist: fastapi
-Requires-Dist: uvicorn[standard]
+Requires-Dist: uvicorn
 Requires-Dist: pydantic
 Requires-Dist: pydantic-settings
 Requires-Dist: sqlalchemy>=2.0
@@ -12,3 +12,12 @@ Requires-Dist: psycopg[binary]>=3.2
 Requires-Dist: alembic>=1.13.0
 Requires-Dist: httpx>=0.27.0
 Requires-Dist: pytest>=8.0.0
+Requires-Dist: boto3>=1.34.0
+Requires-Dist: bcrypt>=4.0.0
+Requires-Dist: pyjwt>=2.8.0
+Requires-Dist: email-validator>=2.0.0
+Requires-Dist: pymupdf>=1.24.0
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: python-dotenv>=1.0.0
+Provides-Extra: ocr
+Requires-Dist: rapidocr-onnxruntime>=1.2.0; extra == "ocr"

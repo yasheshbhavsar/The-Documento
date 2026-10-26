@@ -14,7 +14,7 @@ description = "AI Immigration backend"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi",
-  "uvicorn[standard]",
+  "uvicorn",
   "pydantic",
   "pydantic-settings",
   "sqlalchemy>=2.0",
@@ -26,10 +26,14 @@ dependencies = [
   "bcrypt>=4.0.0",
   "pyjwt>=2.8.0",
   "email-validator>=2.0.0",
-  "rapidocr-onnxruntime>=1.2.0",
   "pymupdf>=1.24.0",
   "python-multipart>=0.0.9",
   "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+ocr = [
+  "rapidocr-onnxruntime>=1.2.0",
 ]
 
 [tool.pytest.ini_options]
