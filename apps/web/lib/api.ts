@@ -1435,6 +1435,8 @@ export const api = {
       email: string;
       phone?: string;
       nationality: string;
+      organization_id?: string;
+      user_id?: string;
       portal_credentials_provided?: boolean;
       portal_access_enabled?: boolean;
       temporary_password?: string;
@@ -1451,8 +1453,16 @@ export const api = {
         const data = await res.json();
         return { data, isLiveBackend: true };
       }
-    } catch {
-      // Fallback
+      const errJson = await res.json().catch(() => null);
+      const detail = errJson?.detail;
+      const errorMsg = typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ") : `HTTP ${res.status}`;
+      console.error("Backend client creation failed:", res.status, errorMsg);
+      throw new Error(`Server error: ${errorMsg}`);
+    } catch (err: any) {
+      if (err.message && err.message.startsWith("Server error:")) {
+        throw err;
+      }
+      // Fallback only if backend is completely offline/unreachable
     }
 
     const provisionedBy = role === "master_admin" ? "Owner (Managing Partner)" : "Lead Paralegal";

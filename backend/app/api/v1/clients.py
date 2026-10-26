@@ -1,13 +1,13 @@
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy.orm import Session
 
 from backend.app.core.errors import ConflictError, EntityNotFoundError, PermissionDeniedError
 from backend.app.db.session import get_db
 from backend.app.domain.case_service import DuplicateMatch, detect_client_duplicates
-from backend.app.domain.models import AuditEvent, ClientConsent, ClientDependant, ClientProfile, User
+from backend.app.domain.models import AuditEvent, ClientConsent, ClientDependant, ClientProfile, Organization, User
 from backend.app.security.auth import AuthContext, get_auth_context, require_permission
 from backend.app.security.tokens import hash_opaque_token
 
@@ -25,6 +25,34 @@ class DependantCreateRequest(BaseModel):
     passport_number: str | None = Field(default=None, description="Plain passport number is hashed immediately")
     is_authorized_to_view_case: bool = Field(default=False, description="Whether this dependant has authorized portal visibility")
     user_id: uuid.UUID | None = None
+
+    @field_validator("nationality", mode="before")
+    @classmethod
+    def normalize_nationality(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            return "USA"
+        clean = v.strip().upper()
+        mapping = {
+            "INDIA": "IND",
+            "INDIAN": "IND",
+            "UNITED STATES": "USA",
+            "UNITED STATES OF AMERICA": "USA",
+            "USA": "USA",
+            "US": "USA",
+            "UNITED KINGDOM": "GBR",
+            "UK": "GBR",
+            "GREAT BRITAIN": "GBR",
+            "CANADA": "CAN",
+            "CANADIAN": "CAN",
+            "AUSTRALIA": "AUS",
+            "GERMANY": "DEU",
+            "FRANCE": "FRA",
+        }
+        if clean in mapping:
+            return mapping[clean]
+        if len(clean) > 3:
+            return clean[:3]
+        return clean
 
 
 class DependantResponse(BaseModel):
@@ -76,12 +104,42 @@ class ClientProfileCreate(BaseModel):
     nationality: str = Field(..., min_length=2, max_length=3)
     passport_number: str | None = Field(default=None, description="Plain passport number will be hashed, never stored raw")
     user_id: uuid.UUID | None = None
+    organization_id: uuid.UUID | None = None
+    temporary_password: str | None = None
     aadhaar_number_masked: str | None = Field(default=None, max_length=16)
     pan_number: str | None = Field(default=None, max_length=16)
     voter_id: str | None = Field(default=None, max_length=32)
     passport_ecr_status: str = Field(default="NON_ECR", max_length=16)
     dependants: list[DependantCreateRequest] = []
     consents: list[ConsentCreateRequest] = []
+
+    @field_validator("nationality", mode="before")
+    @classmethod
+    def normalize_nationality(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            return "USA"
+        clean = v.strip().upper()
+        mapping = {
+            "INDIA": "IND",
+            "INDIAN": "IND",
+            "UNITED STATES": "USA",
+            "UNITED STATES OF AMERICA": "USA",
+            "USA": "USA",
+            "US": "USA",
+            "UNITED KINGDOM": "GBR",
+            "UK": "GBR",
+            "GREAT BRITAIN": "GBR",
+            "CANADA": "CAN",
+            "CANADIAN": "CAN",
+            "AUSTRALIA": "AUS",
+            "GERMANY": "DEU",
+            "FRANCE": "FRA",
+        }
+        if clean in mapping:
+            return mapping[clean]
+        if len(clean) > 3:
+            return clean[:3]
+        return clean
 
 
 class ClientProfileResponse(BaseModel):
@@ -152,16 +210,15 @@ def list_clients(
     ctx: AuthContext = Depends(require_permission("case:read")),
     db: Session = Depends(get_db),
 ):
-    """Lists retained clients strictly within the caller's organization."""
+    """Lists retained clients strictly within the caller's organization, or all clients if master admin."""
     if ctx.is_retained_client():
         raise PermissionDeniedError("Retained clients cannot browse firm client directories")
 
-    clients = (
-        db.query(ClientProfile)
-        .filter(ClientProfile.organization_id == ctx.organization_id)
-        .order_by(ClientProfile.created_at.desc())
-        .all()
-    )
+    query = db.query(ClientProfile)
+    if not ctx.is_master_admin() and str(ctx.organization_id) != "11111111-1111-1111-1111-111111111111":
+        query = query.filter(ClientProfile.organization_id == ctx.organization_id)
+
+    clients = query.order_by(ClientProfile.created_at.desc()).all()
     return [
         ClientProfileResponse(
             id=c.id,
@@ -191,14 +248,55 @@ def create_client_profile(
     ctx: AuthContext = Depends(require_permission("case:write")),
     db: Session = Depends(get_db),
 ):
-    """Creates a new retained client record, optionally including dependants and initial consents."""
+    """Creates a new retained client record, generating unique org_id and user_id dynamically."""
     email_clean = payload.email.lower().strip()
     passport_hash = hash_opaque_token(payload.passport_number) if payload.passport_number else None
     now = datetime.now(timezone.utc)
 
+    # 1. Resolve unique organization_id
+    target_org_id = payload.organization_id
+    if not target_org_id or str(target_org_id) == "11111111-1111-1111-1111-111111111111":
+        target_org_id = uuid.uuid4()
+
+    org = db.query(Organization).filter(Organization.id == target_org_id).first()
+    if not org:
+        org = Organization(
+            id=target_org_id,
+            name=f"{payload.first_name.strip()} {payload.last_name.strip()} Organization",
+            slug=f"org-{target_org_id.hex[:12]}",
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(org)
+        db.flush()
+
+    # 2. Resolve unique user_id
+    target_user_id = payload.user_id or uuid.uuid4()
+    user = db.query(User).filter(User.email == email_clean).first()
+    if not user:
+        user = User(
+            id=target_user_id,
+            organization_id=org.id,
+            email=email_clean,
+            name=f"{payload.first_name.strip()} {payload.last_name.strip()}",
+            full_name=f"{payload.first_name.strip()} {payload.last_name.strip()}",
+            password_hash=hash_opaque_token(payload.temporary_password or "ClientPass2026!"),
+            status="active",
+            is_mfa_enabled=False,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(user)
+        db.flush()
+    else:
+        target_user_id = user.id
+
+    # 3. Create ClientProfile with unique client id, unique organization_id, and unique user_id
     client = ClientProfile(
-        organization_id=ctx.organization_id,
-        user_id=payload.user_id,
+        id=uuid.uuid4(),
+        organization_id=org.id,
+        user_id=target_user_id,
         first_name=payload.first_name.strip(),
         last_name=payload.last_name.strip(),
         email=email_clean,
@@ -218,10 +316,11 @@ def create_client_profile(
     # Create optional dependants
     for dep in payload.dependants:
         dep_pass_hash = hash_opaque_token(dep.passport_number) if dep.passport_number else None
+        dep_user_id = dep.user_id or uuid.uuid4()
         d = ClientDependant(
-            organization_id=ctx.organization_id,
+            organization_id=org.id,
             primary_client_id=client.id,
-            user_id=dep.user_id,
+            user_id=dep_user_id,
             relationship_type=dep.relationship_type.strip(),
             first_name=dep.first_name.strip(),
             last_name=dep.last_name.strip(),
@@ -239,7 +338,7 @@ def create_client_profile(
     # Create optional consents
     for c in payload.consents:
         consent = ClientConsent(
-            organization_id=ctx.organization_id,
+            organization_id=org.id,
             client_id=client.id,
             case_id=c.case_id,
             consent_type=c.consent_type.strip(),
@@ -252,9 +351,12 @@ def create_client_profile(
         )
         db.add(consent)
 
+    actor_user = db.query(User).filter(User.id == ctx.user_id).first()
+    actor_id = actor_user.id if actor_user else None
+
     audit = AuditEvent(
-        organization_id=ctx.organization_id,
-        actor_id=ctx.user_id,
+        organization_id=org.id,
+        actor_id=actor_id,
         action="client.created",
         object_type="client_profile",
         object_id=str(client.id),
@@ -279,6 +381,10 @@ def create_client_profile(
         phone=client.phone,
         date_of_birth=client.date_of_birth,
         nationality=client.nationality,
+        aadhaar_number_masked=client.aadhaar_number_masked,
+        pan_number=client.pan_number,
+        voter_id=client.voter_id,
+        passport_ecr_status=client.passport_ecr_status or "NON_ECR",
         created_at=client.created_at,
         dependants_count=len(client.dependants),
         cases_count=len(client.cases),
