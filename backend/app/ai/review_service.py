@@ -261,7 +261,12 @@ def run_case_ai_analysis(db: Session, case_id: uuid.UUID, organization_id: uuid.
             created_or_updated.append(new_q)
 
     # 6. Run Pathway Checklist Gap Analysis
-    checklist_audit = audit_case_checklist(case.jurisdiction, case.visa_category, doc_dicts)
+    checklist_audit = audit_case_checklist(
+        case.jurisdiction,
+        case.visa_category,
+        doc_dicts,
+        checklist_snapshot=case.pinned_checklist_snapshot if getattr(case, "pinned_checklist_snapshot", None) else None,
+    )
     for missing in checklist_audit.missing_items:
         if not missing.is_mandatory:
             continue  # Only flag missing mandatory checklist evidence as action items

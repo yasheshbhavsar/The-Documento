@@ -345,3 +345,75 @@ def review_sensitive_fields(
         "reviewed_at": updated.reviewed_at.isoformat() if updated.reviewed_at else None,
         "reviewer_notes": updated.reviewer_notes,
     }
+
+
+class FinalizeSubmissionRequest(BaseModel):
+    status: Optional[str] = Field("confirmed", description="Target status: confirmed, approved, ready_for_filing")
+
+
+@router.post("/submissions/{submission_id}/finalize")
+def finalize_form_submission(
+    submission_id: uuid.UUID,
+    payload: Optional[FinalizeSubmissionRequest] = None,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """
+    Finalizes and locks a form submission after verifying all readiness gates:
+    - 100% field completion
+    - Zero unconfirmed AI/draft answers
+    - Designated counsel certification of sensitive inadmissibility questions
+    - Zero unresolved multi-document conflicts
+    """
+    if auth.is_retained_client() or auth.has_role("client"):
+        raise HTTPException(status_code=403, detail="Clients cannot finalize or lock legal form submissions.")
+
+    submission = db.execute(
+        select(FormSubmission).where(
+            FormSubmission.id == submission_id,
+            FormSubmission.organization_id == auth.organization_id,
+        )
+    ).scalar_one_or_none()
+    if not submission:
+        raise EntityNotFoundError("FormSubmission", str(submission_id))
+
+    user = db.execute(select(User).where(User.id == auth.user_id)).scalar_one()
+
+    target_status = payload.status if payload and payload.status else "confirmed"
+    try:
+        finalized = FormService.finalize_submission(
+            db=db,
+            submission=submission,
+            user=user,
+            target_status=target_status,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Log audit event
+    audit = AuditEvent(
+        organization_id=auth.organization_id,
+        actor_id=auth.user_id,
+        action="form_submission.finalized",
+        object_type="form_submission",
+        object_id=str(finalized.id),
+        metadata_json={
+            "case_id": str(finalized.case_id),
+            "status": finalized.status,
+            "revision_number": finalized.revision_number,
+            "summary": f"Finalized form submission {finalized.schema_version.schema.form_code} as {finalized.status}",
+        },
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "id": str(finalized.id),
+        "status": finalized.status,
+        "completion_percentage": finalized.completion_percentage,
+        "has_unconfirmed_ai_fields": finalized.has_unconfirmed_ai_fields,
+        "sensitive_fields_reviewed": finalized.sensitive_fields_reviewed,
+        "revision_number": finalized.revision_number,
+        "revision_history": finalized.revision_history,
+    }
+

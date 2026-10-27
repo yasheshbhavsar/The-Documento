@@ -14,6 +14,14 @@ from backend.app.extraction.normalizer import (
 )
 from backend.app.ocr.engine import PageExtractionResult
 
+try:
+    from backend.app.ocr.mrz_parser import MRZParser
+except ImportError:
+    try:
+        from app.ocr.mrz_parser import MRZParser
+    except ImportError:
+        MRZParser = None
+
 
 def _find_block_location(pages: list[PageExtractionResult], target_value: str, page_num: int) -> dict | None:
     """Finds bounding box location of target string within page blocks with normalized [ymin, xmin, ymax, xmax] coordinates."""
@@ -42,6 +50,7 @@ def _find_block_location(pages: list[PageExtractionResult], target_value: str, p
                         "page_height": round(h, 2),
                         "bounding_box": [ymin, xmin, ymax, xmax],
                         "block_idx": b.block_idx,
+                        "page_number": page.page_number,
                     }
 
     # 2. Check all pages for direct match
@@ -63,6 +72,7 @@ def _find_block_location(pages: list[PageExtractionResult], target_value: str, p
                     "page_height": round(h, 2),
                     "bounding_box": [ymin, xmin, ymax, xmax],
                     "block_idx": b.block_idx,
+                    "page_number": page.page_number,
                 }
 
     # 3. Token-level partial match (tokens >= 4 characters)
@@ -87,6 +97,7 @@ def _find_block_location(pages: list[PageExtractionResult], target_value: str, p
                         "page_height": round(h, 2),
                         "bounding_box": [ymin, xmin, ymax, xmax],
                         "block_idx": b.block_idx,
+                        "page_number": page.page_number,
                     }
 
     # Fallback to first available block on page if blocks exist
@@ -108,6 +119,7 @@ def _find_block_location(pages: list[PageExtractionResult], target_value: str, p
                 "page_height": round(h, 2),
                 "bounding_box": [ymin, xmin, ymax, xmax],
                 "block_idx": b.block_idx,
+                "page_number": page.page_number,
             }
 
     return None
@@ -157,7 +169,27 @@ def extract_structured_fields(
             return
 
         clean_orig = str(original_value).strip()
+        # Invariant (Master Vision §4.3): Never fabricate or accept phantom placeholder values as extracted legal entities
+        clean_lower = clean_orig.lower()
+        if clean_lower in ("null", "none", "n/a", "na", "undefined", "unknown", "not applicable"):
+            return
+
         loc = location or _find_block_location(pages, clean_orig, source_page)
+
+        # Evidence Provenance (Master Vision §4.3): Resolve actual physical source page and per-page OCR diagnostics
+        actual_page = loc.get("page_number", source_page) if (loc and isinstance(loc, dict)) else source_page
+        matched_page = next((p for p in pages if p.page_number == actual_page), pages[0])
+        page_ocr_conf = matched_page.ocr_confidence if matched_page.ocr_confidence is not None else 0.95
+        page_method = method or ("ocr_pattern_matcher" if matched_page.ocr_applied else "native_pdf_layout")
+
+        # Confidence Calibration (Master Vision §4.3, §4.4): Sub-threshold confidence must be routed for human review
+        effective_conf = min(page_ocr_conf, extraction_confidence)
+        if effective_conf < 0.60:
+            val_status = "flagged"
+        elif effective_conf < 0.75:
+            val_status = "needs_review"
+        else:
+            val_status = "unvalidated"
 
         field = DocumentExtractedField(
             id=uuid.uuid4(),
@@ -167,13 +199,13 @@ def extract_structured_fields(
             field_label=field_label,
             original_value=clean_orig,
             normalized_value=str(normalized_value if normalized_value is not None else clean_orig).strip(),
-            source_page=source_page,
+            source_page=actual_page,
             source_location=loc,
-            extraction_method=method or default_method,
+            extraction_method=page_method,
             model_version=model_ver or "doc-intel-v5.0",
-            ocr_confidence=ocr_confidence,
+            ocr_confidence=page_ocr_conf,
             extraction_confidence=extraction_confidence,
-            validation_status="unvalidated",
+            validation_status=val_status,
             is_manually_corrected=False,
             correction_history=[],
         )
@@ -190,18 +222,39 @@ def extract_structured_fields(
                 field_label="Candidate Applicant Name",
                 original_value=clean_orig,
                 normalized_value=str(normalized_value if normalized_value is not None else clean_orig).strip(),
-                source_page=source_page,
+                source_page=actual_page,
                 source_location=loc,
-                extraction_method=method or default_method,
+                extraction_method=page_method,
                 model_version=model_ver or "doc-intel-v5.0",
-                ocr_confidence=ocr_confidence,
+                ocr_confidence=page_ocr_conf,
                 extraction_confidence=extraction_confidence,
-                validation_status="unvalidated",
+                validation_status=val_status,
                 is_manually_corrected=False,
                 correction_history=[],
             )
             extracted_fields.append(app_field)
             added_keys.add("applicant_name")
+        elif field_name == "applicant_name" and "full_name" not in added_keys:
+            fn_field = DocumentExtractedField(
+                id=uuid.uuid4(),
+                organization_id=organization_id,
+                document_id=document_id,
+                field_name="full_name",
+                field_label="Full Name",
+                original_value=clean_orig,
+                normalized_value=str(normalized_value if normalized_value is not None else clean_orig).strip(),
+                source_page=actual_page,
+                source_location=loc,
+                extraction_method=page_method,
+                model_version=model_ver or "doc-intel-v5.0",
+                ocr_confidence=page_ocr_conf,
+                extraction_confidence=extraction_confidence,
+                validation_status=val_status,
+                is_manually_corrected=False,
+                correction_history=[],
+            )
+            extracted_fields.append(fn_field)
+            added_keys.add("full_name")
 
     # 1. MULTIMODAL VISION AI ANALYSIS (Gemini 2.0 Flash / Local Vision Fallback)
     if document_bytes:
@@ -231,38 +284,42 @@ def extract_structured_fields(
 
     # 2. PASSPORT & IDENTITY EXTRACTION
     if category in ("identity_passport", "supporting_evidence"):
-        # MRZ Line detection
-        mrz_match = re.search(r"P<([A-Z]{3})([A-Z0-9<]+)\s*\r?\n\s*([A-Z0-9]{9})[0-9]([A-Z]{3})([0-9]{6})[0-9]([MF<])([0-9]{6})", full_text)
-        if mrz_match:
-            issuing_country = mrz_match.group(1)
-            raw_name = mrz_match.group(2).replace("<", " ").strip()
-            passport_num = mrz_match.group(3).replace("<", "")
-            nat = mrz_match.group(4)
-            dob_raw = mrz_match.group(5)
-            exp_raw = mrz_match.group(7)
-
+        # Primary: ICAO Doc 9303 Machine Readable Zone (MRZ) parser
+        mrz = MRZParser.parse_text(full_text) if MRZParser else None
+        if mrz:
             if "mrz_code" not in added_keys:
-                add_field("mrz_code", "Machine Readable Zone (MRZ)", mrz_match.group(0), mrz_match.group(0), 1, 0.99)
+                add_field("mrz_code", "Machine Readable Zone (MRZ)", mrz.raw_mrz, mrz.raw_mrz, 1, 0.99, method="icao_mrz_engine")
             if "passport_number" not in added_keys:
-                add_field("passport_number", "Passport Number", passport_num, passport_num.upper(), 1, 0.99)
+                add_field("passport_number", "Passport Number", mrz.document_number, mrz.document_number.upper(), 1, 0.99, method="icao_mrz_engine")
             if "full_name" not in added_keys:
-                add_field("full_name", "Full Name", raw_name, raw_name.title(), 1, 0.95)
-            if "nationality" not in added_keys:
-                add_field("nationality", "Nationality", nat, normalize_country(nat), 1, 0.98)
-            if "issuing_country" not in added_keys:
-                add_field("issuing_country", "Issuing Country", issuing_country, normalize_country(issuing_country), 1, 0.98)
-            if "date_of_birth" not in added_keys:
-                add_field("date_of_birth", "Date of Birth", dob_raw, normalize_date(dob_raw), 1, 0.96)
-            if "expiry_date" not in added_keys:
-                add_field("expiry_date", "Date of Expiration", exp_raw, normalize_date(exp_raw), 1, 0.96)
-        else:
-            # Key-value pattern fallbacks
-            p_num = re.search(r"(?:Passport\s*(?:No\.?|Number)|Document\s*No\.?)[\s:]+([A-Z0-9]{6,12})", full_text, re.IGNORECASE)
-            if p_num and "passport_number" not in added_keys:
+                add_field("full_name", "Full Name", mrz.full_name, mrz.full_name.title(), 1, 0.96, method="icao_mrz_engine")
+                add_field("applicant_name", "Applicant Legal Name", mrz.full_name, mrz.full_name.title(), 1, 0.96, method="icao_mrz_engine")
+            if "surname" not in added_keys and mrz.surname:
+                add_field("surname", "Surname / Family Name", mrz.surname, mrz.surname.title(), 1, 0.96, method="icao_mrz_engine")
+            if "given_names" not in added_keys and mrz.given_names:
+                add_field("given_names", "Given Names", mrz.given_names, mrz.given_names.title(), 1, 0.96, method="icao_mrz_engine")
+            if "nationality" not in added_keys and mrz.nationality:
+                add_field("nationality", "Nationality", mrz.nationality, normalize_country(mrz.nationality), 1, 0.98, method="icao_mrz_engine")
+            if "issuing_country" not in added_keys and mrz.issuing_country:
+                add_field("issuing_country", "Issuing Country", mrz.issuing_country, normalize_country(mrz.issuing_country), 1, 0.98, method="icao_mrz_engine")
+            if "date_of_birth" not in added_keys and mrz.date_of_birth:
+                add_field("date_of_birth", "Date of Birth", mrz.date_of_birth, normalize_date(mrz.date_of_birth), 1, 0.98, method="icao_mrz_engine")
+            if "gender" not in added_keys and mrz.gender:
+                add_field("gender", "Sex / Gender", mrz.gender, mrz.gender, 1, 0.98, method="icao_mrz_engine")
+            if "expiry_date" not in added_keys and mrz.expiry_date:
+                add_field("expiry_date", "Date of Expiration", mrz.expiry_date, normalize_date(mrz.expiry_date), 1, 0.98, method="icao_mrz_engine")
+
+        # Visual text pattern fallbacks & enrichment
+        if "passport_number" not in added_keys:
+            p_num = re.search(r"\b([A-Z]{1}[0-9]{7,8})\b", full_text)
+            if not p_num:
+                p_num = re.search(r"(?:Passport\s*(?:No\.?|Number)|Document\s*No\.?)[\s:]+([A-Z0-9]{6,12})", full_text, re.IGNORECASE)
+            if p_num:
                 add_field("passport_number", "Passport Number", p_num.group(1), p_num.group(1).upper(), 1, 0.92)
 
+        if "full_name" not in added_keys:
             name_m = re.search(r"(?:Name|Full Name|Surname\s*and\s*Given\s*Names|Nom|Apellidos)[\s:]+([A-Za-z\s\.-]{3,50})", full_text, re.IGNORECASE)
-            if name_m and "full_name" not in added_keys:
+            if name_m:
                 cand_name = name_m.group(1).strip()
                 invalid_prefixes = (
                     "of the", "of registered", "date of", "immigration", "family name",
@@ -273,33 +330,75 @@ def extract_structured_fields(
                     "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details"
                 ):
                     add_field("full_name", "Full Name", cand_name, cand_name.title(), 1, 0.88)
+                    add_field("applicant_name", "Applicant Legal Name", cand_name, cand_name.title(), 1, 0.88)
 
+        # Visual Dates (Date of Birth, Issue Date, Expiry Date)
+        if "date_of_birth" not in added_keys:
             dob_m = re.search(r"(?:Date of Birth|Birth Date|DOB|Date de naissance)[\s:]+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})", full_text, re.IGNORECASE)
-            if dob_m and "date_of_birth" not in added_keys:
+            if dob_m:
                 add_field("date_of_birth", "Date of Birth", dob_m.group(1).strip(), normalize_date(dob_m.group(1).strip()), 1, 0.90)
 
-            nat_m = re.search(r"(?:Nationality|Nationalité|Nacionalidad)[\s:]+([A-Za-z\s]{3,30})", full_text, re.IGNORECASE)
-            if nat_m and "nationality" not in added_keys:
-                add_field("nationality", "Nationality", nat_m.group(1).strip(), normalize_country(nat_m.group(1).strip()), 1, 0.88)
+        if "issue_date" not in added_keys:
+            issue_m = re.search(r"(?:Date of Issue|Issue Date|Issued on)[\s:]+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})", full_text, re.IGNORECASE)
+            if issue_m:
+                add_field("issue_date", "Date of Issue", issue_m.group(1).strip(), normalize_date(issue_m.group(1).strip()), 1, 0.90)
 
+        if "expiry_date" not in added_keys:
             exp_m = re.search(r"(?:Date of Expir(?:y|ation)|Expiration Date)[\s:]+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})", full_text, re.IGNORECASE)
-            if exp_m and "expiry_date" not in added_keys:
+            if exp_m:
                 add_field("expiry_date", "Date of Expiration", exp_m.group(1).strip(), normalize_date(exp_m.group(1).strip()), 1, 0.90)
 
-            # Digital Photo Metadata Extraction
-            if "DIGITAL PHOTO" in (filename or "").upper() or "PASSPORT PHOTO" in (filename or "").upper() or ("PHOTO" in (filename or "").upper() and (mime_type.startswith("image/") or full_text == "")):
-                if "document_title" not in added_keys:
-                    add_field("document_title", "Document Title", "Digital Photo (Passport Photo)", "Digital Photo (Passport Photo)", 1, 0.99)
-                m_photo_name = re.search(r"(?:DIGITAL\s+PHOTO|PHOTO)[_\s-]+([A-Za-z\s]+?)(?:\.[a-zA-Z0-9]+)?$", filename or "", re.IGNORECASE)
-                if m_photo_name and "full_name" not in added_keys:
-                    clean_name = m_photo_name.group(1).strip()
-                    if len(clean_name) > 2:
-                        add_field("full_name", "Applicant Legal Name", clean_name, clean_name.title(), 1, 0.95)
-                if "photo_spec_compliance" not in added_keys:
-                    add_field("photo_spec_compliance", "IRCC Photo Specification Compliance", "Meets IRCC specifications (35mm x 45mm, clear face view)", "Meets IRCC specifications (35mm x 45mm, clear face view)", 1, 0.98)
-                if "photo_file_format" not in added_keys:
-                    fmt = "JPEG Image" if "jpeg" in mime_type or "jpg" in (filename or "").lower() else "Digital Image"
-                    add_field("photo_file_format", "Photo File Format", fmt, fmt, 1, 0.98)
+        # Corroborate standalone dates in passport biodata
+        if "issue_date" not in added_keys or "date_of_birth" not in added_keys or "expiry_date" not in added_keys:
+            all_dates = re.findall(r"\b([0-9]{2}/[0-9]{2}/[0-9]{4})\b", full_text)
+            for d_str in all_dates:
+                parts = d_str.split("/")
+                yr = int(parts[2])
+                norm_d = f"{parts[2]}-{parts[1]}-{parts[0]}"
+                if yr < 2010 and "date_of_birth" not in added_keys:
+                    add_field("date_of_birth", "Date of Birth", d_str, norm_d, 1, 0.88)
+                elif 2010 <= yr <= 2026 and "issue_date" not in added_keys:
+                    add_field("issue_date", "Date of Issue", d_str, norm_d, 1, 0.88)
+                elif yr > 2026 and "expiry_date" not in added_keys:
+                    add_field("expiry_date", "Date of Expiration", d_str, norm_d, 1, 0.88)
+
+        # Place of Birth / Place of Issue
+        if "place_of_birth" not in added_keys:
+            pob_m = re.search(r"(?:Place of Birth|Place of lssue|Place of Issue)[\s:]*([A-Za-z\s,]+)", full_text, re.IGNORECASE)
+            if pob_m:
+                raw_pob = pob_m.group(1).split("\n")[0].strip()
+                add_field("place_of_birth", "Place of Birth", raw_pob, raw_pob.title(), 1, 0.88)
+            else:
+                city_m = re.search(r"\b([A-Za-z\s]+(?:Ahmedabad|Mumbai|Delhi|Bengaluru|Bangalore|Chennai|Kolkata|Hyderabad|Pune|Surat|Vadodara|Rajkot|Chandigarh|Jaipur|Lucknow)[A-Za-z\s,]*)", full_text, re.IGNORECASE)
+                if city_m:
+                    raw_city = city_m.group(1).split("\n")[0].strip()
+                    add_field("place_of_birth", "Place of Birth", raw_city, raw_city.title(), 1, 0.86)
+
+        if "nationality" not in added_keys:
+            nat_m = re.search(r"(?:Nationality|Nationalité|Nacionalidad)[\s:]+([A-Za-z\s]{3,30})", full_text, re.IGNORECASE)
+            if nat_m:
+                add_field("nationality", "Nationality", nat_m.group(1).strip(), normalize_country(nat_m.group(1).strip()), 1, 0.88)
+            elif re.search(r"\b(REPUBLIC OF INDIA|INDIAN|IND)\b", full_text, re.IGNORECASE):
+                add_field("nationality", "Nationality", "India", "India", 1, 0.92)
+
+        if "issuing_country" not in added_keys:
+            if re.search(r"\b(REPUBLIC OF INDIA|GOVERNMENT OF INDIA|IND)\b", full_text, re.IGNORECASE):
+                add_field("issuing_country", "Issuing Country", "India", "India", 1, 0.95)
+
+        # Digital Photo Metadata Extraction
+        if "DIGITAL PHOTO" in (filename or "").upper() or "PASSPORT PHOTO" in (filename or "").upper() or ("PHOTO" in (filename or "").upper() and (mime_type.startswith("image/") or full_text == "")):
+            if "document_title" not in added_keys:
+                add_field("document_title", "Document Title", "Digital Photo (Passport Photo)", "Digital Photo (Passport Photo)", 1, 0.99)
+            m_photo_name = re.search(r"(?:DIGITAL\s+PHOTO|PHOTO)[_\s-]+([A-Za-z\s]+?)(?:\.[a-zA-Z0-9]+)?$", filename or "", re.IGNORECASE)
+            if m_photo_name and "full_name" not in added_keys:
+                clean_name = m_photo_name.group(1).strip()
+                if len(clean_name) > 2:
+                    add_field("full_name", "Applicant Legal Name", clean_name, clean_name.title(), 1, 0.95)
+            if "photo_spec_compliance" not in added_keys:
+                add_field("photo_spec_compliance", "IRCC Photo Specification Compliance", "Meets IRCC specifications (35mm x 45mm, clear face view)", "Meets IRCC specifications (35mm x 45mm, clear face view)", 1, 0.98)
+            if "photo_file_format" not in added_keys:
+                fmt = "JPEG Image" if "jpeg" in mime_type or "jpg" in (filename or "").lower() else "Digital Image"
+                add_field("photo_file_format", "Photo File Format", fmt, fmt, 1, 0.98)
 
         # XFA Datasets / IRCC Application Form Fallback for Identity
         if "full_name" not in added_keys:
@@ -352,7 +451,7 @@ def extract_structured_fields(
 
     # Indian Passport Endorsements (ECR vs ECNR, File Number, Booklet Type, Family)
     indian_passport = IdentityResolver.parse_indian_passport(full_text)
-    if indian_passport:
+    if indian_passport and (indian_passport.mrz_detected or indian_passport.passport_number or category == "identity_passport" or "passport" in (filename or "").lower()):
         if indian_passport.passport_number and "passport_number" not in added_keys:
             add_field("passport_number", "Passport Number", indian_passport.passport_number, indian_passport.passport_number.upper(), 1, 0.98, method="statutory_identity_resolver")
         if "emigration_check_status" not in added_keys:
@@ -367,6 +466,27 @@ def extract_structured_fields(
             add_field("spouse_legal_name", "Spouse's Legal Name", indian_passport.spouse_name, indian_passport.spouse_name, 1, 0.95, method="statutory_identity_resolver")
         if "passport_booklet_type" not in added_keys:
             add_field("passport_booklet_type", "Passport Booklet Type", indian_passport.booklet_type, indian_passport.booklet_type, 1, 0.95, method="statutory_identity_resolver")
+
+    # Driving Licence detection
+    dl_info = IdentityResolver.parse_driving_licence(full_text)
+    if dl_info and "driving_licence_number" not in added_keys:
+        add_field("driving_licence_number", "Driving Licence Number", dl_info.licence_number, dl_info.licence_number, 1, 0.98, method="statutory_identity_resolver")
+        add_field("driving_licence_jurisdiction", "Driving Licence Jurisdiction", dl_info.jurisdiction, dl_info.jurisdiction, 1, 0.96, method="statutory_identity_resolver")
+        if dl_info.holder_name and "full_name" not in added_keys:
+            add_field("full_name", "Full Name", dl_info.holder_name, dl_info.holder_name, 1, 0.94, method="statutory_identity_resolver")
+        if dl_info.expiry_date and "driving_licence_expiry" not in added_keys:
+            add_field("driving_licence_expiry", "Driving Licence Expiry", dl_info.expiry_date, normalize_date(dl_info.expiry_date) or dl_info.expiry_date, 1, 0.94, method="statutory_identity_resolver")
+        if dl_info.vehicle_class and "driving_licence_class" not in added_keys:
+            add_field("driving_licence_class", "Vehicle Authorization Class", dl_info.vehicle_class, dl_info.vehicle_class, 1, 0.95, method="statutory_identity_resolver")
+
+    # Voter ID / EPIC Card detection
+    voter_info = IdentityResolver.parse_voter_id(full_text)
+    if voter_info and "voter_id_number" not in added_keys:
+        add_field("voter_id_number", "Voter ID / EPIC Number", voter_info.epic_number, voter_info.epic_number, 1, 0.98, method="statutory_identity_resolver")
+        if voter_info.elector_name and "full_name" not in added_keys:
+            add_field("full_name", "Full Name", voter_info.elector_name, voter_info.elector_name, 1, 0.95, method="statutory_identity_resolver")
+        if voter_info.relative_name and "guardian_or_spouse_name" not in added_keys:
+            add_field("guardian_or_spouse_name", "Father / Husband Legal Name", voter_info.relative_name, voter_info.relative_name, 1, 0.93, method="statutory_identity_resolver")
 
     # Single-Name / FNU Detection
     full_name_fields = [f for f in extracted_fields if f.field_name in ("full_name", "pan_holder_name")]
@@ -482,7 +602,7 @@ def extract_structured_fields(
         if emp_m and "employer_name" not in added_keys:
             add_field("employer_name", "Employer / Company Name", emp_m.group(1).strip(), emp_m.group(1).strip().title(), 1, 0.92)
 
-        title_m = re.search(r"(?:Job Title|Position Title|Role|Designation)[\s:]+([A-Za-z\s\.-]{3,50})", full_text, re.IGNORECASE)
+        title_m = re.search(r"(?:^|[\r\n])\s*(?:Job Title|Position Title|Role|Designation)\s*[:\-]\s*([A-Za-z\s\.-]{3,50})", full_text, re.IGNORECASE)
         if title_m and "job_title" not in added_keys:
             add_field("job_title", "Job Title / Professional Role", title_m.group(1).strip(), title_m.group(1).strip().title(), 1, 0.93)
 
@@ -494,6 +614,144 @@ def extract_structured_fields(
         if start_m and "employment_start_date" not in added_keys:
             raw_start = start_m.group(1).strip().split("\n")[0].strip()
             add_field("employment_start_date", "Employment Start Date", raw_start, normalize_date(raw_start) or raw_start, 1, 0.90)
+
+        # Resume & CV entity extraction
+        is_resume = (
+            "RESUME" in (filename or "").upper()
+            or "CV" in (filename or "").upper()
+            or "CURRICULUM VITAE" in full_text.upper()
+            or "RESUME" in full_text.upper()
+            or "TECHNICAL SKILLS" in full_text.upper()
+            or "WORK EXPERIENCE" in full_text.upper()
+            or "PROFESSIONAL EXPERIENCE" in full_text.upper()
+            or "CAREER OBJECTIVE" in full_text.upper()
+        )
+        if is_resume:
+            # 1. Experience Block (extract current role and employer)
+            exp_match = re.search(r"(?:^|[\r\n])\s*(?:EXPERIENCE|WORK\s+EXPERIENCE|PROFESSIONAL\s+EXPERIENCE)\s*[\r\n]+([^\r\n]+)\s*[\r\n]+([^\r\n]+)", full_text, re.IGNORECASE)
+            if exp_match:
+                cand_role = exp_match.group(1).strip()
+                company_line = exp_match.group(2).strip()
+                cand_company = company_line.split("|")[0].strip()
+                if "job_title" not in added_keys and len(cand_role) >= 3 and not any(cand_role.lower().startswith(bad) for bad in ("experience", "work", "page", "skills")):
+                    add_field("job_title", "Professional Role / Title", cand_role, cand_role.title(), 1, 0.95)
+                if "employer_name" not in added_keys and len(cand_company) >= 2 and not any(cand_company.lower().startswith(bad) for bad in ("experience", "work", "present")):
+                    add_field("employer_name", "Employer / Company Name", cand_company, cand_company.title(), 1, 0.94)
+
+            # 2. Candidate name from filename if format like 'Firstname Lastname - Resume'
+            if filename and "applicant_name" not in added_keys and "full_name" not in added_keys:
+                clean_fname = re.sub(r"[-_.]", " ", filename)
+                name_cand = re.sub(r"\b(pdf|resume|final|doc|docx|cv|curriculum|vitae)\b", "", clean_fname, flags=re.IGNORECASE).strip()
+                name_cand = " ".join(name_cand.split())
+                if len(name_cand.split()) >= 2 and all(len(p) >= 2 for p in name_cand.split()):
+                    add_field("applicant_name", "Candidate Applicant Name", name_cand, name_cand.title(), 1, 0.95)
+
+            # 3. Candidate name from top 5 lines of document text if not found yet
+            if "applicant_name" not in added_keys and "full_name" not in added_keys and pages:
+                cand_lines = [l.strip() for l in pages[0].text.splitlines() if l.strip()]
+                for line in cand_lines[:5]:
+                    if any(bad in line.lower() for bad in ("@", "http", "www.", "github", "linkedin", "phone", "tel:", "curriculum", "resume", "page ", "experience", "education", "skills")):
+                        continue
+                    words = [w for w in re.split(r"\s+", line) if w]
+                    if 2 <= len(words) <= 4 and all(re.match(r"^[A-Za-z\.-]+$", w) for w in words) and 4 <= len(line) <= 45:
+                        cand_name = " ".join(words)
+                        add_field("applicant_name", "Candidate Applicant Name", cand_name, cand_name.title(), 1, 0.94)
+                        break
+
+            # 4. Email extraction
+            email_m = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b", full_text)
+            if email_m and "email_address" not in added_keys:
+                add_field("email_address", "Contact Email Address", email_m.group(0), email_m.group(0).lower(), 1, 0.98)
+
+            # 5. Phone extraction (international and national formats)
+            phone_m = re.search(r"(?:\+?91[-.\s]?)?[6-9]\d{4}[-.\s]?\d{5}\b|(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", full_text)
+            if phone_m and "phone_number" not in added_keys:
+                add_field("phone_number", "Contact Phone Number", phone_m.group(0).strip(), phone_m.group(0).strip(), 1, 0.94)
+
+            # 6. LinkedIn profile URL
+            linkedin_m = re.search(r"(?:https?://)?(?:www\.)?linkedin\.com/in/([A-Za-z0-9_-]+)", full_text, re.IGNORECASE)
+            if linkedin_m and "linkedin_profile" not in added_keys:
+                li_url = f"https://linkedin.com/in/{linkedin_m.group(1)}"
+                add_field("linkedin_profile", "LinkedIn Profile", li_url, li_url, 1, 0.97)
+
+            # 7. GitHub / Portfolio URL
+            github_m = re.search(r"(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9_-]+)|(https?://[A-Za-z0-9_-]+\.github\.io/[A-Za-z0-9_/-]*)", full_text, re.IGNORECASE)
+            if github_m and "github_profile" not in added_keys:
+                gh_url = github_m.group(2) or f"https://github.com/{github_m.group(1)}"
+                add_field("github_profile", "GitHub Portfolio", gh_url, gh_url, 1, 0.97)
+
+            # 8. Candidate location (single-line City, State / Country)
+            loc_m = re.search(
+                r"\b([A-Z][a-zA-Z\t .-]{2,35},\s*(?:[A-Z][a-zA-Z\t .-]{2,35},\s*)?(?:India|Canada|USA|United States|UK|United Kingdom|Australia|Germany|France|Gujarat|Ontario|California|New York|Texas|Bengaluru|Bangalore|Mumbai|Delhi|Ahmedabad|Pune|Hyderabad))\b",
+                full_text,
+            )
+            if loc_m and "candidate_location" not in added_keys:
+                raw_loc = loc_m.group(1).strip()
+                add_field("candidate_location", "Candidate Location / Residence", raw_loc, raw_loc.title(), 1, 0.92)
+
+            # 9. Professional role fallback
+            if "job_title" not in added_keys:
+                role_m = re.search(r"\b((?:Senior|Lead|Staff|Principal|Junior)?\s*(?:(?:Software|Full\s*Stack|Backend|Frontend|Data|DevOps|Systems|Cloud|AI|Machine\s*Learning)[\s,&/]*)*(?:Engineer|Developer|Architect|Consultant|Manager|Director|Scientist))\b", full_text, re.IGNORECASE)
+                if role_m:
+                    add_field("job_title", "Professional Role / Title", role_m.group(1).strip(), role_m.group(1).strip().title(), 1, 0.92)
+
+            # 10. Technical Skills extraction (bullet points and comma lists)
+            skills_section = re.search(r"(?:^|[\r\n])\s*(?:TECHNICAL\s+SKILLS|CORE\s+COMPETENCIES|KEY\s+SKILLS|SKILLS\s*&?\s*ABILITIES|SKILLS)\s*[\r\n]+((?:[^\r\n]+[\r\n]+){1,20})", full_text, re.IGNORECASE)
+            if skills_section and "technical_skills" not in added_keys:
+                raw_lines = skills_section.group(1).splitlines()
+                clean_skills = []
+                for l in raw_lines:
+                    l_clean = l.strip()
+                    if not l_clean:
+                        continue
+                    if re.match(r"^(?:CERTIFICAT|EDUCATION|EXPERIENCE|PROJECT|AWARDS|WORK\s+EXPERIENCE|EMPLOYMENT)\b", l_clean, re.IGNORECASE):
+                        break
+                    if re.match(r"^LANGUAGES?\s*$", l_clean, re.IGNORECASE):
+                        break
+                    item = re.sub(r"^[•\*\-·▪\s]+", "", l_clean).strip()
+                    if item:
+                        clean_skills.append(item)
+                if clean_skills:
+                    skills_str = ", ".join(clean_skills[:15])
+                    add_field("technical_skills", "Technical Skills Summary", skills_str, skills_str, 1, 0.94)
+
+            # 11. Years of Experience
+            exp_years = re.search(r"\b([0-9]{1,2}\+?\s*(?:years?|yrs?)(?:\s*of)?\s*(?:experience|exp))\b", full_text, re.IGNORECASE)
+            if exp_years and "years_of_experience" not in added_keys:
+                add_field("years_of_experience", "Total Professional Experience", exp_years.group(1).strip(), exp_years.group(1).strip(), 1, 0.91)
+
+            # 12. Conferred Degree from Resume Education section
+            if "degree_title" not in added_keys:
+                resume_deg = re.search(r"\b((?:Bachelor|Master|Doctor|Ph\.?D\.?|Associate|Diploma)\s+(?:of|in)\s+[A-Za-z0-9\t &/-]{3,50})\b", full_text, re.IGNORECASE)
+                if resume_deg:
+                    add_field("degree_title", "Conferred Degree Title", resume_deg.group(1).strip(), resume_deg.group(1).strip().title(), 1, 0.93)
+
+            # 13. University / Institution from Resume Education section
+            if "institution_name" not in added_keys:
+                for line in full_text.splitlines():
+                    inst_m = re.search(r"\b([A-Za-z0-9\.\s-]+(?:University|Institute|Technical Institute|College|Polytechnic|Academy)(?:,\s*[A-Za-z]+)?)\b", line, re.IGNORECASE)
+                    if inst_m and not any(k in line.lower() for k in ("diploma", "bachelor", "master", "education", "degree", "doctor")):
+                        add_field("institution_name", "Academic Institution", inst_m.group(1).strip(), inst_m.group(1).strip().title(), 1, 0.92)
+                        break
+
+            # 14. Languages Proficiency
+            if "candidate_languages" not in added_keys:
+                lang_m = re.search(r"(?:^|[\r\n])\s*LANGUAGES\s*[\r\n]+((?:[^\r\n]+[\r\n]+){1,10})", full_text, re.IGNORECASE)
+                if lang_m:
+                    raw_langs = lang_m.group(1).splitlines()
+                    clean_langs = []
+                    for l in raw_langs:
+                        l_clean = l.strip()
+                        if not l_clean:
+                            continue
+                        if any(l_clean.upper().startswith(k) for k in ("SKILLS", "EDUCATION", "EXPERIENCE", "CERTIFICATE", "PROJECT")):
+                            break
+                        item = re.sub(r"^[•\*\-·▪\s]+", "", l_clean).split("[")[0].strip()
+                        if item:
+                            clean_langs.append(item)
+                    if clean_langs:
+                        langs_str = ", ".join(clean_langs[:6])
+                        add_field("candidate_languages", "Proficient Languages", langs_str, langs_str, 1, 0.92)
 
     # 7. FINANCIAL EVIDENCE EXTRACTION & FORENSICS (Bank Statements, CA Net Worth, Property Valuations)
     if category in ("financial_evidence", "supporting_evidence"):
@@ -783,13 +1041,17 @@ def format_field_extraction_provenance(
             ]
 
     # Calculate calibrated confidence
-    conf = round(min(field.ocr_confidence or 0.92, field.extraction_confidence or 0.92), 2)
+    conf = round(min(field.ocr_confidence if field.ocr_confidence is not None else 0.92, field.extraction_confidence if field.extraction_confidence is not None else 0.92), 2)
 
     val_status = field.validation_status or "unvalidated"
     if field.is_manually_corrected:
         status = "CORRECTED"
     elif val_status in ("valid", "verified"):
-        status = "VERIFIED"
+        # Calibrated safety (Master Vision §4.3): Sub-threshold OCR cannot claim verified status without human signoff
+        if (field.ocr_confidence or 1.0) < 0.70:
+            status = "NEEDS_HUMAN_REVIEW"
+        else:
+            status = "VERIFIED"
     elif val_status in ("flagged", "needs_review", "unvalidated"):
         status = "NEEDS_HUMAN_REVIEW"
     elif val_status == "rejected":
@@ -817,12 +1079,30 @@ def suggest_applicant_association(
 ) -> tuple[Optional[dict], float]:
     """
     Suggests the most probable applicant association from family members
-    based on candidate extracted names and document evidence.
+    based on candidate extracted names, passport numbers, and document evidence.
+    Enforces abstention when an extracted token is ambiguous or shared across family members.
     Returns: (matched_member_dict_or_none, confidence)
     """
     if not family_members:
         return None, 0.0
 
+    # 1. Deterministic Unique Identifier Check (Passport Number)
+    doc_passports = [
+        (f.normalized_value or f.original_value or "").replace(" ", "").upper()
+        for f in extracted_fields
+        if f.field_name in ("passport_number", "passport_no", "travel_doc_no")
+        and (f.normalized_value or f.original_value)
+    ]
+    for p_num in doc_passports:
+        if len(p_num) >= 6:
+            matching_by_passport = [
+                m for m in family_members
+                if (m.get("passport_number") or "").replace(" ", "").upper() == p_num
+            ]
+            if len(matching_by_passport) == 1:
+                return matching_by_passport[0], 0.99
+
+    # 2. Name-based matching
     name_fields = [
         f for f in extracted_fields
         if f.field_name in ("applicant_name", "full_name", "given_name", "surname", "insured_person_name")
@@ -830,34 +1110,71 @@ def suggest_applicant_association(
     if not name_fields:
         return None, 0.0
 
-    best_match = None
-    best_score = 0.0
+    member_scores: dict[str, float] = {}
 
     for f in name_fields:
         val = (f.normalized_value or f.original_value or "").lower().strip()
         if not val:
             continue
         val_tokens = set(re.findall(r"[a-z]+", val))
-        for member in family_members:
-            m_name = (member.get("name") or f"{member.get('first_name', '')} {member.get('last_name', '')}").lower().strip()
+        if not val_tokens:
+            continue
+
+        for idx, member in enumerate(family_members):
+            m_key = member.get("id") or str(idx)
+            m_name = (
+                member.get("name")
+                or f"{member.get('first_name', '')} {member.get('last_name', '')}"
+            ).lower().strip()
             m_tokens = set(re.findall(r"[a-z]+", m_name))
             if not m_tokens:
                 continue
 
             intersection = val_tokens.intersection(m_tokens)
+            score = 0.0
+
             if val == m_name:
                 score = 0.98
             elif len(intersection) >= 2:
                 score = 0.92
-            elif len(intersection) == 1 and len(m_tokens) <= 2:
-                score = 0.75
-            else:
-                score = 0.0
+            elif len(intersection) == 1:
+                # Check if the single matching token is a shared family surname present in other members
+                matching_token = next(iter(intersection))
+                other_members_with_token = [
+                    om for om in family_members
+                    if om != member and matching_token in set(
+                        re.findall(
+                            r"[a-z]+",
+                            (om.get("name") or f"{om.get('first_name', '')} {om.get('last_name', '')}").lower()
+                        )
+                    )
+                ]
+                if other_members_with_token:
+                    # Shared surname among family members - ambiguous, abstain from auto-scoring
+                    score = 0.0
+                elif len(m_tokens) <= 2 and len(matching_token) >= 4:
+                    # Unique token belonging only to this member
+                    score = 0.72
+                else:
+                    score = 0.0
 
-            if score > best_score:
-                best_score = score
-                best_match = member
+            if score > member_scores.get(m_key, 0.0):
+                member_scores[m_key] = score
 
-    if best_match and best_score >= 0.70:
-        return best_match, round(best_score, 2)
+    if not member_scores:
+        return None, 0.0
+
+    max_score = max(member_scores.values())
+    if max_score < 0.70:
+        return None, 0.0
+
+    top_candidates = [
+        m for idx, m in enumerate(family_members)
+        if member_scores.get(m.get("id") or str(idx), 0.0) == max_score
+    ]
+
+    # If multiple candidates tie (ambiguity), abstain to require human review
+    if len(top_candidates) == 1:
+        return top_candidates[0], round(max_score, 2)
+
     return None, 0.0

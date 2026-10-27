@@ -208,10 +208,17 @@ def get_case_checklist_audit(
         for d in docs
     ]
 
-    report = audit_case_checklist(case.jurisdiction, case.visa_category, doc_dicts)
+    report = audit_case_checklist(
+        case.jurisdiction,
+        case.visa_category,
+        doc_dicts,
+        checklist_snapshot=case.pinned_checklist_snapshot if getattr(case, "pinned_checklist_snapshot", None) else None,
+    )
     return {
         "jurisdiction": report.jurisdiction,
         "visa_category": report.visa_category,
+        "is_pinned": report.is_pinned,
+        "version": report.version,
         "total_mandatory": report.total_mandatory,
         "satisfied_mandatory": report.satisfied_mandatory,
         "total_items": report.total_items,
@@ -293,7 +300,12 @@ def get_case_evidence_summary(
         for f in findings
     ]
 
-    checklist_report = audit_case_checklist(case.jurisdiction, case.visa_category, doc_dicts)
+    checklist_report = audit_case_checklist(
+        case.jurisdiction,
+        case.visa_category,
+        doc_dicts,
+        checklist_snapshot=case.pinned_checklist_snapshot if getattr(case, "pinned_checklist_snapshot", None) else None,
+    )
 
     summary = generate_evidence_backed_case_summary(
         case_data={"case_number": case.case_number, "jurisdiction": case.jurisdiction, "visa_category": case.visa_category},
@@ -419,6 +431,27 @@ def summarize_case_authority_request(
         "summary_markdown": summary.summary_markdown,
         "legal_sufficiency_disclaimer": summary.legal_sufficiency_disclaimer,
     }
+
+
+@router.get("/{finding_id}", response_model=AIFindingOut)
+def get_case_finding(
+    case_id: uuid.UUID,
+    finding_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    auth_ctx: AuthContext = Depends(get_auth_context),
+):
+    """Retrieves an individual finding, enforcing client privacy boundaries."""
+    _check_case_access(db, case_id, auth_ctx)
+    f = db.scalar(
+        select(CaseAIFinding).where(
+            CaseAIFinding.id == finding_id,
+            CaseAIFinding.case_id == case_id,
+            CaseAIFinding.organization_id == auth_ctx.organization_id,
+        )
+    )
+    if not f:
+        raise NotFoundError("Finding not found.")
+    return _to_finding_out(f, auth_ctx.is_retained_client())
 
 
 @router.put("/{finding_id}/resolve", response_model=AIFindingOut)

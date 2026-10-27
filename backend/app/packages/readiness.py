@@ -145,12 +145,16 @@ class ReadinessService:
 
         for f in form_submissions:
             defects = []
-            if f.completion_percentage < 100.0:
-                defects.append(f"Incomplete answers ({f.completion_percentage}% completed)")
-            if f.has_unconfirmed_ai_fields:
-                defects.append("Contains unconfirmed AI draft answers")
-            if not f.sensitive_fields_reviewed:
-                defects.append("Pending designated sensitive fields review")
+            if f.status not in ("confirmed", "approved"):
+                if f.completion_percentage < 100.0:
+                    defects.append(f"Incomplete answers ({f.completion_percentage}% completed)")
+                if f.has_unconfirmed_ai_fields:
+                    defects.append("Contains unconfirmed AI draft answers")
+                if not f.sensitive_fields_reviewed:
+                    defects.append("Pending designated sensitive fields review")
+                conflicted_fields = [k for k, ans in (f.answers_json or {}).items() if ans.get("has_conflict")]
+                if conflicted_fields:
+                    defects.append(f"Contains unresolved multi-document conflicts: {', '.join(conflicted_fields)}")
 
             if defects:
                 incomplete_forms.append({

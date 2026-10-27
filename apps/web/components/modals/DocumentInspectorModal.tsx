@@ -448,11 +448,21 @@ export function DocumentInspectorModal({
                           </td>
                           <td className="py-3 px-4 text-center">
                             <div className="flex items-center justify-center gap-1 text-[11px]">
-                              <span className="text-[#172322]" title="OCR confidence">{Math.round((field.ocr_confidence || 0.95) * 100)}%</span>
+                              <span
+                                className={field.ocr_confidence && field.ocr_confidence < 0.75 ? "text-amber-800 font-bold" : "text-[#172322]"}
+                                title={field.ocr_confidence && field.ocr_confidence < 0.75 ? "Sub-threshold OCR confidence (<75%). Typographical fidelity only; does not constitute legal sufficiency." : "OCR confidence"}
+                              >
+                                {Math.round((field.ocr_confidence || 0.95) * 100)}%
+                              </span>
                               <span className="text-[#8E9F9C]">/</span>
                               <span className="text-[#0D6866] font-bold" title="Extraction model confidence">{Math.round((field.extraction_confidence || 0.95) * 100)}%</span>
                             </div>
                             <div className="text-[9px] text-[#526360] font-mono">{field.extraction_method || "regex"}</div>
+                            {field.ocr_confidence && field.ocr_confidence < 0.75 && (
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-800 border border-amber-300 mt-0.5">
+                                Sub-threshold OCR
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-center">
                             <span
@@ -461,12 +471,14 @@ export function DocumentInspectorModal({
                                   ? "bg-emerald-50 text-emerald-800 border-emerald-300"
                                   : field.validation_status === "corrected"
                                   ? "bg-amber-50 text-amber-800 border-amber-300"
+                                  : field.validation_status === "needs_review"
+                                  ? "bg-amber-50 text-amber-800 border-amber-300 font-semibold"
                                   : field.validation_status === "flagged"
-                                  ? "bg-rose-50 text-rose-800 border-rose-300"
+                                  ? "bg-rose-50 text-rose-800 border-rose-300 font-semibold"
                                   : "bg-slate-100 text-slate-700 border-slate-300"
                               }`}
                             >
-                              {field.validation_status}
+                              {field.validation_status === "needs_review" ? "needs review" : field.validation_status}
                             </span>
                           </td>
                           {isStaff && (

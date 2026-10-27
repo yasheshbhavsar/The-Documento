@@ -53,11 +53,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_configuration(self) -> "Settings":
-        if self.environment.lower() in ("production", "prod"):
+        env_lower = self.environment.lower()
+        if env_lower in ("production", "prod", "staging", "uat"):
             if "local_dev" in self.jwt_secret_key or len(self.jwt_secret_key) < 32:
-                raise ValueError("Insecure JWT secret key in production environment! Must be >= 32 characters.")
+                raise ValueError("Insecure JWT secret key in production/staging environment! Must be >= 32 characters.")
             if "local_dev_only" in self.database_url:
-                raise ValueError("Insecure default database password detected in production environment!")
+                raise ValueError("Insecure default database password detected in production/staging environment!")
             if not self.auth_required:
                 object.__setattr__(self, "auth_required", True)
         return self

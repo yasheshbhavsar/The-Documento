@@ -1697,6 +1697,14 @@ export function DocumentDossierWorkbench({
                               <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800">
                                 ✓ Verified
                               </span>
+                            ) : field.validation_status === "needs_review" ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-950/80 text-amber-300 border border-amber-800 font-semibold">
+                                Needs Review
+                              </span>
+                            ) : field.validation_status === "flagged" ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-rose-950/80 text-rose-300 border border-rose-800 font-semibold">
+                                Flagged
+                              </span>
                             ) : (
                               <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
                                 Unvalidated
@@ -1736,8 +1744,12 @@ export function DocumentDossierWorkbench({
                             <span>•</span>
                             <span>
                               Confidence:{" "}
-                              <strong className="text-teal-300">
+                              <strong
+                                className={field.ocr_confidence && field.ocr_confidence < 0.75 ? "text-amber-400 font-bold" : "text-teal-300"}
+                                title={field.ocr_confidence && field.ocr_confidence < 0.75 ? "Sub-threshold OCR confidence (<75%). Typographical fidelity only; does not constitute legal sufficiency." : "OCR confidence"}
+                              >
                                 {Math.round((field.ocr_confidence || 0.95) * 100)}%
+                                {field.ocr_confidence && field.ocr_confidence < 0.75 && " ⚠️"}
                               </strong>
                             </span>
                             <span>•</span>

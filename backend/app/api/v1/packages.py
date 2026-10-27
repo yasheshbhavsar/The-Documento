@@ -547,10 +547,9 @@ def verify_package_download(
     # Evaluate firm's post-download retention policy from parent case
     case = db.query(ImmigrationCase).filter(ImmigrationCase.id == package.case_id).first()
     policy = case.post_download_retention_policy if case else "seven_days"
-    if policy == "immediate":
-        latest_event.post_download_purge_scheduled_at = now
-    else:
-        latest_event.post_download_purge_scheduled_at = now + timedelta(days=7)
+    from backend.app.documents.retention import EPHEMERAL_RETENTION_SCHEDULES_DAYS
+    retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS.get(policy, 7)
+    latest_event.post_download_purge_scheduled_at = now + timedelta(days=retention_days)
 
     audit = AuditEvent(
         organization_id=auth.organization_id,

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { DataTable } from "../common/DataTable";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
@@ -12,6 +12,7 @@ import {
   InProgressFormItem,
   ClientPendingActionItem,
   ClientAppointmentItem,
+  VisaAppointment,
 } from "../../lib/types";
 import { DocumentInspectorModal } from "../modals/DocumentInspectorModal";
 import { WaitingStateBanner } from "../portal/WaitingStateBanner";
@@ -19,8 +20,8 @@ import { DocumentRequestManager } from "../portal/DocumentRequestManager";
 import { SecureMessagingHub } from "../portal/SecureMessagingHub";
 import { ClientOnboardingWizard } from "../portal/ClientOnboardingWizard";
 import { ConfigurableFormViewer } from "../forms/ConfigurableFormViewer";
-import { FALLBACK_FORM_SUBMISSION, FALLBACK_WAITING_STATE } from "../../lib/api";
-import { VisaFileUpdatesView, FALLBACK_VISA_FILE_UPDATES } from "../portal/VisaFileUpdatesView";
+import { api, FALLBACK_FORM_SUBMISSION, FALLBACK_WAITING_STATE } from "../../lib/api";
+import { VisaFileUpdatesView, FALLBACK_VISA_FILE_UPDATES, VisaFileUpdateItem } from "../portal/VisaFileUpdatesView";
 import { DirectDocumentUploader } from "../portal/DirectDocumentUploader";
 import { CaseOfficerChatBanner } from "../portal/CaseOfficerChatBanner";
 import { FamilyDocumentIntakeHub } from "../portal/FamilyDocumentIntakeHub";
@@ -41,42 +42,43 @@ export function DocumentProgressionStepper({
   processingStatus?: string;
   verificationStatus?: string;
 }) {
-  const isRejected =
-    verificationStatus === "rejected" ||
-    status === "rejected" ||
-    status === "correction_required";
-  const isAccepted =
-    verificationStatus === "verified" ||
-    verificationStatus === "accepted" ||
-    status === "verified" ||
-    status === "accepted";
-  const isPackageReady =
-    status === "ready" ||
-    status === "filed" ||
-    status === "package_ready";
+  // Vision §4.5: Separate dimensions must NOT silently pass each other.
+  // Receipt ≠ Acceptance ≠ Package Readiness (distinct server-authoritative states).
+
+  // Step 1: Uploaded (receipt only)
+  const isUploaded = status === "uploaded" || status === "received" || !!processingStatus;
+
+  // Step 2: Under Review OR Rejected (human verification dimension)
+  const isRejected = verificationStatus === "rejected" || status === "correction_required";
   const isUnderReview =
-    !isAccepted &&
-    !isPackageReady &&
     !isRejected &&
-    (status === "under_review" ||
-      processingStatus === "completed" ||
-      verificationStatus === "review");
+    status !== "uploaded" &&
+    status !== "received" &&
+    (verificationStatus === "pending" ||
+     verificationStatus === "review" ||
+     status === "under_review" ||
+     (processingStatus === "completed" && verificationStatus !== "verified" && verificationStatus !== "accepted"));
+
+  // Step 3: Accepted (human verification passed)
+  const isAccepted = verificationStatus === "verified" || verificationStatus === "accepted" || status === "accepted";
+
+  // Step 4: Package-Ready (backend eligibility + all 6 dimensions passed)
+  const isPackageReady =
+    !isRejected && (status === "package_ready" || status === "ready" || status === "filed");
 
   const currentStep = isPackageReady
     ? 4
     : isAccepted
     ? 3
-    : isUnderReview
-    ? 2
-    : isRejected
+    : (isUnderReview || isRejected)
     ? 2
     : 1;
 
   const steps = [
-    { num: 1, label: "Uploaded" },
-    { num: 2, label: isRejected ? "Correction Req." : "Under Review" },
-    { num: 3, label: "Accepted" },
-    { num: 4, label: "Package-Ready" },
+    { num: 1, label: "Uploaded", desc: "Receipt confirmed" },
+    { num: 2, label: isRejected ? "Correction Req." : "Under Review", desc: isRejected ? "Revise & resubmit" : "Human review in progress" },
+    { num: 3, label: "Accepted", desc: "Verification passed" },
+    { num: 4, label: "Package-Ready", desc: "All 6 dimensions passed; ready for filing" },
   ];
 
   return (
@@ -148,7 +150,7 @@ export function DocumentProgressionStepper({
               >
                 {isStepRejected ? "✕" : isDone ? "✓" : st.num}
               </span>
-              <span>{st.label}</span>
+              <span title={st.desc}>{st.label}</span>
             </span>
             {idx < steps.length - 1 && (
               <span style={{ color: "#CBD5E1", fontSize: "10px" }}>➔</span>
@@ -213,9 +215,295 @@ export function ClientPortal({
   const [selectedDocForInspection, setSelectedDocForInspection] = useState<DocumentItem | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [chatPromptText, setChatPromptText] = useState("");
-  const [checklistApplicantFilter, setChecklistApplicantFilter] = useState<"all" | "primary" | "spouse" | "child">("all");
+  const [checklistApplicantFilter, setChecklistApplicantFilter] = useState<string>("all");
   const [checklistStatusFilter, setChecklistStatusFilter] = useState<string>("all");
   const [rescheduleNotice, setRescheduleNotice] = useState<string | null>(null);
+  const [visaAppointments, setVisaAppointments] = useState<VisaAppointment[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (myCase?.id) {
+      api.getVisaAppointments({ case_id: myCase.id })
+        .then((res: any) => {
+          const list = Array.isArray(res) ? res : res?.data || [];
+          if (isMounted && list.length > 0) {
+            setVisaAppointments(list);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [myCase?.id]);
+
+  const isDemoCase = myCase?.case_number === "CASE-US-8841";
+  const isCanada =
+    myCase?.jurisdiction?.toLowerCase().includes("canada") ||
+    (myCase?.visa_category || "").toLowerCase().includes("canada") ||
+    (myCase?.visa_category || "").toLowerCase().includes("study permit");
+  const clientName = myCase?.client_name || "Primary Applicant";
+  const clientInitials =
+    clientName
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "PA";
+
+  const updatesCount = isDemoCase ? 5 : 1;
+  const checklistCount = isDemoCase ? 8 : isCanada ? 6 : 5;
+
+  const caseSpecificUpdates: VisaFileUpdateItem[] = isDemoCase
+    ? FALLBACK_VISA_FILE_UPDATES
+    : isCanada
+    ? [
+        {
+          id: `update-${myCase?.id || "ca"}-01`,
+          timestamp: "Today • Just now",
+          relativeTime: "Just now",
+          category: "evidence",
+          title: `Representation Activated & IRCC File Opened (#${myCase?.case_number || "CASE"})`,
+          officialReference: `IRCC Ref #${myCase?.case_number || "CASE"}`,
+          statusBadge: {
+            label: "Active Matter",
+            bg: "#DCFCE7",
+            color: "#166534",
+            border: "#86EFAC",
+          },
+          officerName: myCase?.assigned_manager || "Vanguard Immigration Law Group",
+          officerRole: "Supervising Case Manager",
+          summary: `Representation formally activated for ${myCase?.client_name || "Client"} (${myCase?.visa_category || "Canada Study Permit"}). Designated file created in Vanguard Client Transparency Portal. DLI acceptance and PAL attestation intake initiated.`,
+          legalSignificance: `Formal legal representation established. Document intake and statutory verification active under IRPA / IRPR guidelines.`,
+          actionRequired: false,
+        },
+      ]
+    : [
+        {
+          id: `update-${myCase?.id || "gen"}-01`,
+          timestamp: "Today • Just now",
+          relativeTime: "Just now",
+          category: "evidence",
+          title: `Representation Retainer Executed & Case Docket Opened (#${myCase?.case_number || "CASE"})`,
+          officialReference: `Docket #${myCase?.case_number || "CASE"}`,
+          statusBadge: {
+            label: "Active Matter",
+            bg: "#DCFCE7",
+            color: "#166534",
+            border: "#86EFAC",
+          },
+          officerName: myCase?.assigned_manager || "Vanguard Immigration Law Group",
+          officerRole: "Supervising Case Manager",
+          summary: `Client onboarding completed. Initial case file opened for ${myCase?.visa_category || "Immigration Matter"}. Evidentiary document gathering in progress.`,
+          legalSignificance: `Establishes formal client representation and legal confidentiality under counsel supervision.`,
+          actionRequired: false,
+        },
+      ];
+
+  const applicantRequirementGroups = isDemoCase
+    ? [
+        {
+          id: "primary",
+          name: "Dr. Elena Rostova (Primary Applicant)",
+          role: "Principal Beneficiary • EB-1A Extraordinary Ability",
+          avatar: "ER",
+          items: [
+            {
+              id: "chk-1",
+              title: "Foreign Passport Identity & Photo Page",
+              status: "accepted" as const,
+              statutoryBasis: "8 CFR § 204.5(a) Identity Proof",
+              notes: "Valid through June 2031. Verified by Sarah Vance, Esq.",
+            },
+            {
+              id: "chk-2",
+              title: "Ph.D. Degree & Official US Academic Credential Evaluation",
+              status: "accepted" as const,
+              statutoryBasis: "8 CFR § 204.5(k)(2) Advanced Degree",
+              notes: "U.S. Equivalency certified by Trustfort Credential Evaluations.",
+            },
+            {
+              id: "chk-3",
+              title: "Peer-Reviewed Scholarly Articles & Citation Metric Record",
+              status: "received" as const,
+              statutoryBasis: "8 CFR § 204.5(h)(3)(vi) Scholarly Articles",
+              notes: "14 articles and verified h-index 24 submitted; under attorney analysis.",
+            },
+            {
+              id: "chk-4",
+              title: "Independent Expert Reference & Testimonial Letters (3 Letters)",
+              status: "rejected" as const,
+              statutoryBasis: "8 CFR § 204.5(h)(3)(v) Major Significance",
+              rejectionReasonCode: "INCOMPLETE_DOCUMENT",
+              rejectionReasonLabel: "Incomplete Document or Missing Pages",
+              clientExplanation:
+                "Letter 2 from Prof. H. Zhang lacks the referee's complete curriculum vitae and independent relationship verification. Please re-upload updated package with full credentials.",
+              notes: "Correction required immediately.",
+            },
+            {
+              id: "chk-5",
+              title: "Biographical Intake Questionnaire (Form I-140)",
+              status: "received" as const,
+              statutoryBasis: "USCIS Form I-140 Part 4",
+              notes: "65% completed. Part 4 alien travel history pending completion.",
+            },
+          ],
+        },
+        {
+          id: "spouse",
+          name: "Dmitri Rostov (Spouse)",
+          role: "Derivative Beneficiary • Adjustment of Status (Form I-485)",
+          avatar: "DR",
+          items: [
+            {
+              id: "chk-6",
+              title: "Foreign Passport Identity Page",
+              status: "accepted" as const,
+              statutoryBasis: "8 CFR § 245.2 Identity Proof",
+              notes: "Valid through 2030. Unexpired foreign travel document.",
+            },
+            {
+              id: "chk-7",
+              title: "Official Government Marriage Certificate",
+              status: "accepted" as const,
+              statutoryBasis: "8 CFR § 204.2(a)(2) Spousal Relationship",
+              notes: "Apostille authenticated and certified copy filed.",
+            },
+            {
+              id: "chk-8",
+              title: "Certified English Translation of Marriage Record",
+              status: "rejected" as const,
+              statutoryBasis: "8 CFR § 103.2(b)(3) Foreign Language Translation",
+              rejectionReasonCode: "MISSING_PAGES",
+              rejectionReasonLabel: "Missing Pages or Declaration",
+              clientExplanation:
+                "The Cyrillic marriage certificate was uploaded without the certified translator's formal declaration of competence. Please re-upload the complete certified translation document.",
+              notes: "Correction required before package seal.",
+            },
+          ],
+        },
+        {
+          id: "child",
+          name: "Sofia Rostova (Child)",
+          role: "Derivative Child • Form I-485 Supplement",
+          avatar: "SR",
+          items: [
+            {
+              id: "chk-9",
+              title: "Foreign Birth Certificate with Parentage",
+              status: "required" as const,
+              statutoryBasis: "8 CFR § 204.2(d)(2) Parent-Child Relationship",
+              notes: "Civil record showing parentage required for adjustment.",
+            },
+            {
+              id: "chk-10",
+              title: "USCIS Standard Passport Style Photographs",
+              status: "outstanding" as const,
+              statutoryBasis: "Form I-485 Instructions Part 8",
+              notes: "Two identical 2x2 color photographs required before interview.",
+            },
+          ],
+        },
+      ]
+    : isCanada
+    ? [
+        {
+          id: "primary",
+          name: `${clientName} (Primary Applicant)`,
+          role: `Principal Beneficiary • ${myCase?.visa_category || "Canada Study Permit"}`,
+          avatar: clientInitials,
+          items: [
+            {
+              id: "chk-ca-01",
+              title: "Designated Learning Institution (DLI) Letter of Acceptance (LOA)",
+              status: "accepted" as const,
+              statutoryBasis: "IRPR § 211.1 - Acceptance at DLI",
+              notes: "Official unconditional acceptance letter from accredited DLI verified.",
+            },
+            {
+              id: "chk-ca-02",
+              title: "Provincial Attestation Letter (PAL 2024 Mandate)",
+              status: "received" as const,
+              statutoryBasis: "IRCC Ministerial Instructions 2024 - Study Cap Quota",
+              notes: "Provincial study permit allocation quota confirmation under review.",
+            },
+            {
+              id: "chk-ca-03",
+              title: "Guaranteed Investment Certificate (GIC $20,635 Minimum)",
+              status: "received" as const,
+              statutoryBasis: "IRCC Financial Sufficiency Guideline 2024",
+              notes: "Deposit receipt from CDIC-participating Canadian financial institution submitted.",
+            },
+            {
+              id: "chk-ca-04",
+              title: "Primary Passport & Identity Travel Document",
+              status: "accepted" as const,
+              statutoryBasis: "IRPR § 52 - Valid Travel Document",
+              notes: "Machine-readable international passport biodata page verified by caseworker.",
+            },
+            {
+              id: "chk-ca-05",
+              title: "SDS Language Proficiency Result (IELTS 6.0+ / PTE 60+)",
+              status: "required" as const,
+              statutoryBasis: "IRCC Student Direct Stream Language Threshold",
+              notes: "Language test report scorecard taken within last 24 months required.",
+            },
+            {
+              id: "chk-ca-06",
+              title: "IRCC Upfront Medical Examination (eMedical Sheet)",
+              status: "outstanding" as const,
+              statutoryBasis: "IRPR § 29 - Medical Examination of Foreign Nationals",
+              notes: "Panel physician examination sheet with UMI/IME tracking barcode.",
+            },
+          ],
+        },
+      ]
+    : [
+        {
+          id: "primary",
+          name: `${clientName} (Primary Applicant)`,
+          role: `Principal Beneficiary • ${myCase?.visa_category || "Immigration Matter"}`,
+          avatar: clientInitials,
+          items: [
+            {
+              id: "chk-gen-01",
+              title: "Foreign Passport Identity & Photo Page",
+              status: "accepted" as const,
+              statutoryBasis: "Statutory Identity Verification",
+              notes: "Valid travel document registered and verified by case manager.",
+            },
+            {
+              id: "chk-gen-02",
+              title: "Signed Legal Retainer & Representation Form",
+              status: "accepted" as const,
+              statutoryBasis: "Formal Representation Authority",
+              notes: "Executed representation agreement active.",
+            },
+            {
+              id: "chk-gen-03",
+              title: "Biographical Intake Questionnaire",
+              status: "received" as const,
+              statutoryBasis: "Standard Statutory Intake",
+              notes: "Submitted responses under legal review.",
+            },
+            {
+              id: "chk-gen-04",
+              title: "Proof of Financial Support & Banking Statements",
+              status: "required" as const,
+              statutoryBasis: "Financial Sufficiency Criteria",
+              notes: "Recent official statements showing sufficient settlement funds required.",
+            },
+            {
+              id: "chk-gen-05",
+              title: "Supporting Category Credentials & Evidence",
+              status: "outstanding" as const,
+              statutoryBasis: "Pathway Grounding",
+              notes: "Specific pathway documents requested by your assigned case manager.",
+            },
+          ],
+        },
+      ];
 
   // In-Progress Questionnaires & Forms
   const [inProgressForms, setInProgressForms] = useState<InProgressFormItem[]>(() => {
@@ -291,13 +579,21 @@ export function ClientPortal({
   const unreadCount = notifications.filter((n) => n.status === "unread").length;
 
   // Milestones progression
-  const milestones = [
-    { name: "Legal Retainer Executed", done: true, date: "August 10, 2026", desc: "Representation agreement executed and trust escrow funded." },
-    { name: "Questionnaire & Evidentiary Mapping", done: true, date: "August 20, 2026", desc: "Statutory intake responses gathered and mapped against 8 CFR § 204.5." },
-    { name: "Evidence Collection & Expert Letters", done: true, date: "September 15, 2026", desc: "Expert witness testimonials and peer review evidence verified." },
-    { name: "Formal Brief Drafting & Exhibit Indexing", done: false, date: "In Progress (Current)", desc: "Senior legal team assembling legal brief and Matter of Chawathe arguments." },
-    { name: "Final Client Approval & Submission to USCIS", done: false, date: "Est. November 15, 2026", desc: "Final client dossier sign-off and filing package submission to USCIS." },
-  ];
+  const milestones = isCanada
+    ? [
+        { name: "Legal Retainer Executed", done: true, date: "October 20, 2026", desc: "Representation agreement executed and dedicated Canadian immigration file opened." },
+        { name: "DLI Acceptance & PAL Verification", done: true, date: "October 22, 2026", desc: "Designated Learning Institution LOA and Provincial Attestation Letter verified under national cap." },
+        { name: "Financial Proof & GIC Issuance", done: false, date: "In Progress (Current)", desc: "Guaranteed Investment Certificate (GIC $20,635+) and student financial dossier assembly." },
+        { name: "IRCC Portal Packaging & Upfront Medicals", done: false, date: "Est. November 10, 2026", desc: "Final eMedical validation, Statement of Purpose (SOP), and IRCC portal filing preparation." },
+        { name: "Biometrics (BIL) & Final IRCC Decision", done: false, date: "Est. December 2026", desc: "Biometrics Instruction Letter enrollment and final study permit visa issuance." },
+      ]
+    : [
+        { name: "Legal Retainer Executed", done: true, date: "August 10, 2026", desc: "Representation agreement executed and trust escrow funded." },
+        { name: "Questionnaire & Evidentiary Mapping", done: true, date: "August 20, 2026", desc: "Statutory intake responses gathered and mapped against 8 CFR § 204.5." },
+        { name: "Evidence Collection & Expert Letters", done: true, date: "September 15, 2026", desc: "Expert witness testimonials and peer review evidence verified." },
+        { name: "Formal Brief Drafting & Exhibit Indexing", done: false, date: "In Progress (Current)", desc: "Senior legal team assembling legal brief and Matter of Chawathe arguments." },
+        { name: "Final Client Approval & Submission to USCIS", done: false, date: "Est. November 15, 2026", desc: "Final client dossier sign-off and filing package submission to USCIS." },
+      ];
 
   // Navigation Items
   const navItems = [
@@ -311,16 +607,16 @@ export function ClientPortal({
     {
       key: "updates" as const,
       label: t.navUpdates,
-      buttonText: `📑 ${t.navUpdates}${myCase ? " (5)" : ""}`,
+      buttonText: `📑 ${t.navUpdates}${myCase ? ` (${updatesCount})` : ""}`,
       icon: "📑",
-      count: myCase ? 5 : null,
+      count: myCase ? updatesCount : null,
     },
     {
       key: "checklist" as const,
       label: "Per-Applicant Checklist",
-      buttonText: `✅ Per-Applicant Checklist${myCase ? " (8)" : ""}`,
+      buttonText: `✅ Per-Applicant Checklist${myCase ? ` (${checklistCount})` : ""}`,
       icon: "✅",
-      count: myCase ? 8 : null,
+      count: myCase ? checklistCount : null,
     },
     {
       key: "documents" as const,
@@ -386,34 +682,59 @@ export function ClientPortal({
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        minHeight: "calc(100vh - 58px)",
-        background: "#F8F7F2",
-        color: "#172322",
-      }}
-    >
-      {/* =========================================================================
-          1. RESPONSIVE SIDEBAR NAVIGATION (Desktop: 270px; Mobile: Collapsible)
-          ========================================================================= */}
-      <aside
-        aria-label="Applicant Navigation Sidebar"
+    <>
+      <style>{`
+        @media (max-width: 768px) {
+          .documento-applicant-sidebar {
+            position: fixed !important;
+            left: ${isMobileMenuOpen ? '0' : '-280px'} !important;
+            width: 270px !important;
+            z-index: 1000 !important;
+            transition: left 0.3s ease-in-out !important;
+            box-shadow: 2px 0 8px rgba(6, 60, 61, 0.15) !important;
+          }
+          .documento-applicant-mobile-bar {
+            display: flex !important;
+          }
+          .documento-main-content {
+            padding: 16px !important;
+          }
+          .documento-action-buttons {
+            flex-direction: column !important;
+          }
+          .documento-action-buttons button {
+            width: 100% !important;
+          }
+        }
+      `}</style>
+      <div
         style={{
-          width: "270px",
-          background: "#FFFFFF",
-          borderRight: "1px solid #DCE5E1",
           display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-          position: "sticky",
-          top: "58px",
-          height: "calc(100vh - 58px)",
-          overflowY: "auto",
-          boxShadow: "1px 0 3px rgba(6, 60, 61, 0.03)",
+          minHeight: "calc(100vh - 58px)",
+          background: "#F8F7F2",
+          color: "#172322",
         }}
-        className="documento-applicant-sidebar"
       >
+        {/* =========================================================================
+            1. RESPONSIVE SIDEBAR NAVIGATION (Desktop: 270px; Mobile: Collapsible)
+            ========================================================================= */}
+        <aside
+          aria-label="Applicant Navigation Sidebar"
+          style={{
+            width: "270px",
+            background: "#FFFFFF",
+            borderRight: "1px solid #DCE5E1",
+            display: "flex",
+            flexDirection: "column",
+            flexShrink: 0,
+            position: "sticky",
+            top: "58px",
+            height: "calc(100vh - 58px)",
+            overflowY: "auto",
+            boxShadow: "1px 0 3px rgba(6, 60, 61, 0.03)",
+          }}
+          className="documento-applicant-sidebar"
+        >
         {/* Active Case Summary Card */}
         <div
           style={{
@@ -1362,7 +1683,120 @@ export function ClientPortal({
                       <span style={{ fontSize: "11px", color: "#166534", fontWeight: 650 }}>Confirmed</span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {upcomingAppointments.length === 0 ? (
+                      {visaAppointments.length > 0 ? (
+                        visaAppointments.map((va: any) => {
+                          const is221g = va.status_221g === true || va.status_221g === "active" || va.appointment_status === "221g" || va.appointment_status === "administrative_processing_221g";
+                          const slipColor = (va.status_221g_color || "pink").toUpperCase();
+                          const centerTitle = va.vac_center || va.vac_center_name || va.vac_city || va.consular_post || "Visa Application Centre";
+                          const providerName = (va.vac_provider || (centerTitle.toLowerCase().includes("vfs") ? "VFS Global" : centerTitle.toLowerCase().includes("bls") ? "BLS" : "U.S. Consulate")).toUpperCase();
+                          const ofcSlot = va.ofc_biometrics_slot || va.ofc_appointment_datetime;
+                          const consularSlot = va.consular_interview_slot || va.consular_appointment_datetime;
+                          const isDropbox = va.dropbox_eligible || va.is_dropbox_eligible;
+                          const awb = va.tracking_number_blue_dart || va.courier_awb;
+                          const courierPartner = va.courier_partner || "Blue Dart";
+                          const courierStatus = va.courier_status || "In Transit";
+                          const evidenceNotes = va.status_221g_requested_evidence || (is221g ? va.notes : null);
+
+                          return (
+                            <div
+                              key={va.id}
+                              style={{
+                                background: is221g ? "#FFFBEB" : "#FFFFFF",
+                                border: is221g ? "1px solid #FCD34D" : "1px solid #CBD5E1",
+                                borderRadius: "8px",
+                                padding: "10px 12px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "6px",
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
+                                <div>
+                                  <strong style={{ fontSize: "12px", color: is221g ? "#92400E" : "#063C3D" }}>
+                                    🏛️ {centerTitle}
+                                  </strong>
+                                  <div style={{ fontSize: "11px", color: "#64748B" }}>
+                                    {providerName} • Confirmation #{va.confirmation_number || va.ds160_ceac_barcode || "CONFIRMED"}
+                                  </div>
+                                </div>
+                                <Badge variant={is221g ? "warning" : "success"} size="sm">
+                                  {is221g ? `221(g) ${slipColor} SLIP` : String(va.appointment_status || "SCHEDULED").toUpperCase()}
+                                </Badge>
+                              </div>
+
+                              {ofcSlot && (
+                                <div style={{ fontSize: "11px", color: "#0F172A", fontWeight: 600 }}>
+                                  📸 OFC Biometrics: {new Date(ofcSlot).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                              )}
+
+                              {consularSlot && (
+                                <div style={{ fontSize: "11px", color: "#0F172A", fontWeight: 600 }}>
+                                  🎙️ Consular Interview: {new Date(consularSlot).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                              )}
+
+                              {isDropbox && (
+                                <span style={{ fontSize: "10px", color: "#0D6866", background: "#EAF6F0", padding: "2px 6px", borderRadius: "4px", width: "fit-content", fontWeight: 650 }}>
+                                  ✓ Interview Waiver / Dropbox Eligible
+                                </span>
+                              )}
+
+                              {awb && (
+                                <div style={{ fontSize: "10px", color: "#475569", background: "#F1F5F9", padding: "4px 8px", borderRadius: "4px" }}>
+                                  📦 Courier: {courierPartner} (AWB #{awb}) • Status: {courierStatus}
+                                </div>
+                              )}
+
+                              {is221g && evidenceNotes && (
+                                <div style={{ fontSize: "11px", color: "#B45309", background: "#FEF3C7", padding: "6px 8px", borderRadius: "4px", marginTop: "2px" }}>
+                                  ⚠️ <strong>221(g) Action Required:</strong> {evidenceNotes}
+                                </div>
+                              )}
+
+                              <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRescheduleNotice(`Calendar invitation for ${centerTitle} generated.`);
+                                  }}
+                                  style={{
+                                    flex: 1,
+                                    padding: "4px 8px",
+                                    fontSize: "10px",
+                                    fontWeight: 600,
+                                    background: "#EAF6F0",
+                                    color: "#0D6866",
+                                    border: "1px solid #B9DED4",
+                                    borderRadius: "4px",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Add to Calendar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRescheduleNotice(`Reschedule inquiry sent to case manager for ${centerTitle}.`);
+                                  }}
+                                  style={{
+                                    padding: "4px 8px",
+                                    fontSize: "10px",
+                                    fontWeight: 600,
+                                    background: "#FFF",
+                                    color: "#64748B",
+                                    border: "1px solid #CBD5E1",
+                                    borderRadius: "4px",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Request Reschedule
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : upcomingAppointments.length === 0 ? (
                         <div style={{ padding: "16px 12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
                           No upcoming appointments scheduled.
                         </div>
@@ -1476,7 +1910,11 @@ export function ClientPortal({
                     </h3>
                   </div>
                   <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
-                    Live synchronization with USCIS Texas Service Center &amp; Vanguard Case Docket.
+                    {isCanada
+                      ? "Live synchronization with IRCC & Vanguard Case Docket."
+                      : isDemoCase
+                      ? "Live synchronization with USCIS Texas Service Center & Vanguard Case Docket."
+                      : `Live synchronization with ${myCase?.jurisdiction || "Immigration Authority"} & Vanguard Case Docket.`}
                   </p>
                 </div>
                 <button
@@ -1501,12 +1939,12 @@ export function ClientPortal({
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {!myCase || FALLBACK_VISA_FILE_UPDATES.length === 0 ? (
+                {!myCase || caseSpecificUpdates.length === 0 ? (
                   <div style={{ padding: "20px 16px", textAlign: "center", color: "#6E7F7C", fontSize: "13px", background: "#F8F7F2", borderRadius: "8px", border: "1px dashed #DCE5E1" }}>
                     No visa docket updates yet. Official government notifications will populate here once your petition is filed with immigration authorities.
                   </div>
                 ) : (
-                  FALLBACK_VISA_FILE_UPDATES.slice(0, 2).map((item) => (
+                  caseSpecificUpdates.slice(0, 2).map((item) => (
                   <div
                     key={item.id}
                     onClick={() => setActiveTab("updates")}
@@ -1833,10 +2271,14 @@ export function ClientPortal({
                     <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 750, color: "#063C3D" }}>
                       Per-Applicant Evidentiary Checklist
                     </h2>
-                    <Badge variant="review">8 CFR § 204.5 Grounded</Badge>
+                    <Badge variant="review">
+                      {isCanada ? "IRPA § 30(1) / IRPR Part 12 Grounded" : isDemoCase ? "8 CFR § 204.5 Grounded" : "Statutory Regulations Grounded"}
+                    </Badge>
                   </div>
                   <p style={{ margin: 0, fontSize: "13px", color: "#445451" }}>
-                    Individualized requirements grouped per family member. Review exact verification states, document progression pipelines, and structured rejection remedies.
+                    {isCanada
+                      ? "Individualized requirements for Canada Study Permit under IRCC guidelines. Review exact verification states, document progression pipelines, and required filings."
+                      : "Individualized requirements grouped per family member. Review exact verification states, document progression pipelines, and structured rejection remedies."}
                   </p>
                 </div>
                 <Button variant="primary" size="sm" onClick={onOpenUploadModal}>
@@ -1846,18 +2288,24 @@ export function ClientPortal({
 
               {/* Applicant Filter Tabs */}
               <div style={{ display: "flex", gap: "8px", marginTop: "16px", flexWrap: "wrap" }}>
-                {[
-                  { key: "all", label: "All Family Members", count: 10 },
-                  { key: "primary", label: "Dr. Elena Rostova (Primary)", count: 5 },
-                  { key: "spouse", label: "Dmitri Rostov (Spouse)", count: 3 },
-                  { key: "child", label: "Sofia Rostova (Child)", count: 2 },
-                ].map((flt) => {
+                {(isDemoCase
+                  ? [
+                      { key: "all", label: "All Family Members", count: 10 },
+                      { key: "primary", label: "Dr. Elena Rostova (Primary)", count: 5 },
+                      { key: "spouse", label: "Dmitri Rostov (Spouse)", count: 3 },
+                      { key: "child", label: "Sofia Rostova (Child)", count: 2 },
+                    ]
+                  : [
+                      { key: "all", label: "All Applicants", count: checklistCount },
+                      { key: "primary", label: `${clientName} (Primary)`, count: checklistCount },
+                    ]
+                ).map((flt) => {
                   const active = checklistApplicantFilter === flt.key;
                   return (
                     <button
                       key={flt.key}
                       type="button"
-                      onClick={() => setChecklistApplicantFilter(flt.key as typeof checklistApplicantFilter)}
+                      onClick={() => setChecklistApplicantFilter(flt.key)}
                       style={{
                         padding: "6px 14px",
                         borderRadius: "20px",
@@ -1877,110 +2325,7 @@ export function ClientPortal({
             </div>
 
             {/* Applicant Requirement Groups */}
-            {[
-              {
-                id: "primary",
-                name: "Dr. Elena Rostova (Primary Applicant)",
-                role: "Principal Beneficiary • EB-1A Extraordinary Ability",
-                avatar: "ER",
-                items: [
-                  {
-                    id: "chk-1",
-                    title: "Foreign Passport Identity & Photo Page",
-                    status: "accepted" as const,
-                    statutoryBasis: "8 CFR § 204.5(a) Identity Proof",
-                    notes: "Valid through June 2031. Verified by Sarah Vance, Esq.",
-                  },
-                  {
-                    id: "chk-2",
-                    title: "Ph.D. Degree & Official US Academic Credential Evaluation",
-                    status: "accepted" as const,
-                    statutoryBasis: "8 CFR § 204.5(k)(2) Advanced Degree",
-                    notes: "U.S. Equivalency certified by Trustfort Credential Evaluations.",
-                  },
-                  {
-                    id: "chk-3",
-                    title: "Peer-Reviewed Scholarly Articles & Citation Metric Record",
-                    status: "received" as const,
-                    statutoryBasis: "8 CFR § 204.5(h)(3)(vi) Scholarly Articles",
-                    notes: "14 articles and verified h-index 24 submitted; under attorney analysis.",
-                  },
-                  {
-                    id: "chk-4",
-                    title: "Independent Expert Reference & Testimonial Letters (3 Letters)",
-                    status: "rejected" as const,
-                    statutoryBasis: "8 CFR § 204.5(h)(3)(v) Major Significance",
-                    rejectionReasonCode: "INCOMPLETE_DOCUMENT",
-                    rejectionReasonLabel: "Incomplete Document or Missing Pages",
-                    clientExplanation:
-                      "Letter 2 from Prof. H. Zhang lacks the referee's complete curriculum vitae and independent relationship verification. Please re-upload updated package with full credentials.",
-                    notes: "Correction required immediately.",
-                  },
-                  {
-                    id: "chk-5",
-                    title: "Biographical Intake Questionnaire (Form I-140)",
-                    status: "received" as const,
-                    statutoryBasis: "USCIS Form I-140 Part 4",
-                    notes: "65% completed. Part 4 alien travel history pending completion.",
-                  },
-                ],
-              },
-              {
-                id: "spouse",
-                name: "Dmitri Rostov (Spouse)",
-                role: "Derivative Beneficiary • Adjustment of Status (Form I-485)",
-                avatar: "DR",
-                items: [
-                  {
-                    id: "chk-6",
-                    title: "Foreign Passport Identity Page",
-                    status: "accepted" as const,
-                    statutoryBasis: "8 CFR § 245.2 Identity Proof",
-                    notes: "Valid through 2030. Unexpired foreign travel document.",
-                  },
-                  {
-                    id: "chk-7",
-                    title: "Official Government Marriage Certificate",
-                    status: "accepted" as const,
-                    statutoryBasis: "8 CFR § 204.2(a)(2) Spousal Relationship",
-                    notes: "Apostille authenticated and certified copy filed.",
-                  },
-                  {
-                    id: "chk-8",
-                    title: "Certified English Translation of Marriage Record",
-                    status: "rejected" as const,
-                    statutoryBasis: "8 CFR § 103.2(b)(3) Foreign Language Translation",
-                    rejectionReasonCode: "MISSING_PAGES",
-                    rejectionReasonLabel: "Missing Pages or Declaration",
-                    clientExplanation:
-                      "The Cyrillic marriage certificate was uploaded without the certified translator's formal declaration of competence. Please re-upload the complete certified translation document.",
-                    notes: "Correction required before package seal.",
-                  },
-                ],
-              },
-              {
-                id: "child",
-                name: "Sofia Rostova (Child)",
-                role: "Derivative Child • Form I-485 Supplement",
-                avatar: "SR",
-                items: [
-                  {
-                    id: "chk-9",
-                    title: "Foreign Birth Certificate with Parentage",
-                    status: "required" as const,
-                    statutoryBasis: "8 CFR § 204.2(d)(2) Parent-Child Relationship",
-                    notes: "Civil record showing parentage required for adjustment.",
-                  },
-                  {
-                    id: "chk-10",
-                    title: "USCIS Standard Passport Style Photographs",
-                    status: "outstanding" as const,
-                    statutoryBasis: "Form I-485 Instructions Part 8",
-                    notes: "Two identical 2x2 color photographs required before interview.",
-                  },
-                ],
-              },
-            ]
+            {applicantRequirementGroups
               .filter(
                 (grp) =>
                   checklistApplicantFilter === "all" || grp.id === checklistApplicantFilter
@@ -2172,6 +2517,7 @@ export function ClientPortal({
             {/* Phase 4 — Family Intake & Mobile-First Camera Scanning Hub */}
             <FamilyDocumentIntakeHub
               caseId={myCase.id}
+              clientName={myCase.client_name}
               onDocumentUploaded={() => {
                 // Trigger refresh if needed
               }}
@@ -2720,5 +3066,6 @@ export function ClientPortal({
         )}
       </main>
     </div>
+    </>
   );
 }

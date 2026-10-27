@@ -148,6 +148,7 @@ class DocumentSummaryResponse(BaseModel):
     ocr_applied: bool
     case_id: Optional[UUID]
     client_id: Optional[UUID]
+    applicant_dependant_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
     proposed_category: Optional[str] = None
@@ -255,6 +256,9 @@ class SplitSectionDefinition(BaseModel):
     category: str = Field(..., min_length=1, max_length=64)
     start_page: int = Field(..., ge=1)
     end_page: int = Field(..., ge=1)
+    applicant_dependant_id: Optional[UUID] = None
+    client_id: Optional[UUID] = None
+    proposed_applicant_name: Optional[str] = None
 
 
 class SplitSectionsRequest(BaseModel):
@@ -411,6 +415,7 @@ class CorrectClassificationRequest(BaseModel):
 
 class CorrectApplicantAssociationRequest(BaseModel):
     client_id: Optional[UUID] = None
+    applicant_dependant_id: Optional[UUID] = None
     applicant_name: Optional[str] = None
     reason: str = Field(..., min_length=3, max_length=500)
 
@@ -427,6 +432,8 @@ class PurgeDocumentRequest(BaseModel):
     reason: str = Field("statutory_retention_expiry", min_length=3, max_length=255)
     bypass_retention_window: bool = False
     jurisdiction: str = Field("US", min_length=2, max_length=10)
+    retention_policy: Optional[str] = None
+    use_ephemeral_schedule: bool = False
 
 
 class PurgeDocumentResponse(BaseModel):
@@ -452,6 +459,7 @@ class RetentionEvaluationItem(BaseModel):
     retention_threshold_days: int
     is_eligible: bool
     legal_hold: bool
+    download_confirmed: bool = True
     blocking_reasons: list[str] = []
     status: str
 
@@ -608,6 +616,7 @@ def _to_detail_response(
         ocr_applied=doc.ocr_applied,
         case_id=doc.case_id,
         client_id=doc.client_id,
+        applicant_dependant_id=getattr(doc, "applicant_dependant_id", None),
         created_at=doc.created_at,
         updated_at=doc.updated_at,
         extracted_text=doc.extracted_text,
@@ -687,6 +696,7 @@ def _to_summary_response(d: Document) -> DocumentSummaryResponse:
         ocr_applied=d.ocr_applied,
         case_id=d.case_id,
         client_id=d.client_id,
+        applicant_dependant_id=getattr(d, "applicant_dependant_id", None),
         created_at=d.created_at,
         updated_at=d.updated_at,
         proposed_category=getattr(d, "proposed_category", None),
@@ -854,6 +864,8 @@ def list_documents(
 @router.get("/retention/evaluations", response_model=list[RetentionEvaluationItem])
 def get_retention_evaluations(
     jurisdiction: str = Query("US"),
+    retention_policy: Optional[str] = Query(None),
+    use_ephemeral_schedule: bool = Query(False),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ):
@@ -865,6 +877,8 @@ def get_retention_evaluations(
         db=db,
         organization_id=auth.organization_id,
         jurisdiction=jurisdiction,
+        retention_policy=retention_policy,
+        use_ephemeral_schedule=use_ephemeral_schedule,
     )
     return [RetentionEvaluationItem(**e) for e in evaluations]
 
@@ -1892,9 +1906,13 @@ def correct_applicant_association(
 ):
     """
     Allows authorized staff to associate or re-assign a document to a specific applicant (client/dependant).
-    Creates an immutable audit trail with provenance.
+    Enforces tenant isolation, auto-resolves cross-document discrepancy findings against previous applicant,
+    and creates an immutable audit trail with provenance.
     """
-    doc = db.query(Document).filter(Document.id == document_id).first()
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.organization_id == auth.organization_id,
+    ).first()
     if not doc:
         raise NotFoundError("Document not found.")
 
@@ -1902,15 +1920,128 @@ def correct_applicant_association(
     if auth.is_retained_client():
         raise PermissionDeniedError("Retained clients cannot re-assign applicant associations.")
 
+    # 1. Target Applicant Validation & Tenant Isolation
+    target_client = None
+    target_dep = None
+
+    if payload.applicant_dependant_id:
+        target_dep = db.query(ClientDependant).filter(
+            ClientDependant.id == payload.applicant_dependant_id,
+            ClientDependant.organization_id == auth.organization_id,
+        ).first()
+        if not target_dep:
+            raise NotFoundError("Referenced applicant dependant not found in organization.")
+
+        target_client = db.query(ClientProfile).filter(
+            ClientProfile.id == target_dep.primary_client_id,
+            ClientProfile.organization_id == auth.organization_id,
+        ).first()
+        if not target_client:
+            raise NotFoundError("Primary client for dependant not found in organization.")
+
+        if payload.client_id and payload.client_id != target_dep.primary_client_id:
+            raise PermissionDeniedError("Dependant does not belong to the specified client.")
+
+    elif payload.client_id:
+        target_client = db.query(ClientProfile).filter(
+            ClientProfile.id == payload.client_id,
+            ClientProfile.organization_id == auth.organization_id,
+        ).first()
+        if not target_client:
+            raise NotFoundError("Referenced client profile not found in organization.")
+
+    # 2. Previous applicant information
     prev_client_id = str(doc.client_id) if doc.client_id else None
-    new_client_id = str(payload.client_id) if payload.client_id else None
+    prev_dep_id = str(doc.applicant_dependant_id) if doc.applicant_dependant_id else None
+    prev_applicant_name = doc.proposed_applicant_name
 
-    doc.client_id = payload.client_id
-    if payload.applicant_name:
+    # 3. New applicant assignment
+    if target_dep:
+        doc.client_id = target_dep.primary_client_id
+        doc.applicant_dependant_id = target_dep.id
+        doc.proposed_applicant_name = (
+            payload.applicant_name.strip()
+            if payload.applicant_name
+            else f"{target_dep.first_name} {target_dep.last_name}".strip()
+        )
+    elif target_client:
+        doc.client_id = target_client.id
+        doc.applicant_dependant_id = None
+        doc.proposed_applicant_name = (
+            payload.applicant_name.strip()
+            if payload.applicant_name
+            else f"{target_client.first_name} {target_client.last_name}".strip()
+        )
+    elif payload.applicant_name:
         doc.proposed_applicant_name = payload.applicant_name.strip()
-    doc.is_assignment_confirmed = True
-    doc.updated_at = now_utc()
 
+    now = now_utc()
+    doc.is_assignment_confirmed = True
+    doc.assignment_confirmed_by_id = auth.user_id
+    doc.updated_at = now
+
+    # 4. Cross-Document Findings Auto-Resolution:
+    # Prior cross-document comparisons compared this document against the wrong applicant's profile/docs.
+    open_statuses = ["open", "investigating", "needs_review", "needs_action"]
+    relevant_finding_types = ["consistency_discrepancy", "applicant_association_ambiguity", "form_conflict"]
+
+    doc_id_str = str(doc.id)
+    case_findings = []
+    if doc.case_id:
+        case_findings = db.query(CaseAIFinding).filter(
+            CaseAIFinding.organization_id == auth.organization_id,
+            CaseAIFinding.case_id == doc.case_id,
+            CaseAIFinding.status.in_(open_statuses),
+            CaseAIFinding.finding_type.in_(relevant_finding_types),
+        ).all()
+
+    resolved_findings_count = 0
+    for f in case_findings:
+        is_match = False
+        if f.document_id and str(f.document_id) == doc_id_str:
+            is_match = True
+        elif f.related_documents:
+            for rel in f.related_documents:
+                rel_id = rel.get("id") if isinstance(rel, dict) else str(rel)
+                if rel_id == doc_id_str:
+                    is_match = True
+                    break
+
+        if is_match:
+            f.status = "resolved"
+            f.resolution_action = "resolve"
+            f.resolution_reason = (
+                f"Auto-resolved upon document reassignment to applicant '{doc.proposed_applicant_name}': "
+                f"{payload.reason.strip()}"
+            )
+            f.resolved_at = now
+            f.reviewer_id = auth.user_id
+            history = list(f.resolution_history or [])
+            history.append({
+                "action": "resolve",
+                "reason": f.resolution_reason,
+                "by": str(auth.user_id),
+                "at": now.isoformat(),
+            })
+            f.resolution_history = history
+            resolved_findings_count += 1
+
+    if resolved_findings_count > 0:
+        db.flush()
+
+    remaining_open_findings = 0
+    if doc.case_id:
+        remaining_open_findings = db.query(CaseAIFinding).filter(
+            CaseAIFinding.organization_id == auth.organization_id,
+            CaseAIFinding.document_id == doc.id,
+            CaseAIFinding.status.in_(open_statuses),
+        ).count()
+
+    if remaining_open_findings == 0:
+        doc.has_unresolved_anomaly = False
+        doc.anomaly_notes = None
+
+    # 5. Record Immutable Audit Trail
     audit = AuditEvent(
         organization_id=doc.organization_id,
         actor_id=auth.user_id,
@@ -1920,12 +2051,18 @@ def correct_applicant_association(
         metadata_json={
             "document_id": str(doc.id),
             "previous_client_id": prev_client_id,
-            "new_client_id": new_client_id,
-            "proposed_applicant_name": doc.proposed_applicant_name,
+            "new_client_id": str(doc.client_id) if doc.client_id else None,
+            "previous_applicant_dependant_id": prev_dep_id,
+            "new_applicant_dependant_id": str(doc.applicant_dependant_id) if doc.applicant_dependant_id else None,
+            "previous_applicant_name": prev_applicant_name,
+            "new_applicant_name": doc.proposed_applicant_name,
+            "is_assignment_confirmed": True,
+            "assignment_confirmed_by_id": str(auth.user_id),
             "reason": payload.reason.strip(),
+            "auto_resolved_findings_count": resolved_findings_count,
             "corrected_by": str(auth.user_id),
         },
-        occurred_at=now_utc(),
+        occurred_at=now,
     )
     db.add(audit)
     db.commit()
@@ -2008,6 +2145,8 @@ def purge_document_endpoint(
     reason = payload.reason if payload else "statutory_retention_expiry"
     bypass_retention = payload.bypass_retention_window if payload else False
     jurisdiction = payload.jurisdiction if payload else "US"
+    retention_policy = payload.retention_policy if payload else None
+    use_ephemeral = payload.use_ephemeral_schedule if payload else False
 
     try:
         result = purge_document(
@@ -2017,6 +2156,8 @@ def purge_document_endpoint(
             actor_id=auth.user_id,
             reason=reason,
             jurisdiction=jurisdiction,
+            retention_policy=retention_policy,
+            use_ephemeral_schedule=use_ephemeral,
             bypass_retention_window=bypass_retention,
         )
         return PurgeDocumentResponse(**result)
@@ -2093,7 +2234,7 @@ def split_sections_endpoint(
 
     sections_data = []
     if payload and payload.sections:
-        sections_data = [s.model_dump() for s in payload.sections]
+        sections_data = [s.model_dump(mode="json") for s in payload.sections]
     else:
         layout = doc.layout_metadata or {}
         pages = layout.get("pages", [])
@@ -2128,6 +2269,7 @@ def confirm_assignment_endpoint(
 ):
     """
     Officer confirms or updates the proposed applicant assignment and category for a document.
+    Enforces tenant isolation and auto-resolves cross-document discrepancy findings.
     """
     if auth.is_retained_client():
         raise PermissionDeniedError("Only authorized staff or officers can confirm document assignments.")
@@ -2136,14 +2278,71 @@ def confirm_assignment_endpoint(
     if not doc:
         raise NotFoundError(f"Document {document_id} not found.")
 
+    prev_client_id = str(doc.client_id) if doc.client_id else None
+    prev_dep_id = str(doc.applicant_dependant_id) if doc.applicant_dependant_id else None
+    prev_applicant_name = doc.proposed_applicant_name
+
     now = now_utc()
     doc.is_assignment_confirmed = True
     doc.assignment_confirmed_by_id = auth.user_id
+
     if payload.applicant_dependant_id is not None:
-        doc.applicant_dependant_id = payload.applicant_dependant_id
+        target_dep = db.query(ClientDependant).filter(
+            ClientDependant.id == payload.applicant_dependant_id,
+            ClientDependant.organization_id == auth.organization_id,
+        ).first()
+        if not target_dep:
+            raise NotFoundError("Referenced applicant dependant not found in organization.")
+        doc.applicant_dependant_id = target_dep.id
+        doc.client_id = target_dep.primary_client_id
+        doc.proposed_applicant_name = f"{target_dep.first_name} {target_dep.last_name}".strip()
+
     if payload.confirmed_category:
         doc.category = payload.confirmed_category
     doc.updated_at = now
+
+    resolved_count = 0
+    if payload.applicant_dependant_id is not None and str(payload.applicant_dependant_id) != prev_dep_id:
+        open_statuses = ["open", "investigating", "needs_review", "needs_action"]
+        relevant_types = ["consistency_discrepancy", "applicant_association_ambiguity", "form_conflict"]
+        if doc.case_id:
+            c_findings = db.query(CaseAIFinding).filter(
+                CaseAIFinding.organization_id == auth.organization_id,
+                CaseAIFinding.case_id == doc.case_id,
+                CaseAIFinding.status.in_(open_statuses),
+                CaseAIFinding.finding_type.in_(relevant_types),
+            ).all()
+            for f in c_findings:
+                if (f.document_id and str(f.document_id) == str(doc.id)) or any(
+                    (rel.get("id") if isinstance(rel, dict) else str(rel)) == str(doc.id)
+                    for rel in (f.related_documents or [])
+                ):
+                    f.status = "resolved"
+                    f.resolution_action = "resolve"
+                    f.resolution_reason = f"Auto-resolved upon assignment confirmation to applicant '{doc.proposed_applicant_name}'."
+                    f.resolved_at = now
+                    f.reviewer_id = auth.user_id
+                    history = list(f.resolution_history or [])
+                    history.append({
+                        "action": "resolve",
+                        "reason": f.resolution_reason,
+                        "by": str(auth.user_id),
+                        "at": now.isoformat(),
+                    })
+                    f.resolution_history = history
+                    resolved_count += 1
+
+        if resolved_count > 0:
+            db.flush()
+
+        remaining_open = db.query(CaseAIFinding).filter(
+            CaseAIFinding.organization_id == auth.organization_id,
+            CaseAIFinding.document_id == doc.id,
+            CaseAIFinding.status.in_(open_statuses),
+        ).count()
+        if remaining_open == 0:
+            doc.has_unresolved_anomaly = False
+            doc.anomaly_notes = None
 
     audit = AuditEvent(
         organization_id=auth.organization_id,
@@ -2152,9 +2351,18 @@ def confirm_assignment_endpoint(
         object_type="document",
         object_id=str(doc.id),
         metadata_json={
-            "applicant_dependant_id": str(doc.applicant_dependant_id) if doc.applicant_dependant_id else None,
+            "document_id": str(doc.id),
+            "previous_client_id": prev_client_id,
+            "new_client_id": str(doc.client_id) if doc.client_id else None,
+            "previous_applicant_dependant_id": prev_dep_id,
+            "new_applicant_dependant_id": str(doc.applicant_dependant_id) if doc.applicant_dependant_id else None,
+            "previous_applicant_name": prev_applicant_name,
+            "new_applicant_name": doc.proposed_applicant_name,
+            "is_assignment_confirmed": True,
+            "assignment_confirmed_by_id": str(auth.user_id),
             "category": doc.category,
             "confirmed_at": now.isoformat(),
+            "auto_resolved_findings_count": resolved_count,
         },
         occurred_at=now,
     )

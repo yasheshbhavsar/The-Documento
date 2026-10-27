@@ -272,3 +272,85 @@ def test_structured_logging_pii_redaction():
     assert sanitized["nested"]["safe_data"] == "normal_value"
     assert sanitized["email"] == "user@example.com"
 
+
+def test_delete_client_profile_rbac_matrix(client, db):
+    org = Organization(name="Lex Immigration Law", slug=f"lex-{uuid.uuid4().hex[:6]}")
+    db.add(org)
+    db.flush()
+
+    c1 = ClientProfile(organization_id=org.id, first_name="Target", last_name="Client", email="target@lex.com", nationality="IND")
+    db.add(c1)
+    db.commit()
+
+    headers_owner = {
+        "X-Organization-Id": str(org.id),
+        "X-User-Id": str(uuid.uuid4()),
+        "X-User-Role": RoleCode.MASTER_ADMIN.value,
+    }
+    headers_manager = {
+        "X-Organization-Id": str(org.id),
+        "X-User-Id": str(uuid.uuid4()),
+        "X-User-Role": RoleCode.CASE_MANAGER.value,
+    }
+    headers_paralegal = {
+        "X-Organization-Id": str(org.id),
+        "X-User-Id": str(uuid.uuid4()),
+        "X-User-Role": RoleCode.CASE_WORKER.value,
+    }
+    headers_client = {
+        "X-Organization-Id": str(org.id),
+        "X-User-Id": str(uuid.uuid4()),
+        "X-User-Role": RoleCode.RETAINED_CLIENT.value,
+    }
+
+    # 1. Retained client cannot delete -> 403 Forbidden
+    res_client = client.delete(f"/api/v1/clients/{c1.id}", headers=headers_client)
+    assert res_client.status_code == 403
+
+    # 2. Paralegal cannot delete -> 403 Forbidden
+    res_para = client.delete(f"/api/v1/clients/{c1.id}", headers=headers_paralegal)
+    assert res_para.status_code == 403
+
+    # 3. Add active case for client -> Owner delete should get 409 Conflict
+    active_case = ImmigrationCase(
+        organization_id=org.id,
+        client_id=c1.id,
+        case_number=f"CASE-US-{uuid.uuid4().hex[:4]}",
+        title="Active O-1A",
+        jurisdiction="US",
+        visa_category="O-1A",
+        status="review",
+    )
+    db.add(active_case)
+    db.commit()
+
+    res_conflict = client.delete(f"/api/v1/clients/{c1.id}", headers=headers_owner)
+    assert res_conflict.status_code == 409
+    assert "associated case" in res_conflict.json()["message"]
+
+    # 4. Delete the case first
+    db.delete(active_case)
+    db.commit()
+
+    # 5. Owner can delete client with no associated cases -> 200 OK
+    res_delete = client.delete(f"/api/v1/clients/{c1.id}", headers=headers_owner)
+    assert res_delete.status_code == 200
+    assert res_delete.json()["status"] == "success"
+
+    # 6. Verify client no longer in DB
+    assert db.query(ClientProfile).filter(ClientProfile.id == c1.id).first() is None
+
+    # 7. Manager can delete a standalone client with provisioned portal user -> 200 OK and user purged
+    portal_user = User(email="mgr-client@lex.com", full_name="Manager Client", status="active")
+    db.add(portal_user)
+    db.flush()
+
+    c2 = ClientProfile(organization_id=org.id, user_id=portal_user.id, first_name="Manager", last_name="Delete", email=portal_user.email, nationality="CAN")
+    db.add(c2)
+    db.commit()
+
+    res_mgr_delete = client.delete(f"/api/v1/clients/{c2.id}", headers=headers_manager)
+    assert res_mgr_delete.status_code == 200
+    assert db.query(ClientProfile).filter(ClientProfile.id == c2.id).first() is None
+    assert db.query(User).filter(User.id == portal_user.id).first() is None
+

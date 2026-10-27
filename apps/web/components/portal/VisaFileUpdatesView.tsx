@@ -314,7 +314,59 @@ export function VisaFileUpdatesView({
     );
   }
 
-  const filteredUpdates = FALLBACK_VISA_FILE_UPDATES.filter((item) => {
+  const isDemoCase = myCase?.case_number === "CASE-US-8841";
+  const isCanada =
+    myCase?.jurisdiction?.toLowerCase().includes("canada") ||
+    (myCase?.visa_category || "").toLowerCase().includes("canada") ||
+    (myCase?.visa_category || "").toLowerCase().includes("study permit");
+
+  const activeUpdates: VisaFileUpdateItem[] = isDemoCase
+    ? FALLBACK_VISA_FILE_UPDATES
+    : isCanada
+    ? [
+        {
+          id: `update-${myCase.id}-01`,
+          timestamp: "Today • Just now",
+          relativeTime: "Just now",
+          category: "evidence",
+          title: `Representation Activated & IRCC File Opened (#${myCase.case_number})`,
+          officialReference: `IRCC Ref #${myCase.case_number}`,
+          statusBadge: {
+            label: "Active Matter",
+            bg: "#DCFCE7",
+            color: "#166534",
+            border: "#86EFAC",
+          },
+          officerName: myCase.assigned_manager || "Vanguard Immigration Law Group",
+          officerRole: "Supervising Case Manager",
+          summary: `Representation formally activated for ${myCase.client_name || "Client"} (${myCase.visa_category}). Designated file created in Vanguard Client Transparency Portal. DLI acceptance and PAL attestation intake initiated.`,
+          legalSignificance: `Formal legal representation established. Document intake and statutory verification active under IRPA / IRPR guidelines.`,
+          actionRequired: false,
+        },
+      ]
+    : [
+        {
+          id: `update-${myCase.id}-01`,
+          timestamp: "Today • Just now",
+          relativeTime: "Just now",
+          category: "evidence",
+          title: `Representation Retainer Executed & Case Docket Opened (#${myCase.case_number})`,
+          officialReference: `Docket #${myCase.case_number}`,
+          statusBadge: {
+            label: "Active Matter",
+            bg: "#DCFCE7",
+            color: "#166534",
+            border: "#86EFAC",
+          },
+          officerName: myCase.assigned_manager || "Vanguard Immigration Law Group",
+          officerRole: "Supervising Case Manager",
+          summary: `Client onboarding completed. Initial case file opened for ${myCase.visa_category}. Evidentiary document gathering in progress.`,
+          legalSignificance: `Establishes formal client representation and legal confidentiality under counsel supervision.`,
+          actionRequired: false,
+        },
+      ];
+
+  const filteredUpdates = activeUpdates.filter((item) => {
     const matchesFilter = selectedFilter === "all" || item.category === selectedFilter;
     const matchesSearch =
       item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -384,7 +436,7 @@ export function VisaFileUpdatesView({
                   letterSpacing: "0.03em",
                 }}
               >
-                ● LIVE USCIS SYNC
+                ● LIVE {isCanada ? "IRCC" : "USCIS"} SYNC
               </span>
             </div>
 
@@ -400,7 +452,7 @@ export function VisaFileUpdatesView({
               {language === "en" ? "Visa Application File Updates" : t.docketHeaderTitle}
             </h1>
             <p style={{ margin: 0, fontSize: "13px", color: "#D1E7E0", lineHeight: 1.5, maxWidth: "680px" }}>
-              Authoritative, real-time procedural docket for your <strong>{myCase?.visa_category || "EB-1A Extraordinary Ability"}</strong> petition, official USCIS receipt notices, biometrics milestones, and case processing officer actions.
+              Authoritative, real-time procedural docket for your <strong>{myCase?.visa_category || (isDemoCase ? "EB-1A Extraordinary Ability" : "Immigration Matter")}</strong> petition, official {isCanada ? "IRCC" : "USCIS"} receipt notices, biometrics milestones, and case processing officer actions.
             </p>
           </div>
 
@@ -428,7 +480,7 @@ export function VisaFileUpdatesView({
               <span style={{ display: "inline-block", transform: isRefreshing ? "rotate(360deg)" : "none", transition: "transform 0.8s linear" }}>
                 🔄
               </span>
-              <span>{isRefreshing ? "Checking USCIS Gateway..." : "Refresh Official Status"}</span>
+              <span>{isRefreshing ? `Checking ${isCanada ? "IRCC" : "USCIS"} Gateway...` : "Refresh Official Status"}</span>
             </button>
             <span style={{ fontSize: "11px", color: "#B9DED4" }}>
               Last verified: {lastRefreshedText}
@@ -628,11 +680,11 @@ export function VisaFileUpdatesView({
         {/* Category Pills */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
           {[
-            { key: "all" as const, label: t.filterAll, count: FALLBACK_VISA_FILE_UPDATES.length },
-            { key: "uscis_notice" as const, label: t.filterUSCIS, count: 1 },
-            { key: "biometrics" as const, label: t.filterBiometrics, count: 1 },
-            { key: "officer_action" as const, label: t.filterOfficerActions, count: 1 },
-            { key: "evidence" as const, label: t.filterFilings, count: 1 },
+            { key: "all" as const, label: t.filterAll, count: activeUpdates.length },
+            { key: "uscis_notice" as const, label: isCanada ? "IRCC Notices" : t.filterUSCIS, count: isDemoCase ? 1 : activeUpdates.filter(u => u.category === "uscis_notice").length },
+            { key: "biometrics" as const, label: t.filterBiometrics, count: isDemoCase ? 1 : activeUpdates.filter(u => u.category === "biometrics").length },
+            { key: "officer_action" as const, label: t.filterOfficerActions, count: isDemoCase ? 1 : activeUpdates.filter(u => u.category === "officer_action").length },
+            { key: "evidence" as const, label: t.filterFilings, count: isDemoCase ? 1 : activeUpdates.filter(u => u.category === "evidence").length },
           ].map((cat) => {
             const active = selectedFilter === cat.key;
             return (

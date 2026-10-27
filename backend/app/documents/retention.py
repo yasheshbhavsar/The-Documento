@@ -20,7 +20,16 @@ from sqlalchemy import select
 
 from backend.app.core.errors import NotFoundError, TenantIsolationError, PermissionDeniedError
 from backend.app.documents.storage import StorageBackend, StorageError, get_storage_backend
-from backend.app.domain.models import Document, AuditEvent, OutboxEvent, CaseAIFinding, ImmigrationCase, now_utc
+from backend.app.domain.models import (
+    Document,
+    AuditEvent,
+    OutboxEvent,
+    CaseAIFinding,
+    ImmigrationCase,
+    FilingPackage,
+    PackageDownloadEvent,
+    now_utc,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,20 +67,41 @@ class DatabaseReconciliationError(RetentionError):
 # Retention Policy Configuration
 # ---------------------------------------------------------------------------
 
-# Operational provisional defaults for retention evaluation.
+# Operational provisional statutory estimates (kept for reference and backward compatibility).
 # WARNING: These are unverified operational assumptions and MUST NOT be treated as definitive legal rules.
-# Replace with reviewed jurisdiction-aware retention schedules only after counsel review.
+# Per Documento Master Vision §1 and §4.8: Documento is NOT a permanent cloud vault by default.
+# Firms retain permanent case files in local folders or approved local storage.
 PROVISIONAL_RETENTION_POLICIES_DAYS = {
     "US": 7 * 365,       # Operational default: 7 years (provisional, subject to legal review)
     "UK": 6 * 365,       # Operational default: 6 years (provisional, subject to legal review)
     "CA": 5 * 365,       # Operational default: 5 years (provisional, subject to legal review)
     "DE": 10 * 365,      # Operational default: 10 years (provisional, subject to legal review)
-    "draft_intake": 90,  # Operational default: 90 days for abandoned drafts (provisional)
+    "draft_intake": 90,  # Legacy fallback: 90 days for abandoned drafts (provisional)
     "default": 7 * 365,  # Fallback default (provisional)
 }
 
 # Backward compatibility alias
 RETENTION_POLICIES_DAYS = PROVISIONAL_RETENTION_POLICIES_DAYS
+
+# Documento Ephemeral Temporary Storage Schedules (Vision §1, §4.8)
+# Server-side documents are held ephemerally for processing, review, and package assembly.
+# Cleanup is gated strictly on verified download confirmation, resolving anomalies, and legal hold release.
+EPHEMERAL_RETENTION_SCHEDULES_DAYS = {
+    "draft_intake": 14,       # Uncompleted / abandoned intake drafts
+    "closed_case": 30,        # Post-closure / post-filing package retention
+    "immediate": 0,           # Immediate post-download verified purge
+    "seven_days": 7,          # 7 days post-download verified purge
+    "fourteen_days": 14,      # 14 days post-download verified purge
+    "thirty_days": 30,        # 30 days post-download verified purge
+    "sixty_days": 60,         # 60 days post-download verified purge
+    "ninety_days": 90,        # 90 days post-download verified purge
+    "default": 30,            # General operational fallback for ephemeral storage
+    "ephemeral_default": 30,  # Default ephemeral storage limit
+}
+
+DEFAULT_EPHEMERAL_RETENTION_DAYS = 30
+DEFAULT_DRAFT_RETENTION_DAYS = 14
+DEFAULT_CLOSED_CASE_RETENTION_DAYS = 30
 
 UNRESOLVED_FINDING_STATUSES = {"needs_review", "unable_to_determine", "flagged", "open", "in_review"}
 
@@ -84,6 +114,8 @@ class PurgeEligibility:
     legal_hold: bool = False
     age_days: float = 0.0
     threshold_days: int = 0
+    download_confirmed: bool = True
+    verified_download_at: Optional[datetime] = None
 
 
 # ---------------------------------------------------------------------------
@@ -122,16 +154,31 @@ def evaluate_purge_eligibility(
     *,
     organization_id: UUID,
     jurisdiction: str = "US",
+    retention_policy: Optional[str] = None,
+    retention_days_override: Optional[int] = None,
+    use_ephemeral_schedule: bool = False,
     bypass_retention_window: bool = False,
     now: Optional[datetime] = None,
 ) -> PurgeEligibility:
-    """Evaluates whether a document meets all criteria for permanent secure purge."""
+    """
+    Evaluates whether a document meets all criteria for permanent secure purge.
+    Enforces:
+    1. Strict tenant isolation
+    2. Legal hold protection
+    3. Unresolved compliance findings / AI anomalies gate
+    4. Processing state safety gate
+    5. Active petition casework protection & package download confirmation gate (Vision §4.8)
+    6. Document-level verified export / download evidence gate
+    7. Ephemeral or statutory retention schedule calculation
+    """
     current_time = now or datetime.now(timezone.utc)
     reasons: List[str] = []
+    download_confirmed: bool = True
+    verified_download_at: Optional[datetime] = None
 
     # 1. Strict Tenant Isolation
     if doc.organization_id != organization_id:
-        raise TenantIsolationError(f"Cross-tenant document access denied for purge evaluation.")
+        raise TenantIsolationError("Cross-tenant document access denied for purge evaluation.")
 
     # 2. Legal Hold Protection
     on_hold = is_document_on_legal_hold(doc)
@@ -150,60 +197,166 @@ def evaluate_purge_eligibility(
         }
         for f in unresolved_findings
     ]
-    if unresolved_findings:
-        reasons.append(f"Document has {len(unresolved_findings)} unresolved compliance findings/anomalies.")
+    if unresolved_findings or getattr(doc, "has_unresolved_anomaly", False):
+        count = len(unresolved_findings) or 1
+        reasons.append(f"Document has {count} unresolved compliance findings/anomalies.")
 
     # 4. Processing State Safety Gate
     if doc.processing_status in ("processing", "queued"):
         reasons.append(f"Document is currently being processed (status: {doc.processing_status}).")
 
-    # 5. Case Ownership & Active Casework Protection
+    # 5. Case Ownership, Active Casework & Package Download Confirmation Gate
+    case = None
     if doc.case_id:
         case = db.query(ImmigrationCase).filter(ImmigrationCase.id == doc.case_id).first()
         if case:
             if case.organization_id != organization_id:
                 raise TenantIsolationError("Document case belongs to a different tenant.")
+
+            # Active petition protection
             if case.status in ("in_progress", "under_review", "filed", "appealed") and not bypass_retention_window:
                 reasons.append(
                     f"Document is linked to an active petition (case #{case.case_number}, status: {case.status}). "
                     "Active casework evidence cannot be purged without explicit counsel override."
                 )
 
-    # 6. Retention Period Calculation
-    retention_days = PROVISIONAL_RETENTION_POLICIES_DAYS.get(
-        jurisdiction.upper(), PROVISIONAL_RETENTION_POLICIES_DAYS["default"]
-    )
-    # Ensure doc.created_at is timezone-aware
-    doc_created = doc.created_at
-    if doc_created.tzinfo is None:
-        doc_created = doc_created.replace(tzinfo=timezone.utc)
-    
-    age_seconds = (current_time - doc_created).total_seconds()
-    age_days = max(0.0, round(age_seconds / 86400, 1))
+            # Download confirmation gate for assembled packages:
+            # Per Vision §4.8: A download starting in a browser is NOT proof of local saving.
+            # A failed or uncertain download must NEVER trigger cleanup.
+            packages = (
+                db.query(FilingPackage)
+                .filter(
+                    FilingPackage.case_id == case.id,
+                    FilingPackage.organization_id == organization_id,
+                )
+                .all()
+            )
+            if packages and not bypass_retention_window:
+                pkg_ids = [p.id for p in packages]
+                downloads = (
+                    db.query(PackageDownloadEvent)
+                    .filter(
+                        PackageDownloadEvent.package_id.in_(pkg_ids),
+                        PackageDownloadEvent.organization_id == organization_id,
+                    )
+                    .all()
+                )
+                if not downloads:
+                    download_confirmed = False
+                    reasons.append(
+                        f"Filing package has been generated for case #{case.case_number}, but has not been downloaded by firm staff. "
+                        "Routine purge is held to prevent client evidence loss."
+                    )
+                else:
+                    verified_events = [d for d in downloads if d.is_verified]
+                    if not verified_events:
+                        download_confirmed = False
+                        reasons.append(
+                            f"Filing package download was initiated for case #{case.case_number}, but transfer receipt was unconfirmed. "
+                            "Download initiation alone is not proof of local saving; cleanup is held to prevent data loss."
+                        )
+                    else:
+                        download_confirmed = True
+                        latest_pkg_dl = max(verified_events, key=lambda d: d.verified_at or d.downloaded_at)
+                        verified_download_at = latest_pkg_dl.verified_at or latest_pkg_dl.downloaded_at
 
-    if not bypass_retention_window and age_days < retention_days:
-        reasons.append(
-            f"Document age ({age_days} days) does not exceed retention threshold ({retention_days} days)."
-        )
-
-    # 7. Download / Export Evidence Check (where required by document policy)
+    # 6. Document-Level Verified Download / Export Evidence Check
     meta = doc.layout_metadata or {}
+    verified_doc_download = meta.get("verified_download")
+    if verified_doc_download and isinstance(verified_doc_download, dict):
+        verified_at_str = verified_doc_download.get("verified_at")
+        if verified_at_str:
+            try:
+                verified_download_at = datetime.fromisoformat(verified_at_str)
+                download_confirmed = True
+            except (ValueError, TypeError):
+                pass
+
     if meta.get("require_download_evidence") is True and not bypass_retention_window:
-        download_event = (
+        # Check verified download or export audit event
+        export_audits = (
             db.query(AuditEvent)
             .filter(
                 AuditEvent.organization_id == organization_id,
                 AuditEvent.object_id == str(doc.id),
-                AuditEvent.action.in_(["document.downloaded", "document.exported", "package.exported", "package.downloaded"]),
+                AuditEvent.action.in_([
+                    "document.download_verified",
+                    "filing_package.download_verified",
+                    "package.exported",
+                    "document.exported",
+                ]),
             )
-            .first()
+            .all()
         )
-        if not download_event:
-            reasons.append("Document policy requires export/download audit trail before permanent destruction.")
+        has_verified_trail = bool(export_audits or verified_download_at or (verified_doc_download and verified_doc_download.get("verified_at")))
+
+        if not has_verified_trail:
+            unverified_audit = (
+                db.query(AuditEvent)
+                .filter(
+                    AuditEvent.organization_id == organization_id,
+                    AuditEvent.object_id == str(doc.id),
+                    AuditEvent.action.in_(["document.downloaded", "filing_package.downloaded", "package.downloaded"]),
+                )
+                .first()
+            )
+            if unverified_audit:
+                download_confirmed = False
+                reasons.append("Document download was initiated, but client receipt was not verified. Unconfirmed transfer cannot satisfy export evidence requirement.")
+            else:
+                download_confirmed = False
+                reasons.append("Document policy requires export/download audit trail before permanent destruction.")
+
+    # 7. Retention Period Calculation
+    if retention_days_override is not None:
+        retention_days = retention_days_override
+    elif retention_policy is not None:
+        retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS.get(
+            retention_policy, DEFAULT_EPHEMERAL_RETENTION_DAYS
+        )
+    elif use_ephemeral_schedule:
+        if case and case.post_download_retention_policy:
+            retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS.get(
+                case.post_download_retention_policy, DEFAULT_CLOSED_CASE_RETENTION_DAYS
+            )
+        elif case and case.status in ("draft", "intake", "abandoned"):
+            retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS["draft_intake"]
+        elif not doc.case_id:
+            retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS["draft_intake"]
+        else:
+            retention_days = DEFAULT_EPHEMERAL_RETENTION_DAYS
+    else:
+        retention_days = PROVISIONAL_RETENTION_POLICIES_DAYS.get(
+            jurisdiction.upper(), PROVISIONAL_RETENTION_POLICIES_DAYS["default"]
+        )
+
+    # Ensure doc.created_at is timezone-aware
+    doc_created = doc.created_at
+    if doc_created.tzinfo is None:
+        doc_created = doc_created.replace(tzinfo=timezone.utc)
+
+    age_seconds = (current_time - doc_created).total_seconds()
+    age_days = max(0.0, round(age_seconds / 86400, 1))
+
+    # Evaluate post-download window if verified download occurred and ephemeral mode applies
+    if verified_download_at and (use_ephemeral_schedule or retention_policy):
+        if verified_download_at.tzinfo is None:
+            verified_download_at = verified_download_at.replace(tzinfo=timezone.utc)
+        post_dl_seconds = (current_time - verified_download_at).total_seconds()
+        post_dl_days = max(0.0, round(post_dl_seconds / 86400, 1))
+        if not bypass_retention_window and post_dl_days < retention_days:
+            reasons.append(
+                f"Post-download retention period has not elapsed ({post_dl_days} days since verified download; threshold is {retention_days} days)."
+            )
+    elif not bypass_retention_window and age_days < retention_days:
+        reasons.append(
+            f"Document age ({age_days} days) does not exceed retention threshold ({retention_days} days)."
+        )
 
     is_eligible = (
         not on_hold
         and len(unresolved_findings) == 0
+        and not getattr(doc, "has_unresolved_anomaly", False)
         and doc.processing_status not in ("processing", "queued")
         and len(reasons) == 0
     )
@@ -215,6 +368,8 @@ def evaluate_purge_eligibility(
         legal_hold=on_hold,
         age_days=age_days,
         threshold_days=retention_days,
+        download_confirmed=download_confirmed,
+        verified_download_at=verified_download_at,
     )
 
 
@@ -415,6 +570,9 @@ def purge_document(
     actor_id: UUID,
     reason: str = "statutory_retention_expiry",
     jurisdiction: str = "US",
+    retention_policy: Optional[str] = None,
+    retention_days_override: Optional[int] = None,
+    use_ephemeral_schedule: bool = False,
     bypass_retention_window: bool = False,
     storage_backend: Optional[StorageBackend] = None,
     correlation_id: Optional[str] = None,
@@ -423,7 +581,7 @@ def purge_document(
     Executes a durable, retryable, 2-phase secure purge of a document:
     1. Locks document under tenant scope; rejects wrong tenant or non-existent doc.
     2. Enforces strict eligibility gate: blocks documents on legal hold, unresolved anomalies,
-       or within active retention schedules.
+       unconfirmed downloads, or within active retention schedules.
     3. Records purge initiation audit event with unique correlation ID (zero PII).
     4. Deletes underlying object via StorageBackend abstraction with idempotent missing-file handling.
     5. Updates database state, removes document and cascaded child records, logs completion audit.
@@ -478,6 +636,9 @@ def purge_document(
         doc,
         organization_id=organization_id,
         jurisdiction=jurisdiction,
+        retention_policy=retention_policy,
+        retention_days_override=retention_days_override,
+        use_ephemeral_schedule=use_ephemeral_schedule,
         bypass_retention_window=bypass_retention_window,
     )
 
@@ -705,15 +866,21 @@ class StorageRetentionManager:
         db: Session,
         organization_id: uuid.UUID,
         jurisdiction: str = "US",
+        retention_policy: Optional[str] = None,
+        retention_days_override: Optional[int] = None,
+        use_ephemeral_schedule: bool = False,
         now: Optional[datetime] = None,
     ) -> List[Dict[str, Any]]:
-        """Identifies documents exceeding statutory retention limits or flagged for reconciliation."""
+        """Identifies documents exceeding retention limits or flagged for reconciliation."""
         current_time = now or datetime.now(timezone.utc)
-        retention_days = PROVISIONAL_RETENTION_POLICIES_DAYS.get(
-            jurisdiction.upper(), PROVISIONAL_RETENTION_POLICIES_DAYS["default"]
-        )
-        cutoff_date = current_time - timedelta(days=retention_days)
-
+        if retention_days_override is not None:
+            retention_days = retention_days_override
+        elif retention_policy is not None:
+            retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS.get(
+                retention_policy, DEFAULT_EPHEMERAL_RETENTION_DAYS
+            )
+        elif use_ephemeral_schedule:
+            retention_days = DEFAULT_EPHEMERAL_RETENTION_DAYS
         docs = db.query(Document).filter(
             Document.organization_id == organization_id,
         ).all()
@@ -724,14 +891,48 @@ class StorageRetentionManager:
             doc_created = d.created_at
             if doc_created.tzinfo is None:
                 doc_created = doc_created.replace(tzinfo=timezone.utc)
-            is_expired = (doc_created < cutoff_date)
+
+            # Determine document-specific threshold
+            if retention_days_override is not None:
+                d_retention_days = retention_days_override
+            elif retention_policy is not None:
+                d_retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS.get(
+                    retention_policy, DEFAULT_EPHEMERAL_RETENTION_DAYS
+                )
+            elif use_ephemeral_schedule:
+                if not d.case_id:
+                    d_retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS["draft_intake"]
+                else:
+                    d_case = db.query(ImmigrationCase).filter(ImmigrationCase.id == d.case_id).first()
+                    if d_case and d_case.post_download_retention_policy:
+                        d_retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS.get(
+                            d_case.post_download_retention_policy, DEFAULT_CLOSED_CASE_RETENTION_DAYS
+                        )
+                    elif d_case and d_case.status in ("draft", "intake", "abandoned"):
+                        d_retention_days = EPHEMERAL_RETENTION_SCHEDULES_DAYS["draft_intake"]
+                    else:
+                        d_retention_days = DEFAULT_EPHEMERAL_RETENTION_DAYS
+            else:
+                d_retention_days = PROVISIONAL_RETENTION_POLICIES_DAYS.get(
+                    jurisdiction.upper(), PROVISIONAL_RETENTION_POLICIES_DAYS["default"]
+                )
+
+            d_cutoff = current_time - timedelta(days=d_retention_days)
+            is_expired = (doc_created < d_cutoff)
             is_divergent = bool(meta.get("reconciliation_needed") or meta.get("storage_purged_divergence"))
 
             if not is_expired and not is_divergent:
                 continue
 
             eligibility = evaluate_purge_eligibility(
-                db, d, organization_id=organization_id, jurisdiction=jurisdiction, now=current_time
+                db,
+                d,
+                organization_id=organization_id,
+                jurisdiction=jurisdiction,
+                retention_policy=retention_policy,
+                retention_days_override=retention_days_override,
+                use_ephemeral_schedule=use_ephemeral_schedule,
+                now=current_time,
             )
             status_label = "reconciliation_needed" if is_divergent else (
                 "eligible_for_purge" if eligibility.is_eligible else "retention_blocked"
@@ -742,9 +943,10 @@ class StorageRetentionManager:
                 "case_id": str(d.case_id) if d.case_id else None,
                 "created_at": d.created_at.isoformat(),
                 "age_days": eligibility.age_days,
-                "retention_threshold_days": retention_days,
+                "retention_threshold_days": eligibility.threshold_days,
                 "is_eligible": eligibility.is_eligible or is_divergent,
                 "legal_hold": eligibility.legal_hold,
+                "download_confirmed": eligibility.download_confirmed,
                 "blocking_reasons": eligibility.reasons,
                 "status": status_label,
             })

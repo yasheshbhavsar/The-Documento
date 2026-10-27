@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { DocumentoLogo } from "../common/DocumentoLogo";
-import { UserContext, UserExperience } from "../../lib/types";
+import { UserContext, UserExperience, RoleCode } from "../../lib/types";
 import { DEMO_USERS, authenticateUser } from "../../lib/auth";
 import { api, setAccessToken } from "../../lib/api";
 
@@ -64,11 +64,20 @@ export function DocumentoLoginModal({
         setIsLoading(false);
         if (liveRes.success && liveRes.access_token) {
           const fallbackUser = authenticateUser(email, portal, password).user;
+          const isClient =
+            portal === "client" ||
+            (liveRes.user?.roles && liveRes.user.roles.includes("retained_client"));
+          const defaultUserContext = isClient
+            ? DEMO_USERS.client_applicant
+            : DEMO_USERS.master_admin;
           const userObj: UserContext = {
-            ...(fallbackUser || DEMO_USERS.master_admin),
-            id: String(liveRes.user?.user_id || fallbackUser?.id || "usr-01"),
-            organization_id: String(liveRes.user?.organization_id || fallbackUser?.organization_id || "ten-vanguard"),
+            ...defaultUserContext,
+            ...(fallbackUser || {}),
+            id: String(liveRes.user?.user_id || fallbackUser?.id || defaultUserContext.id),
+            organization_id: String(liveRes.user?.organization_id || fallbackUser?.organization_id || defaultUserContext.organization_id),
             email: email.trim().toLowerCase(),
+            role: isClient ? "retained_client" : (fallbackUser?.role || (liveRes.user?.roles?.[0] as RoleCode) || "master_admin"),
+            experience: isClient ? "client_applicant" : (fallbackUser?.experience || "master_admin"),
           };
           onLoginSuccess(userObj);
           return;

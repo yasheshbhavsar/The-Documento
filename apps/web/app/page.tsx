@@ -34,7 +34,7 @@ export default function Home() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginInitialPortal, setLoginInitialPortal] = useState<"firm" | "client">("firm");
   const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false);
-  const [bannerAlert, setBannerAlert] = useState<{ type: "success" | "info" | "warning"; message: string } | null>(null);
+  const [bannerAlert, setBannerAlert] = useState<{ type: "success" | "info" | "warning" | "critical"; message: string } | null>(null);
 
   // Initialize on-scroll reveal animations for landing page with currentUser trigger
   useAnimationOnScroll(".animate-on-scroll", true, currentUser);
@@ -176,8 +176,8 @@ export default function Home() {
     });
   };
 
-  const handleSwitchRoleInWorkspace = (role: UserExperience) => {
-    const demoUser = DEMO_USERS[role];
+  const handleSwitchRoleInWorkspace = (role: string | UserExperience) => {
+    const demoUser = DEMO_USERS[role] || DEMO_USERS.master_admin;
     setCurrentUser(demoUser);
     if (typeof window !== "undefined") {
       localStorage.setItem("documento_user", JSON.stringify(demoUser));
@@ -217,6 +217,26 @@ export default function Home() {
       type: "success",
       message: `Credentials provisioned for client ${updatedClient.first_name} ${updatedClient.last_name}. Portal access status: ${updatedClient.portal_access_enabled ? "Active" : "Disabled"}.`,
     });
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    try {
+      await api.deleteClient(clientId, currentRole);
+      setClients((prev) => prev.filter((c) => c.id !== clientId));
+      setBannerAlert({
+        type: "success",
+        message: "Retained client profile successfully deleted from firm directory.",
+      });
+      try {
+        const auditRes = await api.getAuditEvents(currentRole);
+        setAuditEvents(auditRes.data);
+      } catch {}
+    } catch (err: any) {
+      setBannerAlert({
+        type: "critical",
+        message: err?.message || "Failed to delete client profile.",
+      });
+    }
   };
 
   const handleCaseUpdated = (updatedCase: ImmigrationCase) => {
@@ -445,6 +465,8 @@ export default function Home() {
                 onOpenCreateClient={() => setIsCreateClientOpen(true)}
                 onSelectCase={(c) => setSelectedCaseForDrawer(c)}
                 onClientUpdated={handleClientUpdated}
+                onDeleteClient={handleDeleteClient}
+                currentUser={currentUser || undefined}
               />
             )}
 
@@ -463,6 +485,8 @@ export default function Home() {
                 onOpenCreateClient={() => setIsCreateClientOpen(true)}
                 onDocumentUpdated={handleDocumentUpdated}
                 onClientUpdated={handleClientUpdated}
+                onDeleteClient={handleDeleteClient}
+                currentUser={currentUser || undefined}
                 onResolveFinding={handleResolveFinding}
                 onDismissFinding={handleDismissFinding}
                 onEscalateFinding={handleEscalateFinding}

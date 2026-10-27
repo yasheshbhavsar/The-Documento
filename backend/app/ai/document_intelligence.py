@@ -125,6 +125,18 @@ def evaluate_document_six_dimensions(
         is_faded_or_poor = True
         readability_flags.append(f"Sub-threshold OCR confidence ({int(avg_ocr_conf * 100)}%). Potential blur, low DPI, or scan distortion.")
 
+    # Multi-page scan calibration (Master Vision §4.3): check individual fields for sub-threshold OCR (< 0.70)
+    sub_threshold_fields = [
+        f for f in fields
+        if f.ocr_confidence is not None and f.ocr_confidence < 0.70
+    ]
+    if sub_threshold_fields and not (avg_ocr_conf < 0.75):
+        is_faded_or_poor = True
+        for sf in sub_threshold_fields[:3]:
+            readability_flags.append(
+                f"Sub-threshold OCR confidence ({int(sf.ocr_confidence * 100)}%) on page {sf.source_page or 1} for '{sf.field_label}'."
+            )
+
     if not text and doc.page_count > 0 and doc.processing_status == "completed":
         is_faded_or_poor = True
         readability_flags.append("Zero legible text blocks extracted. Blank scan or unsupported graphical font.")

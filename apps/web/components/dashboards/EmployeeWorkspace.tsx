@@ -18,8 +18,10 @@ import {
   RouteFindingPayload,
   UserContext,
 } from "../../lib/types";
+import { canDeleteClient } from "../../lib/auth";
 import {
   api,
+  fetchManagerPriorityQueue,
   FALLBACK_FORM_SUBMISSION,
   FALLBACK_FORM_SCHEMAS,
   FALLBACK_READINESS_CHECKLIST,
@@ -31,6 +33,7 @@ import {
   advancePackageApproval,
   exportFilingPackage,
 } from "../../lib/api";
+import { ManagerPriorityQueueView, FALLBACK_PRIORITY_QUEUE } from "./ManagerPriorityQueueView";
 import { DocumentInspectorModal } from "../modals/DocumentInspectorModal";
 import { AIFindingInspectorModal } from "../modals/AIFindingInspectorModal";
 import { EvidenceSummaryModal } from "../modals/EvidenceSummaryModal";
@@ -45,6 +48,10 @@ import { PackageApprovalWorkflowModal } from "../packages/PackageApprovalWorkflo
 import { CaseDiscrepancyAlertCenter } from "../cases/CaseDiscrepancyAlertCenter";
 import { ApprovalGatesCard } from "../cases/ApprovalGatesCard";
 import { ProvisionCredentialsModal } from "../modals/ProvisionCredentialsModal";
+import { VisaAppointmentDesk } from "../cases/VisaAppointmentDesk";
+import { GovernedAIAssistantDesk } from "../ai/GovernedAIAssistantDesk";
+import { PilotReleaseGovernanceDesk } from "../operations/PilotReleaseGovernanceDesk";
+import { PathwayExpansionDesk } from "../pathways/PathwayExpansionDesk";
 
 interface EmployeeWorkspaceProps {
   cases: ImmigrationCase[];
@@ -64,6 +71,7 @@ interface EmployeeWorkspaceProps {
   onEscalateFinding?: (findingId: string, note: string) => Promise<void>;
   onTriggerAnalysis?: (caseId: string) => Promise<void>;
   onClientUpdated?: (c: ClientProfile) => void;
+  onDeleteClient?: (clientId: string) => Promise<void> | void;
   currentUser?: UserContext;
 }
 
@@ -81,6 +89,8 @@ export function EmployeeWorkspace({
   onOpenCreateClient,
   onDocumentUpdated,
   onClientUpdated,
+  onDeleteClient,
+  currentUser,
   onResolveFinding,
   onDismissFinding,
   onEscalateFinding,
@@ -88,6 +98,50 @@ export function EmployeeWorkspace({
 }: EmployeeWorkspaceProps) {
   const [selectedClientForCredentials, setSelectedClientForCredentials] = useState<ClientProfile | null>(null);
   const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
+  const [managerPriorityData, setManagerPriorityData] = useState<any>(FALLBACK_PRIORITY_QUEUE);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchManagerPriorityQueue(currentUser?.role || "case_manager")
+      .then((res) => {
+        if (isMounted && res && res.ranks) {
+          setManagerPriorityData(res);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser]);
+
+  // Authorization check: Owner/Manager only; Paralegals and Retained Clients cannot delete
+  const canDelete = canDeleteClient(currentUser);
+
+  const handleDeleteClientClick = async (client: ClientProfile) => {
+    const clientCases = cases.filter(
+      (c) =>
+        c.client_id === client.id ||
+        (c.client_name &&
+          `${client.first_name} ${client.last_name}`.toLowerCase() === c.client_name.toLowerCase())
+    );
+
+    const caseWarning =
+      clientCases.length > 0
+        ? `\n\n⚠️ Notice: This client is associated with ${clientCases.length} case(s) (${clientCases
+            .map((c) => c.case_number)
+            .join(", ")}).`
+        : "";
+
+    const confirmMsg = `Are you sure you want to permanently delete retained client "${client.first_name} ${client.last_name}" (${client.email})?${caseWarning}\n\nThis will remove their profile and portal credentials. This action cannot be undone.`;
+
+    if (window.confirm(confirmMsg)) {
+      if (onDeleteClient) {
+        await onDeleteClient(client.id);
+      } else {
+        await api.deleteClient(client.id);
+      }
+    }
+  };
   const [activeTab, setActiveTab] = useState<
     | "my_work"
     | "exception_queue"
@@ -99,11 +153,15 @@ export function EmployeeWorkspace({
     | "ai_findings"
     | "tasks"
     | "messages"
+    | "visa_appointments"
     | "form_prep"
     | "package_review"
     | "rules_requirements"
     | "rules_admin"
     | "client_requests"
+    | "ai_assistant"
+    | "release_governance"
+    | "pathway_expansion"
   >("my_work");
 
   const [messageInput, setMessageInput] = useState("");
@@ -446,11 +504,15 @@ export function EmployeeWorkspace({
     { key: "ai_findings", label: "AI Findings", icon: "🤖", count: aiFindings.length },
     { key: "tasks", label: "Tasks", icon: "✓", count: tasks.filter((t) => !t.is_completed).length },
     { key: "messages", label: "Client Messages", icon: "💬", count: messages.length },
+    { key: "visa_appointments", label: "Visa Appointments", icon: "🏛️", count: null },
     { key: "client_requests", label: "Document Requests", icon: "📥", count: null },
     { key: "form_prep", label: "Form Preparation", icon: "📝", count: null },
     { key: "package_review", label: "Package Review", icon: "📦", count: null },
     { key: "rules_requirements", label: "Case Requirements", icon: "⚖️", count: null },
     { key: "rules_admin", label: "Rule Registry & Pilot", icon: "📜", count: null },
+    { key: "ai_assistant", label: "Governed AI Desk", icon: "✨", count: null },
+    { key: "release_governance", label: "Release & Pilot Desk", icon: "🚀", count: null },
+    { key: "pathway_expansion", label: "Pathway Expansion", icon: "🌐", count: null },
   ] as const;
 
   const activeTabInfo = {
@@ -494,6 +556,10 @@ export function EmployeeWorkspace({
       title: "Client Messages",
       subtitle: `Direct Secure Attorney-Client Communications (${messages.length} messages in thread)`,
     },
+    visa_appointments: {
+      title: "Visa Appointments & VAC Logistics",
+      subtitle: "Consular Interview, OFC Biometrics, Dropbox Waivers & 221(g) Administrative Processing Hub",
+    },
     client_requests: {
       title: "Document Requests",
       subtitle: "Targeted Evidentiary Solicitations & Formal Applicant Requests",
@@ -513,6 +579,18 @@ export function EmployeeWorkspace({
     rules_admin: {
       title: "Rule Registry & Pilot",
       subtitle: "Administrative Law Authority Management, Regulatory Snapshots & Rules Engine",
+    },
+    ai_assistant: {
+      title: "Governed AI Assistance Desk",
+      subtitle: "Evaluated Legal & Evidentiary RAG, Case Briefing, PromptGuard & 10 Evaluation Gates (§6.6, §6.7)",
+    },
+    release_governance: {
+      title: "Stage 9: Release & Pilot Operations Governance Desk",
+      subtitle: "Deterministic Go/No-Go Release Gates, Narrow Pilot Cohorts, Comparative Workflow KPIs, Cryptographic Backup Drills & Runbooks",
+    },
+    pathway_expansion: {
+      title: "Stage 10: Pathway Expansion & Regional Localization Desk",
+      subtitle: "Multi-Jurisdiction Inventory (Priorities 1–5), 8 Broad Application Families, EU/Schengen Distinctions, Safe-Stop Principles & Multilingual Matching Engine",
     },
   }[activeTab];
 
@@ -625,6 +703,7 @@ export function EmployeeWorkspace({
             return (
               <button
                 key={item.key}
+                data-testid={`tab-btn-${item.key}`}
                 type="button"
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => {
@@ -2103,40 +2182,24 @@ export function EmployeeWorkspace({
         </div>
       )}
 
-      {/* 3. TEAM QUEUES */}
+      {/* 3. TEAM QUEUES / MANAGER PRIORITY QUEUE (STRICT 1-8 RANKS) */}
       {activeTab === "team_queues" && (
-        <Card title="Firm-Wide Intake & Processing Queues" subtitle="Cross-team casework routing and review distribution.">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px" }}>
-            {[
-              { queue: "Unassigned Intake Queue", count: 2, action: "Assign Caseworker" },
-              { queue: "Document Translation & Evaluation Queue", count: 5, action: "Verify Credentials" },
-              { queue: "Senior Partner Signoff Queue", count: 3, action: "Final Review" },
-              { queue: "Agency RFE Priority Response Queue", count: 1, action: "Immediate Draft" },
-            ].map((q) => (
-              <div
-                key={q.queue}
-                style={{
-                  border: "1px solid var(--border, #e2e8f0)",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  background: "var(--surface, #ffffff)",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                }}
-              >
-                <div>
-                  <strong style={{ fontSize: "14px", color: "var(--text)", display: "block" }}>{q.queue}</strong>
-                  <span style={{ fontSize: "24px", fontWeight: 800, color: "var(--accent)" }}>{q.count} cases</span>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setActiveTab("assigned_cases")}>
-                  {q.action} →
-                </Button>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <ManagerPriorityQueueView
+          data={managerPriorityData}
+          onAction={(rank, actionType, item) => {
+            if (actionType === "dispatch_action" || actionType === "inspect_blocker" || actionType === "review_signoff") {
+              const targetCase = cases.find((c) => c.case_number === item?.case_number) || cases[0];
+              if (targetCase) setSelectedCaseForWorkspace(targetCase);
+              setActiveTab("all_in_one_workspace");
+            } else if (actionType === "assign_caseworker") {
+              setActiveTab("assigned_cases");
+            } else if (actionType === "dispatch_nudge") {
+              setActiveTab("messages");
+            } else if (actionType === "adjudicate_quality") {
+              setActiveTab("exception_queue");
+            }
+          }}
+        />
       )}
 
       {/* 4. CLIENT DIRECTORY */}
@@ -2215,16 +2278,38 @@ export function EmployeeWorkspace({
                   key: "actions",
                   header: "Action",
                   render: (c) => (
-                    <Button
-                      variant={c.portal_credentials_provided ? "outline" : "primary"}
-                      size="sm"
-                      onClick={() => {
-                        setSelectedClientForCredentials(c);
-                        setIsProvisionModalOpen(true);
-                      }}
-                    >
-                      🔑 {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
-                    </Button>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      <Button
+                        variant={c.portal_credentials_provided ? "outline" : "primary"}
+                        size="sm"
+                        onClick={() => {
+                          setSelectedClientForCredentials(c);
+                          setIsProvisionModalOpen(true);
+                        }}
+                      >
+                        🔑 {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
+                      </Button>
+                      {canDelete && (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          id={`emp-delete-client-${c.id}`}
+                          aria-label={`Delete client ${c.first_name} ${c.last_name}`}
+                          onClick={() => handleDeleteClientClick(c)}
+                          style={{
+                            background: "#FFF0F0",
+                            color: "#D32F2F",
+                            borderColor: "#FFCDD2",
+                            fontWeight: 600,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          🗑️ Delete Client
+                        </Button>
+                      )}
+                    </div>
                   ),
                 },
               ]}
@@ -3079,6 +3164,45 @@ export function EmployeeWorkspace({
       {/* 12. RULE REGISTRY & PILOT MANAGEMENT */}
       {activeTab === "rules_admin" && (
         <RuleAdministrationHub isLiveBackend={false} />
+      )}
+
+      {/* 13. VISA APPOINTMENT & CONSULAR LOGISTICS DESK */}
+      {activeTab === "visa_appointments" && (
+        <VisaAppointmentDesk
+          cases={cases}
+          clients={clients}
+          userRole={currentUser?.role}
+        />
+      )}
+
+      {/* 14. GOVERNED AI ASSISTANT DESK (STAGE 8 EVALUATED LLM & RAG) */}
+      {activeTab === "ai_assistant" && (
+        <GovernedAIAssistantDesk
+          caseId={selectedCaseForWorkspace?.id || "case-01"}
+          caseNumber={selectedCaseForWorkspace?.case_number || "US-EB1A-8080"}
+          jurisdiction={selectedCaseForWorkspace?.jurisdiction || "US"}
+          visaCategory={selectedCaseForWorkspace?.visa_category || "EB-1A"}
+          userRole={currentUser?.role || "case_manager"}
+        />
+      )}
+
+      {/* 15. STAGE 9 RELEASE / PILOT GOVERNANCE DESK */}
+      {activeTab === "release_governance" && (
+        <PilotReleaseGovernanceDesk
+          userRole={currentUser?.role || "case_manager"}
+          onNavigateToCase={(caseId) => {
+            const found = cases.find((c) => c.id === caseId || c.case_number === caseId);
+            if (found) {
+              setSelectedCaseForWorkspace(found);
+              setActiveTab("all_in_one_workspace");
+            }
+          }}
+        />
+      )}
+
+      {/* 16. STAGE 10 PATHWAY EXPANSION & REGIONAL LOCALIZATION DESK */}
+      {activeTab === "pathway_expansion" && (
+        <PathwayExpansionDesk userRole={currentUser?.role || "case_manager"} />
       )}
     </main>
 

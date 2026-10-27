@@ -29,6 +29,7 @@ ROLE_PERMISSIONS: dict[RoleCode, set[str]] = {
         "billing:read", "billing:manage", "security:read", "audit:read",
         "analytics:read", "analytics:export", "assignment:manage",
         "case:read", "case:read:all", "case:write", "case:write:all", "case:create", "case:delete",
+        "client:delete",
         "document:read", "document:read:all", "document:write", "document:verify",
         "task:write", "request:write", "package:prepare", "finding:disposition", "readiness:approve",
         "rules:manage", "rules:evaluate", "rule:draft", "rule:approve", "rule:publish", "source:write", "source:read",
@@ -38,12 +39,14 @@ ROLE_PERMISSIONS: dict[RoleCode, set[str]] = {
         "billing:read", "billing:manage", "security:read", "audit:read",
         "analytics:read", "analytics:export", "assignment:manage",
         "case:read", "case:read:all", "case:write", "case:write:all", "case:create",
+        "client:delete",
         "document:read", "document:read:all", "document:write", "document:verify",
         "task:write", "request:write", "package:prepare", "finding:disposition", "readiness:approve",
         "rules:manage", "rules:evaluate", "rule:draft", "rule:approve", "rule:publish", "source:write", "source:read",
     },
     RoleCode.SENIOR_REVIEWER: {
         "case:read", "case:read:all", "case:write", "case:write:all",
+        "client:delete",
         "document:read", "document:read:all", "document:write", "document:verify",
         "finding:disposition", "readiness:approve", "package:prepare",
         "task:write", "request:write", "rules:evaluate", "rule:approve", "rule:publish", "source:read",
@@ -51,6 +54,7 @@ ROLE_PERMISSIONS: dict[RoleCode, set[str]] = {
     },
     RoleCode.CASE_MANAGER: {
         "case:read", "case:read:all", "case:read:assigned", "case:write", "case:write:assigned", "case:create",
+        "client:delete",
         "document:read", "document:read:all", "document:read:assigned", "document:write", "document:verify",
         "task:write", "request:write", "package:prepare", "finding:disposition",
         "rules:evaluate", "source:read", "assignment:manage",
@@ -84,6 +88,7 @@ ROLE_PERMISSIONS: dict[RoleCode, set[str]] = {
         "billing:read", "billing:manage", "security:read", "audit:read",
         "analytics:read", "analytics:export", "assignment:manage",
         "case:read", "case:read:all", "case:write", "case:write:all", "case:create",
+        "client:delete",
         "document:read", "document:read:all", "document:write", "document:verify",
         "task:write", "request:write", "package:prepare", "finding:disposition", "readiness:approve",
     },
@@ -103,6 +108,7 @@ CLIENT_RESTRICTED_PERMISSIONS = {
     "billing:read", "billing:manage", "security:read", "audit:read",
     "analytics:read", "analytics:export", "assignment:manage",
     "case:read:all", "case:write:all", "case:create", "case:delete",
+    "client:delete",
     "document:read:all", "document:verify", "rule:draft", "rule:approve", "rule:publish",
 }
 

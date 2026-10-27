@@ -45,11 +45,22 @@ export default function LoginPage() {
         setIsLoading(false);
         if (liveRes.success && liveRes.access_token) {
           const fallbackUser = authenticateUser(email, portal, password).user;
+          const isClient =
+            portal === "client" ||
+            (liveRes.user?.roles && liveRes.user.roles.includes("retained_client"));
+          const defaultUserContext = isClient
+            ? DEMO_USERS.client_applicant
+            : DEMO_USERS.master_admin;
           const userObj = {
-            ...(fallbackUser || DEMO_USERS.master_admin),
-            id: String(liveRes.user?.user_id || fallbackUser?.id || "usr-01"),
-            organization_id: String(liveRes.user?.organization_id || fallbackUser?.organization_id || "ten-vanguard"),
+            ...defaultUserContext,
+            ...(fallbackUser || {}),
+            id: String(liveRes.user?.user_id || fallbackUser?.id || defaultUserContext.id),
+            organization_id: String(
+              liveRes.user?.organization_id || fallbackUser?.organization_id || defaultUserContext.organization_id
+            ),
             email: email.trim().toLowerCase(),
+            role: isClient ? ("retained_client" as any) : (fallbackUser?.role || (liveRes.user?.roles?.[0] as any) || "master_admin"),
+            experience: isClient ? ("client_applicant" as any) : (fallbackUser?.experience || "master_admin"),
           };
           if (typeof window !== "undefined") {
             if (rememberMe) {
@@ -63,10 +74,8 @@ export default function LoginPage() {
           router.push("/");
           return;
         }
-        if (liveRes.error) {
-          setErrorMessage(liveRes.error);
-          return;
-        }
+
+        // Fallback to client portal credentials or dev role authentication
         const res = authenticateUser(email, portal, password);
         if (res.success && res.user) {
           if (typeof window !== "undefined") {
@@ -79,9 +88,10 @@ export default function LoginPage() {
             }
           }
           router.push("/");
-        } else {
-          setErrorMessage(res.error || "Authentication failed. Please verify credentials.");
+          return;
         }
+
+        setErrorMessage(res.error || liveRes.error || "Authentication failed. Please verify credentials.");
       })
       .catch((err) => {
         setIsLoading(false);

@@ -220,17 +220,27 @@ async def get_auth_context(
     if settings.auth_required:
         raise AuthenticationError("Authentication required: valid session or Bearer token missing")
 
-    # 5. In development/testing mode: allow test simulation headers
-    resolved_org_id = x_organization_id or x_org_id
-    try:
-        org_id = uuid.UUID(resolved_org_id) if resolved_org_id else DEFAULT_DEV_ORG_ID
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid X-Organization-Id format")
+    # 5. Guard against header simulation outside development/testing environments
+    if settings.environment.lower() not in ("development", "test", "testing", "local"):
+        raise AuthenticationError("Authentication required: header-based simulation is disabled in this environment")
 
-    try:
-        user_id = uuid.UUID(x_user_id) if x_user_id else DEFAULT_DEV_USER_ID
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid X-User-Id format")
+    # In development/testing mode: allow test simulation headers
+    resolved_org_id = x_organization_id or x_org_id
+    if resolved_org_id:
+        try:
+            org_id = uuid.UUID(resolved_org_id)
+        except ValueError:
+            org_id = uuid.uuid5(uuid.NAMESPACE_DNS, resolved_org_id)
+    else:
+        org_id = DEFAULT_DEV_ORG_ID
+
+    if x_user_id:
+        try:
+            user_id = uuid.UUID(x_user_id)
+        except ValueError:
+            user_id = uuid.uuid5(uuid.NAMESPACE_DNS, x_user_id)
+    else:
+        user_id = DEFAULT_DEV_USER_ID
 
     roles: list[str] = []
     if x_user_role:

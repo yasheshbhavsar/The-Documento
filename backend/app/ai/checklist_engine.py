@@ -32,6 +32,8 @@ class ChecklistAuditReport:
     satisfied_items: int
     fulfillment_percentage: float
     missing_items: List[ChecklistItem] = field(default_factory=list)
+    is_pinned: bool = False
+    version: Optional[str] = None
 
 
 PATHWAY_CHECKLISTS: Dict[str, List[Dict[str, Any]]] = {
@@ -842,9 +844,44 @@ def audit_case_checklist(
     jurisdiction: str,
     visa_category: str,
     documents: List[Dict[str, Any]],
+    checklist_snapshot: Optional[Any] = None,
 ) -> ChecklistAuditReport:
-    """Evaluates case documents against configured category checklist requirements."""
-    matched_template = _match_pathway_checklist_template(visa_category)
+    """Evaluates case documents against configured category checklist requirements or pinned case snapshot."""
+    raw_template = None
+    is_pinned = False
+    version = None
+
+    if checklist_snapshot:
+        if isinstance(checklist_snapshot, dict):
+            raw_template = (
+                checklist_snapshot.get("checklist")
+                or checklist_snapshot.get("items")
+                or checklist_snapshot.get("requirements")
+            )
+            version = (
+                checklist_snapshot.get("rule_version_number")
+                or checklist_snapshot.get("version")
+                or str(checklist_snapshot.get("rule_version_id", ""))
+                or None
+            )
+            is_pinned = bool(checklist_snapshot.get("is_pinned", True))
+        elif isinstance(checklist_snapshot, list):
+            raw_template = checklist_snapshot
+            is_pinned = True
+
+    if raw_template and isinstance(raw_template, list) and len(raw_template) > 0:
+        matched_template = []
+        for raw in raw_template:
+            matched_template.append({
+                "item_id": raw.get("item_id") or raw.get("code") or raw.get("rule_id") or str(raw.get("id")),
+                "label": raw.get("label") or raw.get("title") or raw.get("name") or "Required Evidence",
+                "requirement_citation": raw.get("requirement_citation") or raw.get("statutory_citation") or raw.get("citation") or "Configured Case Requirement",
+                "is_mandatory": raw.get("is_mandatory", True),
+                "acceptable_categories": raw.get("acceptable_categories") or raw.get("accepted_evidence_types") or ([raw.get("category")] if raw.get("category") else ["other_evidence"]),
+            })
+    else:
+        matched_template = _match_pathway_checklist_template(visa_category)
+
     checklist_items: List[ChecklistItem] = []
 
     for t in matched_template:
@@ -888,4 +925,6 @@ def audit_case_checklist(
         satisfied_items=satisfied_items,
         fulfillment_percentage=round(fulfillment_pct, 1),
         missing_items=missing_items,
+        is_pinned=is_pinned,
+        version=version,
     )

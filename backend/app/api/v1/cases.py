@@ -2151,6 +2151,9 @@ class VisaAppointmentResponse(BaseModel):
     organization_id: uuid.UUID
     case_id: uuid.UUID
     client_id: uuid.UUID
+    case_number: str | None = None
+    client_name: str | None = None
+    visa_category: str | None = None
     vac_center: str
     consular_post: str
     ofc_biometrics_slot: datetime | None
@@ -2227,6 +2230,9 @@ def list_case_appointments(
             organization_id=a.organization_id,
             case_id=a.case_id,
             client_id=a.client_id,
+            case_number=a.case.case_number if a.case else None,
+            client_name=f"{a.client.first_name} {a.client.last_name}" if a.client else None,
+            visa_category=a.case.visa_category if a.case else None,
             vac_center=a.vac_center,
             consular_post=a.consular_post,
             ofc_biometrics_slot=a.ofc_biometrics_slot,
@@ -2285,6 +2291,9 @@ def create_case_appointment(
         organization_id=apppointment.organization_id,
         case_id=apppointment.case_id,
         client_id=apppointment.client_id,
+        case_number=case.case_number,
+        client_name=f"{case.client.first_name} {case.client.last_name}" if case.client else None,
+        visa_category=case.visa_category,
         vac_center=apppointment.vac_center,
         consular_post=apppointment.consular_post,
         ofc_biometrics_slot=apppointment.ofc_biometrics_slot,
@@ -2329,6 +2338,9 @@ def update_case_appointment(
         organization_id=appt.organization_id,
         case_id=appt.case_id,
         client_id=appt.client_id,
+        case_number=appt.case.case_number if appt.case else None,
+        client_name=f"{appt.client.first_name} {appt.client.last_name}" if appt.client else None,
+        visa_category=appt.case.visa_category if appt.case else None,
         vac_center=appt.vac_center,
         consular_post=appt.consular_post,
         ofc_biometrics_slot=appt.ofc_biometrics_slot,
@@ -2343,6 +2355,27 @@ def update_case_appointment(
         created_at=appt.created_at,
         updated_at=appt.updated_at,
     )
+
+
+@router.delete("/{case_id}/appointments/{appointment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_case_appointment(
+    case_id: uuid.UUID,
+    appointment_id: uuid.UUID,
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """Cancels or deletes a visa appointment."""
+    appt = db.query(VisaAppointment).filter(
+        VisaAppointment.id == appointment_id,
+        VisaAppointment.case_id == case_id,
+        VisaAppointment.organization_id == ctx.organization_id,
+    ).first()
+    if not appt:
+        raise EntityNotFoundError("VisaAppointment", appointment_id)
+
+    db.delete(appt)
+    db.commit()
+    return None
 
 
 @router.get("/{case_id}/sponsors", response_model=list[FinancialSponsorResponse])

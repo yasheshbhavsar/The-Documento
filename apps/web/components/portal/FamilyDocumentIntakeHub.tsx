@@ -25,11 +25,13 @@ import { calculateSHA256, formatBytes } from "../../lib/crypto";
 
 interface FamilyDocumentIntakeHubProps {
   caseId?: string;
+  clientName?: string;
   onDocumentUploaded?: () => void;
 }
 
 export function FamilyDocumentIntakeHub({
   caseId = "case-01",
+  clientName,
   onDocumentUploaded,
 }: FamilyDocumentIntakeHubProps) {
   // Guidance state
@@ -494,9 +496,15 @@ export function FamilyDocumentIntakeHub({
               }}
             >
               <option value="">✨ Unassigned (Let Documento Propose Classification)</option>
-              <option value="client-primary">Dr. Elena Rostova (Primary Applicant)</option>
-              <option value="dep-spouse">Mikhail Rostov (Spouse / Dependant)</option>
-              <option value="dep-child">Aarav Rostov (Child / Dependant)</option>
+              <option value="client-primary">
+                {clientName ? `${clientName} (Primary Applicant)` : "Dr. Elena Rostova (Primary Applicant)"}
+              </option>
+              {(!clientName || clientName === "Dr. Elena Rostova") && (
+                <>
+                  <option value="dep-spouse">Mikhail Rostov (Spouse / Dependant)</option>
+                  <option value="dep-child">Aarav Rostov (Child / Dependant)</option>
+                </>
+              )}
             </select>
             <span style={{ display: "block", fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>
               If unassigned, our automated classifier proposes applicant &amp; category for officer review.

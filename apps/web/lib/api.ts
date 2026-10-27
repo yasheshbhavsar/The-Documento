@@ -117,6 +117,18 @@ import {
   ReleaseGateEvaluation,
   ReleaseGateItem,
   OperationalRunbook,
+  CitationReference,
+  RAGQueryRequest,
+  GovernedRAGResponse,
+  EvaluationGateResult,
+  AIEvaluationReport,
+  TokenUsageMetrics,
+  CaseEvidenceBrief,
+  PromptGuardScanResult,
+  PilotCohortCreatePayload,
+  BackupRestoreDrillResult,
+  DeletionAccountingReport,
+  OperationalDashboardTelemetry,
 } from "./types";
 
 
@@ -1449,7 +1461,36 @@ export const api = {
       });
       if (res.ok) {
         const data = await res.json();
-        return { data, isLiveBackend: true };
+        const provisionedBy = role === "master_admin" ? "Owner (Managing Partner)" : "Lead Paralegal";
+        const provisionedAt = new Date().toISOString();
+        const hasCredentials = Boolean(payload.portal_credentials_provided || payload.temporary_password);
+
+        const clientWithCreds: ClientProfile = {
+          ...data,
+          portal_credentials_provided: hasCredentials,
+          portal_access_enabled: hasCredentials && payload.portal_access_enabled !== false,
+          credentials_provisioned_by: hasCredentials ? provisionedBy : undefined,
+          credentials_provisioned_at: hasCredentials ? provisionedAt : undefined,
+          portal_temporary_password: hasCredentials ? (payload.temporary_password || "ClientPass2026!") : undefined,
+        };
+
+        if (hasCredentials && clientWithCreds.portal_temporary_password) {
+          const creds = getStored<Record<string, any>>("documento_client_credentials", {});
+          creds[payload.email.toLowerCase()] = {
+            client_id: data.id,
+            email: payload.email.toLowerCase(),
+            password: clientWithCreds.portal_temporary_password,
+            portal_access_enabled: clientWithCreds.portal_access_enabled,
+            provisioned_by: provisionedBy,
+            provisioned_at: provisionedAt,
+          };
+          setStored("documento_client_credentials", creds);
+        }
+
+        localClients = [clientWithCreds, ...localClients.filter((c) => c.id !== data.id)];
+        setStored("documento_clients", localClients);
+
+        return { data: clientWithCreds, isLiveBackend: true };
       }
     } catch {
       // Fallback
@@ -1568,6 +1609,207 @@ export const api = {
     setStored("documento_audit_events", localAuditEvents);
 
     return fallbackResponse(updatedClient);
+  },
+
+  async deleteClient(
+    clientId: string,
+    role: RoleCode = "master_admin"
+  ): Promise<ApiResponse<{ success: boolean; id: string }>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${clientId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(role),
+      });
+      if (res.ok) {
+        localClients = localClients.filter((c) => c.id !== clientId);
+        setStored("documento_clients", localClients);
+        return { data: { success: true, id: clientId }, isLiveBackend: true };
+      } else {
+        const errorData = await res.json().catch(() => null);
+        const errorMsg =
+          errorData?.detail ||
+          errorData?.message ||
+          `Failed to delete client profile (Server status ${res.status})`;
+        throw new Error(errorMsg);
+      }
+    } catch (err: any) {
+      // If error is an explicit HTTP rejection from the backend (e.g. 403 or 409), rethrow immediately
+      if (err instanceof Error && !err.message.includes("fetch") && err.name !== "TypeError") {
+        throw err;
+      }
+      // Fallback only if live backend network connection is unreachable
+    }
+
+    // Fallback RBAC enforcement: Paralegals and Retained Clients cannot delete
+    if (
+      role === "retained_client" ||
+      role === "applicant" ||
+      role === "case_worker" ||
+      role === "document_reviewer"
+    ) {
+      throw new Error("Paralegals and retained clients do not have permission to delete client records.");
+    }
+
+    const clientToDelete = localClients.find((c) => c.id === clientId);
+
+    // Fallback Foreign Key check: Cannot delete client with associated cases
+    const linkedCases = localCases.filter(
+      (c) =>
+        c.client_id === clientId ||
+        (clientToDelete &&
+          c.client_name &&
+          c.client_name.toLowerCase().includes(`${clientToDelete.first_name} ${clientToDelete.last_name}`.toLowerCase()))
+    );
+    if (linkedCases.length > 0) {
+      throw new Error(
+        `Cannot delete client with ${linkedCases.length} associated case(s) (${linkedCases.map((c) => c.case_number).join(", ")}). Please delete or transfer cases before removing client profile.`
+      );
+    }
+
+    localClients = localClients.filter((c) => c.id !== clientId);
+    setStored("documento_clients", localClients);
+
+    if (clientToDelete?.email) {
+      const creds = getStored<Record<string, any>>("documento_client_credentials", {});
+      delete creds[clientToDelete.email.toLowerCase()];
+      setStored("documento_client_credentials", creds);
+    }
+
+    const actorEmail =
+      DEMO_USERS[role === "master_admin" ? "master_admin" : "case_manager"]?.email ||
+      "sarah.jenkins@vanguardlegal.com";
+
+    localAuditEvents = [
+      {
+        id: `audit-${Date.now()}`,
+        action: "client.deleted",
+        object_type: "client",
+        object_id: clientId,
+        actor_email: actorEmail,
+        created_at: new Date().toISOString(),
+        metadata: {
+          client_name: clientToDelete
+            ? `${clientToDelete.first_name} ${clientToDelete.last_name}`
+            : clientId,
+          client_email: clientToDelete?.email,
+          deleted_by_role: role,
+        },
+      },
+      ...localAuditEvents,
+    ];
+    setStored("documento_audit_events", localAuditEvents);
+
+    return fallbackResponse({ success: true, id: clientId });
+  },
+
+  // Visa Appointments & VAC Logistics
+  async getVisaAppointments(filters?: { case_id?: string; status?: string }): Promise<ApiResponse<VisaAppointment[]>> {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.case_id) params.set("case_id", filters.case_id);
+      if (filters?.status) params.set("appointment_status", filters.status);
+      const queryStr = params.toString() ? `?${params.toString()}` : "";
+      const res = await fetch(`${API_BASE_URL}/appointments${queryStr}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { data, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+    let filtered = [...FALLBACK_APPOINTMENTS];
+    if (filters?.case_id) filtered = filtered.filter((a) => a.case_id === filters.case_id);
+    if (filters?.status && filters.status !== "all") {
+      if (filters.status === "221g") filtered = filtered.filter((a) => a.status_221g);
+      else filtered = filtered.filter((a) => a.appointment_status === filters.status);
+    }
+    return fallbackResponse(filtered);
+  },
+
+  async createVisaAppointment(data: Partial<VisaAppointment>): Promise<ApiResponse<VisaAppointment>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/appointments`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const appt = await res.json();
+        FALLBACK_APPOINTMENTS.unshift(appt);
+        return { data: appt, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+    const newAppt: VisaAppointment = {
+      id: `appt-${Date.now()}`,
+      organization_id: data.organization_id || "org-01",
+      case_id: data.case_id || "case-01",
+      client_id: data.client_id || "client-01",
+      case_number: data.case_number || "US-EB1A-2026-001",
+      client_name: data.client_name || "Aarav Patel",
+      visa_category: data.visa_category || "EB-1A Extraordinary Ability",
+      vac_center: data.vac_center || "Mumbai VAC",
+      consular_post: data.consular_post || "U.S. Consulate General Mumbai",
+      ofc_biometrics_slot: data.ofc_biometrics_slot || null,
+      consular_interview_slot: data.consular_interview_slot || null,
+      dropbox_eligible: !!data.dropbox_eligible,
+      tracking_number_blue_dart: data.tracking_number_blue_dart || null,
+      courier_status: (data.courier_status as any) || "pending_pickup",
+      status_221g: !!data.status_221g,
+      status_221g_color: data.status_221g_color || null,
+      appointment_status: (data.appointment_status as any) || "scheduled",
+      notes: data.notes || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    FALLBACK_APPOINTMENTS.unshift(newAppt);
+    return fallbackResponse(newAppt);
+  },
+
+  async updateVisaAppointment(id: string, data: Partial<VisaAppointment>): Promise<ApiResponse<VisaAppointment>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/appointments/${id}`, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        const idx = FALLBACK_APPOINTMENTS.findIndex((a) => a.id === id);
+        if (idx !== -1) FALLBACK_APPOINTMENTS[idx] = updated;
+        return { data: updated, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+    const idx = FALLBACK_APPOINTMENTS.findIndex((a) => a.id === id);
+    const existing = idx !== -1 ? FALLBACK_APPOINTMENTS[idx] : FALLBACK_APPOINTMENTS[0];
+    const updated = { ...existing, ...data, updated_at: new Date().toISOString() };
+    if (idx !== -1) FALLBACK_APPOINTMENTS[idx] = updated;
+    return fallbackResponse(updated);
+  },
+
+  async deleteVisaAppointment(id: string, caseId?: string): Promise<ApiResponse<{ success: boolean; id: string }>> {
+    try {
+      const url = caseId ? `${API_BASE_URL}/cases/${caseId}/appointments/${id}` : `${API_BASE_URL}/appointments/${id}`;
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const idx = FALLBACK_APPOINTMENTS.findIndex((a) => a.id === id);
+        if (idx !== -1) FALLBACK_APPOINTMENTS.splice(idx, 1);
+        return { data: { success: true, id }, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+    const idx = FALLBACK_APPOINTMENTS.findIndex((a) => a.id === id);
+    if (idx !== -1) FALLBACK_APPOINTMENTS.splice(idx, 1);
+    return fallbackResponse({ success: true, id });
   },
 
   // Audit Events
@@ -2273,7 +2515,8 @@ export const api = {
     applicantName?: string,
     clientId?: string,
     reason?: string,
-    role: RoleCode = "case_manager"
+    role: RoleCode = "case_manager",
+    applicantDependantId?: string
   ): Promise<ApiResponse<DocumentItem>> {
     try {
       const res = await fetch(`${API_BASE_URL}/documents/${id}/applicant-association`, {
@@ -2282,6 +2525,7 @@ export const api = {
         body: JSON.stringify({
           applicant_name: applicantName,
           client_id: clientId,
+          applicant_dependant_id: applicantDependantId,
           reason: reason || "Caseworker confirmed applicant association",
         }),
       });
@@ -2300,6 +2544,47 @@ export const api = {
           ...d,
           proposed_applicant_name: applicantName,
           client_id: clientId || d.client_id,
+          applicant_dependant_id: applicantDependantId !== undefined ? applicantDependantId : d.applicant_dependant_id,
+          is_assignment_confirmed: true,
+        };
+      }
+      return d;
+    });
+
+    const doc = localDocuments.find((d) => d.id === id)!;
+    return fallbackResponse(doc);
+  },
+
+  async confirmDocumentAssignment(
+    id: string,
+    applicantDependantId?: string,
+    confirmedCategory?: string,
+    role: RoleCode = "case_manager"
+  ): Promise<ApiResponse<DocumentItem>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/documents/${id}/confirm-assignment`, {
+        method: "POST",
+        headers: getAuthHeaders(role),
+        body: JSON.stringify({
+          applicant_dependant_id: applicantDependantId,
+          confirmed_category: confirmedCategory,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localDocuments = localDocuments.map((d) => (d.id === id ? data : d));
+        return { data, isLiveBackend: true };
+      }
+    } catch {
+      // Fallback
+    }
+
+    localDocuments = localDocuments.map((d) => {
+      if (d.id === id) {
+        return {
+          ...d,
+          applicant_dependant_id: applicantDependantId || d.applicant_dependant_id,
+          category: confirmedCategory || d.category,
           is_assignment_confirmed: true,
         };
       }
@@ -5277,6 +5562,10 @@ export const FALLBACK_FORM_SUBMISSION: FormSubmissionItem = {
       value: "EP8849201",
       source_type: "document_ocr",
       source_id: "doc-01",
+      source_document_id: "doc-01",
+      source_page: 1,
+      source_location: "Page 1, MRZ line 1, col 1-9",
+      extraction_confidence: 0.98,
       source_label: "Verified OCR: Elena_Rostova_Passport_Bio.pdf",
       is_confirmed: false,
       confirmed_by_user_id: null,
@@ -5739,6 +6028,32 @@ export async function reviewSensitiveFields(submissionId: string, notes: string)
   FALLBACK_FORM_SUBMISSION.reviewer_notes = notes;
   FALLBACK_FORM_SUBMISSION.reviewed_at = new Date().toISOString();
   return { success: true, sensitive_fields_reviewed: true };
+}
+
+export async function finalizeFormSubmission(
+  submissionId: string,
+  targetStatus: FormSubmissionItem["status"] = "confirmed"
+): Promise<any> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/forms/submissions/${submissionId}/finalize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_status: targetStatus }),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+  }
+  FALLBACK_FORM_SUBMISSION.status = targetStatus;
+  FALLBACK_FORM_SUBMISSION.has_unconfirmed_ai_fields = false;
+  return {
+    success: true,
+    submission_id: submissionId,
+    status: targetStatus,
+    completion_percentage: 100.0,
+  };
 }
 
 export async function fetchCaseReadinessChecklist(caseId: string): Promise<PackageReadinessChecklist> {
@@ -6954,6 +7269,60 @@ export async function calculateGST(subtotal: number, isInterstate: boolean = fal
   }
 }
 
+export async function fetchAllAppointments(filters?: {
+  case_id?: string;
+  client_id?: string;
+  status?: string;
+  vac_center?: string;
+}): Promise<VisaAppointment[]> {
+  if (isLiveBackend) {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.case_id) params.set("case_id", filters.case_id);
+      if (filters?.client_id) params.set("client_id", filters.client_id);
+      if (filters?.status && filters.status !== "all") params.set("appointment_status", filters.status);
+      const queryStr = params.toString() ? `?${params.toString()}` : "";
+
+      const res = await fetch(`${API_BASE}/appointments${queryStr}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+  }
+
+  let filtered = [...FALLBACK_APPOINTMENTS];
+  if (filters?.case_id) {
+    filtered = filtered.filter((a) => a.case_id === filters.case_id);
+  }
+  if (filters?.status && filters.status !== "all") {
+    if (filters.status === "221g") {
+      filtered = filtered.filter((a) => a.status_221g);
+    } else {
+      filtered = filtered.filter((a) => a.appointment_status === filters.status);
+    }
+  }
+  return fallbackData(filtered, "fetchAllAppointments");
+}
+
+export async function deleteCaseAppointment(caseId: string, appointmentId: string): Promise<{ success: boolean; id: string }> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/cases/${caseId}/appointments/${appointmentId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        return { success: true, id: appointmentId };
+      }
+    } catch {
+      // Fallback
+    }
+  }
+  return fallbackData({ success: true, id: appointmentId }, "deleteCaseAppointment");
+}
+
 export async function fetchCaseAppointments(caseId: string): Promise<VisaAppointment[]> {
   if (isLiveBackend) {
     try {
@@ -7590,20 +7959,7 @@ export async function resolveDocumentAnomaly(
 // Phase 6: Rules & Checklist Engine API Methods
 // ==========================================
 
-export async function getCountryRegistry(role: RoleCode = "case_manager"): Promise<CountryRegistryItem[]> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/rules/countries`, {
-      headers: getAuthHeaders(role),
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch {
-    // fallback
-  }
-
-  // Fallback sorted by Priority Tier (Priority 1 -> 5)
-  return [
+export const FALLBACK_COUNTRIES: CountryRegistryItem[] = [
     {
       code: "CA",
       name: "Canada",
@@ -7827,30 +8183,22 @@ export async function getCountryRegistry(role: RoleCode = "case_manager"): Promi
       independent_jurisdiction_rules: true,
     },
   ];
-}
 
-export async function getPathwayTaxonomy(
-  jurisdiction?: string,
-  category?: string,
-  coverageStatus?: string,
-  role: RoleCode = "case_manager"
-): Promise<PathwayTaxonomyItem[]> {
+export async function getCountryRegistry(role: RoleCode = "case_manager"): Promise<CountryRegistryItem[]> {
   try {
-    const params = new URLSearchParams();
-    if (jurisdiction) params.set("jurisdiction", jurisdiction);
-    if (category) params.set("category", category);
-    if (coverageStatus) params.set("coverage_status", coverageStatus);
-    const queryString = params.toString() ? `?${params.toString()}` : "";
-
-    const res = await fetch(`${API_BASE_URL}/rules/taxonomy${queryString}`, { headers: getAuthHeaders(role) });
+    const res = await fetch(`${API_BASE_URL}/rules/countries`, {
+      headers: getAuthHeaders(role),
+    });
     if (res.ok) {
       return await res.json();
     }
   } catch {
     // fallback
   }
+  return FALLBACK_COUNTRIES;
+}
 
-  const allTaxonomy: PathwayTaxonomyItem[] = [
+export const FALLBACK_PATHWAYS: PathwayTaxonomyItem[] = [
     {
         "pathway_key": "CA_EXPRESS_ENTRY_FSW",
         "jurisdiction": "CA",
@@ -8627,14 +8975,35 @@ export async function getPathwayTaxonomy(
     }
 ];
 
-  let filtered = allTaxonomy;
-  if (jurisdiction) {
+export async function getPathwayTaxonomy(
+  jurisdiction?: string,
+  category?: string,
+  coverageStatus?: string,
+  role: RoleCode = "case_manager"
+): Promise<PathwayTaxonomyItem[]> {
+  try {
+    const params = new URLSearchParams();
+    if (jurisdiction && jurisdiction !== "ALL") params.set("jurisdiction", jurisdiction);
+    if (category && category !== "ALL") params.set("category", category);
+    if (coverageStatus && coverageStatus !== "ALL") params.set("coverage_status", coverageStatus);
+    const queryString = params.toString() ? `?${params.toString()}` : "";
+
+    const res = await fetch(`${API_BASE_URL}/rules/taxonomy${queryString}`, { headers: getAuthHeaders(role) });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+
+  let filtered = FALLBACK_PATHWAYS;
+  if (jurisdiction && jurisdiction !== "ALL") {
     filtered = filtered.filter((p) => p.jurisdiction === jurisdiction.toUpperCase());
   }
-  if (category) {
+  if (category && category !== "ALL") {
     filtered = filtered.filter((p) => p.category === category.toLowerCase());
   }
-  if (coverageStatus) {
+  if (coverageStatus && coverageStatus !== "ALL") {
     filtered = filtered.filter((p) => p.coverage_status === coverageStatus.toUpperCase());
   }
   return filtered;
@@ -10418,7 +10787,7 @@ export async function requestFirmExport(
 
 export async function executeBackupRestoreDrill(
   role: RoleCode = "master_admin"
-): Promise<RestoreDrillResult> {
+): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/operations/backups/drill`, {
     method: "POST",
     headers: getAuthHeaders(role),
@@ -10456,6 +10825,8 @@ export async function simulateKeyRotationDrill(
   }
   return await res.json();
 }
+
+export const simulateKeyRotation = simulateKeyRotationDrill;
 
 export async function executeEmergencyLockdown(
   reason: string,
@@ -10519,4 +10890,308 @@ export async function getDocumentDownloadToken(
 }
 
 export * from "./api/sop";
+export * from "./api/extractor";
+
+// ==============================================================================
+// STAGE 8 GOVERNED AI RAG & EVALUATION CLIENT APIS (§6.6, §6.7, §8)
+// ==============================================================================
+
+export async function queryGovernedRAG(
+  payload: RAGQueryRequest,
+  role: RoleCode = "case_manager"
+): Promise<GovernedRAGResponse> {
+  const res = await fetch(`${API_BASE_URL}/ai/rag/query`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to execute Governed RAG query");
+  }
+  return await res.json();
+}
+
+export async function getAIEvaluationReport(
+  role: RoleCode = "case_manager"
+): Promise<AIEvaluationReport> {
+  const res = await fetch(`${API_BASE_URL}/ai/evaluation/report`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load AI evaluation report");
+  }
+  return await res.json();
+}
+
+export async function getAITokenUsage(
+  role: RoleCode = "case_manager"
+): Promise<TokenUsageMetrics> {
+  const res = await fetch(`${API_BASE_URL}/ai/tokens/usage`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load AI token usage telemetry");
+  }
+  return await res.json();
+}
+
+export async function scanPromptInjection(
+  text: string,
+  role: RoleCode = "case_manager"
+): Promise<PromptGuardScanResult> {
+  const res = await fetch(`${API_BASE_URL}/ai/prompt-guard/scan`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "PromptGuard scan failed");
+  }
+  return await res.json();
+}
+
+export async function getCaseEvidenceBrief(
+  caseId: string,
+  role: RoleCode = "case_manager"
+): Promise<CaseEvidenceBrief> {
+  const res = await fetch(`${API_BASE_URL}/ai/cases/${caseId}/brief`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to generate case evidence brief");
+  }
+  return await res.json();
+}
+
+// ============================================================================
+// Stage 9: Release / Pilot Governance & Operational Reliability API
+// ============================================================================
+
+export async function getPilotCohorts(role: RoleCode = "company_admin"): Promise<PilotCohort[]> {
+  const res = await fetch(`${API_BASE_URL}/governance/cohorts`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load pilot cohorts");
+  }
+  return await res.json();
+}
+
+export async function createPilotCohort(
+  payload: PilotCohortCreatePayload,
+  role: RoleCode = "company_admin"
+): Promise<PilotCohort> {
+  const res = await fetch(`${API_BASE_URL}/governance/cohorts`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create pilot cohort");
+  }
+  return await res.json();
+}
+
+export async function updatePilotCohortStatus(
+  cohortId: string,
+  status: string,
+  role: RoleCode = "company_admin"
+): Promise<PilotCohort> {
+  const res = await fetch(`${API_BASE_URL}/governance/cohorts/${cohortId}/status`, {
+    method: "PATCH",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update pilot cohort status");
+  }
+  return await res.json();
+}
+
+export async function getKPIBenchmarks(role: RoleCode = "company_admin"): Promise<PilotKPIBenchmark[]> {
+  const res = await fetch(`${API_BASE_URL}/governance/kpis`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load comparative KPI benchmarks");
+  }
+  return await res.json();
+}
+
+export async function recordKPIBenchmark(
+  payload: {
+    period_label: string;
+    pathway_key: string;
+    baseline_workflow_hours: number;
+    documento_workflow_hours: number;
+    correction_rate_percentage?: number;
+    false_positive_flags_count?: number;
+    missed_exceptions_count?: number;
+    package_rework_rate_percentage?: number;
+    operational_failures_count?: number;
+    cohort_id?: string;
+  },
+  role: RoleCode = "company_admin"
+): Promise<PilotKPIBenchmark> {
+  const res = await fetch(`${API_BASE_URL}/governance/kpis/compare`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to record KPI benchmark");
+  }
+  return await res.json();
+}
+
+export async function quickCalculateWorkflow(
+  baselineWorkflowHours: number,
+  documentoWorkflowHours: number
+): Promise<{
+  baseline_workflow_hours: number;
+  documento_workflow_hours: number;
+  time_saved_hours: number;
+  time_saved_percentage: number;
+}> {
+  const res = await fetch(`${API_BASE_URL}/governance/kpis/quick-calc`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      baseline_workflow_hours: baselineWorkflowHours,
+      documento_workflow_hours: documentoWorkflowHours,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to calculate workflow efficiency");
+  }
+  return await res.json();
+}
+
+export async function getStressTestExecutions(role: RoleCode = "company_admin"): Promise<StressTestExecution[]> {
+  const res = await fetch(`${API_BASE_URL}/governance/stress-tests`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load stress test history");
+  }
+  return await res.json();
+}
+
+export async function executeSingleStressTest(
+  scenarioKey: string,
+  role: RoleCode = "company_admin"
+): Promise<StressTestExecution> {
+  const res = await fetch(`${API_BASE_URL}/governance/stress-tests/${scenarioKey}/execute`, {
+    method: "POST",
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to execute stress test '${scenarioKey}'`);
+  }
+  return await res.json();
+}
+
+export async function executeAllStressTests(role: RoleCode = "company_admin"): Promise<StressTestExecution[]> {
+  const res = await fetch(`${API_BASE_URL}/governance/stress-tests/execute-all`, {
+    method: "POST",
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to execute comprehensive stress test suite");
+  }
+  return await res.json();
+}
+
+export async function getLatestReleaseGates(role: RoleCode = "company_admin"): Promise<ReleaseGateEvaluation> {
+  const res = await fetch(`${API_BASE_URL}/governance/release-gates`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to retrieve release gates");
+  }
+  return await res.json();
+}
+
+export async function evaluateReleaseGates(role: RoleCode = "company_admin"): Promise<ReleaseGateEvaluation> {
+  const res = await fetch(`${API_BASE_URL}/governance/release-gates/evaluate`, {
+    method: "POST",
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to evaluate release gates");
+  }
+  return await res.json();
+}
+
+export async function signoffReleaseGates(
+  evaluationId: string,
+  signoffNotes: string,
+  role: RoleCode = "company_admin"
+): Promise<ReleaseGateEvaluation> {
+  const res = await fetch(`${API_BASE_URL}/governance/release-gates/${evaluationId}/signoff`, {
+    method: "POST",
+    headers: { ...getAuthHeaders(role), "Content-Type": "application/json" },
+    body: JSON.stringify({ signoff_notes: signoffNotes }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to sign off on release gates");
+  }
+  return await res.json();
+}
+
+export async function getOperationalRunbooks(role: RoleCode = "company_admin"): Promise<OperationalRunbook[]> {
+  const res = await fetch(`${API_BASE_URL}/governance/runbooks`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load operational runbooks");
+  }
+  return await res.json();
+}
+
+export async function getSpecificRunbook(
+  runbookType: string,
+  role: RoleCode = "company_admin"
+): Promise<OperationalRunbook> {
+  const res = await fetch(`${API_BASE_URL}/governance/runbooks/${runbookType}`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to load runbook '${runbookType}'`);
+  }
+  return await res.json();
+}
+
+export async function getOperationalDashboardTelemetry(
+  role: RoleCode = "company_admin"
+): Promise<OperationalDashboardTelemetry> {
+  const res = await fetch(`${API_BASE_URL}/operations/dashboard`, {
+    headers: getAuthHeaders(role),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load operational dashboard telemetry");
+  }
+  return await res.json();
+}
+
 

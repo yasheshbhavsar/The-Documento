@@ -9,6 +9,7 @@ from backend.app.db.session import get_db
 from backend.app.domain.case_service import DuplicateMatch, detect_client_duplicates
 from backend.app.domain.models import AuditEvent, ClientConsent, ClientDependant, ClientProfile, User
 from backend.app.security.auth import AuthContext, get_auth_context, require_permission
+from backend.app.security.rbac import RoleCode
 from backend.app.security.tokens import hash_opaque_token
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -542,3 +543,61 @@ def list_client_consents(
         )
         for c in consents
     ]
+
+
+@router.delete("/{client_id}", status_code=status.HTTP_200_OK)
+def delete_client_profile(
+    client_id: uuid.UUID,
+    ctx: AuthContext = Depends(require_permission("client:delete")),
+    db: Session = Depends(get_db),
+):
+    """Deletes a retained client profile if permitted (Owner / Manager only; never paralegal or client)."""
+    if ctx.is_retained_client():
+        raise PermissionDeniedError("Retained clients cannot delete client records")
+
+    # Strictly reject paralegals / caseworkers
+    if ctx.has_role(RoleCode.CASE_WORKER) or ctx.has_role(RoleCode.DOCUMENT_REVIEWER) or ctx.has_role("paralegal") or ctx.has_role("case_worker"):
+        raise PermissionDeniedError("Paralegals do not have permission to delete client records")
+
+    client = db.query(ClientProfile).filter(ClientProfile.id == client_id).first()
+    if not client:
+        raise EntityNotFoundError("ClientProfile", client_id)
+
+    ctx.assert_organization_access(client.organization_id)
+
+    # Check for active or linked cases - client_id has ondelete RESTRICT and is NOT NULL
+    if len(client.cases) > 0:
+        raise ConflictError(
+            f"Cannot delete client with {len(client.cases)} associated case(s). Please delete or transfer cases before removing client profile."
+        )
+
+    now = datetime.now(timezone.utc)
+    client_name = f"{client.first_name} {client.last_name}"
+    client_email = client.email
+    portal_user_id = client.user_id
+
+    audit = AuditEvent(
+        organization_id=ctx.organization_id,
+        actor_id=ctx.user_id,
+        action="client.deleted",
+        object_type="client_profile",
+        object_id=str(client.id),
+        metadata_json={
+            "client_name": client_name,
+            "client_email": client_email,
+            "deleted_by_roles": list(ctx.roles),
+        },
+        occurred_at=now,
+    )
+    db.add(audit)
+    db.delete(client)
+
+    # Clean up associated portal user credentials if provisioned
+    if portal_user_id:
+        portal_user = db.query(User).filter(User.id == portal_user_id).first()
+        if portal_user:
+            db.delete(portal_user)
+
+    db.commit()
+
+    return {"status": "success", "message": f"Client {client_name} deleted successfully", "id": str(client_id)}

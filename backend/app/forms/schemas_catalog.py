@@ -97,6 +97,8 @@ DOS_DS160_SCHEMA: Dict[str, Any] = {
                     "label": "Passport or Travel Document Number",
                     "field_type": "text",
                     "required": True,
+                    "validation_rules": {"regex": r"^[A-Za-z0-9<]{6,12}$"},
+                    "source_mapping_hint": "doc.ocr.passport_number",
                 },
                 {
                     "key": "passport_issuing_country",
@@ -110,12 +112,14 @@ DOS_DS160_SCHEMA: Dict[str, Any] = {
                     "label": "Passport Issuance Date",
                     "field_type": "date",
                     "required": True,
+                    "source_mapping_hint": "doc.ocr.issue_date",
                 },
                 {
                     "key": "passport_expiry_date",
                     "label": "Passport Expiration Date",
                     "field_type": "date",
                     "required": True,
+                    "source_mapping_hint": "doc.ocr.expiry_date",
                 },
             ],
         },
@@ -498,6 +502,8 @@ IRCC_IMM5257_SCHEMA: Dict[str, Any] = {
                     "label": "Passport Number",
                     "field_type": "text",
                     "required": True,
+                    "validation_rules": {"regex": r"^[A-Za-z0-9<]{6,12}$"},
+                    "source_mapping_hint": "doc.ocr.passport_number",
                 },
                 {
                     "key": "country_of_issue",
@@ -511,12 +517,14 @@ IRCC_IMM5257_SCHEMA: Dict[str, Any] = {
                     "label": "Issue Date",
                     "field_type": "date",
                     "required": True,
+                    "source_mapping_hint": "doc.ocr.issue_date",
                 },
                 {
                     "key": "passport_expiry_date",
                     "label": "Expiry Date",
                     "field_type": "date",
                     "required": True,
+                    "source_mapping_hint": "doc.ocr.expiry_date",
                 },
                 {
                     "key": "has_national_id_doc",
@@ -705,3 +713,312 @@ IRCC_IMM5257_SCHEMA: Dict[str, Any] = {
         },
     ]
 }
+
+
+IRCC_IMM1294_SCHEMA: Dict[str, Any] = {
+    "sections": [
+        {
+            "id": "imm1294_part1_personal",
+            "title": "Part 1. Personal Details & Passport Identification",
+            "description": "Applicant biographical and identity records matching passport exactly.",
+            "fields": [
+                {
+                    "key": "family_name",
+                    "label": "Family Name (as in Passport)",
+                    "field_type": "text",
+                    "required": True,
+                    "source_mapping_hint": "profile.last_name",
+                },
+                {
+                    "key": "given_name",
+                    "label": "Given Name(s) (as in Passport)",
+                    "field_type": "text",
+                    "required": True,
+                    "source_mapping_hint": "profile.first_name",
+                },
+                {
+                    "key": "gender",
+                    "label": "Sex / Gender",
+                    "field_type": "select",
+                    "required": True,
+                    "options": [
+                        {"value": "M", "label": "Male"},
+                        {"value": "F", "label": "Female"},
+                        {"value": "X", "label": "Another gender (X)"},
+                    ],
+                },
+                {
+                    "key": "dob",
+                    "label": "Date of Birth (YYYY-MM-DD)",
+                    "field_type": "date",
+                    "required": True,
+                    "source_mapping_hint": "profile.date_of_birth",
+                },
+                {
+                    "key": "citizenship",
+                    "label": "Country/Territory of Citizenship",
+                    "field_type": "text",
+                    "required": True,
+                    "source_mapping_hint": "profile.nationality",
+                },
+                {
+                    "key": "passport_number",
+                    "label": "Passport Number",
+                    "field_type": "text",
+                    "required": True,
+                    "validation_rules": {"regex": r"^[A-Za-z0-9<]{6,12}$"},
+                    "source_mapping_hint": "doc.ocr.passport_number",
+                },
+                {
+                    "key": "passport_expiry",
+                    "label": "Passport Expiration Date",
+                    "field_type": "date",
+                    "required": True,
+                    "source_mapping_hint": "doc.ocr.expiry_date",
+                },
+                {
+                    "key": "national_id_number",
+                    "label": "National Identification Number (e.g., Masked Aadhaar / PAN)",
+                    "field_type": "text",
+                    "required": False,
+                    "source_mapping_hint": "profile.pan_number",
+                },
+            ],
+        },
+        {
+            "id": "imm1294_part2_intended_study",
+            "title": "Part 2. Details of Intended Study in Canada",
+            "description": "DLI acceptance, program curriculum, PAL attestation, and financial capability.",
+            "fields": [
+                {
+                    "key": "dli_name",
+                    "label": "Name of Designated Learning Institution (DLI)",
+                    "field_type": "text",
+                    "required": True,
+                },
+                {
+                    "key": "dli_number",
+                    "label": "DLI Number (e.g. O19395299999)",
+                    "field_type": "text",
+                    "required": True,
+                },
+                {
+                    "key": "level_of_study",
+                    "label": "Level of Study",
+                    "field_type": "select",
+                    "required": True,
+                    "options": [
+                        {"value": "COLLEGE_DIPLOMA", "label": "College / Post-Secondary Diploma"},
+                        {"value": "BACHELORS", "label": "Bachelor's Degree"},
+                        {"value": "POST_GRADUATE", "label": "Post-Graduate Certificate"},
+                        {"value": "MASTERS", "label": "Master's Degree"},
+                        {"value": "DOCTORAL", "label": "Doctoral (Ph.D.) Degree"},
+                    ],
+                },
+                {
+                    "key": "field_of_study",
+                    "label": "Field of Study / Major",
+                    "field_type": "text",
+                    "required": True,
+                },
+                {
+                    "key": "province_of_study",
+                    "label": "Province / Territory of DLI",
+                    "field_type": "select",
+                    "required": True,
+                    "options": [
+                        {"value": "ON", "label": "Ontario"},
+                        {"value": "BC", "label": "British Columbia"},
+                        {"value": "AB", "label": "Alberta"},
+                        {"value": "QC", "label": "Quebec"},
+                        {"value": "MB", "label": "Manitoba"},
+                        {"value": "SK", "label": "Saskatchewan"},
+                        {"value": "NS", "label": "Nova Scotia"},
+                        {"value": "NB", "label": "New Brunswick"},
+                    ],
+                },
+                {
+                    "key": "pal_attestation_number",
+                    "label": "Provincial Attestation Letter (PAL) Number",
+                    "field_type": "text",
+                    "required": False,
+                },
+                {
+                    "key": "tuition_fees",
+                    "label": "Tuition Fees for 1st Year (CAD $)",
+                    "field_type": "text",
+                    "required": True,
+                },
+                {
+                    "key": "funds_available",
+                    "label": "Funds Available for Stay (CAD $ - Tuition + GIC $20,635+)",
+                    "field_type": "text",
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "id": "imm1294_part3_background",
+            "title": "Part 3. Statutory Inadmissibility Background",
+            "description": "Mandatory IRPA statutory compliance declarations.",
+            "fields": [
+                {
+                    "key": "prior_refusal_any_country",
+                    "label": "Have you ever been refused a visa or permit to Canada or any other country?",
+                    "field_type": "boolean",
+                    "required": True,
+                    "default": False,
+                    "is_sensitive": True,
+                },
+                {
+                    "key": "refusal_details",
+                    "label": "Statutory details of prior refusal(s)",
+                    "field_type": "textarea",
+                    "required": False,
+                    "is_sensitive": True,
+                    "conditional": {
+                        "depends_on_field": "prior_refusal_any_country",
+                        "operator": "equals",
+                        "expected_value": True,
+                    },
+                },
+                {
+                    "key": "criminal_offense_any_country",
+                    "label": "Have you ever committed or been convicted of any criminal offense?",
+                    "field_type": "boolean",
+                    "required": True,
+                    "default": False,
+                    "is_sensitive": True,
+                },
+            ],
+        },
+    ]
+}
+
+
+IRCC_IMM5710_SCHEMA: Dict[str, Any] = {
+    "sections": [
+        {
+            "id": "imm5710_part1_personal",
+            "title": "Part 1. Personal Details & Status",
+            "description": "Applicant biodata, UCI number, and current immigration status.",
+            "fields": [
+                {
+                    "key": "family_name",
+                    "label": "Family Name",
+                    "field_type": "text",
+                    "required": True,
+                    "source_mapping_hint": "profile.last_name",
+                },
+                {
+                    "key": "given_name",
+                    "label": "Given Name",
+                    "field_type": "text",
+                    "required": True,
+                    "source_mapping_hint": "profile.first_name",
+                },
+                {
+                    "key": "uci_number",
+                    "label": "Unique Client Identifier (UCI / Client ID)",
+                    "field_type": "text",
+                    "required": False,
+                },
+                {
+                    "key": "work_permit_type",
+                    "label": "Type of Work Permit Applied For",
+                    "field_type": "select",
+                    "required": True,
+                    "options": [
+                        {"value": "SOWP", "label": "Spousal Open Work Permit (C41/C42)"},
+                        {"value": "PGWP", "label": "Post-Graduation Work Permit (C43)"},
+                        {"value": "OPEN", "label": "Open Work Permit"},
+                        {"value": "EMPLOYER_SPECIFIC", "label": "Employer-Specific with LMIA"},
+                    ],
+                    "default": "SOWP",
+                },
+                {
+                    "key": "passport_number",
+                    "label": "Passport Number",
+                    "field_type": "text",
+                    "required": True,
+                    "validation_rules": {"regex": r"^[A-Za-z0-9<]{6,12}$"},
+                    "source_mapping_hint": "doc.ocr.passport_number",
+                },
+                {
+                    "key": "passport_expiry",
+                    "label": "Passport Expiration Date",
+                    "field_type": "date",
+                    "required": True,
+                    "source_mapping_hint": "doc.ocr.expiry_date",
+                },
+            ],
+        },
+        {
+            "id": "imm5710_part2_principal_linkage",
+            "title": "Part 2. Principal Worker or Student Sponsorship Linkage",
+            "description": "Details of spouse/partner holding valid work or study permit in Canada.",
+            "fields": [
+                {
+                    "key": "principal_applicant_name",
+                    "label": "Full Legal Name of Spouse / Common-Law Partner",
+                    "field_type": "text",
+                    "required": True,
+                },
+                {
+                    "key": "principal_status_document_number",
+                    "label": "Spouse's Work or Study Permit Number (e.g. U123456789)",
+                    "field_type": "text",
+                    "required": True,
+                },
+                {
+                    "key": "principal_teer_or_dli",
+                    "label": "Spouse's Occupation TEER Category (0, 1, 2, 3) or DLI Degree Level",
+                    "field_type": "text",
+                    "required": True,
+                },
+                {
+                    "key": "marriage_registration_date",
+                    "label": "Date of Marriage Registration",
+                    "field_type": "date",
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "id": "imm5710_part3_background",
+            "title": "Part 3. Statutory Background Information",
+            "description": "Background vetting under IRPA sections 33-43.",
+            "fields": [
+                {
+                    "key": "prior_refusal_any_country",
+                    "label": "Have you ever been refused a visa or ordered to leave Canada or any country?",
+                    "field_type": "boolean",
+                    "required": True,
+                    "default": False,
+                    "is_sensitive": True,
+                },
+                {
+                    "key": "refusal_details",
+                    "label": "Details and statutory explanation",
+                    "field_type": "textarea",
+                    "required": False,
+                    "is_sensitive": True,
+                    "conditional": {
+                        "depends_on_field": "prior_refusal_any_country",
+                        "operator": "equals",
+                        "expected_value": True,
+                    },
+                },
+                {
+                    "key": "criminal_offense_any_country",
+                    "label": "Have you ever committed or been convicted of any criminal offense?",
+                    "field_type": "boolean",
+                    "required": True,
+                    "default": False,
+                    "is_sensitive": True,
+                },
+            ],
+        },
+    ]
+}
+

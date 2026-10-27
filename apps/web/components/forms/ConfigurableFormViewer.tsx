@@ -16,6 +16,7 @@ interface ConfigurableFormViewerProps {
   onUpdateAnswers?: (answers: Record<string, any>, notes?: string) => Promise<void>;
   onConfirmField?: (fieldKey: string) => Promise<void>;
   onReviewSensitive?: (notes: string) => Promise<void>;
+  onFinalizeSubmission?: (targetStatus?: string) => Promise<void>;
 }
 
 export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
@@ -25,6 +26,7 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
   onUpdateAnswers,
   onConfirmField,
   onReviewSensitive,
+  onFinalizeSubmission,
 }) => {
   const [submission, setSubmission] = useState<FormSubmissionItem>(initialSubmission);
   const [activeSectionId, setActiveSectionId] = useState<string>("part1_petitioner");
@@ -124,6 +126,30 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
       setSensitiveNotes("");
     } catch (err: any) {
       setFeedbackMsg({ text: err.message || "Error reviewing sensitive fields.", type: "error" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const hasFormConflicts = Object.values(submission.answers || {}).some(
+    (ans) => ans?.has_conflict === true
+  );
+
+  const handleFinalize = async () => {
+    setIsSubmitting(true);
+    setFeedbackMsg(null);
+    try {
+      if (onFinalizeSubmission) {
+        await onFinalizeSubmission("confirmed");
+      }
+      setSubmission((prev) => ({
+        ...prev,
+        status: "confirmed",
+        has_unconfirmed_ai_fields: false,
+      }));
+      setFeedbackMsg({ text: "Form draft certified and finalized as filing-ready.", type: "success" });
+    } catch (err: any) {
+      setFeedbackMsg({ text: err.message || "Failed to finalize form draft.", type: "error" });
     } finally {
       setIsSubmitting(false);
     }
@@ -327,6 +353,47 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
             }}
           >
             Confirmation Required
+          </span>
+        </div>
+      )}
+
+      {/* Evidence Conflict Warning Banner */}
+      {hasFormConflicts && (
+        <div
+          data-testid="form-conflicts-banner"
+          style={{
+            padding: "14px 28px",
+            background: "#FEF2F2",
+            borderBottom: "1px solid #FECACA",
+            borderLeft: "5px solid #EF4444",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", flex: 1, minWidth: "260px" }}>
+            <span style={{ fontWeight: 800, color: "#991B1B", whiteSpace: "nowrap" }}>
+              ⚠️ UNRESOLVED EVIDENCE CONFLICTS:
+            </span>
+            <span style={{ color: "#7F1D1D", lineHeight: "1.4" }}>
+              Disparate statutory values extracted across applicant documents. The system abstains from guessing; attorney qualification required before filing readiness lock.
+            </span>
+          </div>
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              color: "#991B1B",
+              background: "#FEE2E2",
+              border: "1px solid #EF4444",
+              padding: "4px 12px",
+              borderRadius: "999px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Attorney Override Required
           </span>
         </div>
       )}
@@ -644,22 +711,141 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                         )}
                       </div>
 
-                      {/* Source Mapping Label Subtext */}
-                      {answerRec?.source_label && (
-                        <div style={{ marginBottom: "10px" }}>
-                          <span
-                            style={{
-                              fontSize: "11px",
-                              color: "#6E7F7C",
-                              fontFamily: "ui-monospace, monospace",
-                              background: "#F1F5F4",
-                              padding: "3px 8px",
-                              borderRadius: "4px",
-                              display: "inline-block",
-                            }}
-                          >
-                            Source: {answerRec.source_label}
-                          </span>
+                      {/* Physical Evidence Provenance Details */}
+                      {answerRec && (
+                        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
+                          {answerRec.source_label && (
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "#4B5563",
+                                fontFamily: "ui-monospace, monospace",
+                                background: "#F3F4F6",
+                                padding: "2px 8px",
+                                borderRadius: "4px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                              }}
+                            >
+                              <span>📄</span> {answerRec.source_label}
+                            </span>
+                          )}
+                          {answerRec.source_page !== undefined && answerRec.source_page !== null && (
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "#065F46",
+                                background: "#ECFDF5",
+                                border: "1px solid #A7F3D0",
+                                padding: "2px 8px",
+                                borderRadius: "4px",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Page {answerRec.source_page}
+                            </span>
+                          )}
+                          {answerRec.extraction_confidence !== undefined && answerRec.extraction_confidence !== null && (
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: answerRec.extraction_confidence >= 0.85 ? "#065F46" : "#92400E",
+                                background: answerRec.extraction_confidence >= 0.85 ? "#D1FAE5" : "#FEF3C7",
+                                padding: "2px 8px",
+                                borderRadius: "4px",
+                                fontWeight: 700,
+                              }}
+                            >
+                              {Math.round(answerRec.extraction_confidence * 100)}% Match
+                            </span>
+                          )}
+                          {answerRec.source_location && (
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                color: "#6B7280",
+                                fontStyle: "italic",
+                              }}
+                            >
+                              ({answerRec.source_location})
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Multi-Document Conflict Warning & Resolution Panel */}
+                      {answerRec?.has_conflict && (
+                        <div
+                          data-testid={`conflict-alert-${field.key}`}
+                          style={{
+                            marginTop: "6px",
+                            marginBottom: "14px",
+                            padding: "12px 14px",
+                            background: "#FEF2F2",
+                            border: "1.5px solid #F87171",
+                            borderRadius: "8px",
+                            fontSize: "12px",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#991B1B", fontWeight: 700 }}>
+                            <span>⚠️</span>
+                            <span>Multi-Document Evidence Conflict</span>
+                          </div>
+                          <p style={{ margin: "4px 0 8px 0", color: "#7F1D1D", lineHeight: "1.4" }}>
+                            {answerRec.conflict_reason || "Conflicting evidence extracted across applicant documents. The system abstains from guessing; attorney qualification required."}
+                          </p>
+
+                          {answerRec.conflicting_candidates && answerRec.conflicting_candidates.length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                              <span style={{ fontSize: "11px", fontWeight: 700, color: "#991B1B" }}>
+                                Disparate Candidate Values Extracted:
+                              </span>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                                {answerRec.conflicting_candidates.map((cand: any, cIdx: number) => (
+                                  <div
+                                    key={cIdx}
+                                    style={{
+                                      background: "#FFFFFF",
+                                      border: "1px solid #FECACA",
+                                      borderRadius: "6px",
+                                      padding: "6px 10px",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "10px",
+                                      fontSize: "11px",
+                                    }}
+                                  >
+                                    <div>
+                                      <strong style={{ color: "#111827" }}>{String(cand.value)}</strong>
+                                      <span style={{ color: "#6B7280", marginLeft: "6px" }}>
+                                        (Doc: {cand.document_id ? cand.document_id.slice(0, 8) : "ID"}... {cand.page ? `p.${cand.page}` : ""})
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleFieldChange(field.key, cand.value);
+                                        setEditNotes(`Resolved multi-document conflict on ${field.label} adopting value from document ${cand.document_id}`);
+                                      }}
+                                      style={{
+                                        padding: "3px 8px",
+                                        fontSize: "10px",
+                                        fontWeight: 700,
+                                        background: "#0D6866",
+                                        color: "#FFFFFF",
+                                        border: "none",
+                                        borderRadius: "4px",
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      Use This Value
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -922,7 +1108,7 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                     }}
                   />
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                   <button
                     type="button"
                     disabled={isSubmitting}
@@ -945,6 +1131,71 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
                   >
                     <span>💾</span> Save & Record Revision #{submission.revision_number + 1}
                   </button>
+
+                  {!isClientRole && submission.status !== "confirmed" && submission.status !== "approved" && (
+                    <button
+                      type="button"
+                      data-testid="finalize-form-btn"
+                      disabled={
+                        isSubmitting ||
+                        submission.has_unconfirmed_ai_fields ||
+                        hasFormConflicts
+                      }
+                      onClick={handleFinalize}
+                      style={{
+                        padding: "11px 20px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#FFFFFF",
+                        background:
+                          submission.has_unconfirmed_ai_fields || hasFormConflicts
+                            ? "#9CA3AF"
+                            : "#059669",
+                        borderRadius: "8px",
+                        border: "none",
+                        cursor:
+                          submission.has_unconfirmed_ai_fields || hasFormConflicts
+                            ? "not-allowed"
+                            : isSubmitting
+                            ? "wait"
+                            : "pointer",
+                        boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        transition: "all 0.15s ease",
+                      }}
+                      title={
+                        hasFormConflicts
+                          ? "Resolve multi-document evidence conflicts before finalization"
+                          : submission.has_unconfirmed_ai_fields
+                          ? "Confirm all unconfirmed AI draft values before finalization"
+                          : "Finalize and certify statutory form filing draft"
+                      }
+                    >
+                      <span>🔒</span> Finalize & Lock Filing Form
+                    </button>
+                  )}
+
+                  {submission.status === "confirmed" && (
+                    <span
+                      data-testid="form-certified-badge"
+                      style={{
+                        padding: "8px 16px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "#065F46",
+                        background: "#D1FAE5",
+                        border: "1px solid #6EE7B7",
+                        borderRadius: "8px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      ✓ Certified Filing-Ready
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

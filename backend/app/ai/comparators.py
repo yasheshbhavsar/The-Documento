@@ -97,9 +97,11 @@ def compare_names(
             suggested_clarification="Please provide identification documents verifying full legal name.",
         )
 
-    # Clean and split into normalized tokens
-    tokens_a = [clean_name_token(t) for t in name_a.split() if clean_name_token(t)]
-    tokens_b = [clean_name_token(t) for t in name_b.split() if clean_name_token(t)]
+    # Clean and split into normalized tokens (hyphens, dots, underscores split into separate tokens)
+    norm_a = re.sub(r"[-_/.]", " ", name_a)
+    norm_b = re.sub(r"[-_/.]", " ", name_b)
+    tokens_a = [clean_name_token(t) for t in norm_a.split() if clean_name_token(t)]
+    tokens_b = [clean_name_token(t) for t in norm_b.split() if clean_name_token(t)]
 
     str_a = " ".join(tokens_a)
     str_b = " ".join(tokens_b)
@@ -141,9 +143,21 @@ def compare_names(
         )
 
     # 4. Check Arabic / Middle Eastern particle assimilation (Al/El/Bin/Bint/Ibn/Abu)
-    particle_stripped_a = [t for t in tokens_a if t not in ARABIC_PARTICLES]
-    particle_stripped_b = [t for t in tokens_b if t not in ARABIC_PARTICLES]
-    if particle_stripped_a and particle_stripped_b and particle_stripped_a == particle_stripped_b and (particle_stripped_a != tokens_a or particle_stripped_b != tokens_b):
+    def _strip_particles(toks: list) -> list:
+        res = []
+        for t in toks:
+            if t in ARABIC_PARTICLES:
+                continue
+            for p in ("al", "el"):
+                if t.startswith(p) and len(t) > 4:
+                    t = t[len(p):]
+                    break
+            res.append(t)
+        return res
+
+    particle_stripped_a = _strip_particles(tokens_a)
+    particle_stripped_b = _strip_particles(tokens_b)
+    if particle_stripped_a and particle_stripped_b and particle_stripped_a == particle_stripped_b and (tokens_a != tokens_b):
         return FieldComparisonResult(
             is_concordant=True,
             is_confirmed_contradiction=False,
@@ -398,7 +412,7 @@ def compare_document_numbers(doc_num_a: str, doc_num_b: str) -> FieldComparisonR
     def canonical_ocr(s: str) -> str:
         return s.replace("0", "O").replace("1", "I").replace("8", "B").replace("5", "S")
 
-    if canonical_ocr(clean_a) == canonical_ocr(clean_b):
+    if len(clean_a) == len(clean_b) and canonical_ocr(clean_a) == canonical_ocr(clean_b):
         return FieldComparisonResult(
             is_concordant=False,
             is_confirmed_contradiction=False,
@@ -408,22 +422,13 @@ def compare_document_numbers(doc_num_a: str, doc_num_b: str) -> FieldComparisonR
             suggested_clarification="Confirm document number against machine-readable MRZ line.",
         )
 
-    dist = _levenshtein_distance(clean_a, clean_b)
-    if dist <= 2 and abs(len(clean_a) - len(clean_b)) <= 1:
-        return FieldComparisonResult(
-            is_concordant=False,
-            is_confirmed_contradiction=False,
-            similarity_score=0.70,
-            variation_type="ocr_noise",
-            explanation=f"Document numbers '{clean_a}' and '{clean_b}' differ by {dist} characters.",
-            suggested_clarification="Verify whether document was re-issued or if scan suffered optical noise.",
-        )
-
+    # Unique identifiers (passports, national IDs) must not be casually fuzzy-matched.
+    # A single digit difference indicates a completely distinct document (common among family members).
     return FieldComparisonResult(
         is_concordant=False,
         is_confirmed_contradiction=True,
         similarity_score=0.10,
         variation_type="unexplained_difference",
-        explanation=f"Confirmed mismatch between document numbers '{clean_a}' and '{clean_b}'.",
-        suggested_clarification="Upload clear uncropped copy of the relevant passport biodata page.",
+        explanation=f"Confirmed mismatch between document numbers '{clean_a}' and '{clean_b}'. Unique identifiers must not be fuzzy-matched.",
+        suggested_clarification="Upload clear uncropped copy of the relevant passport biodata page or confirm whether a separate document was submitted.",
     )

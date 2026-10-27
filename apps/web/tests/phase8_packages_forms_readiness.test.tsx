@@ -146,6 +146,104 @@ describe("Phase 8 — Application Forms, Readiness Checks, and Package Builder",
       expect(screen.getByText("Revision #1")).toBeDefined();
       expect(screen.getByText(/Initial draft auto-populated from Client Profile/i)).toBeDefined();
     });
+
+    it("displays physical evidence provenance chips including page and extraction confidence", () => {
+      render(
+        <ConfigurableFormViewer
+          submission={FALLBACK_FORM_SUBMISSION}
+          schema={FALLBACK_FORM_SCHEMAS[0]}
+          userRole="case_manager"
+        />
+      );
+
+      // Navigate to Part 3 Alien Information
+      const part3Tab = screen.getByText(/Part 3\. Information About the Alien/i);
+      fireEvent.click(part3Tab);
+
+      // Verify physical page citation and confidence percentage
+      expect(screen.getByText("Page 1")).toBeDefined();
+      expect(screen.getByText("98% Match")).toBeDefined();
+    });
+
+    it("detects multi-document evidence conflicts and allows adopting candidate values", () => {
+      const conflictedSubmission = {
+        ...FALLBACK_FORM_SUBMISSION,
+        answers: {
+          ...FALLBACK_FORM_SUBMISSION.answers,
+          beneficiary_passport_number: {
+            value: null,
+            has_conflict: true,
+            conflict_reason: "Disparate passport numbers extracted across multiple uploaded documents.",
+            conflicting_candidates: [
+              { document_id: "doc-passport-old", page: 1, value: "EP8849201" },
+              { document_id: "doc-passport-new", page: 1, value: "EP9901234" },
+            ],
+            source_type: "document_ocr" as const,
+            source_label: "Disparate Passport Extractions",
+            is_confirmed: false,
+          },
+        },
+      };
+
+      render(
+        <ConfigurableFormViewer
+          submission={conflictedSubmission}
+          schema={FALLBACK_FORM_SCHEMAS[0]}
+          userRole="case_manager"
+        />
+      );
+
+      // Verify global conflict banner
+      expect(screen.getByTestId("form-conflicts-banner")).toBeDefined();
+      expect(screen.getByText(/UNRESOLVED EVIDENCE CONFLICTS/i)).toBeDefined();
+
+      // Navigate to Part 3 where passport field lives
+      const part3Tab = screen.getByText(/Part 3\. Information About the Alien/i);
+      fireEvent.click(part3Tab);
+
+      // Verify field level conflict alert
+      expect(screen.getByTestId("conflict-alert-beneficiary_passport_number")).toBeDefined();
+      expect(screen.getByText("EP8849201")).toBeDefined();
+      expect(screen.getByText("EP9901234")).toBeDefined();
+
+      // Click "Use This Value" for the newer passport
+      const adoptBtns = screen.getAllByText("Use This Value");
+      fireEvent.click(adoptBtns[1]);
+
+      // Verify input value was updated to the selected candidate
+      const passportInput = screen.getByPlaceholderText(/enter passport number/i) as HTMLInputElement;
+      expect(passportInput.value).toBe("EP9901234");
+    });
+
+    it("enforces finalization gate and displays certified filing-ready badge upon confirmation", async () => {
+      const handleFinalize = vi.fn().mockResolvedValue(undefined);
+      const readySubmission = {
+        ...FALLBACK_FORM_SUBMISSION,
+        has_unconfirmed_ai_fields: false,
+        sensitive_fields_reviewed: true,
+        status: "draft" as const,
+      };
+
+      render(
+        <ConfigurableFormViewer
+          submission={readySubmission}
+          schema={FALLBACK_FORM_SCHEMAS[0]}
+          userRole="case_manager"
+          onFinalizeSubmission={handleFinalize}
+        />
+      );
+
+      const finalizeBtn = screen.getByTestId("finalize-form-btn");
+      expect(finalizeBtn).toBeDefined();
+      expect(finalizeBtn.hasAttribute("disabled")).toBe(false);
+
+      fireEvent.click(finalizeBtn);
+      await waitFor(() => {
+        expect(handleFinalize).toHaveBeenCalledWith("confirmed");
+        expect(screen.getByTestId("form-certified-badge")).toBeDefined();
+        expect(screen.getByText(/Certified Filing-Ready/i)).toBeDefined();
+      });
+    });
   });
 
   describe("DeterministicReadinessChecklist Component", () => {

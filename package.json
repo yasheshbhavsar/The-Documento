@@ -8,6 +8,10 @@
     "build": "npm --prefix apps/web run build",
     "start": "npm --prefix apps/web run start",
     "test": "npm --prefix apps/web run test",
-    "backend": "powershell -ExecutionPolicy Bypass -File ./run_backend.ps1"
+    "backend": "powershell -ExecutionPolicy Bypass -File ./run_backend.ps1",
+    "dev:all": "node -e \"const { spawn } = require('child_process'); spawn('npm', ['--prefix', 'apps/web', 'run', 'dev'], { stdio: 'inherit', shell: true }); spawn('powershell', ['-ExecutionPolicy', 'Bypass', '-File', './run_backend.ps1'], { stdio: 'inherit', shell: true });\""
+  },
+  "dependencies": {
+    "awwwards-mcp": "^1.13.0"
   }
 }

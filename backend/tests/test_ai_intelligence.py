@@ -135,6 +135,39 @@ class TestIdentityResolver:
         assert p is not None
         assert p.emigration_check == "ECR"
 
+    def test_driving_licence_resolution(self):
+        dl_text = (
+            "UNION OF INDIA DRIVING LICENCE\n"
+            "GUJARAT MOTOR VEHICLES DEPARTMENT\n"
+            "Licence No: GJ01 20150001234\n"
+            "Name: Aarav Sharma\n"
+            "Valid Till: 19/05/2035\n"
+            "Class: LMV\n"
+        )
+        dl = IdentityResolver.parse_driving_licence(dl_text)
+        assert dl is not None
+        assert dl.is_valid is True
+        assert "GJ0120150001234" in dl.licence_number.replace(" ", "")
+        assert "Gujarat" in dl.jurisdiction
+        assert dl.holder_name == "Aarav Sharma"
+        assert dl.expiry_date == "19/05/2035"
+        assert dl.vehicle_class == "LMV"
+
+    def test_voter_id_resolution(self):
+        epic_text = (
+            "ELECTION COMMISSION OF INDIA\n"
+            "ELECTOR'S PHOTO IDENTITY CARD\n"
+            "EPIC No: ABC1234567\n"
+            "Elector's Name: Aarav Sharma\n"
+            "Father's Name: Rajesh Sharma\n"
+        )
+        voter = IdentityResolver.parse_voter_id(epic_text)
+        assert voter is not None
+        assert voter.is_valid is True
+        assert voter.epic_number == "ABC1234567"
+        assert voter.elector_name == "Aarav Sharma"
+        assert voter.relative_name == "Rajesh Sharma"
+
 
 class TestFinancialIntelligenceEngine:
     def test_bank_statement_unseasoned_lump_sum_detection(self):

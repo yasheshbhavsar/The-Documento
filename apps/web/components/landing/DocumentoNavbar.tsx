@@ -139,6 +139,39 @@ export function DocumentoNavbar({
             <span>{isLiveBackend ? "AI Engine Live" : "Sandbox Mode"}</span>
           </div>
 
+          {/* Standalone AI Extractor Lab (No Login) */}
+          <a
+            href="/extractor"
+            style={{
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "linear-gradient(135deg, rgba(6, 60, 61, 0.08) 0%, rgba(23, 107, 80, 0.12) 100%)",
+              border: "1px solid rgba(23, 107, 80, 0.3)",
+              color: "#063C3D",
+              fontSize: "12px",
+              fontWeight: 700,
+              padding: "7px 12px",
+              borderRadius: "8px",
+              transition: "all 0.18s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "#063C3D";
+              e.currentTarget.style.color = "#FFFFFF";
+              e.currentTarget.style.borderColor = "#063C3D";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "linear-gradient(135deg, rgba(6, 60, 61, 0.08) 0%, rgba(23, 107, 80, 0.12) 100%)";
+              e.currentTarget.style.color = "#063C3D";
+              e.currentTarget.style.borderColor = "rgba(23, 107, 80, 0.3)";
+            }}
+            title="Try standalone OCR, entity extraction & evidence AI without logging in"
+          >
+            <span>🔬</span>
+            <span>AI Extractor Lab</span>
+          </a>
+
           {/* Client Portal Link */}
           <button
             type="button"

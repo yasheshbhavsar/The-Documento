@@ -11,16 +11,22 @@ import {
   InvoiceItem,
   TeamMemberCapacity,
   ManagerPriorityQueueResponse,
+  UserContext,
 } from "../../lib/types";
+import { canDeleteClient } from "../../lib/auth";
 import { RuleAdministrationHub } from "../rules/RuleAdministrationHub";
 import { ExecutiveCommandCenter } from "../analytics/ExecutiveCommandCenter";
 import { AnalyticsExplorer } from "../analytics/AnalyticsExplorer";
 import { BillingManager } from "../billing/BillingManager";
 import { BusinessOperationsHub } from "../operations/BusinessOperationsHub";
 import { OperationalReliabilityHub } from "../operations/OperationalReliabilityHub";
+import { PilotReleaseGovernanceDesk } from "../operations/PilotReleaseGovernanceDesk";
 import { FirmConfigurationHub } from "../firm/FirmConfigurationHub";
+import { PathwayExpansionDesk } from "../pathways/PathwayExpansionDesk";
 import { ProvisionCredentialsModal } from "../modals/ProvisionCredentialsModal";
+import { ManagerPriorityQueueView } from "./ManagerPriorityQueueView";
 import {
+  api,
   fetchManagerPriorityQueue,
   FALLBACK_MANAGER_PRIORITY_QUEUE,
 } from "../../lib/api";
@@ -36,6 +42,8 @@ interface OwnerMasterDashboardProps {
   onOpenCreateClient: () => void;
   onSelectCase: (c: ImmigrationCase) => void;
   onClientUpdated?: (c: ClientProfile) => void;
+  onDeleteClient?: (clientId: string) => Promise<void> | void;
+  currentUser?: UserContext;
 }
 
 export function OwnerMasterDashboard({
@@ -49,6 +57,8 @@ export function OwnerMasterDashboard({
   onOpenCreateClient,
   onSelectCase,
   onClientUpdated,
+  onDeleteClient,
+  currentUser,
 }: OwnerMasterDashboardProps) {
   const [activeTab, setActiveTab] = useState<
     | "overview"
@@ -66,6 +76,8 @@ export function OwnerMasterDashboard({
     | "financials"
     | "audit"
     | "rules"
+    | "stage9_release_governance"
+    | "stage10_pathway_expansion"
   >("overview");
 
   const [selectedClientForCredentials, setSelectedClientForCredentials] = useState<ClientProfile | null>(null);
@@ -122,6 +134,35 @@ export function OwnerMasterDashboard({
   cases.forEach((c) => {
     countryCounts[c.jurisdiction] = (countryCounts[c.jurisdiction] || 0) + 1;
   });
+
+  // Permissions check: Owner and Managers can delete clients; Paralegals and Retained Clients cannot
+  const canDelete = currentUser ? canDeleteClient(currentUser) : true;
+
+  const handleDeleteClientClick = async (client: ClientProfile) => {
+    const clientCases = cases.filter(
+      (c) =>
+        c.client_id === client.id ||
+        (c.client_name &&
+          `${client.first_name} ${client.last_name}`.toLowerCase() === c.client_name.toLowerCase())
+    );
+
+    const caseWarning =
+      clientCases.length > 0
+        ? `\n\n⚠️ Notice: This client is associated with ${clientCases.length} case(s) (${clientCases
+            .map((c) => c.case_number)
+            .join(", ")}).`
+        : "";
+
+    const confirmMsg = `Are you sure you want to permanently delete retained client "${client.first_name} ${client.last_name}" (${client.email})?${caseWarning}\n\nThis will remove their profile and portal credentials. This action cannot be undone.`;
+
+    if (window.confirm(confirmMsg)) {
+      if (onDeleteClient) {
+        await onDeleteClient(client.id);
+      } else {
+        await api.deleteClient(client.id);
+      }
+    }
+  };
 
   // Table columns for Cases
   const caseColumns: Column<ImmigrationCase>[] = [
@@ -209,6 +250,8 @@ export function OwnerMasterDashboard({
     { key: "financials", id: "tab-btn-financials", label: "Revenue & Billing", icon: "💳", count: null },
     { key: "audit", id: "tab-btn-audit", label: "Audit Alerts", icon: "🛡️", count: auditEvents.length },
     { key: "rules", id: "tab-btn-rules", label: "Rules & Authorities", icon: "⚖️", count: null },
+    { key: "stage9_release_governance", id: "tab-btn-stage9-release-governance", label: "Release & Pilot Desk", icon: "🚀", count: null },
+    { key: "stage10_pathway_expansion", id: "tab-btn-stage10-pathway-expansion", label: "Pathway Expansion", icon: "🌐", count: null },
   ] as const;
 
   const activeTabInfo = {
@@ -271,6 +314,14 @@ export function OwnerMasterDashboard({
     rules: {
       title: "Rules & Authorities",
       subtitle: "Statutory Immigration Rule Registry, Regulatory Sources & Pilot Workflows",
+    },
+    stage9_release_governance: {
+      title: "Stage 9: Release & Pilot Operations Governance Desk",
+      subtitle: "Deterministic Go/No-Go Release Gates, Narrow Pilot Cohorts, Comparative Workflow KPIs, Cryptographic Backup Drills & Runbooks",
+    },
+    stage10_pathway_expansion: {
+      title: "Stage 10: Pathway Expansion & Regional Localization Desk",
+      subtitle: "Multi-Jurisdiction Inventory (Priorities 1–5), 8 Broad Application Families, EU/Schengen Distinctions, Safe-Stop Principles & Multilingual Matching Engine",
     },
   }[activeTab];
 
@@ -384,6 +435,7 @@ export function OwnerMasterDashboard({
               <button
                 key={item.key}
                 id={item.id}
+                data-testid={item.id}
                 type="button"
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => {
@@ -957,6 +1009,22 @@ export function OwnerMasterDashboard({
         <OperationalReliabilityHub isLiveBackend={isLiveBackend} cases={cases} staff={capacity} />
       )}
 
+      {/* STAGE 9 RELEASE & PILOT GOVERNANCE TAB */}
+      {activeTab === "stage9_release_governance" && (
+        <PilotReleaseGovernanceDesk
+          userRole="company_admin"
+          onNavigateToCase={(caseId) => {
+            const found = cases.find((c) => c.id === caseId || c.case_number === caseId);
+            if (found) onSelectCase(found);
+          }}
+        />
+      )}
+
+      {/* STAGE 10 PATHWAY EXPANSION & REGIONAL LOCALIZATION TAB */}
+      {activeTab === "stage10_pathway_expansion" && (
+        <PathwayExpansionDesk userRole="master_admin" />
+      )}
+
       {/* BILLING & RETAINERS TAB */}
       {activeTab === "billing" && (
         <BillingManager userRole="owner" isLiveBackend={isLiveBackend} />
@@ -1080,16 +1148,38 @@ export function OwnerMasterDashboard({
                   key: "actions",
                   header: "Action",
                   render: (c) => (
-                    <Button
-                      variant={c.portal_credentials_provided ? "outline" : "primary"}
-                      size="sm"
-                      onClick={() => {
-                        setSelectedClientForCredentials(c);
-                        setIsProvisionModalOpen(true);
-                      }}
-                    >
-                      🔑 {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
-                    </Button>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      <Button
+                        variant={c.portal_credentials_provided ? "outline" : "primary"}
+                        size="sm"
+                        onClick={() => {
+                          setSelectedClientForCredentials(c);
+                          setIsProvisionModalOpen(true);
+                        }}
+                      >
+                        🔑 {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
+                      </Button>
+                      {canDelete && (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          id={`delete-client-${c.id}`}
+                          aria-label={`Delete client ${c.first_name} ${c.last_name}`}
+                          onClick={() => handleDeleteClientClick(c)}
+                          style={{
+                            background: "#FFF0F0",
+                            color: "#D32F2F",
+                            borderColor: "#FFCDD2",
+                            fontWeight: 600,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          🗑️ Delete Client
+                        </Button>
+                      )}
+                    </div>
                   ),
                 },
               ]}
@@ -1193,427 +1283,18 @@ export function OwnerMasterDashboard({
 
       {/* MANAGER PRIORITY COMMAND BOARD (STRICT RANKS 1 TO 8) */}
       {activeTab === "manager_priority" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {/* Executive Triage Header Bar */}
-          <div
-            style={{
-              background: "#FFFFFF",
-              border: "1px solid #DCE5E1",
-              borderRadius: "12px",
-              padding: "18px 22px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "12px",
-              boxShadow: "0 1px 4px rgba(6, 60, 61, 0.03)",
-            }}
-          >
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "18px" }}>🚨</span>
-                <strong style={{ fontSize: "15px", color: "#063C3D" }}>
-                  Strict 1–8 Rank Order Management Protocol
-                </strong>
-                <Badge variant="action">Rank 1 to 8 Priority Pipeline</Badge>
-              </div>
-              <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#64748B" }}>
-                Items are rendered strictly in Ranks 1 through 8. Resolving higher-rank authority deadlines and bottlenecks unlocks lower-tier processing.
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <Badge variant="success">FTFR: {priorityQueueData.summary?.first_time_pass_rate_percent || 94.6}%</Badge>
-              <Badge variant="review">{priorityQueueData.ranks?.length || 8} Priority Ranks Active</Badge>
-            </div>
-          </div>
-
-          {/* Sequential Cards for Ranks 1 through 8 */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            {priorityQueueData.ranks?.map((rankItem) => {
-              const r = rankItem.rank;
-              const isCrit = rankItem.priority === "CRITICAL";
-              const isHigh = rankItem.priority === "HIGH";
-              const borderLeft = isCrit ? "5px solid #DC2626" : isHigh ? "5px solid #F59E0B" : "5px solid #0D6866";
-
-              return (
-                <div
-                  key={r}
-                  style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #DCE5E1",
-                    borderLeft,
-                    borderRadius: "10px",
-                    padding: "20px",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "14px",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span
-                        style={{
-                          width: "28px",
-                          height: "28px",
-                          borderRadius: "50%",
-                          background: isCrit ? "#DC2626" : isHigh ? "#F59E0B" : "#0D6866",
-                          color: "#FFF",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "13px",
-                          fontWeight: 800,
-                        }}
-                      >
-                        {r}
-                      </span>
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <h3 style={{ margin: 0, fontSize: "16px", color: "#063C3D", fontWeight: 750 }}>
-                            Rank {r}: {rankItem.title}
-                          </h3>
-                          <Badge variant={isCrit ? "action" : isHigh ? "warning" : "review"} size="sm">
-                            {rankItem.priority}
-                          </Badge>
-                        </div>
-                        <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748B" }}>
-                          {rankItem.description}
-                        </p>
-                      </div>
-                    </div>
-                    <span
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 750,
-                        padding: "4px 10px",
-                        borderRadius: "6px",
-                        background: "#F8FAF9",
-                        color: "#063C3D",
-                        border: "1px solid #DCE5E1",
-                      }}
-                    >
-                      {rankItem.count} {rankItem.count === 1 ? "Item" : "Items"}
-                    </span>
-                  </div>
-
-                  {/* Rank Specific Custom Content */}
-                  {/* Rank 1: Critical & Overdue Deadlines */}
-                  {r === 1 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {rankItem.items?.map((it: any) => (
-                        <div
-                          key={it.id}
-                          style={{
-                            background: "#FEF2F2",
-                            border: "1px solid #FECACA",
-                            borderRadius: "8px",
-                            padding: "10px 14px",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            flexWrap: "wrap",
-                            gap: "8px",
-                          }}
-                        >
-                          <div>
-                            <strong style={{ fontSize: "13px", color: "#991B1B" }}>
-                              {it.case_number} — {it.client_name}
-                            </strong>
-                            <span style={{ display: "block", fontSize: "12px", color: "#7F1D1D" }}>
-                              {it.description} ({it.deadline_type})
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span style={{ fontSize: "12px", fontWeight: 700, color: "#DC2626" }}>
-                              ⚡ {it.due_in_days} days remaining
-                            </span>
-                            <Button variant="primary" size="sm" onClick={() => setActiveTab("cases")}>
-                              Dispatch Action →
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Rank 2: Workload & Officer Allocation Matrix */}
-                  {r === 2 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
-                        {rankItem.staff_allocation?.map((st: any) => (
-                          <div
-                            key={st.user_id}
-                            style={{
-                              background: "#F8FAF9",
-                              border: "1px solid #E2E8F0",
-                              borderRadius: "8px",
-                              padding: "10px 12px",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                              <strong style={{ fontSize: "12px", color: "#063C3D" }}>{st.name}</strong>
-                              <span style={{ fontSize: "11px", fontWeight: 700, color: st.capacity_utilization_percent > 90 ? "#DC2626" : "#0D6866" }}>
-                                {st.capacity_utilization_percent}% Utilized
-                              </span>
-                            </div>
-                            <span style={{ fontSize: "11px", color: "#64748B", display: "block", marginBottom: "6px" }}>
-                              {st.active_cases_count} / {st.max_capacity} Active Petitions
-                            </span>
-                            <div style={{ width: "100%", height: "6px", background: "#E2E8F0", borderRadius: "3px" }}>
-                              <div
-                                style={{
-                                  width: `${st.capacity_utilization_percent}%`,
-                                  height: "100%",
-                                  background: st.capacity_utilization_percent > 90 ? "#DC2626" : "#0D6866",
-                                  borderRadius: "3px",
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div
-                        style={{
-                          background: "#FFFBEB",
-                          border: "1px solid #FDE68A",
-                          borderRadius: "8px",
-                          padding: "10px 14px",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          fontSize: "12px",
-                        }}
-                      >
-                        <span style={{ color: "#92400E", fontWeight: 600 }}>
-                          📋 Unassigned Intake Queue: {rankItem.unassigned_cases_count || 2} petitions waiting for primary lead assignment.
-                        </span>
-                        <Button variant="outline" size="sm" onClick={() => setActiveTab("operations")}>
-                          Assign Caseworker →
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Rank 3: Blocked Cases */}
-                  {r === 3 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {rankItem.items?.map((blk: any) => (
-                        <div
-                          key={blk.case_id}
-                          style={{
-                            background: "#FFF",
-                            border: "1px solid #E2E8F0",
-                            borderRadius: "8px",
-                            padding: "10px 14px",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            fontSize: "12px",
-                            flexWrap: "wrap",
-                            gap: "8px",
-                          }}
-                        >
-                          <div>
-                            <strong style={{ color: "#063C3D" }}>{blk.case_number} — {blk.client_name}</strong>
-                            <p style={{ margin: "2px 0 0", color: "#DC2626", fontWeight: 600 }}>
-                              ⛔ {blk.blocker_reason}
-                            </p>
-                            <small style={{ color: "#64748B" }}>Authority Citation: {blk.regulatory_citation}</small>
-                          </div>
-                          <Button variant="secondary" size="sm" onClick={() => setActiveTab("cases")}>
-                            Inspect Blocker
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Rank 4: Overdue Client Responses */}
-                  {r === 4 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {rankItem.items?.map((od: any) => (
-                        <div
-                          key={od.case_id}
-                          style={{
-                            background: "#F8FAF9",
-                            border: "1px solid #E2E8F0",
-                            borderRadius: "8px",
-                            padding: "10px 14px",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            fontSize: "12px",
-                            flexWrap: "wrap",
-                            gap: "8px",
-                          }}
-                        >
-                          <div>
-                            <strong style={{ color: "#063C3D" }}>{od.client_name} ({od.case_number})</strong>
-                            <span style={{ display: "block", color: "#475569" }}>{od.item_description}</span>
-                            <small style={{ color: "#DC2626", fontWeight: 650 }}>Stalled for {od.days_pending} days</small>
-                          </div>
-                          <Button variant="outline" size="sm" onClick={() => setActiveTab("conversation_inspector")}>
-                            Dispatch Nudge via Chat
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Rank 5: Pending Reviews */}
-                  {r === 5 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {rankItem.items?.map((rev: any) => (
-                        <div
-                          key={rev.id}
-                          style={{
-                            background: "#F0FDF4",
-                            border: "1px solid #BBF7D0",
-                            borderRadius: "8px",
-                            padding: "10px 14px",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            fontSize: "12px",
-                            flexWrap: "wrap",
-                            gap: "8px",
-                          }}
-                        >
-                          <div>
-                            <strong style={{ color: "#14532D" }}>{rev.type}: {rev.title}</strong>
-                            <span style={{ display: "block", color: "#166534" }}>Case: {rev.case_number} • Prepared by: {rev.caseworker}</span>
-                          </div>
-                          <Button variant="primary" size="sm" onClick={() => setActiveTab("cases")}>
-                            Review &amp; Sign Off →
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Rank 6: Quality Issues, Corrections & Escalations */}
-                  {r === 6 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {rankItem.items?.map((qi: any) => (
-                        <div
-                          key={qi.id}
-                          style={{
-                            background: "#FEF2F2",
-                            border: "1px solid #FECACA",
-                            borderRadius: "8px",
-                            padding: "10px 14px",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            fontSize: "12px",
-                            flexWrap: "wrap",
-                            gap: "8px",
-                          }}
-                        >
-                          <div>
-                            <strong style={{ color: "#991B1B" }}>[{qi.code}] {qi.title}</strong>
-                            <span style={{ display: "block", color: "#7F1D1D" }}>Case: {qi.case_number} • Escalated by: {qi.escalated_by}</span>
-                          </div>
-                          <Button variant="secondary" size="sm" onClick={() => setActiveTab("operations")}>
-                            Supervisor Adjudication
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Rank 7: Payment Status Tracking */}
-                  {r === 7 && (
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                        gap: "12px",
-                      }}
-                    >
-                      <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "8px", padding: "12px 14px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#166534" }}>PAID IN FULL</span>
-                        <strong style={{ fontSize: "20px", display: "block", color: "#14532D", margin: "4px 0" }}>
-                          ${(rankItem.paid_amount || 42500).toLocaleString()}.00
-                        </strong>
-                        <span style={{ fontSize: "11px", color: "#166534" }}>{rankItem.paid_count || 18} Retainer Invoices</span>
-                      </div>
-                      <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: "8px", padding: "12px 14px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#92400E" }}>PENDING INVOICES</span>
-                        <strong style={{ fontSize: "20px", display: "block", color: "#78350F", margin: "4px 0" }}>
-                          ${(rankItem.pending_amount || 14000).toLocaleString()}.00
-                        </strong>
-                        <span style={{ fontSize: "11px", color: "#92400E" }}>{rankItem.pending_count || 6} Invoices Awaiting Payment</span>
-                      </div>
-                      <div style={{ background: "#F1F5F9", border: "1px solid #CBD5E1", borderRadius: "8px", padding: "12px 14px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569" }}>PARTIALLY PAID</span>
-                        <strong style={{ fontSize: "20px", display: "block", color: "#1E293B", margin: "4px 0" }}>
-                          ${(rankItem.partially_paid_amount || 5500).toLocaleString()}.00
-                        </strong>
-                        <span style={{ fontSize: "11px", color: "#475569" }}>{rankItem.partially_paid_count || 3} Milestone Installments</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Rank 8: Continuous Quality Improvement & Performance View */}
-                  {r === 8 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                      <div
-                        style={{
-                          background: "#EAF6F0",
-                          border: "1px solid #B9DED4",
-                          borderRadius: "8px",
-                          padding: "10px 14px",
-                          fontSize: "12px",
-                          color: "#0D6866",
-                        }}
-                      >
-                        <strong>🌱 Continuous Quality Improvement Focus:</strong> Performance tracking is structured to support proactive team enablement, mentoring, and quality training, rather than blame-only evaluation.
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
-                        <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px" }}>
-                          <span style={{ fontSize: "11px", color: "#64748B" }}>First-Time Pass Rate</span>
-                          <strong style={{ fontSize: "18px", color: "#063C3D", display: "block" }}>
-                            {rankItem.first_time_pass_rate_percent || 94.6}%
-                          </strong>
-                          <span style={{ fontSize: "10px", color: "#166534" }}>+2.1% vs last quarter</span>
-                        </div>
-                        <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px" }}>
-                          <span style={{ fontSize: "11px", color: "#64748B" }}>Avg. Review Cycles</span>
-                          <strong style={{ fontSize: "18px", color: "#063C3D", display: "block" }}>1.2</strong>
-                          <span style={{ fontSize: "10px", color: "#166534" }}>Goal: &lt; 1.5 cycles</span>
-                        </div>
-                        <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px" }}>
-                          <span style={{ fontSize: "11px", color: "#64748B" }}>Citation Grounding</span>
-                          <strong style={{ fontSize: "18px", color: "#063C3D", display: "block" }}>99.2%</strong>
-                          <span style={{ fontSize: "10px", color: "#166534" }}>Statutory conformity</span>
-                        </div>
-                        <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px" }}>
-                          <span style={{ fontSize: "11px", color: "#64748B" }}>Peer Knowledge Sharing</span>
-                          <strong style={{ fontSize: "18px", color: "#063C3D", display: "block" }}>88%</strong>
-                          <span style={{ fontSize: "10px", color: "#166534" }}>High collaboration</span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <strong style={{ fontSize: "12px", color: "#063C3D", display: "block", marginBottom: "6px" }}>
-                          Recommended Quality Coaching Areas:
-                        </strong>
-                        <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: "#475569" }}>
-                          {rankItem.coaching_focus_areas?.map((fa: string, idx: number) => (
-                            <li key={idx} style={{ marginBottom: "3px" }}>{fa}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <ManagerPriorityQueueView
+          data={priorityQueueData}
+          onAction={(rank, actionType, item) => {
+            if (actionType === "dispatch_action" || actionType === "inspect_blocker" || actionType === "review_signoff") {
+              setActiveTab("cases");
+            } else if (actionType === "assign_caseworker" || actionType === "adjudicate_quality") {
+              setActiveTab("operations");
+            } else if (actionType === "dispatch_nudge") {
+              setActiveTab("conversation_inspector");
+            }
+          }}
+        />
       )}
 
       {/* OFFICER-CLIENT CONVERSATION INSPECTOR */}

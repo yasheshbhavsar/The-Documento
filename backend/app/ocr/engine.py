@@ -471,19 +471,41 @@ class OCREngine:
         if ocr is not None:
             try:
                 ocr_result, _ = ocr(content)
+                if not ocr_result:
+                    # Adaptive vision preprocessing: grayscale + autocontrast + sharpening for low-contrast/faint scans
+                    try:
+                        from PIL import Image, ImageEnhance, ImageOps
+                        with Image.open(io.BytesIO(content)) as im:
+                            gray = ImageOps.grayscale(im)
+                            contrasted = ImageOps.autocontrast(gray, cutoff=2)
+                            enhancer = ImageEnhance.Sharpness(contrasted)
+                            sharpened = enhancer.enhance(1.4)
+                            buf = io.BytesIO()
+                            sharpened.save(buf, format="PNG")
+                            ocr_result, _ = ocr(buf.getvalue())
+                    except Exception:
+                        pass
+
                 if ocr_result:
-                    blocks: list[PageBlock] = []
-                    lines: list[str] = []
-                    for idx, line in enumerate(ocr_result):
+                    parsed_items = []
+                    for line in ocr_result:
                         box, line_text, score = line
                         line_clean = str(line_text).strip()
                         if not line_clean:
                             continue
-                        lines.append(line_clean)
                         x0 = float(min(p[0] for p in box))
                         y0 = float(min(p[1] for p in box))
                         x1 = float(max(p[0] for p in box))
                         y1 = float(max(p[1] for p in box))
+                        parsed_items.append((x0, y0, x1, y1, line_clean, float(score)))
+
+                    # Cluster into horizontal reading bands (items within ~14px of each other sorted left-to-right)
+                    parsed_items.sort(key=lambda it: (round(it[1] / 14.0), it[0]))
+
+                    blocks: list[PageBlock] = []
+                    lines: list[str] = []
+                    for idx, (x0, y0, x1, y1, line_clean, score) in enumerate(parsed_items):
+                        lines.append(line_clean)
                         blocks.append(
                             PageBlock(
                                 x0=round(x0, 2),
@@ -491,7 +513,7 @@ class OCREngine:
                                 x1=round(x1, 2),
                                 y1=round(y1, 2),
                                 text=line_clean,
-                                confidence=float(score),
+                                confidence=score,
                                 block_idx=idx,
                             )
                         )

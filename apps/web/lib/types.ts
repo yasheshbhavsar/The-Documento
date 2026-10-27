@@ -1,4 +1,4 @@
-export type UserExperience = "master_admin" | "case_manager" | "client_applicant";
+export type UserExperience = "master_admin" | "case_manager" | "client_applicant" | "paralegal";
 
 export type RoleCode =
   | "master_admin"
@@ -430,7 +430,7 @@ export interface DocumentExtractedField {
   model_version?: string;
   ocr_confidence: number;
   extraction_confidence: number;
-  validation_status: "unvalidated" | "verified" | "flagged" | "corrected";
+  validation_status: "unvalidated" | "verified" | "flagged" | "corrected" | "needs_review" | "rejected" | string;
   is_manually_corrected: boolean;
   corrected_value?: string;
   corrected_at?: string;
@@ -513,6 +513,7 @@ export interface DocumentItem {
   active_run_progress_percent?: number;
   proposed_category?: string;
   proposed_applicant_name?: string;
+  applicant_dependant_id?: string;
   is_assignment_confirmed?: boolean;
   has_unresolved_anomaly?: boolean;
   anomaly_notes?: string;
@@ -1160,6 +1161,13 @@ export interface FormFieldAnswer {
   is_confirmed: boolean;
   confirmed_by_user_id?: string | null;
   confirmed_at?: string | null;
+  source_document_id?: string | null;
+  source_page?: number | null;
+  source_location?: any;
+  extraction_confidence?: number | null;
+  has_conflict?: boolean;
+  conflicting_candidates?: any[] | null;
+  conflict_reason?: string | null;
 }
 
 export interface FormRevisionHistoryItem {
@@ -1175,7 +1183,7 @@ export interface FormSubmissionItem {
   form_code: string;
   form_name: string;
   version_number: string;
-  status: "draft" | "submitted" | "signed_off" | "archived";
+  status: "draft" | "under_review" | "signed_off" | "confirmed" | "approved" | "submitted" | "archived";
   completion_percentage: number;
   has_unconfirmed_ai_fields: boolean;
   sensitive_fields_reviewed: boolean;
@@ -1438,16 +1446,19 @@ export interface VisaAppointment {
   organization_id: string;
   case_id: string;
   client_id: string;
+  case_number?: string | null;
+  client_name?: string | null;
+  visa_category?: string | null;
   vac_center: string;
   consular_post: string;
   ofc_biometrics_slot?: string | null;
   consular_interview_slot?: string | null;
   dropbox_eligible: boolean;
   tracking_number_blue_dart?: string | null;
-  courier_status: "pending_pickup" | "in_transit" | "delivered_to_consulate" | "ready_for_pickup" | "delivered_to_applicant";
+  courier_status: "pending_pickup" | "in_transit" | "delivered_to_consulate" | "ready_for_pickup" | "delivered_to_applicant" | string;
   status_221g: boolean;
   status_221g_color?: string | null;
-  appointment_status: "scheduled" | "completed" | "cancelled" | "rescheduled" | "no_show";
+  appointment_status: "scheduled" | "completed" | "cancelled" | "rescheduled" | "no_show" | string;
   notes?: string | null;
   created_at: string;
   updated_at: string;
@@ -2414,4 +2425,210 @@ export interface OperationalRunbook {
   last_verified_at: string;
   verified_by_name: string;
 }
+
+// ==============================================================================
+// STAGE 8 AI GOVERNANCE, GOVERNED RAG, & EVALUATION GATES (§6.6, §6.7, §8)
+// ==============================================================================
+
+export interface CitationReference {
+  citation_type: 'statute_authority' | 'case_evidence_document';
+  source_title: string;
+  page_number?: number | null;
+  section_reference?: string | null;
+  snippet: string;
+  reliability_tier: 'high' | 'medium' | 'low';
+}
+
+export interface RAGQueryRequest {
+  case_id: string;
+  query: string;
+  jurisdiction?: string;
+  visa_category?: string;
+}
+
+export interface GovernedRAGResponse {
+  query: string;
+  answer: string;
+  jurisdiction: string;
+  visa_category: string;
+  is_grounded: boolean;
+  evidence_found: boolean;
+  confidence_score: number;
+  citations: CitationReference[];
+  uncertainty_disclosures: string[];
+  prompt_guard_defanged: boolean;
+  token_usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    estimated_cost_usd: number;
+  };
+  legal_sufficiency_disclaimer: string;
+}
+
+export interface EvaluationGateResult {
+  gate_id: string;
+  gate_name: string;
+  benchmark_target: string;
+  achieved_metric: string;
+  status: 'PASSED' | 'FAILED';
+  description: string;
+}
+
+export interface AIEvaluationReport {
+  evaluated_at: string;
+  overall_status: 'PASSED' | 'BLOCKED';
+  gates_passed_count: number;
+  total_gates: number;
+  readiness_percentage: number;
+  gates: EvaluationGateResult[];
+}
+
+export interface TokenUsageMetrics {
+  organization_id: string;
+  monthly_token_quota: number;
+  tokens_used_this_month: number;
+  quota_remaining_tokens: number;
+  quota_percentage_used: number;
+  quota_exceeded: boolean;
+  estimated_cost_usd_this_month: number;
+  monthly_cost_cap_usd: number;
+  total_operations_recorded: number;
+  model_distribution: Record<string, number>;
+  operation_breakdown: Record<string, number>;
+}
+
+export interface CaseEvidenceBriefFact {
+  field_label: string;
+  value: string;
+  source_document: string;
+  source_page: number;
+  confidence: number;
+}
+
+export interface CaseEvidenceBriefDiscrepancy {
+  id?: string;
+  severity: string;
+  title: string;
+  description: string;
+  is_confirmed_contradiction?: boolean;
+  status: string;
+}
+
+export interface CaseEvidenceBriefQuestion {
+  finding_id?: string;
+  question: string;
+  severity?: string;
+  recommended_action?: string;
+}
+
+export interface CaseEvidenceBrief {
+  case_number: string;
+  jurisdiction: string;
+  visa_category: string;
+  generated_at: string;
+  verified_facts: CaseEvidenceBriefFact[];
+  potential_discrepancies: CaseEvidenceBriefDiscrepancy[];
+  uncertainty_disclosures: string[];
+  suggested_clarification_questions: CaseEvidenceBriefQuestion[];
+  summary_markdown: string;
+}
+
+export interface PromptGuardScanResult {
+  is_flagged: boolean;
+  risk_score: number;
+  detected_patterns: string[];
+  sanitized_text: string;
+}
+
+export interface PilotCohortCreatePayload {
+  cohort_name: string;
+  firm_tier?: string;
+  max_cases_allowed?: number;
+  allowed_pathways?: string[];
+  synthetic_data_attestation?: boolean;
+  unapproved_ai_block_enabled?: boolean;
+  assigned_lead_email?: string;
+  notes?: string;
+}
+
+export interface BackupRestoreDrillResult {
+  drill_id: string;
+  organization_id: string;
+  status: string;
+  executed_at?: string;
+  snapshot_checksum?: string;
+  records_evaluated?: {
+    total_documents: number;
+    purged_documents: number;
+  };
+  checks?: {
+    checksum_verification: string;
+    schema_integrity: string;
+    foreign_key_consistency: string;
+    object_versioning_sync: string;
+    backup_aware_erasure_policy: string;
+  };
+  recovery_point_objective_minutes?: number;
+  recovery_time_objective_minutes?: number;
+  initiated_by?: string;
+  tested_components?: {
+    component: string;
+    target: string;
+    status: string;
+    latency_ms: number;
+  }[];
+  deletion_policy_accounting_verified?: boolean;
+  completed_at?: string;
+  details?: string;
+}
+
+export interface DeletionAccountingReport {
+  organization_id: string;
+  purged_records_count: number;
+  storage_payloads_expunged: boolean;
+  object_storage_lifecycle_policy: {
+    s3_delete_marker_expiration_days: number;
+    noncurrent_version_expiration_days: number;
+    transition_to_glacier_days: number;
+  };
+  backup_restoration_guarantee: string;
+  compliance_status: string;
+}
+
+export interface OperationalDashboardTelemetry {
+  organization_id: string;
+  system_status: string;
+  workers: Record<string, any>;
+  dead_letter_queue: {
+    size: number;
+    jobs: any[];
+  };
+  security: {
+    quarantined_files_count: number;
+    rate_limiting_active: boolean;
+    short_lived_download_tokens_enforced: boolean;
+    least_privilege_enforced: boolean;
+  };
+  lifecycle_metrics: {
+    completed_applications_retained: number;
+    withdrawn_tombstones_retained: number;
+  };
+  data_flow_summary: {
+    total_entities: number;
+    external_processors: number;
+    zero_training_guarantee: boolean;
+  };
+  privacy_reviews: Array<{
+    jurisdiction: string;
+    market_name: string;
+    status: string;
+    is_valid: boolean;
+  }>;
+  workforce: {
+    total_active_staff: number;
+    overloaded_staff_count: number;
+  };
+}
+
 

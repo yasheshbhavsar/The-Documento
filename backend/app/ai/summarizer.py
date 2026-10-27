@@ -78,6 +78,10 @@ def generate_evidence_backed_case_summary(
             })
 
     # 3. Formulate explicit uncertainty disclosures
+    for f in findings:
+        if f.get("uncertainty_limitations"):
+            uncertainty_disclosures.append(f.get("uncertainty_limitations"))
+
     if not documents:
         uncertainty_disclosures.append("No primary evidence documents have been uploaded to this case yet. All case facts remain unevidenced.")
 
@@ -92,6 +96,11 @@ def generate_evidence_backed_case_summary(
         uncertainty_disclosures.append(
             "Certain evidentiary records rely on optical character recognition rather than native digital vector text; character confidence scores are subject to optical scan clarity."
         )
+
+    # Standard zero-privilege ethical / legal uncertainty disclosure
+    uncertainty_disclosures.append(
+        "Automated case extractions are advisory aids for legal staff only; USCIS adjudication requires physical proof under Kazarian two-part final merits review."
+    )
 
     # 4. Generate Markdown Brief
     md_lines = [

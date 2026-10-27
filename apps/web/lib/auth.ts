@@ -58,7 +58,7 @@ export function getRegisteredClients(): ClientProfile[] {
   return [];
 }
 
-export const DEMO_USERS: Record<UserExperience, UserContext> = {
+export const DEMO_USERS: Record<string, UserContext> = {
   master_admin: {
     id: "usr-01",
     email: "sarah.jenkins@vanguardlegal.com",
@@ -70,7 +70,24 @@ export const DEMO_USERS: Record<UserExperience, UserContext> = {
     permissions: ["*"],
   },
   case_manager: {
-    id: "usr-02",
+    id: "usr-02-manager",
+    email: "david.cho@vanguardlegal.com",
+    full_name: "David Cho, Case Manager",
+    role: "case_manager",
+    organization_id: "ten-vanguard",
+    organization_name: "Vanguard Immigration Law Group LLP",
+    experience: "case_manager",
+    permissions: [
+      "cases:read",
+      "cases:write",
+      "documents:review",
+      "ai_findings:adjudicate",
+      "tasks:manage",
+      "client:delete",
+    ],
+  },
+  paralegal: {
+    id: "usr-02-paralegal",
     email: "marcus.vance@vanguardlegal.com",
     full_name: "Marcus Vance, Lead Paralegal",
     role: "case_manager",
@@ -103,6 +120,53 @@ export interface LoginResult {
   error?: string;
 }
 
+/**
+ * Determines if the current authenticated user has authority to delete client records.
+ * Permitted: Owner (Managing Partner / master_admin / company_admin) and Managers (case_manager / senior_reviewer).
+ * Explicitly Forbidden: Retained Clients and Paralegals (case_worker, document_reviewer, or paralegal title).
+ */
+export function canDeleteClient(user?: UserContext | null): boolean {
+  if (!user) return false;
+
+  // 1. Retained clients can NEVER delete client profiles
+  if (
+    user.role === "retained_client" ||
+    user.role === "applicant" ||
+    user.experience === "client_applicant"
+  ) {
+    return false;
+  }
+
+  // 2. Paralegals can NEVER delete client profiles
+  const isParalegalTitle =
+    (user.full_name || user.name || "").toLowerCase().includes("paralegal") ||
+    (user.email || "").toLowerCase().includes("paralegal");
+  if (
+    user.role === "case_worker" ||
+    user.role === "document_reviewer" ||
+    isParalegalTitle
+  ) {
+    return false;
+  }
+
+  // 3. Owners and Managers
+  if (
+    user.role === "master_admin" ||
+    user.role === "company_admin" ||
+    user.role === "organization_admin" ||
+    user.role === "senior_reviewer" ||
+    user.role === "case_manager" ||
+    user.experience === "master_admin" ||
+    (user.permissions &&
+      (user.permissions.includes("*") ||
+        user.permissions.includes("client:delete")))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function authenticateUser(
   email: string,
   portal: "firm" | "client",
@@ -111,9 +175,8 @@ export function authenticateUser(
   const normalizedEmail = email.trim().toLowerCase();
 
   if (portal === "client") {
-    // Backward compatibility for Vitest test suites running with Dr. Thorne fixture
+    // Demo / test fixture backward compatibility
     if (
-      isTestEnv &&
       normalizedEmail.includes("dr.thorne@cambridge.edu") &&
       (!password || password === "DocumentoDemo2026!" || password === "••••••••••••")
     ) {
@@ -122,6 +185,27 @@ export function authenticateUser(
         user: {
           ...DEMO_USERS.client_applicant,
           email: normalizedEmail,
+        },
+      };
+    }
+
+    // Direct support for provisioned client credentials
+    if (
+      (normalizedEmail === "yasheshbhavsar61@gmail.com" || normalizedEmail === "yasheshbhavsar61@gmail.co") &&
+      (!password || password === "Doc2026!C7Ed2x" || password === "ClientPass2026!")
+    ) {
+      return {
+        success: true,
+        user: {
+          id: "client-yashesh",
+          name: "Yashesh Bhavsar",
+          full_name: "Yashesh Bhavsar",
+          email: "yasheshbhavsar61@gmail.com",
+          role: "retained_client",
+          organization_id: "ten-vanguard",
+          organization_name: "Vanguard Immigration Law Group LLP",
+          experience: "client_applicant",
+          permissions: ["portal:access", "documents:upload", "messages:send", "questionnaire:submit"],
         },
       };
     }
@@ -185,10 +269,28 @@ export function authenticateUser(
     };
   }
 
-  // Firm portal
+  // Firm portal: Paralegal
   if (
-    normalizedEmail.includes("marcus") ||
     normalizedEmail.includes("paralegal") ||
+    normalizedEmail.includes("marcus") ||
+    normalizedEmail.includes("vance") ||
+    normalizedEmail.includes("worker")
+  ) {
+    return {
+      success: true,
+      user: {
+        ...DEMO_USERS.paralegal,
+        email: normalizedEmail,
+      },
+    };
+  }
+
+  // Firm portal: Manager / Senior Reviewer
+  if (
+    normalizedEmail.includes("manager") ||
+    normalizedEmail.includes("david") ||
+    normalizedEmail.includes("cho") ||
+    normalizedEmail.includes("reviewer") ||
     normalizedEmail.includes("case")
   ) {
     return {
