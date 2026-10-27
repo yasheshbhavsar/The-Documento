@@ -311,7 +311,57 @@ export function ClientPortal({
         },
       ];
 
-  const applicantRequirementGroups = isDemoCase
+  // Helper to check if a document is present in uploaded documents
+  const findMatchingDoc = (keyword: string) => {
+    return documents.find(
+      (d) =>
+        (d.title || "").toLowerCase().includes(keyword.toLowerCase()) ||
+        (d.category || "").toLowerCase().includes(keyword.toLowerCase()) ||
+        (d.filename || "").toLowerCase().includes(keyword.toLowerCase())
+    );
+  };
+
+  const getRequirementDocStatus = (keyword: string, defaultStatus: "required" | "outstanding" = "required") => {
+    const doc = findMatchingDoc(keyword);
+    if (!doc) {
+      return {
+        status: defaultStatus,
+        notes: "Awaiting document submission by client.",
+      };
+    }
+    const isAccepted = doc.status === "verified" || doc.verification_status === "verified";
+    const isRejected = (doc.status as string) === "rejected" || doc.verification_status === "rejected" || doc.status === "action_needed";
+    return {
+      status: isAccepted ? ("accepted" as const) : isRejected ? ("rejected" as const) : ("received" as const),
+      notes: doc.verification_notes || `Uploaded file on record: ${doc.title || doc.filename}`,
+    };
+  };
+
+  const isSpousalMatter =
+    (myCase?.visa_category || "").toLowerCase().includes("spous") ||
+    (myCase?.visa_category || "").toLowerCase().includes("family") ||
+    (myCase?.visa_category || "").toLowerCase().includes("sclpc");
+
+  type ApplicantRequirementItem = {
+    id: string;
+    title: string;
+    status: "accepted" | "received" | "rejected" | "required" | "outstanding";
+    statutoryBasis: string;
+    notes?: string;
+    rejectionReasonCode?: string;
+    rejectionReasonLabel?: string;
+    clientExplanation?: string;
+  };
+
+  type ApplicantRequirementGroup = {
+    id: string;
+    name: string;
+    role: string;
+    avatar: string;
+    items: ApplicantRequirementItem[];
+  };
+
+  const applicantRequirementGroups: ApplicantRequirementGroup[] = isDemoCase
     ? [
         {
           id: "primary",
@@ -416,103 +466,102 @@ export function ClientPortal({
           ],
         },
       ]
-    : isCanada
-    ? [
-        {
-          id: "primary",
-          name: `${clientName} (Primary Applicant)`,
-          role: `Principal Beneficiary • ${myCase?.visa_category || "Canada Study Permit"}`,
-          avatar: clientInitials,
-          items: [
-            {
-              id: "chk-ca-01",
-              title: "Designated Learning Institution (DLI) Letter of Acceptance (LOA)",
-              status: "accepted" as const,
-              statutoryBasis: "IRPR § 211.1 - Acceptance at DLI",
-              notes: "Official unconditional acceptance letter from accredited DLI verified.",
-            },
-            {
-              id: "chk-ca-02",
-              title: "Provincial Attestation Letter (PAL 2024 Mandate)",
-              status: "received" as const,
-              statutoryBasis: "IRCC Ministerial Instructions 2024 - Study Cap Quota",
-              notes: "Provincial study permit allocation quota confirmation under review.",
-            },
-            {
-              id: "chk-ca-03",
-              title: "Guaranteed Investment Certificate (GIC $20,635 Minimum)",
-              status: "received" as const,
-              statutoryBasis: "IRCC Financial Sufficiency Guideline 2024",
-              notes: "Deposit receipt from CDIC-participating Canadian financial institution submitted.",
-            },
-            {
-              id: "chk-ca-04",
-              title: "Primary Passport & Identity Travel Document",
-              status: "accepted" as const,
-              statutoryBasis: "IRPR § 52 - Valid Travel Document",
-              notes: "Machine-readable international passport biodata page verified by caseworker.",
-            },
-            {
-              id: "chk-ca-05",
-              title: "SDS Language Proficiency Result (IELTS 6.0+ / PTE 60+)",
-              status: "required" as const,
-              statutoryBasis: "IRCC Student Direct Stream Language Threshold",
-              notes: "Language test report scorecard taken within last 24 months required.",
-            },
-            {
-              id: "chk-ca-06",
-              title: "IRCC Upfront Medical Examination (eMedical Sheet)",
-              status: "outstanding" as const,
-              statutoryBasis: "IRPR § 29 - Medical Examination of Foreign Nationals",
-              notes: "Panel physician examination sheet with UMI/IME tracking barcode.",
-            },
-          ],
-        },
-      ]
     : [
         {
           id: "primary",
           name: `${clientName} (Primary Applicant)`,
           role: `Principal Beneficiary • ${myCase?.visa_category || "Immigration Matter"}`,
           avatar: clientInitials,
-          items: [
-            {
-              id: "chk-gen-01",
-              title: "Foreign Passport Identity & Photo Page",
-              status: "accepted" as const,
-              statutoryBasis: "Statutory Identity Verification",
-              notes: "Valid travel document registered and verified by case manager.",
-            },
-            {
-              id: "chk-gen-02",
-              title: "Signed Legal Retainer & Representation Form",
-              status: "accepted" as const,
-              statutoryBasis: "Formal Representation Authority",
-              notes: "Executed representation agreement active.",
-            },
-            {
-              id: "chk-gen-03",
-              title: "Biographical Intake Questionnaire",
-              status: "received" as const,
-              statutoryBasis: "Standard Statutory Intake",
-              notes: "Submitted responses under legal review.",
-            },
-            {
-              id: "chk-gen-04",
-              title: "Proof of Financial Support & Banking Statements",
-              status: "required" as const,
-              statutoryBasis: "Financial Sufficiency Criteria",
-              notes: "Recent official statements showing sufficient settlement funds required.",
-            },
-            {
-              id: "chk-gen-05",
-              title: "Supporting Category Credentials & Evidence",
-              status: "outstanding" as const,
-              statutoryBasis: "Pathway Grounding",
-              notes: "Specific pathway documents requested by your assigned case manager.",
-            },
-          ],
+          items: isCanada
+            ? [
+                {
+                  id: "chk-ca-01",
+                  title: "Primary Passport & Identity Travel Document",
+                  ...getRequirementDocStatus("passport"),
+                  statutoryBasis: "IRPR § 52 - Valid Travel Document",
+                },
+                {
+                  id: "chk-ca-02",
+                  title: "Civil Status & Relationship Certificates",
+                  ...getRequirementDocStatus("marriage"),
+                  statutoryBasis: "IRPR § 117 - Statutory Eligibility",
+                },
+                {
+                  id: "chk-ca-03",
+                  title: "Financial Sufficiency & Settlement Funds Evidence",
+                  ...getRequirementDocStatus("financial"),
+                  statutoryBasis: "IRPR § 132 - Sponsorship Undertaking / Financial Sufficiency",
+                },
+                {
+                  id: "chk-ca-04",
+                  title: "Police Clearance Certificate (PCC)",
+                  ...getRequirementDocStatus("police", "outstanding"),
+                  statutoryBasis: "IRPA § 36 - Criminal Admissibility Screening",
+                },
+                {
+                  id: "chk-ca-05",
+                  title: "Medical Examination Sheet (eMedical / IME)",
+                  ...getRequirementDocStatus("medical", "outstanding"),
+                  statutoryBasis: "IRPR § 29 - Medical Examination of Foreign Nationals",
+                },
+              ]
+            : [
+                {
+                  id: "chk-gen-01",
+                  title: "Foreign Passport Identity & Photo Page",
+                  ...getRequirementDocStatus("passport"),
+                  statutoryBasis: "Statutory Identity Verification",
+                },
+                {
+                  id: "chk-gen-02",
+                  title: "Signed Legal Retainer & Representation Form",
+                  ...getRequirementDocStatus("retainer"),
+                  statutoryBasis: "Formal Representation Authority",
+                },
+                {
+                  id: "chk-gen-03",
+                  title: "Biographical Intake Questionnaire",
+                  ...getRequirementDocStatus("intake"),
+                  statutoryBasis: "Standard Statutory Intake",
+                },
+                {
+                  id: "chk-gen-04",
+                  title: "Proof of Financial Support & Banking Statements",
+                  ...getRequirementDocStatus("financial"),
+                  statutoryBasis: "Financial Sufficiency Criteria",
+                },
+                {
+                  id: "chk-gen-05",
+                  title: "Supporting Category Credentials & Evidence",
+                  ...getRequirementDocStatus("credential", "outstanding"),
+                  statutoryBasis: "Pathway Grounding",
+                },
+              ],
         },
+        ...(isSpousalMatter
+          ? [
+              {
+                id: "sponsor",
+                name: "Sponsor / Co-Signer",
+                role: "Statutory Co-Signer & Financial Undertaking",
+                avatar: "SP",
+                items: [
+                  {
+                    id: "chk-sp-01",
+                    title: "Sponsor Identity & Status in Canada (PR / Citizen)",
+                    ...getRequirementDocStatus("sponsor"),
+                    statutoryBasis: "IRPA § 130 - Sponsor Eligibility Criteria",
+                  },
+                  {
+                    id: "chk-sp-02",
+                    title: "Sponsor Notice of Assessment (NOA) & Employment Verification",
+                    ...getRequirementDocStatus("employment"),
+                    statutoryBasis: "IRPR § 133 - Financial Minimum Necessary Income",
+                  },
+                ],
+              },
+            ]
+          : []),
       ];
 
   // In-Progress Questionnaires & Forms
@@ -522,10 +571,10 @@ export function ClientPortal({
       {
         form_id: `form-intake-${myCase.id}`,
         form_title:
-          myCase.case_number === "CASE-US-8841" || myCase.visa_category.includes("EB-1")
+          isDemoCase || myCase.visa_category.includes("EB-1")
             ? "Form I-140 Immigrant Petition Questionnaire"
             : `${myCase.visa_category} Statutory Intake Questionnaire`,
-        completion_percentage: myCase.case_number === "CASE-US-8841" ? 65 : (myCase.readiness_score || 20),
+        completion_percentage: isDemoCase ? 65 : (myCase.readiness_score || 0),
         last_saved_at: new Date().toISOString(),
         applicant_name: myCase.client_name,
         estimated_minutes_remaining: 15,
@@ -533,32 +582,45 @@ export function ClientPortal({
     ];
   });
 
-  // Pending Actions
+  // Pending Actions derived from actual documents
   const [pendingActions, setPendingActions] = useState<ClientPendingActionItem[]>(() => {
     if (!myCase) return [];
-    return [
-      {
-        id: "act-1",
-        title:
-          myCase.case_number === "CASE-US-8841"
-            ? "Re-upload Certified Translation of Foreign Marriage Record"
-            : "Upload Government Passport Identity Page",
-        description:
-          myCase.case_number === "CASE-US-8841"
-            ? "Paralegal flagged blurry signature on translation certification. Please upload a clear 300 DPI scan."
-            : "Submit a high-resolution scan of your biographical passport page matching official records.",
-        due_date: myCase.case_number === "CASE-US-8841" ? "In 2 days (Oct 22)" : (myCase.deadline ? `Before ${myCase.deadline}` : "Pending initial intake"),
-        priority: "high",
-        action_type: "document_upload",
-        target_applicant: myCase.case_number === "CASE-US-8841" ? "Dmitri Rostova (Spouse)" : myCase.client_name,
-      },
-    ];
+    if (isDemoCase) {
+      return [
+        {
+          id: "act-1",
+          title: "Re-upload Certified Translation of Foreign Marriage Record",
+          description: "Paralegal flagged blurry signature on translation certification. Please upload a clear 300 DPI scan.",
+          due_date: "In 2 days (Oct 22)",
+          priority: "high",
+          action_type: "document_upload",
+          target_applicant: "Dmitri Rostova (Spouse)",
+        },
+      ];
+    }
+    const rejectedDoc = documents.find(
+      (d) => (d.status as string) === "rejected" || d.verification_status === "rejected" || d.status === "action_needed"
+    );
+    if (rejectedDoc) {
+      return [
+        {
+          id: `act-${rejectedDoc.id}`,
+          title: `Re-upload ${rejectedDoc.title || "Flagged Document"}`,
+          description: rejectedDoc.verification_notes || rejectedDoc.processing_error || "Please upload an updated scan.",
+          due_date: myCase.deadline ? `Before ${myCase.deadline}` : "Pending re-upload",
+          priority: "high",
+          action_type: "document_upload",
+          target_applicant: myCase.client_name,
+        },
+      ];
+    }
+    return [];
   });
 
   // Upcoming Appointments
   const [upcomingAppointments, setUpcomingAppointments] = useState<ClientAppointmentItem[]>(() => {
     if (!myCase) return [];
-    if (myCase.case_number === "CASE-US-8841") {
+    if (isDemoCase) {
       return [
         {
           id: "appt-1",
@@ -587,116 +649,7 @@ export function ClientPortal({
 
   const missingDocs = documents.filter((d) => d.status === "missing" || d.status === "action_needed");
   const unreadCount = notifications.filter((n) => n.status === "unread").length;
-
-  const overviewRequiredDocuments = [
-    {
-      id: "req-doc-1",
-      title: "Foreign Passport Identity & Photo Page",
-      category: "Identity Travel Document",
-      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
-      statutoryBasis: isCanada ? "IRPR § 52 - Valid Travel Document" : "8 CFR § 204.5(a) Identity Proof",
-      status: "accepted" as const,
-      processingStatus: "completed",
-      verificationStatus: "verified",
-      notes: "Machine-readable international passport biodata page on file with legal counsel. Verified by case manager.",
-    },
-    {
-      id: "req-doc-2",
-      title: "Official Government Civil Marriage Certificate & Registration",
-      category: "Civil Marriage Record",
-      applicant: "Joint (Principal Applicant & Sponsor)",
-      statutoryBasis: isCanada ? "IRPR § 117(1)(a) Spousal Relationship" : "8 CFR § 204.2(a)(2) Spousal Relationship",
-      status: "accepted" as const,
-      processingStatus: "completed",
-      verificationStatus: "verified",
-      notes: "Civil registrar certificate issued by competent authority. Certified copy in file.",
-    },
-    {
-      id: "req-doc-3",
-      title: "Sponsor Permanent Resident (PR) Card & Identity",
-      category: "Sponsor Legal Status",
-      applicant: "Sponsor / Spouse",
-      statutoryBasis: isCanada ? "IRPA § 130 Sponsor Eligibility Criteria" : "INA § 204(a)(1)(A) Sponsor Status",
-      status: "accepted" as const,
-      processingStatus: "completed",
-      verificationStatus: "verified",
-      notes: "Valid permanent residency verification and statutory identification documents on file.",
-    },
-    {
-      id: "req-doc-4",
-      title: "Sponsor Employment Verification Letter & Recent Paystubs",
-      category: "Financial Support & Undertaking",
-      applicant: "Sponsor / Spouse",
-      statutoryBasis: isCanada ? "IRPR § 132 Sponsorship Undertaking Sufficiency" : "8 CFR § 213a Affidavit of Support",
-      status: "under_review" as const,
-      processingStatus: "completed",
-      verificationStatus: "pending",
-      notes: "Official employer verification letter and recent income statements under legal review.",
-    },
-    {
-      id: "req-doc-5",
-      title: "Post-Secondary Educational Credentials & Academic Transcripts",
-      category: "Academic Records",
-      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
-      statutoryBasis: isCanada ? "IRCC Express Entry / Credential Assessment" : "8 CFR § 204.5(k)(2) Educational Records",
-      status: "under_review" as const,
-      processingStatus: "completed",
-      verificationStatus: "pending",
-      notes: "Educational credentials and official academic transcripts undergoing legal team verification.",
-    },
-    {
-      id: "req-doc-6",
-      title: "Certified English Translation of Foreign Marriage Record",
-      category: "Foreign Language Translation",
-      applicant: "Joint (Principal Applicant & Sponsor)",
-      statutoryBasis: isCanada ? "IRCC Translation Guidelines" : "8 CFR § 103.2(b)(3) Translation Competence",
-      status: "rejected" as const,
-      processingStatus: "completed",
-      verificationStatus: "rejected",
-      rejectionReasonCode: "MISSING_PAGES",
-      rejectionReasonLabel: "Missing Translator Competence Declaration",
-      clientExplanation: "The foreign language civil record was uploaded without the certified translator's formal sworn declaration of competence. Please re-upload with declaration.",
-      notes: "Correction required immediately before packaging.",
-    },
-    {
-      id: "req-doc-7",
-      title: "SDS Language Proficiency Test Scorecard (IELTS / CELPIP / PTE)",
-      category: "Language Evaluation",
-      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
-      statutoryBasis: isCanada ? "IRCC SDS / Express Entry Language Threshold" : "Statutory Language Requirements",
-      status: "uploaded" as const,
-      processingStatus: "processing",
-      verificationStatus: "unverified",
-      notes: "Official language examination scorecard uploaded; automated OCR verification active.",
-    },
-    {
-      id: "req-doc-8",
-      title: "Police Clearance Certificate (PCC) - India & RCMP Canada",
-      category: "Character & Security Clearance",
-      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
-      statutoryBasis: isCanada ? "IRPA § 36 Criminal Admissibility Screening" : "INA § 212(a)(2) Character Clearance",
-      status: "required" as const,
-      notes: "Original passport office PCC and statutory fingerprints clearance certificate required.",
-    },
-    {
-      id: "req-doc-9",
-      title: "Relationship Evidence Dossier (Chat Logs, Photos, Joint Lease)",
-      category: "Bona Fide Relationship Evidence",
-      applicant: "Joint (Principal Applicant & Sponsor)",
-      statutoryBasis: isCanada ? "IRPR § 4 Bad Faith / Convenience Marriage Bar" : "8 CFR § 204.2(a)(1) Genuine Relationship",
-      status: "required" as const,
-      notes: "Joint residential lease agreement, wedding documentation, and cohabitation evidence required.",
-    },
-    {
-      id: "req-doc-10",
-      title: "IRCC Upfront Medical Examination (eMedical Sheet / IME)",
-      category: "Health & Medical Admissibility",
-      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
-      statutoryBasis: isCanada ? "IRPR § 29 Medical Examination Requirements" : "INA § 212(a)(1) Public Health Examination",
-      status: "required" as const,
-      notes: "Panel physician examination sheet with UMI/IME tracking barcode.",
-    },
-  ];
+  const overviewDocuments = documents;
 
   // Milestones progression
   const milestones = isCanada
@@ -727,9 +680,9 @@ export function ClientPortal({
     {
       key: "documents" as const,
       label: t.navDocuments,
-      buttonText: `📄 ${t.navDocuments} (${documents.length || 8})`,
+      buttonText: `📄 ${t.navDocuments} (${documents.length})`,
       icon: "📄",
-      count: documents.length || 8,
+      count: documents.length,
     },
     {
       key: "initial_sheet" as const,
@@ -1673,92 +1626,156 @@ export function ClientPortal({
               </div>
 
               {/* Visa File & Composition Highlights */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                  gap: "16px",
-                }}
-              >
-                {/* Visa File Being Made */}
+              {!myCase || !myCase.visa_category ? (
                 <div
+                  data-testid="overview-visa-scope-pending"
                   style={{
                     background: "#F8FAF9",
-                    border: "1px solid #DCE5E1",
+                    border: "1.5px dashed #CBD5E1",
                     borderRadius: "10px",
-                    padding: "16px 18px",
+                    padding: "24px 20px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textAlign: "center",
+                    gap: "8px",
                   }}
                 >
-                  <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
-                    VISA FILE IN PREPARATION
+                  <div style={{ fontSize: "28px" }}>📋</div>
+                  <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
+                    Class of Application Pending Selection
+                  </div>
+                  <p style={{ margin: 0, fontSize: "12px", color: "#64748B", maxWidth: "560px", lineHeight: 1.5 }}>
+                    Your legal matter is active. The supervising firm owner or case manager is reviewing your file and will assign the specific visa classification stream shortly. Once selected, your authorized file scope, statutory petition forms, and matter composition will appear here.
+                  </p>
+                  <span
+                    style={{
+                      marginTop: "4px",
+                      background: "#FEF3C7",
+                      color: "#92400E",
+                      border: "1px solid #FCD34D",
+                      padding: "4px 12px",
+                      borderRadius: "16px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ⏳ Awaiting Owner / Manager Classification
                   </span>
-                  <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
-                    {myCase?.visa_category || "In-Canada Spousal Sponsorship (SCLPC / IRCC)"}
-                  </div>
-                  <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.5 }}>
-                    Authority: <strong>{myCase?.jurisdiction || "Immigration, Refugees and Citizenship Canada (IRCC)"}</strong><br />
-                    Processing Office: <strong>CPC-Mississauga / IRCC Case Processing Centre</strong><br />
-                    File Docket: <strong>#{myCase?.case_number || "CASE-CA-2026-SP"}</strong>
-                  </div>
                 </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                    gap: "16px",
+                  }}
+                >
+                  {/* Visa File In Preparation */}
+                  <div
+                    style={{
+                      background: "#F8FAF9",
+                      border: "1px solid #DCE5E1",
+                      borderRadius: "10px",
+                      padding: "16px 18px",
+                    }}
+                  >
+                    <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
+                      VISA FILE IN PREPARATION
+                    </span>
+                    <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
+                      {myCase.visa_category}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.5 }}>
+                      Authority: <strong>{myCase.jurisdiction || (isCanada ? "Immigration, Refugees and Citizenship Canada (IRCC)" : "Immigration Authority")}</strong><br />
+                      Processing Office: <strong>{myCase.assigned_manager ? `Supervised by ${myCase.assigned_manager}` : "IRCC Case Processing Centre"}</strong><br />
+                      File Docket: <strong>#{myCase.case_number || "PENDING"}</strong>
+                    </div>
+                  </div>
 
-                {/* Family Members Included */}
-                <div
-                  style={{
-                    background: "#F8FAF9",
-                    border: "1px solid #DCE5E1",
-                    borderRadius: "10px",
-                    padding: "16px 18px",
-                  }}
-                >
-                  <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
-                    MATTER COMPOSITION (FAMILY MEMBERS)
-                  </span>
-                  <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
-                    Matter Composition (Family Members)
+                  {/* Family Members Included */}
+                  <div
+                    style={{
+                      background: "#F8FAF9",
+                      border: "1px solid #DCE5E1",
+                      borderRadius: "10px",
+                      padding: "16px 18px",
+                    }}
+                  >
+                    <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
+                      MATTER COMPOSITION
+                    </span>
+                    <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
+                      {myCase.visa_category.toLowerCase().includes("spous") || myCase.visa_category.toLowerCase().includes("family") || myCase.visa_category.toLowerCase().includes("sclpc")
+                        ? "Principal Applicant & Sponsor"
+                        : "Primary Retained Client"}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.5 }}>
+                      • <strong>{clientName || "Primary Applicant"}</strong> (Principal Beneficiary / Retained Client)<br />
+                      {(myCase.visa_category.toLowerCase().includes("spous") || myCase.visa_category.toLowerCase().includes("family") || myCase.visa_category.toLowerCase().includes("sclpc")) && (
+                        <>
+                          • <strong>Sponsor / Spouse</strong> (Canadian Co-Signer &amp; Financial Undertaking)<br />
+                        </>
+                      )}
+                      • Declared Immediate Family Members under statutory compliance
+                    </div>
                   </div>
-                  <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.5 }}>
-                    • <strong>{clientName || "Primary Applicant"}</strong> (Principal Beneficiary / Retained Client)<br />
-                    • <strong>Sponsor / Spouse</strong> (Canadian Co-Signer &amp; Financial Undertaking)<br />
-                    • Declared Immediate Family Members under statutory compliance (Form IMM 5406)
-                  </div>
-                </div>
 
-                {/* Statutory Forms in Preparation */}
-                <div
-                  style={{
-                    background: "#F8FAF9",
-                    border: "1px solid #DCE5E1",
-                    borderRadius: "10px",
-                    padding: "16px 18px",
-                  }}
-                >
-                  <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
-                    STATUTORY FORMS COMPILED
-                  </span>
-                  <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
-                    6 Government Petition Forms
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
-                    {["IMM 0008", "IMM 5532", "IMM 5669", "IMM 5406", "IMM 1344", "SOWP"].map((formName) => (
-                      <span
-                        key={formName}
-                        style={{
-                          background: "#EAF6F0",
-                          color: "#0D6866",
-                          border: "1px solid #B9DED4",
-                          borderRadius: "4px",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          padding: "2px 7px",
-                        }}
-                      >
-                        {formName}
-                      </span>
-                    ))}
+                  {/* Statutory Forms in Preparation */}
+                  <div
+                    style={{
+                      background: "#F8FAF9",
+                      border: "1px solid #DCE5E1",
+                      borderRadius: "10px",
+                      padding: "16px 18px",
+                    }}
+                  >
+                    <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
+                      STATUTORY FORMS COMPILED
+                    </span>
+                    {(() => {
+                      const vCat = myCase.visa_category.toLowerCase();
+                      const isSpousal = vCat.includes("spous") || vCat.includes("family") || vCat.includes("sclpc");
+                      const isStudyPermit = vCat.includes("study") || vCat.includes("student");
+                      const isUS = (myCase.jurisdiction || "").toLowerCase().includes("united states") || (myCase.jurisdiction || "").toLowerCase().includes("uscis") || vCat.includes("eb-") || vCat.includes("o-1");
+                      const forms = isSpousal
+                        ? ["IMM 0008", "IMM 5532", "IMM 5669", "IMM 5406", "IMM 1344", "SOWP"]
+                        : isStudyPermit
+                        ? ["IMM 1294", "IMM 5645", "IMM 5257"]
+                        : isUS
+                        ? ["Form I-140", "Form I-485", "Form I-765", "Form I-131"]
+                        : ["IMM 5257", "IMM 5645"];
+
+                      return (
+                        <>
+                          <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
+                            {forms.length} Government Petition Forms
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
+                            {forms.map((formName) => (
+                              <span
+                                key={formName}
+                                style={{
+                                  background: "#EAF6F0",
+                                  color: "#0D6866",
+                                  border: "1px solid #B9DED4",
+                                  borderRadius: "4px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  padding: "2px 7px",
+                                }}
+                              >
+                                {formName}
+                              </span>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* =========================================================================
@@ -1793,16 +1810,16 @@ export function ClientPortal({
                     </h3>
                     <span
                       style={{
-                        background: "#EAF6F0",
-                        color: "#0D6866",
+                        background: overviewDocuments.length > 0 ? "#EAF6F0" : "#F1F5F9",
+                        color: overviewDocuments.length > 0 ? "#0D6866" : "#64748B",
                         fontSize: "11px",
                         fontWeight: 700,
                         padding: "2px 8px",
                         borderRadius: "20px",
-                        border: "1px solid #B9DED4",
+                        border: `1px solid ${overviewDocuments.length > 0 ? "#B9DED4" : "#CBD5E1"}`,
                       }}
                     >
-                      {overviewRequiredDocuments.length} Documents Mapped
+                      {overviewDocuments.length} Document{overviewDocuments.length === 1 ? "" : "s"} Uploaded
                     </span>
                   </div>
                   <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C" }}>
@@ -1853,278 +1870,331 @@ export function ClientPortal({
                 </div>
               </div>
 
-              {/* Filter Pills */}
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-                {[
-                  { key: "all", label: `All Documents (${overviewRequiredDocuments.length})` },
-                  { key: "action_needed", label: `Action Needed / Missing (${overviewRequiredDocuments.filter((d) => d.status === "required" || d.status === "rejected").length})` },
-                  { key: "under_review", label: `Under Review (${overviewRequiredDocuments.filter((d) => d.status === "under_review" || d.status === "uploaded").length})` },
-                  { key: "accepted", label: `Accepted & Verified (${overviewRequiredDocuments.filter((d) => d.status === "accepted").length})` },
-                  { key: "rejected", label: `Correction Required (${overviewRequiredDocuments.filter((d) => d.status === "rejected").length})` },
-                ].map((flt) => {
-                  const isActive = overviewDocFilter === flt.key;
-                  return (
-                    <button
-                      key={flt.key}
-                      type="button"
-                      onClick={() => setOverviewDocFilter(flt.key)}
-                      style={{
-                        padding: "6px 12px",
-                        fontSize: "12px",
-                        fontWeight: isActive ? 700 : 500,
-                        borderRadius: "20px",
-                        border: isActive ? "1.5px solid #0D6866" : "1px solid #DCE5E1",
-                        background: isActive ? "#0D6866" : "#FFFFFF",
-                        color: isActive ? "#FFFFFF" : "#445451",
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      {flt.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Document List Rows */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {overviewRequiredDocuments
-                  .filter((d) => {
-                    if (overviewDocFilter === "action_needed") return d.status === "required" || d.status === "rejected";
-                    if (overviewDocFilter === "under_review") return d.status === "under_review" || d.status === "uploaded";
-                    if (overviewDocFilter === "accepted") return d.status === "accepted";
-                    if (overviewDocFilter === "rejected") return d.status === "rejected";
-                    return true;
-                  })
-                  .map((doc) => {
-                    const isAccepted = doc.status === "accepted";
-                    const isRejected = doc.status === "rejected";
-                    const isReview = doc.status === "under_review";
-                    const isUploaded = doc.status === "uploaded";
-                    const isRequired = doc.status === "required";
-
-                    return (
-                      <div
-                        key={doc.id}
-                        style={{
-                          background: isRejected ? "#FFFDFD" : isAccepted ? "#FAFCFA" : "#FFFFFF",
-                          border: `1px solid ${isRejected ? "#FECACA" : isAccepted ? "#B9DED4" : "#DCE5E1"}`,
-                          borderRadius: "10px",
-                          padding: "14px 18px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "10px",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
-                          <div style={{ flex: 1, minWidth: "260px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
-                              <strong style={{ fontSize: "14px", color: "#063C3D" }}>
-                                {doc.title}
-                              </strong>
-                              <span
-                                style={{
-                                  fontSize: "11px",
-                                  padding: "2px 8px",
-                                  borderRadius: "4px",
-                                  background: "#EAF6F0",
-                                  color: "#0D6866",
-                                  border: "1px solid #B9DED4",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {doc.category}
-                              </span>
-                            </div>
-
-                            <div style={{ fontSize: "12px", color: "#64748B", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                              <span>👤 <strong>Applicant:</strong> {doc.applicant}</span>
-                              <span>⚖️ <strong>Statutory Basis:</strong> {doc.statutoryBasis}</span>
-                            </div>
-                            <div style={{ fontSize: "12px", color: "#475569", marginTop: "3px", fontStyle: "italic" }}>
-                              {doc.notes}
-                            </div>
-                          </div>
-
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
-                            {isAccepted && (
-                              <span
-                                style={{
-                                  background: "#DCFCE7",
-                                  color: "#166534",
-                                  border: "1px solid #86EFAC",
-                                  padding: "4px 10px",
-                                  borderRadius: "6px",
-                                  fontSize: "12px",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                ✓ ACCEPTED &amp; VERIFIED
-                              </span>
-                            )}
-                            {isReview && (
-                              <span
-                                style={{
-                                  background: "#EAF6F0",
-                                  color: "#0D6866",
-                                  border: "1px solid #B9DED4",
-                                  padding: "4px 10px",
-                                  borderRadius: "6px",
-                                  fontSize: "12px",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                ⏳ UNDER LEGAL REVIEW
-                              </span>
-                            )}
-                            {isUploaded && (
-                              <span
-                                style={{
-                                  background: "#E0F2FE",
-                                  color: "#0369A1",
-                                  border: "1px solid #BAE6FD",
-                                  padding: "4px 10px",
-                                  borderRadius: "6px",
-                                  fontSize: "12px",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                🔄 UPLOADED (OCR PROCESSING)
-                              </span>
-                            )}
-                            {isRejected && (
-                              <span
-                                style={{
-                                  background: "#FEE2E2",
-                                  color: "#991B1B",
-                                  border: "1px solid #FECACA",
-                                  padding: "4px 10px",
-                                  borderRadius: "6px",
-                                  fontSize: "12px",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                ⚠️ CORRECTION REQUIRED
-                              </span>
-                            )}
-                            {isRequired && (
-                              <span
-                                style={{
-                                  background: "#FEF3C7",
-                                  color: "#92400E",
-                                  border: "1px solid #FDE68A",
-                                  padding: "4px 10px",
-                                  borderRadius: "6px",
-                                  fontSize: "12px",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                📋 ACTION NEEDED / MISSING
-                              </span>
-                            )}
-
-                            {(isRequired || isRejected) && (
-                              <button
-                                type="button"
-                                onClick={onOpenUploadModal}
-                                style={{
-                                  background: isRejected ? "#991B1B" : "#0D6866",
-                                  color: "#FFFFFF",
-                                  border: "none",
-                                  borderRadius: "6px",
-                                  padding: "5px 12px",
-                                  fontSize: "12px",
-                                  fontWeight: 650,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {isRejected ? "Re-Upload Document →" : "Upload File →"}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Progression Stepper */}
-                        <div
+              {overviewDocuments.length === 0 ? (
+                <div
+                  data-testid="no-documents-uploaded"
+                  style={{
+                    textAlign: "center",
+                    padding: "36px 20px",
+                    background: "#F8FAF9",
+                    border: "1.5px dashed #B9DED4",
+                    borderRadius: "10px",
+                  }}
+                >
+                  <div style={{ fontSize: "36px", marginBottom: "10px" }}>📁</div>
+                  <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", fontWeight: 700, color: "#063C3D" }}>
+                    No Evidentiary Documents Uploaded Yet
+                  </h4>
+                  <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#6E7F7C", maxWidth: "480px", marginInline: "auto" }}>
+                    Your document collection is currently empty. Upload your identity, civil status, or financial evidence files to initiate automated AI OCR extraction and legal verification.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onOpenUploadModal}
+                    style={{
+                      background: "#0D6866",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "9px 20px",
+                      fontSize: "13px",
+                      fontWeight: 650,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
+                    }}
+                  >
+                    + Upload First Evidence File
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Filter Pills */}
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+                    {[
+                      { key: "all", label: `All Documents (${overviewDocuments.length})` },
+                      {
+                        key: "action_needed",
+                        label: `Action Needed (${overviewDocuments.filter((d) => d.status === "action_needed" || (d.status as string) === "rejected" || d.verification_status === "rejected").length})`,
+                      },
+                      {
+                        key: "under_review",
+                        label: `Under Review (${overviewDocuments.filter((d) => d.status === "under_review" || d.verification_status === "under_review" || (d.status as string) === "in_review" || (d.verification_status as string) === "in_review" || d.processing_status === "processing").length})`,
+                      },
+                      {
+                        key: "accepted",
+                        label: `Accepted & Verified (${overviewDocuments.filter((d) => d.status === "verified" || d.verification_status === "verified").length})`,
+                      },
+                      {
+                        key: "rejected",
+                        label: `Correction Required (${overviewDocuments.filter((d) => (d.status as string) === "rejected" || d.verification_status === "rejected" || d.status === "action_needed").length})`,
+                      },
+                    ].map((flt) => {
+                      const isActive = overviewDocFilter === flt.key;
+                      return (
+                        <button
+                          key={flt.key}
+                          type="button"
+                          onClick={() => setOverviewDocFilter(flt.key)}
                           style={{
-                            background: "#F8FAF9",
-                            border: "1px solid #E2E8F0",
-                            borderRadius: "8px",
-                            padding: "8px 14px",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            fontSize: "11px",
-                            color: "#64748B",
-                            overflowX: "auto",
+                            padding: "6px 12px",
+                            fontSize: "12px",
+                            fontWeight: isActive ? 700 : 500,
+                            borderRadius: "20px",
+                            border: isActive ? "1.5px solid #0D6866" : "1px solid #DCE5E1",
+                            background: isActive ? "#0D6866" : "#FFFFFF",
+                            color: isActive ? "#FFFFFF" : "#445451",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
                           }}
                         >
-                          <span style={{ fontWeight: 650, color: "#063C3D" }}>Pipeline:</span>
-                          <span style={{ color: isRequired ? "#64748B" : "#0D6866", fontWeight: isRequired ? 500 : 700 }}>
-                            {isRequired ? "○ 1. Awaiting Upload" : "● 1. Uploaded"}
-                          </span>
-                          <span>→</span>
-                          <span style={{ color: isAccepted || isReview || isUploaded ? "#0D6866" : "#94A3B8", fontWeight: isAccepted || isReview || isUploaded ? 700 : 500 }}>
-                            {isUploaded ? "🔄 2. AI OCR Processing" : isAccepted || isReview ? "● 2. OCR Extracted" : "○ 2. OCR Pending"}
-                          </span>
-                          <span>→</span>
-                          <span style={{ color: isAccepted || isReview ? "#0D6866" : isRejected ? "#DC2626" : "#94A3B8", fontWeight: isAccepted || isReview || isRejected ? 700 : 500 }}>
-                            {isRejected ? "⚠️ 3. Legal Flagged" : isAccepted ? "● 3. Attorney Approved" : isReview ? "⏳ 3. Attorney Review" : "○ 3. Legal Review"}
-                          </span>
-                          <span>→</span>
-                          <span style={{ color: isAccepted ? "#166534" : "#94A3B8", fontWeight: isAccepted ? 800 : 500 }}>
-                            {isAccepted ? "✓ 4. Verified for Filing" : "○ 4. Filing Ready"}
-                          </span>
-                        </div>
+                          {flt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                        {/* Correction Notice Banner if Rejected */}
-                        {isRejected && (doc as any).clientExplanation && (
+                  {/* Document List Rows */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {overviewDocuments
+                      .filter((doc) => {
+                        const isAccepted = doc.status === "verified" || doc.verification_status === "verified";
+                        const isRejected = (doc.status as string) === "rejected" || doc.verification_status === "rejected" || doc.status === "action_needed";
+                        const isReview = doc.status === "under_review" || doc.verification_status === "under_review" || (doc.status as string) === "in_review" || (doc.verification_status as string) === "in_review" || doc.processing_status === "processing";
+                        if (overviewDocFilter === "action_needed") return isRejected || doc.status === "missing";
+                        if (overviewDocFilter === "under_review") return isReview;
+                        if (overviewDocFilter === "accepted") return isAccepted;
+                        if (overviewDocFilter === "rejected") return isRejected;
+                        return true;
+                      })
+                      .map((doc) => {
+                        const isAccepted = doc.status === "verified" || doc.verification_status === "verified";
+                        const isRejected = (doc.status as string) === "rejected" || doc.verification_status === "rejected" || doc.status === "action_needed";
+                        const isReview = doc.status === "under_review" || doc.verification_status === "under_review" || (doc.status as string) === "in_review" || (doc.verification_status as string) === "in_review";
+                        const isUploaded = (doc.status as string) === "uploaded" || doc.processing_status === "processing" || doc.processing_status === "pending";
+                        const isRequired = doc.status === "missing";
+
+                        return (
                           <div
+                            key={doc.id}
                             style={{
-                              background: "#FEF2F2",
-                              border: "1px solid #FECACA",
-                              borderRadius: "8px",
-                              padding: "10px 14px",
-                              fontSize: "12px",
-                              color: "#991B1B",
+                              background: isRejected ? "#FFFDFD" : isAccepted ? "#FAFCFA" : "#FFFFFF",
+                              border: `1px solid ${isRejected ? "#FECACA" : isAccepted ? "#B9DED4" : "#DCE5E1"}`,
+                              borderRadius: "10px",
+                              padding: "14px 18px",
                               display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
+                              flexDirection: "column",
                               gap: "10px",
-                              flexWrap: "wrap",
                             }}
                           >
-                            <div>
-                              <strong>Caseworker Action Notice:</strong>{" "}
-                              {(doc as any).rejectionReasonLabel && (
-                                <span style={{ fontWeight: 700, textDecoration: "underline", marginRight: "6px" }}>
-                                  {(doc as any).rejectionReasonLabel}:
-                                </span>
-                              )}
-                              {(doc as any).clientExplanation}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
+                              <div style={{ flex: 1, minWidth: "260px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
+                                  <strong style={{ fontSize: "14px", color: "#063C3D" }}>
+                                    {doc.title || doc.filename}
+                                  </strong>
+                                  <span
+                                    style={{
+                                      fontSize: "11px",
+                                      padding: "2px 8px",
+                                      borderRadius: "4px",
+                                      background: "#EAF6F0",
+                                      color: "#0D6866",
+                                      border: "1px solid #B9DED4",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {(doc.category || "evidentiary").replace(/_/g, " ")}
+                                  </span>
+                                </div>
+
+                                <div style={{ fontSize: "12px", color: "#64748B", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                                  <span>👤 <strong>Applicant:</strong> {doc.proposed_applicant_name || doc.uploaded_by || myCase?.client_name || "Primary Applicant"}</span>
+                                  <span>⚖️ <strong>Statutory Basis:</strong> Evidentiary Proof</span>
+                                </div>
+                                <div style={{ fontSize: "12px", color: "#475569", marginTop: "3px", fontStyle: "italic" }}>
+                                  {doc.verification_notes || doc.processing_error || (isAccepted ? "Verified by legal team." : "File received on record.")}
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+                                {isAccepted && (
+                                  <span
+                                    style={{
+                                      background: "#DCFCE7",
+                                      color: "#166534",
+                                      border: "1px solid #86EFAC",
+                                      padding: "4px 10px",
+                                      borderRadius: "6px",
+                                      fontSize: "12px",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    ✓ ACCEPTED &amp; VERIFIED
+                                  </span>
+                                )}
+                                {isReview && (
+                                  <span
+                                    style={{
+                                      background: "#EAF6F0",
+                                      color: "#0D6866",
+                                      border: "1px solid #B9DED4",
+                                      padding: "4px 10px",
+                                      borderRadius: "6px",
+                                      fontSize: "12px",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    ⏳ UNDER LEGAL REVIEW
+                                  </span>
+                                )}
+                                {isUploaded && (
+                                  <span
+                                    style={{
+                                      background: "#E0F2FE",
+                                      color: "#0369A1",
+                                      border: "1px solid #BAE6FD",
+                                      padding: "4px 10px",
+                                      borderRadius: "6px",
+                                      fontSize: "12px",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    🔄 UPLOADED (OCR PROCESSING)
+                                  </span>
+                                )}
+                                {isRejected && (
+                                  <span
+                                    style={{
+                                      background: "#FEE2E2",
+                                      color: "#991B1B",
+                                      border: "1px solid #FECACA",
+                                      padding: "4px 10px",
+                                      borderRadius: "6px",
+                                      fontSize: "12px",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    ⚠️ CORRECTION REQUIRED
+                                  </span>
+                                )}
+                                {isRequired && (
+                                  <span
+                                    style={{
+                                      background: "#FEF3C7",
+                                      color: "#92400E",
+                                      border: "1px solid #FDE68A",
+                                      padding: "4px 10px",
+                                      borderRadius: "6px",
+                                      fontSize: "12px",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    📋 ACTION NEEDED / MISSING
+                                  </span>
+                                )}
+
+                                {(isRequired || isRejected) && (
+                                  <button
+                                    type="button"
+                                    onClick={onOpenUploadModal}
+                                    style={{
+                                      background: isRejected ? "#991B1B" : "#0D6866",
+                                      color: "#FFFFFF",
+                                      border: "none",
+                                      borderRadius: "6px",
+                                      padding: "5px 12px",
+                                      fontSize: "12px",
+                                      fontWeight: 650,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {isRejected ? "Re-Upload Document →" : "Upload File →"}
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={onOpenUploadModal}
+
+                            {/* Progression Stepper */}
+                            <div
                               style={{
-                                background: "#991B1B",
-                                color: "#FFF",
-                                border: "none",
-                                borderRadius: "6px",
-                                padding: "4px 10px",
+                                background: "#F8FAF9",
+                                border: "1px solid #E2E8F0",
+                                borderRadius: "8px",
+                                padding: "8px 14px",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
                                 fontSize: "11px",
-                                fontWeight: 700,
-                                cursor: "pointer",
+                                color: "#64748B",
+                                overflowX: "auto",
                               }}
                             >
-                              Upload Corrected File →
-                            </button>
+                              <span style={{ fontWeight: 650, color: "#063C3D" }}>Pipeline:</span>
+                              <span style={{ color: isRequired ? "#64748B" : "#0D6866", fontWeight: isRequired ? 500 : 700 }}>
+                                {isRequired ? "○ 1. Awaiting Upload" : "● 1. Uploaded"}
+                              </span>
+                              <span>→</span>
+                              <span style={{ color: isAccepted || isReview || isUploaded ? "#0D6866" : "#94A3B8", fontWeight: isAccepted || isReview || isUploaded ? 700 : 500 }}>
+                                {isUploaded ? "🔄 2. AI OCR Processing" : isAccepted || isReview ? "● 2. OCR Extracted" : "○ 2. OCR Pending"}
+                              </span>
+                              <span>→</span>
+                              <span style={{ color: isAccepted || isReview ? "#0D6866" : isRejected ? "#DC2626" : "#94A3B8", fontWeight: isAccepted || isReview || isRejected ? 700 : 500 }}>
+                                {isRejected ? "⚠️ 3. Legal Flagged" : isAccepted ? "● 3. Attorney Approved" : isReview ? "⏳ 3. Attorney Review" : "○ 3. Legal Review"}
+                              </span>
+                              <span>→</span>
+                              <span style={{ color: isAccepted ? "#166534" : "#94A3B8", fontWeight: isAccepted ? 800 : 500 }}>
+                                {isAccepted ? "✓ 4. Verified for Filing" : "○ 4. Filing Ready"}
+                              </span>
+                            </div>
+
+                            {/* Correction Notice Banner if Rejected */}
+                            {isRejected && (doc.verification_notes || doc.processing_error) && (
+                              <div
+                                style={{
+                                  background: "#FEF2F2",
+                                  border: "1px solid #FECACA",
+                                  borderRadius: "8px",
+                                  padding: "10px 14px",
+                                  fontSize: "12px",
+                                  color: "#991B1B",
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <div>
+                                  <strong>Caseworker Action Notice:</strong>{" "}
+                                  <span style={{ fontWeight: 700, textDecoration: "underline", marginRight: "6px" }}>
+                                    Correction Required:
+                                  </span>
+                                  {doc.verification_notes || doc.processing_error}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={onOpenUploadModal}
+                                  style={{
+                                    background: "#991B1B",
+                                    color: "#FFF",
+                                    border: "none",
+                                    borderRadius: "6px",
+                                    padding: "4px 10px",
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Upload Corrected File →
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
+                        );
+                      })}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* =========================================================================
@@ -3527,18 +3597,14 @@ export function ClientPortal({
 
               {/* Applicant Filter Tabs */}
               <div style={{ display: "flex", gap: "8px", marginTop: "16px", flexWrap: "wrap" }}>
-                {(isDemoCase
-                  ? [
-                      { key: "all", label: "All Family Members", count: 10 },
-                      { key: "primary", label: "Dr. Elena Rostova (Primary)", count: 5 },
-                      { key: "spouse", label: "Dmitri Rostov (Spouse)", count: 3 },
-                      { key: "child", label: "Sofia Rostova (Child)", count: 2 },
-                    ]
-                  : [
-                      { key: "all", label: "All Applicants", count: checklistCount },
-                      { key: "primary", label: `${clientName} (Primary)`, count: checklistCount },
-                    ]
-                ).map((flt) => {
+                {[
+                  { key: "all", label: "All Applicants", count: applicantRequirementGroups.reduce((acc, g) => acc + g.items.length, 0) },
+                  ...applicantRequirementGroups.map((g) => ({
+                    key: g.id,
+                    label: g.name,
+                    count: g.items.length,
+                  })),
+                ].map((flt) => {
                   const active = checklistApplicantFilter === flt.key;
                   return (
                     <button
@@ -3690,11 +3756,11 @@ export function ClientPortal({
                               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                 <span style={{ fontSize: "14px" }}>⚠️</span>
                                 <strong style={{ fontSize: "12px", color: "#B91C1C" }}>
-                                  Correction Required: [{it.rejectionReasonCode}] {it.rejectionReasonLabel}
+                                  Correction Required{it.rejectionReasonCode ? `: [${it.rejectionReasonCode}] ${it.rejectionReasonLabel || ""}` : ""}
                                 </strong>
                               </div>
                               <p style={{ margin: "0", fontSize: "12px", color: "#7F1D1D", lineHeight: "1.4" }}>
-                                <strong>Caseworker Explanation:</strong> {it.clientExplanation}
+                                <strong>Caseworker Explanation:</strong> {it.clientExplanation || it.notes || "Please upload an updated scan satisfying statutory requirements."}
                               </p>
                               <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
                                 <Button

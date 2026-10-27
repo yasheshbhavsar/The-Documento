@@ -463,3 +463,56 @@ def test_cross_tenant_document_isolation(client, auth_headers):
     # Org B attempts to download Org A document
     dl_res = client.get(f"/api/v1/documents/{doc['id']}/download", headers=org_b_headers)
     assert dl_res.status_code == 403
+
+
+def test_bilingual_passport_ocr_clean_and_name_extraction():
+    """Validates OCR space preservation, bilingual hallucination stripping, and visual name extraction."""
+    from backend.app.ocr.engine import clean_ocr_text, PageExtractionResult
+    from backend.app.extraction.service import extract_structured_fields
+
+    # 1. OCR text cleaning tests
+    assert clean_ocr_text("f/Given Narne(s)") == "Given Name(s)"
+    assert clean_ocr_text("e/Place ofBirth") == "Place of Birth"
+    assert clean_ocr_text("VIRAMGAMAHMEDABAD,GUJARAT") == "VIRAMGAM AHMEDABAD, GUJARAT"
+    assert clean_ocr_text("weret f Place cr Bith") == "Place of Birth"
+
+    # 2. Structured field extraction test
+    noisy_text = """
+    REPUBLIC OF INDIA
+    PASSPORT
+    Passport No: Z9876543
+    उपनाम / Surname
+    PATEL
+    f/Given Narne(s)
+    HIMANSHU DAHYABHAI
+    जन्म स्थान / Place of Birth
+    VIRAMGAM AHMEDABAD, GUJARAT
+    जन्म तिथि / Date of Birth
+    05/08/1984
+    """
+
+    page = PageExtractionResult(
+        page_number=1,
+        text=noisy_text,
+        ocr_applied=True,
+        ocr_confidence=0.92,
+        blocks=[],
+        width=612.0,
+        height=792.0,
+    )
+
+    fields = extract_structured_fields(
+        pages=[page],
+        organization_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        category="identity_passport",
+    )
+    field_map = {f.field_name: f.normalized_value for f in fields}
+
+    assert field_map.get("surname") == "PATEL"
+    assert field_map.get("given_names") == "Himanshu Dahyabhai"
+    assert field_map.get("full_name") == "Himanshu Dahyabhai Patel"
+    assert field_map.get("full_name") != "Patel F"
+    assert "Viramgam" in field_map.get("place_of_birth", "")
+    assert "Ahmedabad" in field_map.get("place_of_birth", "")
+

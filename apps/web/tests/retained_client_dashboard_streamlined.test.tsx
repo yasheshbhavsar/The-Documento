@@ -12,10 +12,27 @@ import {
   FIXTURE_NOTIFICATIONS,
   FIXTURE_INVOICES,
 } from "../lib/api";
+import { ImmigrationCase } from "../lib/types";
+
+const SPOUSAL_CASE_FIXTURE: ImmigrationCase = {
+  id: "case-ca-spousal",
+  case_number: "CASE-CA-2026-SP",
+  title: "In-Canada Spousal Sponsorship (Family Class / SCLPC)",
+  client_id: "client-01",
+  client_name: "Primary Applicant",
+  jurisdiction: "Canada (IRCC)",
+  visa_category: "In-Canada Spousal Sponsorship (Family Class / SCLPC)",
+  status: "gathering",
+  readiness_score: 85,
+  assigned_manager: "Sarah Jenkins, Esq.",
+  deadline: "2026-12-15",
+  organization_id: "org-01",
+  created_at: "2026-08-10T10:00:00Z",
+};
 
 describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OCR FAQ", () => {
   describe("1. Overview Panel — Active Visa File Scope & Composition", () => {
-    it("renders the active visa file in preparation, processing office, and included family members", () => {
+    it("renders clean pending state when class of application has not been selected by owner/manager", () => {
       render(
         <ClientPortal
           myCase={null}
@@ -26,13 +43,32 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
         />
       );
 
-      // Verify Visa File Scope card is present even when case is in initial intake
+      // Verify clean pending state is displayed
+      expect(screen.getByTestId("overview-visa-scope-pending")).toBeDefined();
+      expect(screen.getByText(/Class of Application Pending Selection/i)).toBeDefined();
+      expect(screen.getByText(/Awaiting Owner \/ Manager Classification/i)).toBeDefined();
+      expect(screen.queryByText(/STATUTORY FORMS COMPILED/i)).toBeNull();
+      expect(screen.queryByText(/6 Government Petition Forms/i)).toBeNull();
+    });
+
+    it("renders the active visa file in preparation, processing office, and included family members once class of application is selected", () => {
+      render(
+        <ClientPortal
+          myCase={SPOUSAL_CASE_FIXTURE}
+          documents={FIXTURE_DOCUMENTS}
+          messages={FIXTURE_MESSAGES}
+          notifications={FIXTURE_NOTIFICATIONS}
+          invoices={FIXTURE_INVOICES}
+        />
+      );
+
+      // Verify Visa File Scope card is present with active category
       expect(screen.getByText(/Client Profile & Active Visa File Scope/i)).toBeDefined();
-      expect(screen.getByText(/In-Canada Spousal Sponsorship \(SCLPC \/ IRCC\)/i)).toBeDefined();
-      expect(screen.getByText(/CPC-Mississauga \/ IRCC Case Processing Centre/i)).toBeDefined();
+      expect(screen.getAllByText(/In-Canada Spousal Sponsorship \(Family Class \/ SCLPC\)/i).length).toBeGreaterThan(0);
+      expect(screen.getByText(/Supervised by Sarah Jenkins, Esq\./i)).toBeDefined();
 
       // Verify matter composition (Family members)
-      expect(screen.getAllByText(/Matter Composition \(Family Members\)/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Principal Applicant & Sponsor/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Principal Beneficiary \/ Retained Client/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Sponsor \/ Spouse/i).length).toBeGreaterThan(0);
 
@@ -47,7 +83,30 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
   });
 
   describe("2. Overview Panel — Required Document List & Live Status", () => {
-    it("renders required document list with live status indicators and 4-step pipeline", () => {
+    it("renders clean zero-state when no evidentiary documents are uploaded", () => {
+      const handleOpenUpload = vi.fn();
+      render(
+        <ClientPortal
+          myCase={FIXTURE_CASES[0]}
+          documents={[]}
+          messages={FIXTURE_MESSAGES}
+          notifications={FIXTURE_NOTIFICATIONS}
+          invoices={FIXTURE_INVOICES}
+          onOpenUploadModal={handleOpenUpload}
+        />
+      );
+
+      expect(screen.getAllByText(/Required Document List & Live Status/i).length).toBeGreaterThan(0);
+      expect(screen.getByText(/0 Documents Uploaded/i)).toBeDefined();
+      expect(screen.getByTestId("no-documents-uploaded")).toBeDefined();
+      expect(screen.getByText(/No Evidentiary Documents Uploaded Yet/i)).toBeDefined();
+
+      const uploadBtn = screen.getByRole("button", { name: /\+ Upload First Evidence File/i });
+      fireEvent.click(uploadBtn);
+      expect(handleOpenUpload).toHaveBeenCalled();
+    });
+
+    it("renders uploaded documents list with live status indicators and 4-step pipeline", () => {
       render(
         <ClientPortal
           myCase={FIXTURE_CASES[0]}
@@ -59,16 +118,15 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
       );
 
       expect(screen.getAllByText(/Required Document List & Live Status/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/10 Documents Mapped/i).length).toBeGreaterThan(0);
+      expect(screen.getByText(/7 Documents Uploaded/i)).toBeDefined();
 
-      // Verify document items and statutory citations
-      expect(screen.getAllByText(/Foreign Passport Identity & Photo Page/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/Official Government Civil Marriage Certificate & Registration/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/Sponsor Permanent Resident \(PR\) Card & Identity/i).length).toBeGreaterThan(0);
+      // Verify actual uploaded document items
+      expect(screen.getByText(/US_Passport_Biodata_Elena_Rostova.pdf/i)).toBeDefined();
+      expect(screen.getByText(/Stanford_PhD_Diploma_Certificate.pdf/i)).toBeDefined();
 
       // Verify pipeline stepper
       expect(screen.getAllByText(/Pipeline:/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/1\. Uploaded/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/● 1\. Uploaded/i).length).toBeGreaterThan(0);
     });
 
     it("displays correction required alert and allows re-uploading flagged evidence", () => {
@@ -86,9 +144,7 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
 
       // Verify rejection callout
       expect(screen.getAllByText(/CORRECTION REQUIRED/i).length).toBeGreaterThan(0);
-      expect(
-        screen.getAllByText(/Missing Translator Competence Declaration/i).length
-      ).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Low scan resolution/i).length).toBeGreaterThan(0);
 
       // Click Re-Upload Document button
       const reuploadBtns = screen.getAllByText(/Re-Upload Document →/i);
@@ -113,8 +169,8 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
       fireEvent.click(correctionFilterBtn);
 
       // Only rejected document should show
-      expect(screen.getAllByText(/Certified English Translation of Foreign Marriage Record/i).length).toBeGreaterThan(0);
-      expect(screen.queryByText(/Foreign Passport Identity & Photo Page/i)).toBeNull();
+      expect(screen.getAllByText(/Certified_Apostille_Birth_Record.pdf/i).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/US_Passport_Biodata_Elena_Rostova.pdf/i)).toBeNull();
     });
   });
 
@@ -255,8 +311,17 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
   });
 
   describe("6. Standalone Components Direct Unit Tests", () => {
-    it("renders ClientProfileScopeView with statutory forms and declared relatives", () => {
+    it("renders clean pending empty state in ClientProfileScopeView when class of application has not been selected by owner/manager", () => {
       render(<ClientProfileScopeView myCase={null} />);
+      expect(screen.getByTestId("visa-scope-empty-state")).toBeDefined();
+      expect(screen.getByText(/Class of Application Pending Selection/i)).toBeDefined();
+      expect(screen.getByText(/Awaiting Owner \/ Manager Classification/i)).toBeDefined();
+      expect(screen.queryByText(/Family Members Included in This Visa File/i)).toBeNull();
+      expect(screen.queryByText(/Principal Applicant/i)).toBeNull();
+    });
+
+    it("renders ClientProfileScopeView with statutory forms and declared relatives once class of application is selected", () => {
+      render(<ClientProfileScopeView myCase={SPOUSAL_CASE_FIXTURE} />);
       expect(screen.getAllByText(/Family Members Included in This Visa File/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Principal Applicant/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Sponsor & Co-Signer/i).length).toBeGreaterThan(0);

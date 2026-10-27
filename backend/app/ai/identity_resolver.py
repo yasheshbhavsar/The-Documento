@@ -20,6 +20,14 @@ except ImportError:
     except ImportError:
         MRZParser = None
 
+try:
+    from backend.app.ocr.engine import clean_ocr_text
+except ImportError:
+    try:
+        from app.ocr.engine import clean_ocr_text
+    except ImportError:
+        clean_ocr_text = lambda s: s
+
 
 @dataclass
 class SingleNameResolution:
@@ -276,8 +284,11 @@ class IdentityResolver:
         if not text:
             return None
 
+        # Clean OCR text to remove bilingual artifacts and fix spacing
+        clean_text = clean_ocr_text(text) if clean_ocr_text else text
+
         # 1. First attempt MRZ detection for standard ICAO TD3 passport data
-        mrz = MRZParser.parse_text(text) if MRZParser else None
+        mrz = MRZParser.parse_text(clean_text) if MRZParser else None
 
         passport_num = ""
         holder_name = None
@@ -304,36 +315,72 @@ class IdentityResolver:
 
         # 2. Visual text regex fallbacks for Passport Number
         if not passport_num:
-            p_match = re.search(r"\b([A-Z]{1}[0-9]{7,8})\b", text)
+            p_match = re.search(r"\b([A-Z]{1}[0-9]{7,8})\b", clean_text)
             if not p_match:
-                p_match = re.search(r"(?:Passport\s*(?:No\.?|Number)|Doc\s*No\.?)[\s:]+([A-Z0-9]{7,10})", text, re.IGNORECASE)
+                p_match = re.search(r"(?:Passport\s*(?:No\.?|Number)|Doc\s*No\.?)[\s:]+([A-Z0-9]{7,10})", clean_text, re.IGNORECASE)
             if not p_match:
-                mrz_m = re.search(r"P<IND[^\n]*\r?\n\s*([A-Z0-9]{8,9})", text)
+                mrz_m = re.search(r"P<IND[^\n]*\r?\n\s*([A-Z0-9]{8,9})", clean_text)
                 if mrz_m:
                     p_match = mrz_m
             if p_match:
                 passport_num = p_match.group(1).replace("<", "")
 
-        has_markers = bool(re.search(r"\b(ECR|ECNR|Emigration Check|File No|Republic of India|IND|BHAVSAR|INDIAN)\b", text, re.IGNORECASE))
+        has_markers = bool(re.search(r"\b(ECR|ECNR|Emigration Check|File No|Republic of India|IND|INDIAN|Passport|Given Name|Surname|Place of Birth|Date of Birth)\b", clean_text, re.IGNORECASE))
         if not passport_num and not has_markers:
             return None
 
         # 3. Check ECR vs ECNR
         ecr_status = "ECNR"
-        if re.search(r"\b(Emigration Check Required|ECR)\b", text, re.IGNORECASE) and not re.search(r"\b(Not Required|ECNR)\b", text, re.IGNORECASE):
+        if re.search(r"\b(Emigration Check Required|ECR)\b", clean_text, re.IGNORECASE) and not re.search(r"\b(Not Required|ECNR)\b", clean_text, re.IGNORECASE):
             ecr_status = "ECR"
 
         # 4. Booklet type
         booklet = "36-page Regular"
-        if re.search(r"\b(60\s*Pages?|Jumbo)\b", text, re.IGNORECASE):
+        if re.search(r"\b(60\s*Pages?|Jumbo)\b", clean_text, re.IGNORECASE):
             booklet = "60-page Jumbo"
 
-        # 5. Visual Date Extraction (Issue date, DOB, Expiry if not found from MRZ)
+        # 5. Visual Name Extraction (Surname, Given Names, Full Name if MRZ absent)
+        lines = [l.strip() for l in clean_text.splitlines() if l.strip()]
+        if not surname or not given_names or not holder_name:
+            for i, line in enumerate(lines):
+                # Surname
+                if not surname and re.search(r'\b(?:Surname|Nom|Apellidos|उपनाम)\b', line, re.IGNORECASE):
+                    same_m = re.search(r'\b(?:Surname|Nom|Apellidos|उपनाम)[\s:]+([A-Za-z\s\.-]{2,40})$', line, re.IGNORECASE)
+                    if same_m and same_m.group(1).strip():
+                        cand = same_m.group(1).strip()
+                        if not any(k in cand.lower() for k in ("given", "name", "date", "birth", "sex", "place")):
+                            surname = cand.upper()
+                    elif i + 1 < len(lines):
+                        cand = lines[i + 1].strip()
+                        if not any(k in cand.lower() for k in ("given", "name", "date", "birth", "sex", "place", "nationality", "passport")):
+                            surname = cand.upper()
+
+                # Given Names
+                if not given_names and re.search(r'\b(?:Given\s*Names?|Prénoms|नाम)\b', line, re.IGNORECASE):
+                    same_m = re.search(r'\b(?:Given\s*Names?(?:\(s\))?|Prénoms|नाम)[\s:]+([A-Za-z\s\.-]{2,50})$', line, re.IGNORECASE)
+                    if same_m and same_m.group(1).strip():
+                        cand = same_m.group(1).strip()
+                        if not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality")):
+                            given_names = cand.upper()
+                    elif i + 1 < len(lines):
+                        cand = lines[i + 1].strip()
+                        if not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality", "passport")):
+                            given_names = cand.upper()
+
+            if not holder_name:
+                if given_names and surname:
+                    holder_name = f"{given_names} {surname}".title()
+                elif given_names:
+                    holder_name = given_names.title()
+                elif surname:
+                    holder_name = surname.title()
+
+        # 6. Visual Date Extraction (Issue date, DOB, Expiry if not found from MRZ)
         issue_date = None
         place_of_birth = None
         place_of_issue = None
 
-        date_matches = re.findall(r"\b([0-9]{2}/[0-9]{2}/[0-9]{4})\b", text)
+        date_matches = re.findall(r"\b([0-9]{2}/[0-9]{2}/[0-9]{4})\b", clean_text)
         for dm in date_matches:
             d_parts = dm.split("/")
             yr = int(d_parts[2])
@@ -347,13 +394,21 @@ class IdentityResolver:
                 # Expiry candidate
                 exp_date = f"{d_parts[2]}-{d_parts[1]}-{d_parts[0]}"
 
-        # Place of Birth / Issue
-        pob_m = re.search(r"(?:Place of Birth|Place of lssue|Place of Issue)[\s:]*([A-Za-z\s,]+)", text, re.IGNORECASE)
-        if pob_m:
-            place_of_birth = pob_m.group(1).split("\n")[0].strip().title()
-        else:
-            # Look for Indian city mentions e.g. AHMEDABAD, GUJARAT
-            city_m = re.search(r"\b([A-Za-z\s]+(?:Ahmedabad|Mumbai|Delhi|Bengaluru|Bangalore|Chennai|Kolkata|Hyderabad|Pune|Surat|Vadodara|Rajkot|Chandigarh|Jaipur|Lucknow)[A-Za-z\s,]*)", text, re.IGNORECASE)
+        # Place of Birth / Issue (supports same-line and next-line)
+        for i, line in enumerate(lines):
+            if not place_of_birth and re.search(r'\b(?:Place\s*of\s*Birth|Place\s*of\s*Issue|जन्म स्थान)\b', line, re.IGNORECASE):
+                same_m = re.search(r'\b(?:Place\s*of\s*Birth|Place\s*of\s*Issue|जन्म स्थान)[\s:]+([A-Za-z\s,]+)$', line, re.IGNORECASE)
+                if same_m and same_m.group(1).strip():
+                    cand = same_m.group(1).strip()
+                    if not any(k in cand.lower() for k in ("date", "birth", "sex", "passport", "country")):
+                        place_of_birth = cand.title()
+                elif i + 1 < len(lines):
+                    cand = lines[i + 1].strip()
+                    if not any(k in cand.lower() for k in ("date", "birth", "sex", "nationality", "passport", "country")):
+                        place_of_birth = cand.title()
+
+        if not place_of_birth:
+            city_m = re.search(r"\b([A-Za-z\s]+(?:Ahmedabad|Mumbai|Delhi|Bengaluru|Bangalore|Chennai|Kolkata|Hyderabad|Pune|Surat|Vadodara|Rajkot|Chandigarh|Jaipur|Lucknow)[A-Za-z\s,]*)", clean_text, re.IGNORECASE)
             if city_m:
                 place_of_birth = city_m.group(1).split("\n")[0].strip().title()
 

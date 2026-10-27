@@ -12,7 +12,7 @@ from backend.app.extraction.normalizer import (
     normalize_currency_amount,
     normalize_date,
 )
-from backend.app.ocr.engine import PageExtractionResult
+from backend.app.ocr.engine import PageExtractionResult, clean_ocr_text
 
 try:
     from backend.app.ocr.mrz_parser import MRZParser
@@ -148,7 +148,7 @@ def extract_structured_fields(
     if not pages:
         return extracted_fields
 
-    full_text = "\n\n".join([f"--- PAGE {p.page_number} ---\n{p.text}" for p in pages])
+    full_text = clean_ocr_text("\n\n".join([f"--- PAGE {p.page_number} ---\n{p.text}" for p in pages]))
     default_page = pages[0].page_number
     ocr_confidence = pages[0].ocr_confidence
     default_method = "ocr_pattern_matcher" if pages[0].ocr_applied else "native_pdf_layout"
@@ -317,20 +317,62 @@ def extract_structured_fields(
             if p_num:
                 add_field("passport_number", "Passport Number", p_num.group(1), p_num.group(1).upper(), 1, 0.92)
 
+        # Visual Surname and Given Names extraction for passports
+        vis_surname = None
+        vis_given = None
+        text_lines = [l.strip() for l in full_text.splitlines() if l.strip()]
+        for i, line in enumerate(text_lines):
+            if not vis_surname and re.search(r'\b(?:Surname|Nom|Apellidos)\b', line, re.IGNORECASE):
+                same_m = re.search(r'\b(?:Surname|Nom|Apellidos)[\s:]+([A-Za-z\s\.-]{2,40})$', line, re.IGNORECASE)
+                if same_m and same_m.group(1).strip():
+                    cand = same_m.group(1).strip()
+                    if not any(k in cand.lower() for k in ("given", "name", "date", "birth", "sex", "place")):
+                        vis_surname = cand
+                elif i + 1 < len(text_lines):
+                    cand = text_lines[i + 1].strip()
+                    if not any(k in cand.lower() for k in ("given", "name", "date", "birth", "sex", "place", "nationality", "passport")):
+                        vis_surname = cand
+
+            if not vis_given and re.search(r'\b(?:Given\s*Names?|Prénoms)\b', line, re.IGNORECASE):
+                same_m = re.search(r'\b(?:Given\s*Names?(?:\(s\))?|Prénoms)[\s:]+([A-Za-z\s\.-]{2,50})$', line, re.IGNORECASE)
+                if same_m and same_m.group(1).strip():
+                    cand = same_m.group(1).strip()
+                    if not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality")):
+                        vis_given = cand
+                elif i + 1 < len(text_lines):
+                    cand = text_lines[i + 1].strip()
+                    if not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality", "passport")):
+                        vis_given = cand
+
+        if "surname" not in added_keys and vis_surname:
+            add_field("surname", "Surname / Family Name", vis_surname, vis_surname.upper(), 1, 0.90)
+        if "given_names" not in added_keys and vis_given:
+            add_field("given_names", "Given Names", vis_given, vis_given.title(), 1, 0.90)
+
         if "full_name" not in added_keys:
-            name_m = re.search(r"(?:Name|Full Name|Surname\s*and\s*Given\s*Names|Nom|Apellidos)[\s:]+([A-Za-z\s\.-]{3,50})", full_text, re.IGNORECASE)
-            if name_m:
-                cand_name = name_m.group(1).strip()
-                invalid_prefixes = (
-                    "of the", "of registered", "date of", "immigration", "family name",
-                    "surname", "given name", "desc srgb", "iec61966", "signature",
-                    "pull name", "full name", "client personal", "status", "nom de famille"
-                )
-                if not any(cand_name.lower().startswith(p) for p in invalid_prefixes) and cand_name.lower() not in (
-                    "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details"
-                ):
-                    add_field("full_name", "Full Name", cand_name, cand_name.title(), 1, 0.88)
-                    add_field("applicant_name", "Applicant Legal Name", cand_name, cand_name.title(), 1, 0.88)
+            if vis_given and vis_surname:
+                full_val = f"{vis_given} {vis_surname}"
+                add_field("full_name", "Full Name", full_val, full_val.title(), 1, 0.92)
+                add_field("applicant_name", "Candidate Applicant Name", full_val, full_val.title(), 1, 0.92)
+            elif vis_given:
+                add_field("full_name", "Full Name", vis_given, vis_given.title(), 1, 0.88)
+                add_field("applicant_name", "Candidate Applicant Name", vis_given, vis_given.title(), 1, 0.88)
+            else:
+                name_m = re.search(r"\b(?:Full\s*Name|Legal\s*Name|Name)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})", full_text, re.IGNORECASE)
+                if name_m:
+                    cand_name = name_m.group(1).split("\n")[0].strip()
+                    # Strip single-letter trailing noise (e.g. 'Patel f' -> 'Patel')
+                    cand_name = re.sub(r'\s+[a-zA-Z]$', '', cand_name)
+                    invalid_prefixes = (
+                        "of the", "of registered", "date of", "immigration", "family name",
+                        "surname", "given name", "desc srgb", "iec61966", "signature",
+                        "pull name", "full name", "client personal", "status", "nom de famille"
+                    )
+                    if not any(cand_name.lower().startswith(p) for p in invalid_prefixes) and cand_name.lower() not in (
+                        "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details"
+                    ):
+                        add_field("full_name", "Full Name", cand_name, cand_name.title(), 1, 0.88)
+                        add_field("applicant_name", "Candidate Applicant Name", cand_name, cand_name.title(), 1, 0.88)
 
         # Visual Dates (Date of Birth, Issue Date, Expiry Date)
         if "date_of_birth" not in added_keys:
@@ -362,12 +404,24 @@ def extract_structured_fields(
                 elif yr > 2026 and "expiry_date" not in added_keys:
                     add_field("expiry_date", "Date of Expiration", d_str, norm_d, 1, 0.88)
 
-        # Place of Birth / Place of Issue
+        # Place of Birth / Place of Issue (supports same-line and next-line)
         if "place_of_birth" not in added_keys:
-            pob_m = re.search(r"(?:Place of Birth|Place of lssue|Place of Issue)[\s:]*([A-Za-z\s,]+)", full_text, re.IGNORECASE)
-            if pob_m:
-                raw_pob = pob_m.group(1).split("\n")[0].strip()
-                add_field("place_of_birth", "Place of Birth", raw_pob, raw_pob.title(), 1, 0.88)
+            raw_pob = None
+            for i, line in enumerate(text_lines):
+                if re.search(r'\b(?:Place\s*of\s*Birth|जन्म स्थान)\b', line, re.IGNORECASE):
+                    same_m = re.search(r'\b(?:Place\s*of\s*Birth|जन्म स्थान)[\s:]+([A-Za-z\s,]+)$', line, re.IGNORECASE)
+                    if same_m and same_m.group(1).strip():
+                        cand = same_m.group(1).strip()
+                        if not any(k in cand.lower() for k in ("date", "birth", "sex", "passport", "country")):
+                            raw_pob = cand
+                            break
+                    elif i + 1 < len(text_lines):
+                        cand = text_lines[i + 1].strip()
+                        if not any(k in cand.lower() for k in ("date", "birth", "sex", "nationality", "passport", "country")):
+                            raw_pob = cand
+                            break
+            if raw_pob:
+                add_field("place_of_birth", "Place of Birth", raw_pob, raw_pob.title(), 1, 0.90)
             else:
                 city_m = re.search(r"\b([A-Za-z\s]+(?:Ahmedabad|Mumbai|Delhi|Bengaluru|Bangalore|Chennai|Kolkata|Hyderabad|Pune|Surat|Vadodara|Rajkot|Chandigarh|Jaipur|Lucknow)[A-Za-z\s,]*)", full_text, re.IGNORECASE)
                 if city_m:
@@ -449,11 +503,26 @@ def extract_structured_fields(
         if pan_info.holder_name and "pan_holder_name" not in added_keys:
             add_field("pan_holder_name", "PAN Registered Name", pan_info.holder_name, pan_info.holder_name, 1, 0.94, method="statutory_identity_resolver")
 
-    # Indian Passport Endorsements (ECR vs ECNR, File Number, Booklet Type, Family)
+    # Indian Passport Endorsements (ECR vs ECNR, File Number, Booklet Type, Family, Biodata)
     indian_passport = IdentityResolver.parse_indian_passport(full_text)
     if indian_passport and (indian_passport.mrz_detected or indian_passport.passport_number or category == "identity_passport" or "passport" in (filename or "").lower()):
         if indian_passport.passport_number and "passport_number" not in added_keys:
             add_field("passport_number", "Passport Number", indian_passport.passport_number, indian_passport.passport_number.upper(), 1, 0.98, method="statutory_identity_resolver")
+        if indian_passport.surname and "surname" not in added_keys:
+            add_field("surname", "Surname / Family Name", indian_passport.surname, indian_passport.surname.upper(), 1, 0.95, method="statutory_identity_resolver")
+        if indian_passport.given_names and "given_names" not in added_keys:
+            add_field("given_names", "Given Names", indian_passport.given_names, indian_passport.given_names.title(), 1, 0.95, method="statutory_identity_resolver")
+        if indian_passport.holder_name and "full_name" not in added_keys:
+            add_field("full_name", "Full Name", indian_passport.holder_name, indian_passport.holder_name.title(), 1, 0.95, method="statutory_identity_resolver")
+            add_field("applicant_name", "Candidate Applicant Name", indian_passport.holder_name, indian_passport.holder_name.title(), 1, 0.95, method="statutory_identity_resolver")
+        if indian_passport.place_of_birth and "place_of_birth" not in added_keys:
+            add_field("place_of_birth", "Place of Birth", indian_passport.place_of_birth, indian_passport.place_of_birth.title(), 1, 0.95, method="statutory_identity_resolver")
+        if indian_passport.date_of_birth and "date_of_birth" not in added_keys:
+            add_field("date_of_birth", "Date of Birth", indian_passport.date_of_birth, normalize_date(indian_passport.date_of_birth) or indian_passport.date_of_birth, 1, 0.95, method="statutory_identity_resolver")
+        if indian_passport.date_of_issue and "issue_date" not in added_keys:
+            add_field("issue_date", "Date of Issue", indian_passport.date_of_issue, normalize_date(indian_passport.date_of_issue) or indian_passport.date_of_issue, 1, 0.95, method="statutory_identity_resolver")
+        if indian_passport.date_of_expiry and "expiry_date" not in added_keys:
+            add_field("expiry_date", "Date of Expiration", indian_passport.date_of_expiry, normalize_date(indian_passport.date_of_expiry) or indian_passport.date_of_expiry, 1, 0.95, method="statutory_identity_resolver")
         if "emigration_check_status" not in added_keys:
             add_field("emigration_check_status", "Emigration Check Status (ECR/ECNR)", indian_passport.emigration_check, indian_passport.emigration_check, 1, 0.98, method="statutory_identity_resolver")
         if indian_passport.file_number and "passport_file_number" not in added_keys:

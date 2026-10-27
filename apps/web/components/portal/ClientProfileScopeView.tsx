@@ -14,21 +14,95 @@ export function ClientProfileScopeView({
   onNavigateTab,
   onOpenUploadModal,
 }: ClientProfileScopeViewProps) {
+  // CRITICAL REQUIREMENT: Nothing should show up here until the class of application is selected by the owner/manager
+  if (!myCase || !myCase.visa_category) {
+    return (
+      <div
+        data-testid="visa-scope-empty-state"
+        style={{
+          background: "#FFFFFF",
+          border: "1.5px dashed #CBD5E1",
+          borderRadius: "14px",
+          padding: "54px 28px",
+          textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "14px",
+          boxShadow: "0 2px 8px rgba(6, 60, 61, 0.02)",
+        }}
+      >
+        <div
+          style={{
+            width: "60px",
+            height: "60px",
+            borderRadius: "50%",
+            background: "#EAF6F0",
+            color: "#0D6866",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "26px",
+            border: "2px solid #B9DED4",
+          }}
+        >
+          📋
+        </div>
+        <div style={{ maxWidth: "520px" }}>
+          <h3 style={{ margin: "0 0 8px 0", fontSize: "19px", fontWeight: 750, color: "#063C3D" }}>
+            Class of Application Pending Selection
+          </h3>
+          <p style={{ margin: 0, fontSize: "13px", color: "#64748B", lineHeight: 1.6 }}>
+            Your supervising law firm owner or case manager has not yet designated the specific visa classification or statutory program stream for your case file. Once selected, your authorized file scope, statutory petition forms, and family matter composition will appear here automatically.
+          </p>
+        </div>
+        <span
+          style={{
+            background: "#FEF3C7",
+            color: "#92400E",
+            border: "1px solid #FCD34D",
+            padding: "5px 14px",
+            borderRadius: "20px",
+            fontSize: "12px",
+            fontWeight: 700,
+            letterSpacing: "0.02em",
+          }}
+        >
+          ⏳ Awaiting Owner / Manager Classification
+        </span>
+      </div>
+    );
+  }
+
+  // Active case with selected class of application
+  const visaCategoryTitle = myCase.visa_category;
+  const caseNumber = myCase.case_number || "PENDING";
+  const jurisdiction = myCase.jurisdiction || "Immigration Authority";
+  const assignedOfficer = myCase.assigned_manager || "Supervising Case Manager";
+
+  const isSpousalOrFamily =
+    visaCategoryTitle.toLowerCase().includes("spous") ||
+    visaCategoryTitle.toLowerCase().includes("family") ||
+    visaCategoryTitle.toLowerCase().includes("sclpc");
+
+  const isStudy =
+    visaCategoryTitle.toLowerCase().includes("study") ||
+    visaCategoryTitle.toLowerCase().includes("student");
+
+  const isUSCIS =
+    jurisdiction.toLowerCase().includes("united states") ||
+    jurisdiction.toLowerCase().includes("uscis") ||
+    visaCategoryTitle.toLowerCase().includes("eb-") ||
+    visaCategoryTitle.toLowerCase().includes("o-1") ||
+    visaCategoryTitle.toLowerCase().includes("l-1");
+
   const isCanada =
-    !myCase ||
-    myCase.jurisdiction?.toLowerCase().includes("canada") ||
-    myCase.visa_category?.toLowerCase().includes("canada") ||
-    myCase.visa_category?.toLowerCase().includes("spous");
+    jurisdiction.toLowerCase().includes("canada") ||
+    jurisdiction.toLowerCase().includes("ircc") ||
+    visaCategoryTitle.toLowerCase().includes("canada");
 
-  const visaCategoryTitle = myCase
-    ? myCase.visa_category
-    : "In-Canada Spousal Sponsorship (Family Class / SCLPC)";
-
-  const caseNumber = myCase?.case_number || "CASE-CA-2026-SP";
-  const jurisdiction = myCase?.jurisdiction || "Canada (IRCC)";
-  const assignedOfficer = myCase?.assigned_manager || "Officer Sarah Jenkins, Esq.";
-
-  const clientName = myCase?.client_name || "Principal Applicant";
+  const clientName = myCase.client_name || "Principal Applicant";
   const clientInitials =
     clientName
       .split(" ")
@@ -37,6 +111,38 @@ export function ClientProfileScopeView({
       .join("")
       .slice(0, 2)
       .toUpperCase() || "PA";
+
+  const principalApplicantForms = isSpousalOrFamily
+    ? [
+        "IMM 0008 (Generic Application for Canada)",
+        "IMM 5532 (Relationship Information & Evaluation)",
+        "IMM 5669 (Schedule A Background/Declaration)",
+        "IMM 5406 (Additional Family Information)",
+        "IMM 5710 (In-Canada Open Work Permit - SOWP)",
+      ]
+    : isStudy
+    ? [
+        "IMM 1294 (Application for Study Permit)",
+        "IMM 5645 (Family Information)",
+        "DLI Acceptance & Provincial Attestation Letter (PAL)",
+        "Proof of Financial Support (GIC / Bank Proof)",
+      ]
+    : isUSCIS
+    ? [
+        "Form I-140 (Immigrant Petition)",
+        "Form I-485 (Adjustment of Status)",
+        "Form I-765 (Employment Authorization Document - EAD)",
+        "Form I-131 (Advance Parole Travel Document)",
+        "Form G-28 (Notice of Attorney Representation)",
+      ]
+    : [
+        "Statutory Visa Application",
+        "Biometric Instruction Records",
+        "Family Information Form",
+        "Official Identity Verification Dossier",
+      ];
+
+  const activeMembersCount = isSpousalOrFamily ? 2 : 1;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
@@ -155,9 +261,9 @@ export function ClientProfileScopeView({
               textAlign: "center",
             }}
           >
-            <div style={{ fontSize: "18px", fontWeight: 800, color: "#0D6866" }}>2</div>
+            <div style={{ fontSize: "18px", fontWeight: 800, color: "#0D6866" }}>{activeMembersCount}</div>
             <div style={{ fontSize: "11px", fontWeight: 650, color: "#176B50" }}>
-              Active Matter Members
+              Active Matter {activeMembersCount === 1 ? "Member" : "Members"}
             </div>
           </div>
           <div
@@ -169,7 +275,9 @@ export function ClientProfileScopeView({
               textAlign: "center",
             }}
           >
-            <div style={{ fontSize: "18px", fontWeight: 800, color: "#475569" }}>IMM 5406</div>
+            <div style={{ fontSize: "18px", fontWeight: 800, color: "#475569" }}>
+              {isCanada ? "IMM 5406" : "Family Register"}
+            </div>
             <div style={{ fontSize: "11px", fontWeight: 650, color: "#64748B" }}>
               Declared Immediate Relatives
             </div>
@@ -222,7 +330,7 @@ export function ClientProfileScopeView({
                 border: "1px solid #86EFAC",
               }}
             >
-              Inland Class Beneficiary
+              Principal Beneficiary
             </span>
           </div>
 
@@ -250,7 +358,7 @@ export function ClientProfileScopeView({
                 {clientName}
               </h4>
               <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#64748B" }}>
-                Primary Retained Client • Applying for Permanent Residence under Spousal / Family Sponsorship Class
+                Primary Retained Client • Applying under {visaCategoryTitle}
               </p>
 
               <div
@@ -267,25 +375,25 @@ export function ClientProfileScopeView({
                 <div>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Date of Birth</div>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    {myCase ? "Registered on Civil Record" : "Pending Intake Form"}
+                    Registered on Civil Record
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Place of Birth</div>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    {myCase?.client_nationality ? `${myCase.client_nationality} (as declared)` : "As recorded on official civil records"}
+                    {myCase.client_nationality ? `${myCase.client_nationality} (as declared)` : "As recorded on official civil records"}
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Passport &amp; Expiry</div>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    {myCase ? "On file with legal counsel (Verified)" : "Pending Submission"}
+                    Verified Travel Document on File
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Current Address</div>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    {myCase ? "On file in client intake records" : "Pending Submission"}
+                    On file in client intake records
                   </div>
                 </div>
               </div>
@@ -295,13 +403,7 @@ export function ClientProfileScopeView({
                   Official Government Application Forms Prepared:
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  {[
-                    "IMM 0008 (Generic Application for Canada)",
-                    "IMM 5532 (Relationship Information & Evaluation)",
-                    "IMM 5669 (Schedule A Background/Declaration)",
-                    "IMM 5406 (Additional Family Information)",
-                    "IMM 5710 (In-Canada Open Work Permit - SOWP)",
-                  ].map((form) => (
+                  {principalApplicantForms.map((form) => (
                     <span
                       key={form}
                       style={{
@@ -323,148 +425,150 @@ export function ClientProfileScopeView({
           </div>
         </div>
 
-        {/* Member 2: Sponsor & Spouse */}
-        <div
-          style={{
-            background: "#FFFFFF",
-            border: "1.5px solid #B9DED4",
-            borderRadius: "14px",
-            padding: "22px 24px",
-            boxShadow: "0 1px 4px rgba(6, 60, 61, 0.03)",
-            position: "relative",
-          }}
-        >
+        {/* Member 2: Sponsor & Spouse (ONLY rendered if spousal / family sponsorship) */}
+        {isSpousalOrFamily && (
           <div
             style={{
-              position: "absolute",
-              top: "16px",
-              right: "20px",
-              display: "flex",
-              gap: "8px",
+              background: "#FFFFFF",
+              border: "1.5px solid #B9DED4",
+              borderRadius: "14px",
+              padding: "22px 24px",
+              boxShadow: "0 1px 4px rgba(6, 60, 61, 0.03)",
+              position: "relative",
             }}
           >
-            <span
-              style={{
-                background: "#063C3D",
-                color: "#FFFFFF",
-                fontSize: "11px",
-                fontWeight: 750,
-                padding: "3px 10px",
-                borderRadius: "20px",
-              }}
-            >
-              Sponsor &amp; Co-Signer
-            </span>
-            <span
-              style={{
-                background: "#DCFCE7",
-                color: "#166534",
-                fontSize: "11px",
-                fontWeight: 650,
-                padding: "3px 8px",
-                borderRadius: "20px",
-                border: "1px solid #86EFAC",
-              }}
-            >
-              Canadian Permanent Resident
-            </span>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "16px" }}>
             <div
               style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "50%",
-                background: "#F8F7F2",
-                color: "#063C3D",
-                fontSize: "18px",
-                fontWeight: 800,
+                position: "absolute",
+                top: "16px",
+                right: "20px",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "2px solid #DCE5E1",
-                flexShrink: 0,
+                gap: "8px",
               }}
             >
-              SP
-            </div>
-            <div style={{ flex: 1, minWidth: "260px" }}>
-              <h4 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 750, color: "#063C3D" }}>
-                Sponsor &amp; Co-Signer
-              </h4>
-              <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#64748B" }}>
-                Eligible Canadian Sponsor • Providing 3-Year Statutory Financial Support Undertaking
-              </p>
-
-              <div
+              <span
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                  gap: "12px",
-                  background: "#F8FAF9",
-                  padding: "14px 16px",
-                  borderRadius: "10px",
-                  border: "1px solid #DCE5E1",
+                  background: "#063C3D",
+                  color: "#FFFFFF",
+                  fontSize: "11px",
+                  fontWeight: 750,
+                  padding: "3px 10px",
+                  borderRadius: "20px",
                 }}
               >
-                <div>
-                  <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Date of Birth</div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    Recorded on Official Canadian Identification
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Status in Canada</div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#166534" }}>
-                    PR (Permanent Resident Verified)
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>UCI / Client ID &amp; PR Card</div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    Statutory Identification On File
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Current Employment</div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    Employment &amp; Income Verification On File
-                  </div>
-                </div>
-              </div>
+                Sponsor &amp; Co-Signer
+              </span>
+              <span
+                style={{
+                  background: "#DCFCE7",
+                  color: "#166534",
+                  fontSize: "11px",
+                  fontWeight: 650,
+                  padding: "3px 8px",
+                  borderRadius: "20px",
+                  border: "1px solid #86EFAC",
+                }}
+              >
+                Canadian Permanent Resident
+              </span>
+            </div>
 
-              <div style={{ marginTop: "12px" }}>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D", marginBottom: "6px" }}>
-                  Sponsorship Filings &amp; Undertakings Prepared:
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "16px" }}>
+              <div
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "50%",
+                  background: "#F8F7F2",
+                  color: "#063C3D",
+                  fontSize: "18px",
+                  fontWeight: 800,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "2px solid #DCE5E1",
+                  flexShrink: 0,
+                }}
+              >
+                SP
+              </div>
+              <div style={{ flex: 1, minWidth: "260px" }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 750, color: "#063C3D" }}>
+                  Sponsor &amp; Co-Signer
+                </h4>
+                <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#64748B" }}>
+                  Eligible Canadian Sponsor • Providing 3-Year Statutory Financial Support Undertaking
+                </p>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gap: "12px",
+                    background: "#F8FAF9",
+                    padding: "14px 16px",
+                    borderRadius: "10px",
+                    border: "1px solid #DCE5E1",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Date of Birth</div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
+                      Recorded on Official Canadian Identification
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Status in Canada</div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#166534" }}>
+                      PR (Permanent Resident Verified)
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>UCI / Client ID &amp; PR Card</div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
+                      Statutory Identification On File
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Current Employment</div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
+                      Employment &amp; Income Verification On File
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  {[
-                    "IMM 1344 (Application to Sponsor & Sponsorship Agreement)",
-                    "IMM 5532 Part A & C (Sponsor Evaluation & Declarations)",
-                    "3-Year Statutory Support Undertaking (Zero Social Assistance Liability)",
-                    "Sponsor Notice of Assessment (NOA) & Employment Proof",
-                  ].map((form) => (
-                    <span
-                      key={form}
-                      style={{
-                        background: "#F1F5F9",
-                        color: "#334155",
-                        fontSize: "11px",
-                        fontWeight: 650,
-                        padding: "3px 8px",
-                        borderRadius: "6px",
-                        border: "1px solid #CBD5E1",
-                      }}
-                    >
-                      ✓ {form}
-                    </span>
-                  ))}
+
+                <div style={{ marginTop: "12px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D", marginBottom: "6px" }}>
+                    Sponsorship Filings &amp; Undertakings Prepared:
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {[
+                      "IMM 1344 (Application to Sponsor & Sponsorship Agreement)",
+                      "IMM 5532 Part A & C (Sponsor Evaluation & Declarations)",
+                      "3-Year Statutory Support Undertaking (Zero Social Assistance Liability)",
+                      "Sponsor Notice of Assessment (NOA) & Employment Proof",
+                    ].map((form) => (
+                      <span
+                        key={form}
+                        style={{
+                          background: "#F1F5F9",
+                          color: "#334155",
+                          fontSize: "11px",
+                          fontWeight: 650,
+                          padding: "3px 8px",
+                          borderRadius: "6px",
+                          border: "1px solid #CBD5E1",
+                        }}
+                      >
+                        ✓ {form}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Declared Non-Accompanying Relatives on File */}
         <div

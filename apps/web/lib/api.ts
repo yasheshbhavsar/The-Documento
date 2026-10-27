@@ -1132,7 +1132,7 @@ export const INITIAL_NOTIFICATION: NotificationItem = {
 
 // Ensure Day-0 clean slate in browser runtime if not yet synchronized
 if (typeof window !== "undefined" && !isTestEnv) {
-  if (localStorage.getItem("documento_clean_slate_enforced") !== "v2") {
+  if (localStorage.getItem("documento_clean_slate_enforced") !== "v3") {
     localStorage.removeItem("documento_cases");
     localStorage.removeItem("documento_clients");
     localStorage.removeItem("documento_documents");
@@ -1141,7 +1141,7 @@ if (typeof window !== "undefined" && !isTestEnv) {
     localStorage.removeItem("documento_messages");
     localStorage.removeItem("documento_invoices");
     localStorage.removeItem("documento_client_credentials");
-    localStorage.setItem("documento_clean_slate_enforced", "v2");
+    localStorage.setItem("documento_clean_slate_enforced", "v3");
   }
 }
 
@@ -7701,95 +7701,50 @@ export async function fetchFamilyDocumentsSummary(
     // fallback
   }
 
+  const matchingCase = localCases.find((c) => c.id === caseId || c.case_number === caseId);
+  const caseDocs = localDocuments.filter((d) => d.case_id === caseId || d.case_number === caseId || (matchingCase && d.case_id === matchingCase.id));
+
+  const verifiedCount = caseDocs.filter((d) => d.status === "verified" || d.verification_status === "verified").length;
+  const correctionCount = caseDocs.filter((d) => (d.status as string) === "rejected" || d.verification_status === "rejected" || d.status === "action_needed").length;
+
   return {
     case_id: caseId,
-    case_number: "CASE-US-8841",
-    total_required: 12,
-    total_received: 9,
-    total_verified: 6,
-    total_correction_required: 2,
-    total_unassigned: 1,
-    applicants: [
+    case_number: matchingCase?.case_number || "CASE-001",
+    total_required: caseDocs.length,
+    total_received: caseDocs.length,
+    total_verified: verifiedCount,
+    total_correction_required: correctionCount,
+    total_unassigned: 0,
+    applicants: matchingCase ? [
       {
         applicant_id: "client-primary",
-        applicant_name: "Dr. Elena Rostova",
+        applicant_name: matchingCase.client_name,
         relationship: "primary_applicant",
-        outstanding: [
-          {
-            requirement_id: "req-p1",
-            title: "Certified English Translation for Master's Degree",
-            category: "educational_records",
-            is_mandatory: true,
-          },
-        ],
-        received: [
-          {
-            document_id: "doc-01",
-            title: "Passport_Information_Page.pdf",
-            category: "identity_passport",
-            processing_status: "completed",
-            verification_status: "verified",
+        outstanding: [],
+        received: caseDocs
+          .filter((d) => (d.status as string) !== "rejected" && d.verification_status !== "rejected" && d.status !== "action_needed")
+          .map((d) => ({
+            document_id: d.id,
+            title: d.title || d.filename || "Uploaded Document",
+            category: String(d.category),
+            processing_status: d.processing_status || "completed",
+            verification_status: d.verification_status || "unverified",
             has_unresolved_anomaly: false,
-            created_at: "2026-09-01T10:00:00Z",
-          },
-          {
-            document_id: "doc-02",
-            title: "Doctorate_Diploma_Computer_Science.pdf",
-            category: "educational_records",
-            processing_status: "completed",
-            verification_status: "verified",
-            has_unresolved_anomaly: false,
-            created_at: "2026-09-05T12:00:00Z",
-          },
-        ],
-        correction_required: [
-          {
-            document_id: "doc-04",
-            title: "IEEE_Fellow_Award_Certificate.pdf",
-            category: "awards_honors",
-            processing_status: "needs_review",
-            verification_status: "unverified",
+            created_at: d.uploaded_at || new Date().toISOString(),
+          })),
+        correction_required: caseDocs
+          .filter((d) => (d.status as string) === "rejected" || d.verification_status === "rejected" || d.status === "action_needed")
+          .map((d) => ({
+            document_id: d.id,
+            title: d.title || d.filename || "Flagged Document",
+            category: String(d.category),
+            processing_status: d.processing_status || "needs_review",
+            verification_status: d.verification_status || "rejected",
             has_unresolved_anomaly: true,
-            created_at: "2026-09-20T16:00:00Z",
-          },
-        ],
+            created_at: d.uploaded_at || new Date().toISOString(),
+          })),
       },
-      {
-        applicant_id: "dep-spouse",
-        applicant_name: "Mikhail Rostov",
-        relationship: "spouse",
-        outstanding: [
-          {
-            requirement_id: "req-s1",
-            title: "Form I-693 Sealed Medical Examination Report",
-            category: "police_medical",
-            is_mandatory: true,
-          },
-        ],
-        received: [
-          {
-            document_id: "doc-03",
-            title: "Official_Marriage_Certificate_Certified.pdf",
-            category: "civil_status",
-            processing_status: "completed",
-            verification_status: "verified",
-            has_unresolved_anomaly: false,
-            created_at: "2026-09-12T14:30:00Z",
-          },
-        ],
-        correction_required: [
-          {
-            document_id: "doc-06",
-            title: "State_Police_Clearance_Certificate.pdf",
-            category: "police_medical",
-            processing_status: "needs_review",
-            verification_status: "rejected",
-            has_unresolved_anomaly: true,
-            created_at: "2026-10-10T15:30:00Z",
-          },
-        ],
-      },
-    ],
+    ] : [],
     unassigned_documents: [],
     non_readiness_disclaimer:
       "Family checklist completion indicates intake progress only. Formal legal package readiness and eligibility are evaluated separately.",

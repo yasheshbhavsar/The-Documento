@@ -36,7 +36,7 @@ export function DocumentRequestManager({
   onUploadEvidence,
 }: DocumentRequestManagerProps) {
   const [internalRequests, setInternalRequests] = useState<DocumentRequestItem[]>(
-    requests || FALLBACK_DOCUMENT_REQUESTS
+    requests || []
   );
   const [filter, setFilter] = useState<string>("all");
   const [selectedRequest, setSelectedRequest] = useState<DocumentRequestItem | null>(null);
@@ -66,7 +66,7 @@ export function DocumentRequestManager({
       fetchDocumentRequests(caseId).then((data) => {
         if (data) setInternalRequests(data);
       }).catch(() => {
-        setInternalRequests(FALLBACK_DOCUMENT_REQUESTS);
+        setInternalRequests([]);
       });
     }
   }, [requests, caseId]);
