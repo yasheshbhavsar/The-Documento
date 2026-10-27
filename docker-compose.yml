@@ -27,6 +27,18 @@ services:
     volumes:
       - minio_data:/data
 
+  db-migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ai_immigration:local_dev_only@host.docker.internal:5432/ai_immigration}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - tools
+
 volumes:
   postgres_data:
   minio_data:

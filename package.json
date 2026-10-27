@@ -5,13 +5,19 @@
   "description": "AI Immigration Case Intelligence & Management Platform",
   "scripts": {
     "dev": "npm --prefix apps/web run dev",
+    "dev:frontend": "npm --prefix apps/web run dev",
+    "dev:backend": "powershell -ExecutionPolicy Bypass -File ./run_backend.ps1",
+    "dev:all": "npx -y concurrently -k -n \"BACKEND,FRONTEND\" -c \"cyan,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "setup:frontend": "npm --prefix apps/web install",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:services": "docker compose up -d redis minio",
+    "db:migrate:docker": "docker compose run --rm db-migrate",
+    "db:migrate:local": "powershell -Command \"cd backend; .\\.venv\\Scripts\\alembic.exe upgrade head\"",
+    "db:logs": "docker compose logs -f postgres",
     "build": "npm --prefix apps/web run build",
     "start": "npm --prefix apps/web run start",
     "test": "npm --prefix apps/web run test",
-    "backend": "powershell -ExecutionPolicy Bypass -File ./run_backend.ps1",
-    "dev:all": "node -e \"const { spawn } = require('child_process'); spawn('npm', ['--prefix', 'apps/web', 'run', 'dev'], { stdio: 'inherit', shell: true }); spawn('powershell', ['-ExecutionPolicy', 'Bypass', '-File', './run_backend.ps1'], { stdio: 'inherit', shell: true });\""
-  },
-  "dependencies": {
-    "awwwards-mcp": "^1.13.0"
+    "backend": "powershell -ExecutionPolicy Bypass -File ./run_backend.ps1"
   }
 }

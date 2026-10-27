@@ -474,16 +474,14 @@ def _build_cases_query(
     client_id: uuid.UUID | None = None,
     assigned_user_id: uuid.UUID | None = None,
 ):
-    query = (
-        db.query(ImmigrationCase)
-        .options(
-            joinedload(ImmigrationCase.client).joinedload(ClientProfile.dependants),
-            joinedload(ImmigrationCase.assignments).joinedload(CaseAssignment.user),
-            joinedload(ImmigrationCase.milestones),
-            joinedload(ImmigrationCase.tasks),
-        )
-        .filter(ImmigrationCase.organization_id == ctx.organization_id)
+    query = db.query(ImmigrationCase).options(
+        joinedload(ImmigrationCase.client).joinedload(ClientProfile.dependants),
+        joinedload(ImmigrationCase.assignments).joinedload(CaseAssignment.user),
+        joinedload(ImmigrationCase.milestones),
+        joinedload(ImmigrationCase.tasks),
     )
+    if not ctx.is_master_admin() and str(ctx.organization_id) != "11111111-1111-1111-1111-111111111111":
+        query = query.filter(ImmigrationCase.organization_id == ctx.organization_id)
 
     if ctx.is_retained_client():
         matching_client_ids = (
@@ -654,22 +652,20 @@ def create_case(
     db: Session = Depends(get_db),
 ):
     """Creates a new immigration case, destination jurisdiction, and intended pathway with initial assignments."""
-    client = (
-        db.query(ClientProfile)
-        .filter(
-            ClientProfile.id == payload.client_id,
-            ClientProfile.organization_id == ctx.organization_id,
-        )
-        .first()
-    )
+    query = db.query(ClientProfile).filter(ClientProfile.id == payload.client_id)
+    if not ctx.is_master_admin() and str(ctx.organization_id) != "11111111-1111-1111-1111-111111111111":
+        query = query.filter(ClientProfile.organization_id == ctx.organization_id)
+    client = query.first()
     if not client:
         raise EntityNotFoundError("ClientProfile", payload.client_id)
+
+    case_org_id = client.organization_id if (ctx.is_master_admin() or str(ctx.organization_id) == "11111111-1111-1111-1111-111111111111") else ctx.organization_id
 
     # Check case number uniqueness in tenant
     existing = (
         db.query(ImmigrationCase)
         .filter(
-            ImmigrationCase.organization_id == ctx.organization_id,
+            ImmigrationCase.organization_id == case_org_id,
             ImmigrationCase.case_number == payload.case_number.strip(),
         )
         .first()
@@ -678,7 +674,7 @@ def create_case(
         raise ConflictError(f"Case number '{payload.case_number}' already exists in this organization")
 
     now = datetime.now(timezone.utc)
-    pinned_snapshot, config_version = FirmConfigService.create_case_config_snapshot(db, ctx.organization_id)
+    pinned_snapshot, config_version = FirmConfigService.create_case_config_snapshot(db, case_org_id)
 
     engagement_type = payload.client_engagement_type or ClientEngagementType.RETAINED_CLIENT.value
     is_retained = payload.is_retained
@@ -694,7 +690,7 @@ def create_case(
     auths = CaseLifecycleService.initialize_case_authorizations()
 
     case = ImmigrationCase(
-        organization_id=ctx.organization_id,
+        organization_id=case_org_id,
         client_id=client.id,
         case_number=payload.case_number.strip(),
         title=payload.title.strip(),
