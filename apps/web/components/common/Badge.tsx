@@ -16,6 +16,7 @@ interface BadgeProps {
   size?: "sm" | "md";
   showDot?: boolean;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export function Badge({
@@ -24,6 +25,7 @@ export function Badge({
   size = "md",
   showDot = true,
   className = "",
+  style: customStyle,
 }: BadgeProps) {
   // Map domain states to token variants
   const resolvedVariant =
@@ -87,6 +89,7 @@ export function Badge({
         color: current.text,
         border: `1px solid ${current.border}`,
         lineHeight: 1.2,
+        ...customStyle,
       }}
     >
       {showDot && (

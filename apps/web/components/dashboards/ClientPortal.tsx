@@ -32,6 +32,9 @@ import {
   saveClientLanguage,
 } from "../../lib/clientLocalization";
 import { ClientLanguageBar } from "../portal/ClientLanguageBar";
+import { DocumentUploadStandardsFAQ } from "../portal/DocumentUploadStandardsFAQ";
+import { ClientProfileScopeView } from "../portal/ClientProfileScopeView";
+import { InitialInformationSheet } from "../portal/InitialInformationSheet";
 
 export function DocumentProgressionStepper({
   status,
@@ -168,10 +171,10 @@ interface ClientPortalProps {
   messages?: MessageItem[];
   notifications?: NotificationItem[];
   invoices?: InvoiceItem[];
-  onOpenUploadModal: () => void;
-  onOpenQuestionnaireModal: () => void;
-  onSendMessage: (content: string) => void;
-  onMarkNotificationRead: (id: string) => void;
+  onOpenUploadModal?: () => void;
+  onOpenQuestionnaireModal?: () => void;
+  onSendMessage?: (content: string) => void;
+  onMarkNotificationRead?: (id: string) => void;
   onDocumentUpdated?: (doc: DocumentItem) => void;
 }
 
@@ -181,10 +184,10 @@ export function ClientPortal({
   messages = [],
   notifications = [],
   invoices = [],
-  onOpenUploadModal,
-  onOpenQuestionnaireModal,
-  onSendMessage,
-  onMarkNotificationRead,
+  onOpenUploadModal = () => {},
+  onOpenQuestionnaireModal = () => {},
+  onSendMessage = () => {},
+  onMarkNotificationRead = () => {},
   onDocumentUpdated,
 }: ClientPortalProps) {
   const [clientLanguage, setClientLanguage] = useState<ClientLanguage>(getSavedClientLanguage);
@@ -208,10 +211,17 @@ export function ClientPortal({
     | "messages"
     | "billing"
     | "settings"
+    | "initial_sheet"
+    | "ocr_faq"
   >("overview");
 
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
+  const [isInformationSheetModalOpen, setIsInformationSheetModalOpen] = useState(false);
+  const [isOcrStandardsModalOpen, setIsOcrStandardsModalOpen] = useState(false);
+  const [overviewDocFilter, setOverviewDocFilter] = useState<string>("all");
+  const [quickChatMessage, setQuickChatMessage] = useState("");
+  const [quickChatSentFeedback, setQuickChatSentFeedback] = useState(false);
   const [selectedDocForInspection, setSelectedDocForInspection] = useState<DocumentItem | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [chatPromptText, setChatPromptText] = useState("");
@@ -578,6 +588,116 @@ export function ClientPortal({
   const missingDocs = documents.filter((d) => d.status === "missing" || d.status === "action_needed");
   const unreadCount = notifications.filter((n) => n.status === "unread").length;
 
+  const overviewRequiredDocuments = [
+    {
+      id: "req-doc-1",
+      title: "Foreign Passport Identity & Photo Page",
+      category: "Identity Travel Document",
+      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
+      statutoryBasis: isCanada ? "IRPR § 52 - Valid Travel Document" : "8 CFR § 204.5(a) Identity Proof",
+      status: "accepted" as const,
+      processingStatus: "completed",
+      verificationStatus: "verified",
+      notes: "Machine-readable international passport biodata page on file with legal counsel. Verified by case manager.",
+    },
+    {
+      id: "req-doc-2",
+      title: "Official Government Civil Marriage Certificate & Registration",
+      category: "Civil Marriage Record",
+      applicant: "Joint (Principal Applicant & Sponsor)",
+      statutoryBasis: isCanada ? "IRPR § 117(1)(a) Spousal Relationship" : "8 CFR § 204.2(a)(2) Spousal Relationship",
+      status: "accepted" as const,
+      processingStatus: "completed",
+      verificationStatus: "verified",
+      notes: "Civil registrar certificate issued by competent authority. Certified copy in file.",
+    },
+    {
+      id: "req-doc-3",
+      title: "Sponsor Permanent Resident (PR) Card & Identity",
+      category: "Sponsor Legal Status",
+      applicant: "Sponsor / Spouse",
+      statutoryBasis: isCanada ? "IRPA § 130 Sponsor Eligibility Criteria" : "INA § 204(a)(1)(A) Sponsor Status",
+      status: "accepted" as const,
+      processingStatus: "completed",
+      verificationStatus: "verified",
+      notes: "Valid permanent residency verification and statutory identification documents on file.",
+    },
+    {
+      id: "req-doc-4",
+      title: "Sponsor Employment Verification Letter & Recent Paystubs",
+      category: "Financial Support & Undertaking",
+      applicant: "Sponsor / Spouse",
+      statutoryBasis: isCanada ? "IRPR § 132 Sponsorship Undertaking Sufficiency" : "8 CFR § 213a Affidavit of Support",
+      status: "under_review" as const,
+      processingStatus: "completed",
+      verificationStatus: "pending",
+      notes: "Official employer verification letter and recent income statements under legal review.",
+    },
+    {
+      id: "req-doc-5",
+      title: "Post-Secondary Educational Credentials & Academic Transcripts",
+      category: "Academic Records",
+      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
+      statutoryBasis: isCanada ? "IRCC Express Entry / Credential Assessment" : "8 CFR § 204.5(k)(2) Educational Records",
+      status: "under_review" as const,
+      processingStatus: "completed",
+      verificationStatus: "pending",
+      notes: "Educational credentials and official academic transcripts undergoing legal team verification.",
+    },
+    {
+      id: "req-doc-6",
+      title: "Certified English Translation of Foreign Marriage Record",
+      category: "Foreign Language Translation",
+      applicant: "Joint (Principal Applicant & Sponsor)",
+      statutoryBasis: isCanada ? "IRCC Translation Guidelines" : "8 CFR § 103.2(b)(3) Translation Competence",
+      status: "rejected" as const,
+      processingStatus: "completed",
+      verificationStatus: "rejected",
+      rejectionReasonCode: "MISSING_PAGES",
+      rejectionReasonLabel: "Missing Translator Competence Declaration",
+      clientExplanation: "The foreign language civil record was uploaded without the certified translator's formal sworn declaration of competence. Please re-upload with declaration.",
+      notes: "Correction required immediately before packaging.",
+    },
+    {
+      id: "req-doc-7",
+      title: "SDS Language Proficiency Test Scorecard (IELTS / CELPIP / PTE)",
+      category: "Language Evaluation",
+      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
+      statutoryBasis: isCanada ? "IRCC SDS / Express Entry Language Threshold" : "Statutory Language Requirements",
+      status: "uploaded" as const,
+      processingStatus: "processing",
+      verificationStatus: "unverified",
+      notes: "Official language examination scorecard uploaded; automated OCR verification active.",
+    },
+    {
+      id: "req-doc-8",
+      title: "Police Clearance Certificate (PCC) - India & RCMP Canada",
+      category: "Character & Security Clearance",
+      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
+      statutoryBasis: isCanada ? "IRPA § 36 Criminal Admissibility Screening" : "INA § 212(a)(2) Character Clearance",
+      status: "required" as const,
+      notes: "Original passport office PCC and statutory fingerprints clearance certificate required.",
+    },
+    {
+      id: "req-doc-9",
+      title: "Relationship Evidence Dossier (Chat Logs, Photos, Joint Lease)",
+      category: "Bona Fide Relationship Evidence",
+      applicant: "Joint (Principal Applicant & Sponsor)",
+      statutoryBasis: isCanada ? "IRPR § 4 Bad Faith / Convenience Marriage Bar" : "8 CFR § 204.2(a)(1) Genuine Relationship",
+      status: "required" as const,
+      notes: "Joint residential lease agreement, wedding documentation, and cohabitation evidence required.",
+    },
+    {
+      id: "req-doc-10",
+      title: "IRCC Upfront Medical Examination (eMedical Sheet / IME)",
+      category: "Health & Medical Admissibility",
+      applicant: `${clientName || "Primary Applicant"} (Principal Beneficiary)`,
+      statutoryBasis: isCanada ? "IRPR § 29 Medical Examination Requirements" : "INA § 212(a)(1) Public Health Examination",
+      status: "required" as const,
+      notes: "Panel physician examination sheet with UMI/IME tracking barcode.",
+    },
+  ];
+
   // Milestones progression
   const milestones = isCanada
     ? [
@@ -605,6 +725,41 @@ export function ClientPortal({
       count: null,
     },
     {
+      key: "documents" as const,
+      label: t.navDocuments,
+      buttonText: `📄 ${t.navDocuments} (${documents.length || 8})`,
+      icon: "📄",
+      count: documents.length || 8,
+    },
+    {
+      key: "initial_sheet" as const,
+      label: t.navInitialSheet || "Initial Information Sheet (12-Page Intake)",
+      buttonText: `📝 ${t.navInitialSheet || "Initial Information Sheet (12-Page Intake)"}`,
+      icon: "📝",
+      count: "95%",
+    },
+    {
+      key: "messages" as const,
+      label: t.navMessages,
+      buttonText: `💬 ${t.navMessages} (${messages.length})`,
+      icon: "💬",
+      count: messages.length,
+    },
+    {
+      key: "profile" as const,
+      label: "Client Profile & Visa File Scope",
+      buttonText: `👤 Client Profile & Visa File Scope`,
+      icon: "👤",
+      count: null,
+    },
+    {
+      key: "ocr_faq" as const,
+      label: t.navOcrStandards || "Standards for Uploading Documents (OCR FAQ)",
+      buttonText: `💡 ${t.navOcrStandards || "Standards for Uploading Documents (OCR FAQ)"}`,
+      icon: "💡",
+      count: null,
+    },
+    {
       key: "updates" as const,
       label: t.navUpdates,
       buttonText: `📑 ${t.navUpdates}${myCase ? ` (${updatesCount})` : ""}`,
@@ -617,20 +772,6 @@ export function ClientPortal({
       buttonText: `✅ Per-Applicant Checklist${myCase ? ` (${checklistCount})` : ""}`,
       icon: "✅",
       count: myCase ? checklistCount : null,
-    },
-    {
-      key: "documents" as const,
-      label: t.navDocuments,
-      buttonText: `📄 ${t.navDocuments} (${documents.length})`,
-      icon: "📄",
-      count: documents.length,
-    },
-    {
-      key: "messages" as const,
-      label: t.navMessages,
-      buttonText: `💬 ${t.navMessages} (${messages.length})`,
-      icon: "💬",
-      count: messages.length,
     },
     {
       key: "questionnaire" as const,
@@ -651,13 +792,6 @@ export function ClientPortal({
       label: t.navMilestones,
       buttonText: `🏁 ${t.navMilestones}`,
       icon: "🏁",
-      count: null,
-    },
-    {
-      key: "profile" as const,
-      label: t.navProfile,
-      buttonText: `👤 ${t.navProfile}`,
-      icon: "👤",
       count: null,
     },
     {
@@ -1236,6 +1370,58 @@ export function ClientPortal({
                 </button>
                 <button
                   type="button"
+                  onClick={() => setIsInformationSheetModalOpen(true)}
+                  style={{
+                    background: "#FFFFFF",
+                    color: "#063C3D",
+                    border: "1px solid #B9DED4",
+                    borderRadius: "8px",
+                    padding: "9px 14px",
+                    fontSize: "13px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#F8F7F2";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#FFFFFF";
+                  }}
+                >
+                  <span>📝 Initial Information Sheet</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsOcrStandardsModalOpen(true)}
+                  style={{
+                    background: "#FFFFFF",
+                    color: "#063C3D",
+                    border: "1px solid #B9DED4",
+                    borderRadius: "8px",
+                    padding: "9px 14px",
+                    fontSize: "13px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#F8F7F2";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#FFFFFF";
+                  }}
+                >
+                  <span>💡 Upload Standards &amp; OCR FAQ</span>
+                </button>
+                <button
+                  type="button"
                   onClick={onOpenQuestionnaireModal}
                   style={{
                     background: "#FFFFFF",
@@ -1415,6 +1601,1059 @@ export function ClientPortal({
                 </p>
               </div>
             )}
+
+            {/* =========================================================================
+                SECTION 1: CLIENT PROFILE INFORMATION & ACTIVE VISA FILE SCOPE
+                ========================================================================= */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1.5px solid #B9DED4",
+                borderRadius: "14px",
+                padding: "22px 26px",
+                boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  flexWrap: "wrap",
+                  gap: "14px",
+                  paddingBottom: "16px",
+                  borderBottom: "1px solid #DCE5E1",
+                  marginBottom: "18px",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "18px" }}>👤</span>
+                    <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
+                      Client Profile &amp; Active Visa File Scope
+                    </h3>
+                    <span
+                      style={{
+                        background: "#DCFCE7",
+                        color: "#166534",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: "20px",
+                        border: "1px solid #86EFAC",
+                      }}
+                    >
+                      Active Legal Matter
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C", lineHeight: 1.4 }}>
+                    Details of the active visa file in preparation, legal processing jurisdiction, and authorized family members.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("profile")}
+                    style={{
+                      background: "#EAF6F0",
+                      color: "#0D6866",
+                      border: "1px solid #B9DED4",
+                      borderRadius: "8px",
+                      padding: "8px 14px",
+                      fontSize: "12px",
+                      fontWeight: 650,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    View Full Profile Scope &amp; Family Register →
+                  </button>
+                </div>
+              </div>
+
+              {/* Visa File & Composition Highlights */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                  gap: "16px",
+                }}
+              >
+                {/* Visa File Being Made */}
+                <div
+                  style={{
+                    background: "#F8FAF9",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "10px",
+                    padding: "16px 18px",
+                  }}
+                >
+                  <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
+                    VISA FILE IN PREPARATION
+                  </span>
+                  <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
+                    {myCase?.visa_category || "In-Canada Spousal Sponsorship (SCLPC / IRCC)"}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.5 }}>
+                    Authority: <strong>{myCase?.jurisdiction || "Immigration, Refugees and Citizenship Canada (IRCC)"}</strong><br />
+                    Processing Office: <strong>CPC-Mississauga / IRCC Case Processing Centre</strong><br />
+                    File Docket: <strong>#{myCase?.case_number || "CASE-CA-2026-SP"}</strong>
+                  </div>
+                </div>
+
+                {/* Family Members Included */}
+                <div
+                  style={{
+                    background: "#F8FAF9",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "10px",
+                    padding: "16px 18px",
+                  }}
+                >
+                  <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
+                    MATTER COMPOSITION (FAMILY MEMBERS)
+                  </span>
+                  <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
+                    Matter Composition (Family Members)
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.5 }}>
+                    • <strong>{clientName || "Primary Applicant"}</strong> (Principal Beneficiary / Retained Client)<br />
+                    • <strong>Sponsor / Spouse</strong> (Canadian Co-Signer &amp; Financial Undertaking)<br />
+                    • Declared Immediate Family Members under statutory compliance (Form IMM 5406)
+                  </div>
+                </div>
+
+                {/* Statutory Forms in Preparation */}
+                <div
+                  style={{
+                    background: "#F8FAF9",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "10px",
+                    padding: "16px 18px",
+                  }}
+                >
+                  <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
+                    STATUTORY FORMS COMPILED
+                  </span>
+                  <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
+                    6 Government Petition Forms
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
+                    {["IMM 0008", "IMM 5532", "IMM 5669", "IMM 5406", "IMM 1344", "SOWP"].map((formName) => (
+                      <span
+                        key={formName}
+                        style={{
+                          background: "#EAF6F0",
+                          color: "#0D6866",
+                          border: "1px solid #B9DED4",
+                          borderRadius: "4px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "2px 7px",
+                        }}
+                      >
+                        {formName}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* =========================================================================
+                SECTION 2: REQUIRED DOCUMENT LIST AND LIVE STATUS PANEL
+                ========================================================================= */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1.5px solid #B9DED4",
+                borderRadius: "14px",
+                padding: "22px 26px",
+                boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "14px",
+                  paddingBottom: "16px",
+                  borderBottom: "1px solid #DCE5E1",
+                  marginBottom: "16px",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "18px" }}>📄</span>
+                    <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
+                      Required Document List &amp; Live Status
+                    </h3>
+                    <span
+                      style={{
+                        background: "#EAF6F0",
+                        color: "#0D6866",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: "20px",
+                        border: "1px solid #B9DED4",
+                      }}
+                    >
+                      {overviewRequiredDocuments.length} Documents Mapped
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C" }}>
+                    Track evidentiary document collection, automated AI OCR extraction, legal verification, and correction notices.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsOcrStandardsModalOpen(true)}
+                    style={{
+                      background: "#FFFFFF",
+                      color: "#0D6866",
+                      border: "1px solid #B9DED4",
+                      borderRadius: "8px",
+                      padding: "8px 14px",
+                      fontSize: "12px",
+                      fontWeight: 650,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <span>💡 OCR Upload Standards FAQ</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onOpenUploadModal}
+                    style={{
+                      background: "#0D6866",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 650,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
+                    }}
+                  >
+                    <span>+ Upload Evidence File</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Pills */}
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+                {[
+                  { key: "all", label: `All Documents (${overviewRequiredDocuments.length})` },
+                  { key: "action_needed", label: `Action Needed / Missing (${overviewRequiredDocuments.filter((d) => d.status === "required" || d.status === "rejected").length})` },
+                  { key: "under_review", label: `Under Review (${overviewRequiredDocuments.filter((d) => d.status === "under_review" || d.status === "uploaded").length})` },
+                  { key: "accepted", label: `Accepted & Verified (${overviewRequiredDocuments.filter((d) => d.status === "accepted").length})` },
+                  { key: "rejected", label: `Correction Required (${overviewRequiredDocuments.filter((d) => d.status === "rejected").length})` },
+                ].map((flt) => {
+                  const isActive = overviewDocFilter === flt.key;
+                  return (
+                    <button
+                      key={flt.key}
+                      type="button"
+                      onClick={() => setOverviewDocFilter(flt.key)}
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: "12px",
+                        fontWeight: isActive ? 700 : 500,
+                        borderRadius: "20px",
+                        border: isActive ? "1.5px solid #0D6866" : "1px solid #DCE5E1",
+                        background: isActive ? "#0D6866" : "#FFFFFF",
+                        color: isActive ? "#FFFFFF" : "#445451",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {flt.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Document List Rows */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {overviewRequiredDocuments
+                  .filter((d) => {
+                    if (overviewDocFilter === "action_needed") return d.status === "required" || d.status === "rejected";
+                    if (overviewDocFilter === "under_review") return d.status === "under_review" || d.status === "uploaded";
+                    if (overviewDocFilter === "accepted") return d.status === "accepted";
+                    if (overviewDocFilter === "rejected") return d.status === "rejected";
+                    return true;
+                  })
+                  .map((doc) => {
+                    const isAccepted = doc.status === "accepted";
+                    const isRejected = doc.status === "rejected";
+                    const isReview = doc.status === "under_review";
+                    const isUploaded = doc.status === "uploaded";
+                    const isRequired = doc.status === "required";
+
+                    return (
+                      <div
+                        key={doc.id}
+                        style={{
+                          background: isRejected ? "#FFFDFD" : isAccepted ? "#FAFCFA" : "#FFFFFF",
+                          border: `1px solid ${isRejected ? "#FECACA" : isAccepted ? "#B9DED4" : "#DCE5E1"}`,
+                          borderRadius: "10px",
+                          padding: "14px 18px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "10px",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
+                          <div style={{ flex: 1, minWidth: "260px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
+                              <strong style={{ fontSize: "14px", color: "#063C3D" }}>
+                                {doc.title}
+                              </strong>
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  padding: "2px 8px",
+                                  borderRadius: "4px",
+                                  background: "#EAF6F0",
+                                  color: "#0D6866",
+                                  border: "1px solid #B9DED4",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {doc.category}
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: "12px", color: "#64748B", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                              <span>👤 <strong>Applicant:</strong> {doc.applicant}</span>
+                              <span>⚖️ <strong>Statutory Basis:</strong> {doc.statutoryBasis}</span>
+                            </div>
+                            <div style={{ fontSize: "12px", color: "#475569", marginTop: "3px", fontStyle: "italic" }}>
+                              {doc.notes}
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+                            {isAccepted && (
+                              <span
+                                style={{
+                                  background: "#DCFCE7",
+                                  color: "#166534",
+                                  border: "1px solid #86EFAC",
+                                  padding: "4px 10px",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ✓ ACCEPTED &amp; VERIFIED
+                              </span>
+                            )}
+                            {isReview && (
+                              <span
+                                style={{
+                                  background: "#EAF6F0",
+                                  color: "#0D6866",
+                                  border: "1px solid #B9DED4",
+                                  padding: "4px 10px",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ⏳ UNDER LEGAL REVIEW
+                              </span>
+                            )}
+                            {isUploaded && (
+                              <span
+                                style={{
+                                  background: "#E0F2FE",
+                                  color: "#0369A1",
+                                  border: "1px solid #BAE6FD",
+                                  padding: "4px 10px",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                🔄 UPLOADED (OCR PROCESSING)
+                              </span>
+                            )}
+                            {isRejected && (
+                              <span
+                                style={{
+                                  background: "#FEE2E2",
+                                  color: "#991B1B",
+                                  border: "1px solid #FECACA",
+                                  padding: "4px 10px",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ⚠️ CORRECTION REQUIRED
+                              </span>
+                            )}
+                            {isRequired && (
+                              <span
+                                style={{
+                                  background: "#FEF3C7",
+                                  color: "#92400E",
+                                  border: "1px solid #FDE68A",
+                                  padding: "4px 10px",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                📋 ACTION NEEDED / MISSING
+                              </span>
+                            )}
+
+                            {(isRequired || isRejected) && (
+                              <button
+                                type="button"
+                                onClick={onOpenUploadModal}
+                                style={{
+                                  background: isRejected ? "#991B1B" : "#0D6866",
+                                  color: "#FFFFFF",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  padding: "5px 12px",
+                                  fontSize: "12px",
+                                  fontWeight: 650,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {isRejected ? "Re-Upload Document →" : "Upload File →"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Progression Stepper */}
+                        <div
+                          style={{
+                            background: "#F8FAF9",
+                            border: "1px solid #E2E8F0",
+                            borderRadius: "8px",
+                            padding: "8px 14px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            fontSize: "11px",
+                            color: "#64748B",
+                            overflowX: "auto",
+                          }}
+                        >
+                          <span style={{ fontWeight: 650, color: "#063C3D" }}>Pipeline:</span>
+                          <span style={{ color: isRequired ? "#64748B" : "#0D6866", fontWeight: isRequired ? 500 : 700 }}>
+                            {isRequired ? "○ 1. Awaiting Upload" : "● 1. Uploaded"}
+                          </span>
+                          <span>→</span>
+                          <span style={{ color: isAccepted || isReview || isUploaded ? "#0D6866" : "#94A3B8", fontWeight: isAccepted || isReview || isUploaded ? 700 : 500 }}>
+                            {isUploaded ? "🔄 2. AI OCR Processing" : isAccepted || isReview ? "● 2. OCR Extracted" : "○ 2. OCR Pending"}
+                          </span>
+                          <span>→</span>
+                          <span style={{ color: isAccepted || isReview ? "#0D6866" : isRejected ? "#DC2626" : "#94A3B8", fontWeight: isAccepted || isReview || isRejected ? 700 : 500 }}>
+                            {isRejected ? "⚠️ 3. Legal Flagged" : isAccepted ? "● 3. Attorney Approved" : isReview ? "⏳ 3. Attorney Review" : "○ 3. Legal Review"}
+                          </span>
+                          <span>→</span>
+                          <span style={{ color: isAccepted ? "#166534" : "#94A3B8", fontWeight: isAccepted ? 800 : 500 }}>
+                            {isAccepted ? "✓ 4. Verified for Filing" : "○ 4. Filing Ready"}
+                          </span>
+                        </div>
+
+                        {/* Correction Notice Banner if Rejected */}
+                        {isRejected && (doc as any).clientExplanation && (
+                          <div
+                            style={{
+                              background: "#FEF2F2",
+                              border: "1px solid #FECACA",
+                              borderRadius: "8px",
+                              padding: "10px 14px",
+                              fontSize: "12px",
+                              color: "#991B1B",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: "10px",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <div>
+                              <strong>Caseworker Action Notice:</strong>{" "}
+                              {(doc as any).rejectionReasonLabel && (
+                                <span style={{ fontWeight: 700, textDecoration: "underline", marginRight: "6px" }}>
+                                  {(doc as any).rejectionReasonLabel}:
+                                </span>
+                              )}
+                              {(doc as any).clientExplanation}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={onOpenUploadModal}
+                              style={{
+                                background: "#991B1B",
+                                color: "#FFF",
+                                border: "none",
+                                borderRadius: "6px",
+                                padding: "4px 10px",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Upload Corrected File →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* =========================================================================
+                SECTION 3: REQUIRED / PENDING INITIAL INFORMATION SHEET (12-Page Intake)
+                ========================================================================= */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1.5px solid #B9DED4",
+                borderRadius: "14px",
+                padding: "22px 26px",
+                boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "14px",
+                  paddingBottom: "16px",
+                  borderBottom: "1px solid #DCE5E1",
+                  marginBottom: "16px",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "18px" }}>📝</span>
+                    <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
+                      Required / Pending Initial Information Sheet
+                    </h3>
+                    <span
+                      style={{
+                        background: "#DCFCE7",
+                        color: "#166534",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: "20px",
+                        border: "1px solid #86EFAC",
+                      }}
+                    >
+                      95% Complete
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C" }}>
+                    Official comprehensive intake sheet (SkySail Immigration) covering Biodata, Entry History, 10-Yr Education, Employment, Travel, Addresses, and Sponsor Relationship.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsInformationSheetModalOpen(true)}
+                    style={{
+                      background: "#0D6866",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 650,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
+                    }}
+                  >
+                    <span>Open / Complete Information Sheet →</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("initial_sheet")}
+                    style={{
+                      background: "#EAF6F0",
+                      color: "#0D6866",
+                      border: "1px solid #B9DED4",
+                      borderRadius: "8px",
+                      padding: "8px 14px",
+                      fontSize: "12px",
+                      fontWeight: 650,
+                      cursor: "pointer",
+                    }}
+                  >
+                    View in Dedicated Tab →
+                  </button>
+                </div>
+              </div>
+
+              {/* Progress Bar & Section Checkpoints */}
+              <div style={{ marginBottom: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "6px" }}>
+                  <span style={{ fontWeight: 650, color: "#063C3D" }}>10 of 11 Sections Completed • Only Final E-Signature Pending</span>
+                  <span style={{ fontWeight: 700, color: "#0D6866" }}>95% Readiness</span>
+                </div>
+                <div style={{ width: "100%", height: "8px", background: "#E2E8F0", borderRadius: "4px", overflow: "hidden" }}>
+                  <div style={{ width: "95%", height: "100%", background: "#0D6866", borderRadius: "4px" }} />
+                </div>
+              </div>
+
+              {/* Grid of completed sections */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "10px",
+                  fontSize: "12px",
+                }}
+              >
+                {[
+                  { title: "1. Main Applicant Biodata", detail: "Primary applicant biographical details and civil identity", done: true },
+                  { title: "2. Entry & Refusal History", detail: "Authorized entry records and statutory disclosure", done: true },
+                  { title: "3. Relatives in Destination", detail: "Immediate and extended relatives residing in destination country", done: true },
+                  { title: "4. 10-Yr Education History", detail: "Secondary & post-secondary degrees and credentials", done: true },
+                  { title: "5. 10-Yr Employment History", detail: "Continuous verified employment records (no gaps)", done: true },
+                  { title: "6. 10-Yr Travel History", detail: "International departures, entries, and travel records", done: true },
+                  { title: "7. Immediate Family Register", detail: "Statutory family register declared under IRPA § 117(9)(d)", done: true },
+                  { title: "8. Passport & Language Scores", detail: "Valid travel credentials and standardized examination scores", done: true },
+                  { title: "9. 10-Yr Address History (18+)", detail: "Complete chronological residential history since age 18", done: true },
+                  { title: "10. Sponsor & Relationship", detail: "Sponsor eligibility, financial undertaking & relationship timeline", done: true },
+                  { title: "11. Statutory Declaration", detail: "Formal electronic declaration and client sign-off", done: false },
+                ].map((sec) => (
+                  <div
+                    key={sec.title}
+                    style={{
+                      background: sec.done ? "#F8FAF9" : "#FFFBEB",
+                      border: `1px solid ${sec.done ? "#B9DED4" : "#FCD34D"}`,
+                      borderRadius: "8px",
+                      padding: "10px 12px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
+                      <span style={{ color: sec.done ? "#166534" : "#B45309", fontWeight: 700 }}>
+                        {sec.done ? "✓" : "⏳"}
+                      </span>
+                      <strong style={{ color: sec.done ? "#063C3D" : "#92400E", fontSize: "12px" }}>
+                        {sec.title}
+                      </strong>
+                    </div>
+                    <div style={{ color: "#64748B", fontSize: "11px", lineHeight: 1.3 }}>
+                      {sec.detail}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* =========================================================================
+                SECTION 4: CHAT WITH ASSIGNED CASE PROCESSING OFFICER
+                ========================================================================= */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1.5px solid #B9DED4",
+                borderRadius: "14px",
+                padding: "22px 26px",
+                boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "14px",
+                  paddingBottom: "16px",
+                  borderBottom: "1px solid #DCE5E1",
+                  marginBottom: "16px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{ position: "relative" }}>
+                    <div
+                      style={{
+                        width: "42px",
+                        height: "42px",
+                        borderRadius: "50%",
+                        background: "#0D6866",
+                        color: "#FFFFFF",
+                        fontSize: "14px",
+                        fontWeight: 750,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      SJ
+                    </div>
+                    <span
+                      style={{
+                        position: "absolute",
+                        bottom: "0",
+                        right: "0",
+                        width: "11px",
+                        height: "11px",
+                        borderRadius: "50%",
+                        background: "#22C55E",
+                        border: "2px solid #FFFFFF",
+                      }}
+                      title="Online Now"
+                    />
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
+                        Officer Sarah Jenkins, Esq.
+                      </h3>
+                      <span
+                        style={{
+                          background: "#DCFCE7",
+                          color: "#166534",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          border: "1px solid #86EFAC",
+                        }}
+                      >
+                        ONLINE NOW
+                      </span>
+                    </div>
+                    <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
+                      Supervising Immigration Attorney • Vanguard Immigration Law Group • Direct Encrypted Portal Line
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("messages")}
+                  style={{
+                    background: "#EAF6F0",
+                    color: "#0D6866",
+                    border: "1px solid #B9DED4",
+                    borderRadius: "8px",
+                    padding: "8px 14px",
+                    fontSize: "12px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>Open Full Communications Hub →</span>
+                </button>
+              </div>
+
+              {/* Quick Inquiry Prompt Chips */}
+              <div style={{ marginBottom: "14px" }}>
+                <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 650, display: "block", marginBottom: "6px" }}>
+                  Quick Question Prompts (Click to ask your caseworker):
+                </span>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {[
+                    "How long will the IRCC AOR take after filing?",
+                    "Does the spousal residential lease need both our signatures?",
+                    "When should I complete the upfront medical examination?",
+                    "Do we need certified translations for Gujarati marriage card?",
+                  ].map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => setQuickChatMessage(prompt)}
+                      style={{
+                        padding: "5px 10px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        borderRadius: "16px",
+                        border: "1px solid #B9DED4",
+                        background: "#F8FAF9",
+                        color: "#0D6866",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "#EAF6F0";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "#F8FAF9";
+                      }}
+                    >
+                      💬 {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Chat Message Input */}
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <input
+                  type="text"
+                  value={quickChatMessage}
+                  onChange={(e) => setQuickChatMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && quickChatMessage.trim()) {
+                      onSendMessage?.(quickChatMessage);
+                      setQuickChatSentFeedback(true);
+                      setQuickChatMessage("");
+                      setTimeout(() => setQuickChatSentFeedback(false), 5000);
+                    }
+                  }}
+                  placeholder="Type a direct message to Officer Sarah Jenkins, Esq..."
+                  style={{
+                    flex: 1,
+                    padding: "10px 14px",
+                    borderRadius: "8px",
+                    border: "1px solid #DCE5E1",
+                    background: "#F8FAF9",
+                    fontSize: "13px",
+                    color: "#172322",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={!quickChatMessage.trim()}
+                  onClick={() => {
+                    if (quickChatMessage.trim()) {
+                      onSendMessage?.(quickChatMessage);
+                      setQuickChatSentFeedback(true);
+                      setQuickChatMessage("");
+                      setTimeout(() => setQuickChatSentFeedback(false), 5000);
+                    }
+                  }}
+                  style={{
+                    background: quickChatMessage.trim() ? "#0D6866" : "#E2E8F0",
+                    color: quickChatMessage.trim() ? "#FFFFFF" : "#94A3B8",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "10px 18px",
+                    fontSize: "13px",
+                    fontWeight: 650,
+                    cursor: quickChatMessage.trim() ? "pointer" : "not-allowed",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  Send Message →
+                </button>
+              </div>
+
+              {quickChatSentFeedback && (
+                <div
+                  style={{
+                    marginTop: "10px",
+                    background: "#DCFCE7",
+                    border: "1px solid #86EFAC",
+                    borderRadius: "6px",
+                    padding: "8px 12px",
+                    fontSize: "12px",
+                    color: "#166534",
+                    fontWeight: 600,
+                  }}
+                >
+                  ✓ Message delivered to Officer Sarah Jenkins, Esq. Notification dispatched to legal team. Expect response within 2 business hours.
+                </div>
+              )}
+            </div>
+
+            {/* =========================================================================
+                SECTION 5: STANDARDS FOR UPLOADING DOCUMENTS FOR OPTIMAL OCR (FAQ)
+                ========================================================================= */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1.5px solid #B9DED4",
+                borderRadius: "14px",
+                padding: "22px 26px",
+                boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "14px",
+                  paddingBottom: "16px",
+                  borderBottom: "1px solid #DCE5E1",
+                  marginBottom: "16px",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "18px" }}>💡</span>
+                    <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
+                      Standards for Uploading Documents to the Portal (Optimal AI OCR)
+                    </h3>
+                    <span
+                      style={{
+                        background: "#EAF6F0",
+                        color: "#0D6866",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: "20px",
+                        border: "1px solid #B9DED4",
+                      }}
+                    >
+                      99.8% Accuracy Target
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C" }}>
+                    Follow these 6 golden rules to ensure automatic AI OCR extraction without legal re-upload requests.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsOcrStandardsModalOpen(true)}
+                  style={{
+                    background: "#EAF6F0",
+                    color: "#0D6866",
+                    border: "1px solid #B9DED4",
+                    borderRadius: "8px",
+                    padding: "8px 14px",
+                    fontSize: "12px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>Open Full Upload Standards &amp; Pre-Flight FAQ →</span>
+                </button>
+              </div>
+
+              {/* 6 Standards Cards */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                  gap: "12px",
+                  marginBottom: "16px",
+                }}
+              >
+                {[
+                  {
+                    icon: "📄",
+                    title: "300+ DPI Resolution",
+                    rule: "Use a dedicated flatbed scanner or CamScanner / Adobe Scan. Never send compressed WhatsApp photos.",
+                  },
+                  {
+                    icon: "💡",
+                    title: "Uniform Diffused Lighting",
+                    rule: "Capture near a natural window. Turn off camera flash to prevent specular reflection glare on glossy paper.",
+                  },
+                  {
+                    icon: "📐",
+                    title: "90° Overhead Orientation",
+                    rule: "Hold phone directly parallel to the paper. Skewed angles cause OCR perspective distortion.",
+                  },
+                  {
+                    icon: "🔲",
+                    title: "All 4 Corners Visible",
+                    rule: "Lay document flat on a dark wooden or slate surface. Keep all document edges and barcodes intact.",
+                  },
+                  {
+                    icon: "✋",
+                    title: "Zero Finger Occlusion",
+                    rule: "Do not hold page with thumbs. Remove paperclips and staples so seals and stamps remain 100% visible.",
+                  },
+                  {
+                    icon: "📑",
+                    title: "Complete Multi-Page PDFs",
+                    rule: "Include front and back of each page, plus sworn translator competence affidavit for non-English records.",
+                  },
+                ].map((std) => (
+                  <div
+                    key={std.title}
+                    style={{
+                      background: "#F8FAF9",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "10px",
+                      padding: "12px 14px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                      <span style={{ fontSize: "16px" }}>{std.icon}</span>
+                      <strong style={{ fontSize: "13px", color: "#063C3D" }}>{std.title}</strong>
+                    </div>
+                    <p style={{ margin: 0, fontSize: "11px", color: "#64748B", lineHeight: 1.4 }}>
+                      {std.rule}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  background: "#EAF6F0",
+                  border: "1px solid #B9DED4",
+                  borderRadius: "8px",
+                  padding: "10px 14px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                  fontSize: "12px",
+                  color: "#0D6866",
+                }}
+              >
+                <div>
+                  <strong>Pre-Flight Check:</strong> Does your document scan have clean margins, zero flash glare, and 300+ DPI?
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenUploadModal}
+                  style={{
+                    background: "#0D6866",
+                    color: "#FFF",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "6px 14px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  + Upload Compliant File Now
+                </button>
+              </div>
+            </div>
 
             {/* In-Progress Forms, Pending Actions & Upcoming Appointments Card */}
             <div
@@ -2879,67 +4118,33 @@ export function ClientPortal({
         )}
 
         {/* =========================================================================
-            TAB 7: APPLICANT PROFILE
+            TAB 7: APPLICANT PROFILE & VISA FILE SCOPE
             ========================================================================= */}
         {activeTab === "profile" && (
-          <Card title="Principal Applicant & Dependent Information" subtitle="Civil biodata matching official travel passports.">
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "14px",
-                  background: "#F8F7F2",
-                  padding: "16px",
-                  borderRadius: "8px",
-                  border: "1px solid #DCE5E1",
-                  fontSize: "13px",
-                }}
-              >
-                <div>
-                  <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600 }}>LEGAL NAME</span>
-                  <strong style={{ color: "#063C3D", fontSize: "14px" }}>
-                    {myCase ? myCase.client_name : "Applicant Name Pending"}
-                  </strong>
-                </div>
-                <div>
-                  <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600 }}>DATE OF BIRTH</span>
-                  <span style={{ color: "#172322" }}>
-                    {myCase?.case_number === "CASE-US-8841" ? "1988-04-12" : (myCase ? "Verified on Passport" : "Pending Intake Submission")}
-                  </span>
-                </div>
-                <div>
-                  <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600 }}>CITIZENSHIP / NATIONALITY</span>
-                  <span style={{ color: "#172322" }}>
-                    {myCase?.case_number === "CASE-US-8841" ? "Ukraine" : (myCase ? myCase.jurisdiction : "Pending Intake")}
-                  </span>
-                </div>
-                <div>
-                  <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600 }}>CURRENT RESIDENCE</span>
-                  <span style={{ color: "#172322" }}>
-                    {myCase?.case_number === "CASE-US-8841" ? "Palo Alto, California, United States" : (myCase ? "Primary Residence on Record" : "Pending Intake")}
-                  </span>
-                </div>
-              </div>
+          <ClientProfileScopeView
+            myCase={myCase}
+            onNavigateTab={(tab) => setActiveTab(tab as any)}
+            onOpenUploadModal={onOpenUploadModal}
+          />
+        )}
 
-              <h4 style={{ margin: "6px 0 0", fontSize: "14px", color: "#063C3D", fontWeight: 700 }}>
-                Dependents (Derivative Beneficiaries)
-              </h4>
-              {myCase?.case_number === "CASE-US-8841" ? (
-                <div style={{ padding: "12px 14px", border: "1px solid #DCE5E1", borderRadius: "8px", fontSize: "13px", background: "#FFFFFF" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <strong style={{ color: "#063C3D" }}>Alexander Rostova (Spouse)</strong>
-                    <Badge variant="neutral">Derivative Beneficiary</Badge>
-                  </div>
-                  <small style={{ color: "#6E7F7C" }}>DOB: 1987-11-04 • Nationality: Ukraine • Marriage Certificate verified</small>
-                </div>
-              ) : (
-                <div style={{ padding: "16px", border: "1px dashed #CBD5E1", borderRadius: "8px", fontSize: "12px", color: "#64748B", textAlign: "center", background: "#FFFFFF" }}>
-                  No derivative beneficiaries on file for this petition.
-                </div>
-              )}
-            </div>
-          </Card>
+        {/* =========================================================================
+            TAB: INITIAL INFORMATION SHEET (12-Page Digital Intake)
+            ========================================================================= */}
+        {activeTab === "initial_sheet" && (
+          <InitialInformationSheet
+            onSaved={() => {}}
+            onSubmitToOfficer={() => {}}
+          />
+        )}
+
+        {/* =========================================================================
+            TAB: STANDARDS FOR UPLOADING DOCUMENTS (OCR FAQ)
+            ========================================================================= */}
+        {activeTab === "ocr_faq" && (
+          <DocumentUploadStandardsFAQ
+            onOpenUploadModal={onOpenUploadModal}
+          />
         )}
 
         {/* =========================================================================
@@ -3063,6 +4268,28 @@ export function ClientPortal({
               onComplete={() => setIsOnboardingModalOpen(false)}
             />
           </div>
+        )}
+
+        {/* 12-Page Initial Information Sheet Modal */}
+        {isInformationSheetModalOpen && (
+          <InitialInformationSheet
+            isModal={true}
+            onClose={() => setIsInformationSheetModalOpen(false)}
+            onSaved={() => {}}
+            onSubmitToOfficer={() => {}}
+          />
+        )}
+
+        {/* Document Upload Standards & OCR FAQ Modal */}
+        {isOcrStandardsModalOpen && (
+          <DocumentUploadStandardsFAQ
+            isModal={true}
+            onClose={() => setIsOcrStandardsModalOpen(false)}
+            onOpenUploadModal={() => {
+              setIsOcrStandardsModalOpen(false);
+              onOpenUploadModal();
+            }}
+          />
         )}
       </main>
     </div>

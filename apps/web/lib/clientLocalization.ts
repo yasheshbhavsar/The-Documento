@@ -40,6 +40,8 @@ export interface ClientTranslations {
   navProfile: string;
   navBilling: string;
   navSettings: string;
+  navInitialSheet?: string;
+  navOcrStandards?: string;
   sectionsHeader: string;
 
   // Active Case Summary Card
@@ -145,6 +147,8 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     navProfile: "Applicant Profile",
     navBilling: "Retainers & Invoices",
     navSettings: "Privacy & Security",
+    navInitialSheet: "Initial Information Sheet (12-Page Intake)",
+    navOcrStandards: "Standards for Uploading Documents (OCR FAQ)",
     sectionsHeader: "Case Sections",
 
     caseLabel: "Case",
@@ -256,6 +260,8 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     navProfile: "અરજદારની પ્રોફાઇલ (Applicant Profile)",
     navBilling: "રીટેનર અને ઇન્વૉઇસેસ (Retainers & Invoices)",
     navSettings: "ગોપનીયતા અને સુરક્ષા (Privacy & Security)",
+    navInitialSheet: "પ્રારંભિક માહિતી પત્રક (12 પાનાનું ઇનટેક)",
+    navOcrStandards: "દસ્તાવેજ અપલોડ માનકો (OCR માર્ગદર્શિકા)",
     sectionsHeader: "કેસ વિભાગો",
 
     caseLabel: "કેસ",
@@ -367,6 +373,8 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     navProfile: "आवेदक प्रोफ़ाइल (Applicant Profile)",
     navBilling: "रिटेनर और चालान (Retainers & Invoices)",
     navSettings: "गोपनीयता और सुरक्षा (Privacy & Security)",
+    navInitialSheet: "प्रारंभिक सूचना पत्रक (12-पृष्ठीय इनटेक)",
+    navOcrStandards: "दस्तावेज़ अपलोड मानक (OCR अक्सर पूछे जाने वाले प्रश्न)",
     sectionsHeader: "केस अनुभाग",
 
     caseLabel: "केस",
