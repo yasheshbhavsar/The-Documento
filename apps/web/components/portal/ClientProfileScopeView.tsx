@@ -79,7 +79,7 @@ export function ClientProfileScopeView({
   const visaCategoryTitle = myCase.visa_category;
   const caseNumber = myCase.case_number || "PENDING";
   const jurisdiction = myCase.jurisdiction || "Immigration Authority";
-  const assignedOfficer = myCase.assigned_manager || "Supervising Case Manager";
+  const assignedOfficer = myCase.assigned_manager || "Pending Allocation";
 
   const isSpousalOrFamily =
     visaCategoryTitle.toLowerCase().includes("spous") ||

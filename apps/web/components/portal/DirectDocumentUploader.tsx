@@ -5,6 +5,7 @@ import { ClientLanguage, CLIENT_TRANSLATIONS } from "../../lib/clientLocalizatio
 
 interface DirectDocumentUploaderProps {
   caseId?: string;
+  assignedOfficer?: string | null;
   onDocumentUploaded: (doc: DocumentItem) => void;
   onRequestSelectedCategory?: DocumentCategory;
   language?: ClientLanguage;
@@ -12,6 +13,7 @@ interface DirectDocumentUploaderProps {
 
 export function DirectDocumentUploader({
   caseId = "case-01",
+  assignedOfficer,
   onDocumentUploaded,
   onRequestSelectedCategory,
   language = "en",
@@ -187,8 +189,11 @@ export function DirectDocumentUploader({
       };
 
       onDocumentUploaded(newDoc);
+      const officerText = assignedOfficer && !assignedOfficer.toLowerCase().includes("unassigned")
+        ? `Assigned to ${assignedOfficer} for statutory review.`
+        : "Queued for statutory review upon officer assignment.";
       setSuccessBanner(
-        `✅ Document "${newDoc.title}" submitted successfully! Assigned to Officer Sarah Jenkins, Esq. for statutory review.`
+        `✅ Document "${newDoc.title}" submitted successfully! ${officerText}`
       );
 
       // Reset form

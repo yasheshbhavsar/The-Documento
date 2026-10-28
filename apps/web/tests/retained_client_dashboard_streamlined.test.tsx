@@ -265,6 +265,35 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
       expect(handleSendMessage).toHaveBeenCalledWith(expect.stringContaining("How long will the IRCC AOR take after filing?"));
       expect(screen.getAllByText(/Message delivered to Officer Sarah Jenkins, Esq/i).length).toBeGreaterThan(0);
     });
+
+    it("renders unassigned state with pending allocation badge and firm intake desk when no officer has been assigned", () => {
+      const unassignedCase: ImmigrationCase = {
+        ...FIXTURE_CASES[0],
+        assigned_manager: undefined,
+      };
+
+      render(
+        <ClientPortal
+          myCase={unassignedCase}
+          documents={FIXTURE_DOCUMENTS}
+          messages={FIXTURE_MESSAGES}
+          notifications={FIXTURE_NOTIFICATIONS}
+          invoices={FIXTURE_INVOICES}
+        />
+      );
+
+      // Verify unassigned state in Overview Panel
+      expect(screen.getByText("No Officer Assigned Yet")).toBeDefined();
+      expect(screen.getAllByText(/Pending Allocation/i).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/Officer Sarah Jenkins, Esq\./i)).toBeNull();
+      expect(screen.queryByText(/ONLINE NOW/i)).toBeNull();
+
+      // Verify placeholder directs to legal intake desk
+      expect(screen.getByPlaceholderText(/Type a direct message to the firm legal intake desk \(Counsel pending allocation\)\.\.\./i)).toBeDefined();
+
+      // Verify sidebar shows No Officer Assigned
+      expect(screen.getByText("No Officer Assigned")).toBeDefined();
+    });
   });
 
   describe("5. Overview Panel — Standards for Uploading Documents for Optimal OCR", () => {

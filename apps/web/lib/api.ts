@@ -1381,7 +1381,7 @@ export const api = {
       visa_category: payload.visa_category,
       status: "intake",
       readiness_score: 10,
-      assigned_manager: "Sarah Jenkins, Esq.",
+      assigned_manager: (payload as any).assigned_manager || undefined,
       deadline: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       priority_date: new Date().toISOString().split("T")[0],
       organization_id: DEMO_ORG_ID,
@@ -1400,7 +1400,7 @@ export const api = {
       due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       priority: "high",
       is_completed: false,
-      assigned_to: "Sarah Jenkins, Esq.",
+      assigned_to: (payload as any).assigned_manager || "Unassigned",
     };
     localTasks = [initialTask, ...localTasks];
     setStored("documento_tasks", localTasks);

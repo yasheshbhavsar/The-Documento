@@ -902,6 +902,29 @@ a {
   display: inline-block;
 }
 
+.documento-hero-stage-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 36px;
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .documento-hero-stage-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(460px, 680px);
+    gap: 40px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .documento-hero-globe-column {
+    margin-top: 24px;
+    max-width: 580px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
 
 /* Luxury Card Hover Lift */
 .hover-lift {

@@ -19,5 +19,13 @@
     "start": "npm --prefix apps/web run start",
     "test": "npm --prefix apps/web run test",
     "backend": "powershell -ExecutionPolicy Bypass -File ./run_backend.ps1"
+  },
+  "dependencies": {
+    "awwwards-mcp": "^1.13.0"
+  },
+  "devDependencies": {
+    "ffmpeg-static": "^5.3.0",
+    "playwright": "^1.64.1",
+    "webcrack": "^2.16.0"
   }
 }

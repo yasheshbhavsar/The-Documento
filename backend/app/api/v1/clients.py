@@ -255,9 +255,9 @@ def create_client_profile(
     now = datetime.now(timezone.utc)
 
     # 1. Resolve unique organization_id
-    target_org_id = payload.organization_id
+    target_org_id = payload.organization_id or ctx.organization_id
     if not target_org_id or str(target_org_id) == "11111111-1111-1111-1111-111111111111":
-        target_org_id = uuid.uuid4()
+        target_org_id = ctx.organization_id or uuid.uuid4()
 
     org = db.query(Organization).filter(Organization.id == target_org_id).first()
     if not org:

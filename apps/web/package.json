@@ -13,8 +13,10 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
+    "cobe": "^2.0.1",
     "hls.js": "^1.7.3",
     "lucide-react": "^1.62.0",
+    "motion": "^14.7.1",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"

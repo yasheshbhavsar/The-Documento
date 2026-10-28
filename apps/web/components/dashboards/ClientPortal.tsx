@@ -199,6 +199,28 @@ export function ClientPortal({
 
   const t = CLIENT_TRANSLATIONS[clientLanguage];
 
+  const assignedOfficerName = myCase?.assigned_manager?.trim();
+  const hasAssignedOfficer = Boolean(
+    assignedOfficerName &&
+    !assignedOfficerName.toLowerCase().includes("unassigned") &&
+    assignedOfficerName.toLowerCase() !== "none"
+  );
+  const displayOfficerTitle = hasAssignedOfficer
+    ? (assignedOfficerName!.startsWith("Officer") ? assignedOfficerName! : `Officer ${assignedOfficerName!}`)
+    : "No Officer Assigned Yet";
+  const officerInitials = hasAssignedOfficer
+    ? (
+        assignedOfficerName!
+          .replace(/^(Officer|Dr\.|Attorney)\s+/i, "")
+          .split(" ")
+          .filter(Boolean)
+          .map((n) => n[0])
+          .slice(0, 2)
+          .join("")
+          .toUpperCase() || "SJ"
+      )
+    : "—";
+
   const [activeTab, setActiveTab] = useState<
     | "overview"
     | "updates"
@@ -638,7 +660,7 @@ export function ClientPortal({
           appointment_type: "attorney_strategy",
           date_time: "October 28, 2026 at 02:00 PM PST",
           location: "Secure Video Conference Link (LexImmigration)",
-          officer_or_venue: "Sarah Jenkins, Esq.",
+          officer_or_venue: hasAssignedOfficer ? assignedOfficerName! : "Lead Immigration Attorney",
           instructions: "Review petition exhibit list prior to video consultation.",
           can_reschedule: true,
         },
@@ -988,42 +1010,58 @@ export function ClientPortal({
                   width: "34px",
                   height: "34px",
                   borderRadius: "50%",
-                  background: "#0D6866",
-                  color: "#FFFFFF",
-                  fontSize: "12px",
+                  background: hasAssignedOfficer ? "#0D6866" : "#F1F5F9",
+                  color: hasAssignedOfficer ? "#FFFFFF" : "#64748B",
+                  fontSize: hasAssignedOfficer ? "12px" : "16px",
                   fontWeight: 700,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
-                  border: "1px solid #B9DED4",
+                  border: hasAssignedOfficer ? "1px solid #B9DED4" : "1px solid #CBD5E1",
                 }}
               >
-                SJ
+                {hasAssignedOfficer ? officerInitials : "⚖️"}
               </div>
-              <span
-                style={{
-                  position: "absolute",
-                  bottom: "-1px",
-                  right: "-1px",
-                  width: "9px",
-                  height: "9px",
-                  borderRadius: "50%",
-                  backgroundColor: "#22C55E",
-                  border: "1.5px solid #FFFFFF",
-                }}
-                title="Officer Online"
-              />
+              {hasAssignedOfficer ? (
+                <span
+                  style={{
+                    position: "absolute",
+                    bottom: "-1px",
+                    right: "-1px",
+                    width: "9px",
+                    height: "9px",
+                    borderRadius: "50%",
+                    backgroundColor: "#22C55E",
+                    border: "1.5px solid #FFFFFF",
+                  }}
+                  title="Officer Online"
+                />
+              ) : (
+                <span
+                  style={{
+                    position: "absolute",
+                    bottom: "-1px",
+                    right: "-1px",
+                    width: "9px",
+                    height: "9px",
+                    borderRadius: "50%",
+                    backgroundColor: "#F59E0B",
+                    border: "1.5px solid #FFFFFF",
+                  }}
+                  title="Assignment Pending"
+                />
+              )}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {myCase?.assigned_manager || (myCase ? "Sarah Jenkins, Esq." : "Unassigned Counsel")}
+                {hasAssignedOfficer ? assignedOfficerName : "No Officer Assigned"}
               </div>
-              <div style={{ fontSize: "11px", color: "#0D6866", fontWeight: 650, lineHeight: 1.2 }}>
-                {t.assignedOfficerTitle}
+              <div style={{ fontSize: "11px", color: hasAssignedOfficer ? "#0D6866" : "#92400E", fontWeight: 650, lineHeight: 1.2 }}>
+                {hasAssignedOfficer ? t.assignedOfficerTitle : "Pending Allocation"}
               </div>
               <div style={{ fontSize: "10px", color: "#6E7F7C", marginTop: "1px" }}>
-                {t.onlineNowText}
+                {hasAssignedOfficer ? t.onlineNowText : "Awaiting Assignment"}
               </div>
             </div>
           </div>
@@ -1044,7 +1082,7 @@ export function ClientPortal({
               transition: "all 0.15s ease",
             }}
           >
-            {t.chatWithOfficerButton}
+            {hasAssignedOfficer ? t.chatWithOfficerButton : "Contact Intake Desk →"}
           </button>
         </div>
       </aside>
@@ -2375,52 +2413,87 @@ export function ClientPortal({
                         width: "42px",
                         height: "42px",
                         borderRadius: "50%",
-                        background: "#0D6866",
-                        color: "#FFFFFF",
-                        fontSize: "14px",
+                        background: hasAssignedOfficer ? "#0D6866" : "#F1F5F9",
+                        color: hasAssignedOfficer ? "#FFFFFF" : "#64748B",
+                        fontSize: hasAssignedOfficer ? "14px" : "18px",
                         fontWeight: 750,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        border: hasAssignedOfficer ? "1px solid #B9DED4" : "1px solid #CBD5E1",
                       }}
                     >
-                      SJ
+                      {hasAssignedOfficer ? officerInitials : "⚖️"}
                     </div>
-                    <span
-                      style={{
-                        position: "absolute",
-                        bottom: "0",
-                        right: "0",
-                        width: "11px",
-                        height: "11px",
-                        borderRadius: "50%",
-                        background: "#22C55E",
-                        border: "2px solid #FFFFFF",
-                      }}
-                      title="Online Now"
-                    />
+                    {hasAssignedOfficer ? (
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: "0",
+                          right: "0",
+                          width: "11px",
+                          height: "11px",
+                          borderRadius: "50%",
+                          background: "#22C55E",
+                          border: "2px solid #FFFFFF",
+                        }}
+                        title="Online Now"
+                      />
+                    ) : (
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: "0",
+                          right: "0",
+                          width: "11px",
+                          height: "11px",
+                          borderRadius: "50%",
+                          background: "#F59E0B",
+                          border: "2px solid #FFFFFF",
+                        }}
+                        title="Assignment Pending"
+                      />
+                    )}
                   </div>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
-                        Officer Sarah Jenkins, Esq.
+                        {hasAssignedOfficer ? displayOfficerTitle : "No Officer Assigned Yet"}
                       </h3>
-                      <span
-                        style={{
-                          background: "#DCFCE7",
-                          color: "#166534",
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          padding: "2px 6px",
-                          borderRadius: "4px",
-                          border: "1px solid #86EFAC",
-                        }}
-                      >
-                        ONLINE NOW
-                      </span>
+                      {hasAssignedOfficer ? (
+                        <span
+                          style={{
+                            background: "#DCFCE7",
+                            color: "#166534",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            border: "1px solid #86EFAC",
+                          }}
+                        >
+                          ONLINE NOW
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            background: "#FEF3C7",
+                            color: "#92400E",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            border: "1px solid #FCD34D",
+                          }}
+                        >
+                          PENDING ALLOCATION
+                        </span>
+                      )}
                     </div>
                     <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
-                      Supervising Immigration Attorney • Vanguard Immigration Law Group • Direct Encrypted Portal Line
+                      {hasAssignedOfficer
+                        ? "Supervising Immigration Attorney • Vanguard Immigration Law Group • Direct Encrypted Portal Line"
+                        : "Legal counsel assignment in progress • Inquiries routed to firm intake supervisory desk"}
                     </p>
                   </div>
                 </div>
@@ -2449,7 +2522,9 @@ export function ClientPortal({
               {/* Quick Inquiry Prompt Chips */}
               <div style={{ marginBottom: "14px" }}>
                 <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 650, display: "block", marginBottom: "6px" }}>
-                  Quick Question Prompts (Click to ask your caseworker):
+                  {hasAssignedOfficer
+                    ? "Quick Question Prompts (Click to ask your caseworker):"
+                    : "Quick Question Prompts (Click to ask the legal intake desk):"}
                 </span>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   {[
@@ -2500,7 +2575,11 @@ export function ClientPortal({
                       setTimeout(() => setQuickChatSentFeedback(false), 5000);
                     }
                   }}
-                  placeholder="Type a direct message to Officer Sarah Jenkins, Esq..."
+                  placeholder={
+                    hasAssignedOfficer
+                      ? `Type a direct message to ${displayOfficerTitle}...`
+                      : "Type a direct message to the firm legal intake desk (Counsel pending allocation)..."
+                  }
                   style={{
                     flex: 1,
                     padding: "10px 14px",
@@ -2552,7 +2631,9 @@ export function ClientPortal({
                     fontWeight: 600,
                   }}
                 >
-                  ✓ Message delivered to Officer Sarah Jenkins, Esq. Notification dispatched to legal team. Expect response within 2 business hours.
+                  {hasAssignedOfficer
+                    ? `✓ Message delivered to ${displayOfficerTitle}. Notification dispatched to legal team. Expect response within 2 business hours.`
+                    : "✓ Message delivered to firm legal intake desk. Notification dispatched to case allocation supervisor. Expect response within 2 business hours."}
                 </div>
               )}
             </div>
@@ -3831,6 +3912,7 @@ export function ClientPortal({
             {/* Direct In-Tab Drag-and-Drop Document Uploader */}
             <DirectDocumentUploader
               caseId={myCase?.id}
+              assignedOfficer={hasAssignedOfficer ? assignedOfficerName : null}
               language={clientLanguage}
               onDocumentUploaded={(newDoc) => {
                 onDocumentUpdated?.(newDoc);
@@ -4167,6 +4249,7 @@ export function ClientPortal({
                 caseNumber={myCase?.case_number}
                 visaCategory={myCase?.visa_category}
                 language={clientLanguage}
+                assignedOfficer={hasAssignedOfficer ? assignedOfficerName : null}
                 onSelectPrompt={(prompt) => {
                   setChatPromptText(prompt);
                 }}
