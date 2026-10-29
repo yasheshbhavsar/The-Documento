@@ -352,7 +352,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
                 e.currentTarget.style.background = "transparent";
               }}
             >
-              <span>Test Interactive Demo ↓</span>
+              <span>See the workflow ↓</span>
             </a>
           </div>
 
