@@ -199,8 +199,8 @@ export function DocumentoPreview() {
       id="preview"
       style={{
         padding: "72px 24px",
-        background: "#F8F7F2",
-        borderBottom: "1px solid #DCE5E1",
+        background: "transparent",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
@@ -387,7 +387,7 @@ export function DocumentoPreview() {
                   marginBottom: "24px",
                 }}
               >
-                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
+                <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
                   <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     Filing Readiness
                   </div>
@@ -397,7 +397,7 @@ export function DocumentoPreview() {
                   </div>
                 </div>
 
-                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
+                <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
                   <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     Active Status
                   </div>
@@ -409,7 +409,7 @@ export function DocumentoPreview() {
                   </div>
                 </div>
 
-                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
+                <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
                   <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     Target Submission Date
                   </div>
@@ -421,7 +421,7 @@ export function DocumentoPreview() {
                   </div>
                 </div>
 
-                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
+                <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
                   <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     Supervising Attorney
                   </div>
@@ -463,7 +463,7 @@ export function DocumentoPreview() {
                           borderRadius: "8px",
                           border: "1px solid",
                           borderColor: isCompleted ? "#B9DED4" : isActive ? "#0D6866" : "#E2E8E4",
-                          background: isCompleted ? "#F0F8F5" : isActive ? "#DDEFE8" : "#F8F7F2",
+                          background: isCompleted ? "#F0F8F5" : isActive ? "#DDEFE8" : "#FFFFFF",
                         }}
                       >
                         <div
@@ -622,7 +622,7 @@ export function DocumentoPreview() {
                 {/* Right: Selected Document Detail Preview Card */}
                 <div
                   style={{
-                    background: "#F8F7F2",
+                    background: "#FFFFFF",
                     border: "1px solid #DCE5E1",
                     borderRadius: "8px",
                     padding: "18px",
@@ -718,7 +718,7 @@ export function DocumentoPreview() {
                       <input
                         type="checkbox"
                         checked={task.completed}
-                        onChange={() => {}} // controlled by wrapper click
+                        onChange={() => { }} // controlled by wrapper click
                         style={{ width: "17px", height: "17px", cursor: "pointer", accentColor: "#0D6866" }}
                       />
                       <div>
@@ -799,8 +799,8 @@ export function DocumentoPreview() {
                       {findingStatus === "resolved"
                         ? "STATUS: RESOLVED BY COUNSEL"
                         : findingStatus === "escalated"
-                        ? "STATUS: ESCALATED TO SENIOR PARTNER"
-                        : "FLAG: TIMELINE DISCREPANCY"}
+                          ? "STATUS: ESCALATED TO SENIOR PARTNER"
+                          : "FLAG: TIMELINE DISCREPANCY"}
                     </span>
                     <span style={{ fontSize: "11.5px", color: "#6E7F7C" }}>Confidence: 94%</span>
                   </div>
@@ -901,7 +901,7 @@ export function DocumentoPreview() {
               {/* Chat Message Stream */}
               <div
                 style={{
-                  background: "#F8F7F2",
+                  background: "#FFFFFF",
                   border: "1px solid #DCE5E1",
                   borderRadius: "8px",
                   padding: "14px",

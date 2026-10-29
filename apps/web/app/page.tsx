@@ -25,9 +25,11 @@ import { DocumentoCapabilities } from "../components/landing/DocumentoCapabiliti
 import { DocumentoTrust } from "../components/landing/DocumentoTrust";
 import { DocumentoFAQ } from "../components/landing/DocumentoFAQ";
 import { DocumentoFooter } from "../components/landing/DocumentoFooter";
+import { WaveBackground } from "../components/landing/WaveBackground";
 import { DocumentoLoginModal } from "../components/auth/DocumentoLoginModal";
 import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
 import { useAnimationOnScroll } from "../components/landing/useAnimationOnScroll";
+import { useSmoothScroll } from "../components/landing/useSmoothScroll";
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
@@ -38,6 +40,9 @@ export default function Home() {
 
   // Initialize on-scroll reveal animations for landing page with currentUser trigger
   useAnimationOnScroll(".animate-on-scroll", true, currentUser);
+
+  // Initialize smooth inertia scroll via Lenis strictly on the public landing page
+  useSmoothScroll(!currentUser);
 
   // Active role mapping based on authenticated user
   const activeExp: UserExperience = currentUser ? currentUser.experience : "master_admin";
@@ -338,7 +343,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg, #F8F7F2)" }}>
+    <div className="min-h-screen" style={{ background: currentUser ? "var(--bg, #F8F7F2)" : "#FAF9F6" }}>
       {/* Global Alert Notification (Floating Toast Notification) */}
       {bannerAlert && (
         <div
@@ -409,7 +414,7 @@ export default function Home() {
 
       {/* STATE A: PUBLIC LANDING PAGE (Clean, No dev bar) */}
       {!currentUser && (
-        <div>
+        <WaveBackground>
           <DocumentoNavbar
             onOpenLogin={handleOpenLogin}
             isLiveBackend={isLiveBackend}
@@ -438,7 +443,7 @@ export default function Home() {
             onLoginSuccess={handleLoginSuccess}
             initialPortal={loginInitialPortal}
           />
-        </div>
+        </WaveBackground>
       )}
 
       {/* STATE B: AUTHENTICATED ENTERPRISE WORKSPACE */}

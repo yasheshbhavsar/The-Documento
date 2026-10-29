@@ -81,8 +81,8 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
         position: "relative",
         marginTop: "-72px",
         padding: "0 0 80px 0",
-        background: "linear-gradient(180deg, #F8F7F2 0%, #FFFFFF 100%)",
-        borderBottom: "1px solid #DCE5E1",
+        background: "transparent",
+        borderBottom: "1px solid #DCE7E3",
         overflow: "hidden",
       }}
     >
@@ -315,7 +315,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = "#0D6866";
-                e.currentTarget.style.background = "#F8F7F2";
+                e.currentTarget.style.background = "#F4F7F6";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = "#DCE5E1";
@@ -444,6 +444,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               showPath={true}
               pathColor="#0D6866"
               pathWidth={2.4}
+              shadow={0}
               draggable={true}
               clickToFront={true}
               width="100%"
@@ -847,7 +848,7 @@ function LiveDossierHeroDemo({ onOpenLogin }: { onOpenLogin: (portal?: "firm" | 
               type="button"
               onClick={() => setSelectedIdx(idx)}
               style={{
-                background: isSelected ? "#0D6866" : "#F8F7F2",
+                background: isSelected ? "#0D6866" : "#FFFFFF",
                 color: isSelected ? "#FFFFFF" : "#445451",
                 border: isSelected ? "1px solid #063C3D" : "1px solid #DCE5E1",
                 padding: "7px 13px",
@@ -1036,7 +1037,7 @@ function LiveDossierHeroDemo({ onOpenLogin }: { onOpenLogin: (portal?: "firm" | 
                 <div
                   key={field.label}
                   style={{
-                    background: "#F8F7F2",
+                    background: "#FFFFFF",
                     border: isAttention ? "1px solid #F3DFB0" : "1px solid #E4ECE8",
                     borderRadius: "8px",
                     padding: "9px 12px",

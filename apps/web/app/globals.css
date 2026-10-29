@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 @import "tailwindcss";
+@import "lenis/dist/lenis.css";
 
 :root {
   /* Documento Brand Palette (Light Theme Only) */
@@ -8,8 +9,18 @@
   --brand-teal-bright: #2A9288;
   --brand-mint: #B9DED4;
   --brand-seafoam: #DDEFE8;
-  --brand-cream: #F8F7F2;
+  --brand-cream: #FAF9F6;
   --brand-white: #FFFFFF;
+
+  /* Documento Minimal Section Design Guide Tokens */
+  --guide-bg: #FAF9F6;
+  --guide-heading: #073D40;
+  --guide-primary: #07594F;
+  --guide-accent: #169B77;
+  --guide-mint: #EAF5EF;
+  --guide-body: #5D6E7F;
+  --guide-divider: #DCE7E3;
+  --guide-surface: #FFFFFF;
 
   /* Semantic Light UI Surfaces & Canvas */
   --bg: #F8F7F2;

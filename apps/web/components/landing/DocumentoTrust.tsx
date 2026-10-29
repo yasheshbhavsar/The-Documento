@@ -1,25 +1,17 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 
 export function DocumentoTrust() {
+  const [activePrincipleIdx, setActivePrincipleIdx] = useState<number>(0);
+
   const principles = [
     {
       title: "Human-in-the-Loop Review",
       description:
         "Consequential filings, legal arguments, and client submissions require licensed attorney adjudication and authorization.",
       icon: (
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#0D6866"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#07594F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           <polyline points="9 12 11 14 15 10" />
         </svg>
@@ -30,17 +22,7 @@ export function DocumentoTrust() {
       description:
         "Automated findings cite specific exhibit coordinates and page numbers, surfacing low-confidence indicators when text is ambiguous.",
       icon: (
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#0D6866"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#07594F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
           <path d="M11 8v6" />
@@ -53,17 +35,7 @@ export function DocumentoTrust() {
       description:
         "Internal legal strategies and firm notes are separated by role-based permissions and quarantined from client-facing portals.",
       icon: (
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#0D6866"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#07594F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </svg>
@@ -74,17 +46,7 @@ export function DocumentoTrust() {
       description:
         "Uploaded exhibits are recorded with cryptographic SHA-256 verification and immutable activity timestamps.",
       icon: (
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#0D6866"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#07594F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
           <polyline points="14 2 14 8 20 8" />
           <path d="m9 15 2 2 4-4" />
@@ -97,316 +59,337 @@ export function DocumentoTrust() {
     <section
       id="trust"
       style={{
-        padding: "80px 24px",
-        background: "#FFFFFF",
-        borderBottom: "1px solid #DCE5E1",
+        padding: "88px 24px",
         scrollMarginTop: "80px",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
-      <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
-        {/* Section Header */}
+      <div
+        style={{
+          maxWidth: "1280px",
+          margin: "0 auto",
+          display: "grid",
+          gridTemplateColumns: "repeat(12, 1fr)",
+          gap: "48px 56px",
+          alignItems: "start",
+        }}
+      >
+        {/* LEFT COLUMN: ~1/3 */}
         <div
-          className="animate-on-scroll"
-          style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto 48px auto" }}
+          className="animate-on-scroll trust-col-left"
+          style={{
+            gridColumn: "span 4",
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+            position: "sticky",
+            top: "100px",
+          }}
         >
+          {/* Eyebrow */}
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              padding: "4px 14px",
-              borderRadius: "20px",
-              background: "#DDEFE8",
-              border: "1px solid #B9DED4",
               fontSize: "12px",
-              fontWeight: 600,
-              color: "#063C3D",
-              marginBottom: "16px",
+              fontWeight: 650,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#07594F",
             }}
           >
+            <span
+              style={{
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                background: "#169B77",
+              }}
+            />
             <span>Trust &amp; Governance</span>
           </div>
 
+          {/* Heading */}
           <h2
             style={{
-              fontSize: "clamp(28px, 4vw, 42px)",
+              fontSize: "clamp(28px, 3.2vw, 42px)",
               fontWeight: 700,
-              color: "#063C3D",
-              lineHeight: 1.2,
+              color: "#073D40",
+              lineHeight: 1.18,
               letterSpacing: "-0.025em",
-              margin: "0 0 16px 0",
+              margin: 0,
               fontFamily: "var(--font-display, Inter, sans-serif)",
             }}
           >
             Built for qualified legal judgment, not unverified automation.
           </h2>
 
-          <p style={{ fontSize: "16px", color: "#445451", lineHeight: 1.6, margin: 0 }}>
+          {/* Subheading */}
+          <p
+            style={{
+              fontSize: "15.5px",
+              color: "#5D6E7F",
+              lineHeight: 1.6,
+              margin: 0,
+            }}
+          >
             Immigration casework demands accountable human oversight. Documento is engineered to support licensed legal professionals with structured evidence organization—never to replace their judgment.
           </p>
-        </div>
 
-        {/* 4 Core Trust Principles */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
-            gap: "20px",
-            marginBottom: "40px",
-          }}
-        >
-          {principles.map((p, i) => (
+          {/* Navigation by topic */}
+          <div
+            role="navigation"
+            aria-label="Trust Principles"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
+              marginTop: "8px",
+              borderTop: "1px solid #DCE7E3",
+              paddingTop: "14px",
+            }}
+          >
             <div
-              key={p.title}
-              className={`animate-on-scroll ${
-                i % 2 === 0 ? "delay-100" : "delay-200"
-              }`}
               style={{
-                background: "#F8F7F2",
-                border: "1px solid #DCE5E1",
-                borderRadius: "14px",
-                padding: "24px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "14px",
-                transition: "border-color 0.15s ease",
+                fontSize: "11.5px",
+                fontWeight: 650,
+                color: "#7B8E8B",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                marginBottom: "6px",
               }}
             >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "10px",
-                  background: "#DDEFE8",
-                  border: "1px solid #B9DED4",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                {p.icon}
-              </div>
-              <div>
-                <h3
+              Governance Pillars
+            </div>
+
+            {principles.map((p, idx) => {
+              const isSelected = activePrincipleIdx === idx;
+              return (
+                <button
+                  key={p.title}
+                  type="button"
+                  onClick={() => {
+                    setActivePrincipleIdx(idx);
+                    const el = document.getElementById(`principle-row-${idx}`);
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                  }}
                   style={{
-                    fontSize: "16px",
-                    fontWeight: 700,
-                    color: "#063C3D",
-                    margin: "0 0 8px 0",
-                    fontFamily: "var(--font-display, Inter, sans-serif)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "9px 12px",
+                    borderRadius: "6px",
+                    background: isSelected ? "#EAF5EF" : "transparent",
+                    color: isSelected ? "#073D40" : "#5D6E7F",
+                    border: "none",
+                    borderLeft: isSelected ? "3px solid #169B77" : "3px solid transparent",
+                    fontSize: "13.5px",
+                    fontWeight: isSelected ? 650 : 500,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "all 0.15s ease",
                   }}
                 >
-                  {p.title}
-                </h3>
-                <p style={{ fontSize: "13.5px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-                  {p.description}
-                </p>
-              </div>
-            </div>
-          ))}
+                  <span>{p.title}</span>
+                  <span style={{ fontSize: "11px", color: isSelected ? "#07594F" : "#7B8E8B" }}>
+                    ✓
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Concise Two-Column Operational Boundaries */}
+        {/* RIGHT COLUMN: ~2/3 (Principles & Operational Boundaries Matrix) */}
         <div
-          className="animate-on-scroll delay-200"
+          className="animate-on-scroll delay-150 trust-col-right"
           style={{
-            background: "#F8F7F2",
-            border: "1px solid #DCE5E1",
-            borderRadius: "16px",
-            padding: "32px 28px",
+            gridColumn: "span 8",
+            minWidth: 0,
+            borderTop: "1px solid #DCE7E3",
           }}
         >
-          <div style={{ textAlign: "center", maxWidth: "680px", margin: "0 auto 28px auto" }}>
+          {/* Principles Rows */}
+          <div style={{ marginBottom: "32px" }}>
+            {principles.map((p, idx) => {
+              const isSelected = activePrincipleIdx === idx;
+              return (
+                <div
+                  key={p.title}
+                  id={`principle-row-${idx}`}
+                  onClick={() => setActivePrincipleIdx(idx)}
+                  style={{
+                    padding: "20px 0",
+                    borderBottom: "1px solid #DCE7E3",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "18px",
+                    background: isSelected ? "rgba(234, 245, 239, 0.3)" : "transparent",
+                    cursor: "pointer",
+                    transition: "background-color 0.15s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "10px",
+                      background: "#EAF5EF",
+                      border: "1px solid #DCE7E3",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      marginTop: "2px",
+                    }}
+                  >
+                    {p.icon}
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#073D40", margin: "0 0 4px 0" }}>
+                      {p.title}
+                    </h3>
+                    <p style={{ fontSize: "14px", color: "#5D6E7F", lineHeight: 1.6, margin: 0 }}>
+                      {p.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Operational Boundaries Header */}
+          <div style={{ marginBottom: "20px" }}>
             <h3
               style={{
                 fontSize: "20px",
                 fontWeight: 700,
-                color: "#063C3D",
-                margin: "0 0 8px 0",
-                fontFamily: "var(--font-display, Inter, sans-serif)",
+                color: "#073D40",
+                margin: "0 0 6px 0",
               }}
             >
               Clear Operational Boundaries
             </h3>
-            <p style={{ fontSize: "14px", color: "#445451", lineHeight: 1.5, margin: 0 }}>
+            <p style={{ fontSize: "14px", color: "#5D6E7F", lineHeight: 1.5, margin: 0 }}>
               Responsible legal technology requires unambiguous separation between administrative assistance and formal legal representation.
             </p>
           </div>
 
+          {/* Two-Column Operational Boundaries */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
-              gap: "20px",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: "18px",
+              marginBottom: "24px",
             }}
           >
-            {/* What Documento helps with */}
+            {/* Helps With */}
             <div
               style={{
                 background: "#FFFFFF",
-                borderRadius: "12px",
-                border: "1px solid #B9DED4",
-                padding: "24px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "14px",
+                borderRadius: "10px",
+                border: "1px solid #DCE7E3",
+                borderTop: "3px solid #169B77",
+                padding: "20px",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div
-                  style={{
-                    width: "24px",
-                    height: "24px",
-                    borderRadius: "50%",
-                    background: "#DDEFE8",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#0D6866",
-                    fontWeight: 700,
-                    fontSize: "13px",
-                    flexShrink: 0,
-                  }}
-                >
-                  ✓
-                </div>
-                <h4
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 700,
-                    color: "#063C3D",
-                    margin: 0,
-                  }}
-                >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+                <span style={{ color: "#07594F", fontWeight: 700, fontSize: "15px" }}>✓</span>
+                <span style={{ fontSize: "14.5px", fontWeight: 700, color: "#073D40" }}>
                   Documento helps with
-                </h4>
+                </span>
               </div>
 
-              <ul
-                style={{
-                  margin: 0,
-                  padding: 0,
-                  listStyle: "none",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "10px",
-                  fontSize: "13.5px",
-                  color: "#445451",
-                  lineHeight: 1.5,
-                }}
-              >
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px", color: "#5D6E7F", lineHeight: 1.5 }}>
                 <li style={{ display: "flex", gap: "8px" }}>
-                  <span style={{ color: "#0D6866", fontWeight: 700 }}>•</span>
+                  <span style={{ color: "#169B77", fontWeight: 700 }}>•</span>
                   <span><strong>Document organization:</strong> Structuring client records and exhibits in an audited repository.</span>
                 </li>
                 <li style={{ display: "flex", gap: "8px" }}>
-                  <span style={{ color: "#0D6866", fontWeight: 700 }}>•</span>
+                  <span style={{ color: "#169B77", fontWeight: 700 }}>•</span>
                   <span><strong>Administrative checks:</strong> Verifying completeness against published criteria and identifying missing items.</span>
                 </li>
                 <li style={{ display: "flex", gap: "8px" }}>
-                  <span style={{ color: "#0D6866", fontWeight: 700 }}>•</span>
+                  <span style={{ color: "#169B77", fontWeight: 700 }}>•</span>
                   <span><strong>Source-linked discrepancy flags:</strong> Highlighting date, name, or employer variances across exhibits for human review.</span>
                 </li>
                 <li style={{ display: "flex", gap: "8px" }}>
-                  <span style={{ color: "#0D6866", fontWeight: 700 }}>•</span>
+                  <span style={{ color: "#169B77", fontWeight: 700 }}>•</span>
                   <span><strong>Workflow transparency:</strong> Providing clear status tracking and waiting-state visibility between teams and applicants.</span>
                 </li>
               </ul>
             </div>
 
-            {/* What Documento does not do */}
+            {/* Does Not Do */}
             <div
               style={{
                 background: "#FFFFFF",
-                borderRadius: "12px",
-                border: "1px solid #E2D7D5",
-                padding: "24px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "14px",
+                borderRadius: "10px",
+                border: "1px solid #DCE7E3",
+                borderTop: "3px solid #8A5A10",
+                padding: "20px",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div
-                  style={{
-                    width: "24px",
-                    height: "24px",
-                    borderRadius: "50%",
-                    background: "#F6ECEB",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#8C4A47",
-                    fontWeight: 700,
-                    fontSize: "13px",
-                    flexShrink: 0,
-                  }}
-                >
-                  ✕
-                </div>
-                <h4
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 700,
-                    color: "#4A2825",
-                    margin: 0,
-                  }}
-                >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+                <span style={{ color: "#A62D35", fontWeight: 700, fontSize: "15px" }}>✕</span>
+                <span style={{ fontSize: "14.5px", fontWeight: 700, color: "#073D40" }}>
                   Documento does not do
-                </h4>
+                </span>
               </div>
 
-              <ul
-                style={{
-                  margin: 0,
-                  padding: 0,
-                  listStyle: "none",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "10px",
-                  fontSize: "13.5px",
-                  color: "#445451",
-                  lineHeight: 1.5,
-                }}
-              >
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px", color: "#5D6E7F", lineHeight: 1.5 }}>
                 <li style={{ display: "flex", gap: "8px" }}>
-                  <span style={{ color: "#8C4A47", fontWeight: 700 }}>•</span>
+                  <span style={{ color: "#A62D35", fontWeight: 700 }}>•</span>
                   <span><strong>Replace legal professionals:</strong> Software cannot substitute for the legal analysis, strategy, and advice of licensed counsel.</span>
                 </li>
                 <li style={{ display: "flex", gap: "8px" }}>
-                  <span style={{ color: "#8C4A47", fontWeight: 700 }}>•</span>
+                  <span style={{ color: "#A62D35", fontWeight: 700 }}>•</span>
                   <span><strong>Guarantee immigration outcomes:</strong> No petition approval, expedite request, or visa issuance can ever be guaranteed.</span>
                 </li>
                 <li style={{ display: "flex", gap: "8px" }}>
-                  <span style={{ color: "#8C4A47", fontWeight: 700 }}>•</span>
+                  <span style={{ color: "#A62D35", fontWeight: 700 }}>•</span>
                   <span><strong>Make final legal determinations:</strong> AI suggestions are unadjudicated findings that require attorney verification.</span>
                 </li>
                 <li style={{ display: "flex", gap: "8px" }}>
-                  <span style={{ color: "#8C4A47", fontWeight: 700 }}>•</span>
+                  <span style={{ color: "#A62D35", fontWeight: 700 }}>•</span>
                   <span><strong>Claim government endorsement:</strong> Documento is independent software not affiliated with or endorsed by any immigration authority.</span>
                 </li>
               </ul>
             </div>
           </div>
 
-          {/* Applicable Legal Disclaimer */}
+          {/* Legal Disclaimer Box */}
           <div
             style={{
-              marginTop: "24px",
-              padding: "14px 18px",
-              background: "#F2F0E8",
-              borderRadius: "10px",
-              border: "1px solid #DCE5E1",
+              padding: "12px 16px",
+              borderRadius: "8px",
+              background: "#EAF5EF",
+              border: "1px solid #DCE7E3",
               fontSize: "12px",
-              color: "#5C6E6B",
-              lineHeight: 1.55,
+              color: "#5D6E7F",
+              lineHeight: 1.5,
             }}
           >
-            <strong style={{ color: "#063C3D" }}>Legal Disclaimer:</strong> Documento is an evidence organization and casework intelligence platform, not an immigration law firm. Documento does not provide legal advice, opinions, or representation. Consequential petition filings and statutory determinations require evaluation by a licensed immigration attorney or accredited representative.
+            <strong>Legal Disclaimer:</strong> Documento is an immigration casework and evidence intelligence platform, not an immigration law firm. Documento does not provide legal advice, representation, or opinions, and is not affiliated with or endorsed by USCIS, the Department of Homeland Security, the UK Home Office, IRCC, or any government authority. Consequential petition filings require the evaluation and signature of a licensed immigration attorney or accredited representative.
           </div>
         </div>
       </div>
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media (max-width: 1024px) {
+              .trust-col-left,
+              .trust-col-right {
+                grid-column: span 12 !important;
+                position: static !important;
+              }
+            }
+          `,
+        }}
+      />
     </section>
   );
 }

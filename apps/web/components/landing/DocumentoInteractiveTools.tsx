@@ -105,628 +105,695 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
   const activePreset = CASE_PRESETS.find((p) => p.id === activePresetId) || CASE_PRESETS[0];
 
   return (
-    <div style={{ background: "#FFFFFF" }}>
+    <div>
       {/* SECTION 1: Case Matcher - "Is Documento right for your case?" */}
       <section
         id="pathway-finder"
         style={{
-          padding: "72px 24px",
+          padding: "88px 24px",
           scrollMarginTop: "80px",
-          borderBottom: "1px solid #DCE5E1",
-          background: "#F8F7F2",
+          borderBottom: "1px solid #DCE7E3",
         }}
       >
-        <div style={{ maxWidth: "1080px", margin: "0 auto" }}>
-          {/* Header */}
-          <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto 28px auto" }}>
+        <div
+          style={{
+            maxWidth: "1280px",
+            margin: "0 auto",
+            display: "grid",
+            gridTemplateColumns: "repeat(12, 1fr)",
+            gap: "48px 56px",
+            alignItems: "start",
+          }}
+        >
+          {/* LEFT COLUMN: ~1/3 (Intro & Pathway Selector) */}
+          <div
+            className="animate-on-scroll tools-col-left"
+            style={{
+              gridColumn: "span 4",
+              display: "flex",
+              flexDirection: "column",
+              gap: "20px",
+              position: "sticky",
+              top: "100px",
+            }}
+          >
+            {/* Eyebrow */}
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "8px",
-                padding: "4px 12px",
-                borderRadius: "20px",
-                background: "#DDEFE8",
-                border: "1px solid #B9DED4",
                 fontSize: "12px",
                 fontWeight: 650,
-                color: "#063C3D",
-                marginBottom: "12px",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "#07594F",
               }}
             >
+              <span
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "#169B77",
+                }}
+              />
               <span>Case Compatibility</span>
             </div>
 
+            {/* Heading */}
             <h2
               style={{
-                fontSize: "clamp(26px, 3.4vw, 36px)",
+                fontSize: "clamp(28px, 3.2vw, 42px)",
                 fontWeight: 700,
-                color: "#063C3D",
-                lineHeight: 1.25,
-                letterSpacing: "-0.02em",
-                margin: "0 0 10px 0",
+                color: "#073D40",
+                lineHeight: 1.18,
+                letterSpacing: "-0.025em",
+                margin: 0,
                 fontFamily: "var(--font-display, Inter, sans-serif)",
               }}
             >
               Is Documento right for your case?
             </h2>
 
-            <p style={{ fontSize: "15px", color: "#445451", lineHeight: 1.5, margin: 0 }}>
+            {/* Subheading */}
+            <p
+              style={{
+                fontSize: "15.5px",
+                color: "#5D6E7F",
+                lineHeight: 1.6,
+                margin: 0,
+              }}
+            >
               Purpose-built for immigration law firms handling complex petitions, evidentiary exhibits, and client coordination.
             </p>
-          </div>
 
-          {/* Quick-Switch Horizontal Pathway Tabs */}
-          <div
-            className="animate-on-scroll"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexWrap: "wrap",
-              gap: "8px",
-              marginBottom: "24px",
-            }}
-          >
-            {CASE_PRESETS.map((preset) => {
-              const isSelected = activePresetId === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => setActivePresetId(preset.id)}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: "20px",
-                    border: "1px solid",
-                    borderColor: isSelected ? "#063C3D" : "#DCE5E1",
-                    background: isSelected ? "#063C3D" : "#FFFFFF",
-                    color: isSelected ? "#FFFFFF" : "#445451",
-                    fontSize: "13px",
-                    fontWeight: isSelected ? 650 : 500,
-                    cursor: "pointer",
-                    transition: "all 0.15s ease",
-                    boxShadow: isSelected ? "0 2px 8px rgba(6, 60, 61, 0.15)" : "none",
-                  }}
-                >
-                  {preset.tabLabel}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Single Focused Case Fit Card */}
-          <div
-            className="animate-on-scroll delay-150"
-            style={{
-              background: "#FFFFFF",
-              borderRadius: "14px",
-              border: "1px solid",
-              borderColor: activePreset.status === "Available" ? "#B9DED4" : "#F6D8A6",
-              boxShadow: "0 2px 14px rgba(6, 60, 61, 0.05)",
-              padding: "clamp(20px, 3.5vw, 32px)",
-            }}
-          >
-            {/* Top row: Title, Fit Tag, and Operational Status Badge */}
+            {/* Vertical Pathway List */}
             <div
+              role="navigation"
+              aria-label="Supported Pathways"
               style={{
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: "12px",
-                marginBottom: "14px",
+                flexDirection: "column",
+                gap: "4px",
+                marginTop: "8px",
+                borderTop: "1px solid #DCE7E3",
+                paddingTop: "14px",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "18px", color: "#0D6866" }}>
-                  {activePreset.status === "Available" ? "✓" : "⏳"}
-                </span>
-                <span style={{ fontSize: "19px", fontWeight: 700, color: "#063C3D" }}>
-                  {activePreset.title}
-                </span>
-                <span
-                  style={{
-                    background: activePreset.status === "Available" ? "#E8F4F0" : "#FEF7EA",
-                    border: `1px solid ${activePreset.status === "Available" ? "#B9DED4" : "#F6D8A6"}`,
-                    color: activePreset.status === "Available" ? "#0D6866" : "#8A5A10",
-                    padding: "3px 10px",
-                    borderRadius: "14px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                  }}
-                >
-                  ⚡ {activePreset.fitScore}
-                </span>
+              <div
+                style={{
+                  fontSize: "11.5px",
+                  fontWeight: 650,
+                  color: "#7B8E8B",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  marginBottom: "6px",
+                }}
+              >
+                Select Casework Category
               </div>
 
-              <div>
-                {activePreset.status === "Available" ? (
-                  <span style={{ background: "#DDEFE8", border: "1px solid #B9DED4", color: "#063C3D", padding: "4px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 700 }}>
-                    Coverage Verified • Operational
-                  </span>
-                ) : (
-                  <span style={{ background: "#FEF7EA", border: "1px solid #F6D8A6", color: "#8A5A10", padding: "4px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 700 }}>
-                    Expansion Pipeline • In Development
-                  </span>
-                )}
-              </div>
+              {CASE_PRESETS.map((preset) => {
+                const isSelected = preset.id === activePresetId;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setActivePresetId(preset.id)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "9px 12px",
+                      borderRadius: "6px",
+                      background: isSelected ? "#EAF5EF" : "transparent",
+                      color: isSelected ? "#073D40" : "#5D6E7F",
+                      border: "none",
+                      borderLeft: isSelected ? "3px solid #169B77" : "3px solid transparent",
+                      fontSize: "13.5px",
+                      fontWeight: isSelected ? 650 : 500,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.background = "rgba(234, 245, 239, 0.45)";
+                        e.currentTarget.style.color = "#073D40";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.color = "#5D6E7F";
+                      }
+                    }}
+                  >
+                    <span>{preset.tabLabel}</span>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: preset.status === "Available" ? "#07594F" : "#8A5A10",
+                      }}
+                    >
+                      {preset.status === "Available" ? "Verified" : "Planned"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: ~2/3 (Pathway Fit Dossier, Verdict & Pillars) */}
+          <div
+            className="animate-on-scroll delay-150 tools-col-right"
+            style={{
+              gridColumn: "span 8",
+              minWidth: 0,
+              borderTop: "1px solid #DCE7E3",
+              paddingTop: "24px",
+            }}
+          >
+            {/* Status & Category */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
+              <span
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 650,
+                  padding: "3px 10px",
+                  borderRadius: "12px",
+                  background: activePreset.status === "Available" ? "#EAF5EF" : "#FEF7EA",
+                  color: activePreset.status === "Available" ? "#07594F" : "#8A5A10",
+                  border: `1px solid ${activePreset.status === "Available" ? "#DCE7E3" : "#F3DFB0"}`,
+                }}
+              >
+                {activePreset.status === "Available"
+                  ? "Coverage Verified • Operational"
+                  : "Expansion Pipeline • In Development"}
+              </span>
+
+              <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#7B8E8B" }}>
+                {activePreset.fitScore}
+              </span>
             </div>
 
-            {/* Concise Value Statement */}
+            {/* Title */}
+            <h3
+              style={{
+                fontSize: "24px",
+                fontWeight: 700,
+                color: "#073D40",
+                margin: "0 0 10px 0",
+                lineHeight: 1.25,
+              }}
+            >
+              {activePreset.title}
+            </h3>
+
+            {/* Description */}
+            <p
+              style={{
+                fontSize: "15px",
+                color: "#5D6E7F",
+                lineHeight: 1.6,
+                margin: "0 0 20px 0",
+              }}
+            >
+              {activePreset.desc}
+            </p>
+
+            {/* Law Firm Verdict Callout */}
             <div
               style={{
-                background: "#F8F7F2",
-                borderLeft: "3px solid #0D6866",
-                padding: "12px 16px",
+                background: "#EAF5EF",
+                border: "1px solid #DCE7E3",
+                borderLeft: "3px solid #169B77",
+                padding: "14px 18px",
                 borderRadius: "0 8px 8px 0",
-                marginBottom: "20px",
+                marginBottom: "24px",
                 fontSize: "14px",
-                color: "#172322",
-                lineHeight: 1.5,
+                color: "#073D40",
+                lineHeight: 1.55,
               }}
             >
-              <strong style={{ color: "#0D6866" }}>Law Firm Verdict:</strong> {activePreset.fitVerdict}
+              <strong style={{ color: "#07594F" }}>Law Firm Verdict:</strong> {activePreset.fitVerdict}
             </div>
 
-            {/* 3 Pillars Conveyed At a Glance */}
+            {/* 3 Pillars */}
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: "14px",
-                marginBottom: "24px",
+                marginBottom: "28px",
               }}
             >
               {activePreset.pillars.map((pillar, idx) => (
                 <div
                   key={idx}
                   style={{
-                    background: "#FAFDFB",
-                    border: "1px solid #DCE5E1",
-                    borderRadius: "10px",
-                    padding: "16px 18px",
+                    background: "#FFFFFF",
+                    border: "1px solid #DCE7E3",
+                    borderRadius: "8px",
+                    padding: "16px",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                    <span style={{ fontSize: "16px" }}>{pillar.icon}</span>
-                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>{pillar.title}</span>
+                  <div style={{ fontSize: "20px", marginBottom: "8px" }}>{pillar.icon}</div>
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#073D40", marginBottom: "4px" }}>
+                    {pillar.title}
                   </div>
-                  <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.45 }}>
+                  <div style={{ fontSize: "12.5px", color: "#5D6E7F", lineHeight: 1.5 }}>
                     {pillar.detail}
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Action Bar */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: "14px",
-                paddingTop: "18px",
-                borderTop: "1px solid #EAE6DC",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={() => onOpenLogin("firm")}
-                  style={{
-                    background: activePreset.status === "Available" ? "#0D6866" : "#063C3D",
-                    color: "#FFFFFF",
-                    border: "none",
-                    padding: "10px 20px",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    fontWeight: 650,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    boxShadow: "0 2px 8px rgba(13, 104, 102, 0.2)",
-                  }}
-                >
-                  <span>
-                    {activePreset.status === "Available" ? "Access Workspace for this Pathway" : "Request Early Access / Roadmap"}
-                  </span>
-                  <span>→</span>
-                </button>
+            {/* Action Button & Disclaimer */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "16px" }}>
+              <button
+                type="button"
+                onClick={() => onOpenLogin("firm")}
+                style={{
+                  padding: "12px 22px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#07594F",
+                  color: "#FFFFFF",
+                  fontSize: "14px",
+                  fontWeight: 650,
+                  cursor: "pointer",
+                  transition: "background-color 0.15s ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#05413A")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "#07594F")}
+              >
+                {activePreset.status === "Available"
+                  ? "Access Workspace for this Pathway →"
+                  : "Join Jurisdiction Waitlist →"}
+              </button>
 
-                <a
-                  href="#coverage"
-                  style={{
-                    color: "#0D6866",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                  }}
-                >
-                  View full coverage details in explorer
-                </a>
-              </div>
-
-              <div style={{ fontSize: "11px", color: "#6E7F7C", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span>🛡️</span>
-                <span>SHA-256 Merkle Provenance • Ethical Wall Privacy</span>
-              </div>
-            </div>
-
-            <div
-              style={{
-                marginTop: "14px",
-                fontSize: "11px",
-                color: "#6E7F7C",
-                lineHeight: 1.4,
-              }}
-            >
-              Workflow guidance only. Documento does not determine legal eligibility, guarantee petition approval, or substitute for formal legal representation.
+              <span style={{ fontSize: "12px", color: "#7B8E8B" }}>
+                Workflow guidance only. Does not substitute for formal legal representation.
+              </span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* SECTION 2: Persona-Specific Tailored Views (Applicants vs Legal Teams) */}
+      {/* SECTION 2: Dedicated Experiences (Applicants vs Legal Teams) */}
       <section
         id="personas"
         style={{
-          padding: "80px 24px",
-          background: "#FFFFFF",
-          borderBottom: "1px solid #DCE5E1",
+          padding: "88px 24px",
+          scrollMarginTop: "80px",
+          borderBottom: "1px solid #DCE7E3",
         }}
       >
-        <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
-          {/* Header */}
-          <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "780px", margin: "0 auto 40px auto" }}>
+        <div
+          style={{
+            maxWidth: "1280px",
+            margin: "0 auto",
+            display: "grid",
+            gridTemplateColumns: "repeat(12, 1fr)",
+            gap: "48px 56px",
+            alignItems: "start",
+          }}
+        >
+          {/* LEFT COLUMN: ~1/3 */}
+          <div
+            className="animate-on-scroll tools-col-left"
+            style={{
+              gridColumn: "span 4",
+              display: "flex",
+              flexDirection: "column",
+              gap: "20px",
+              position: "sticky",
+              top: "100px",
+            }}
+          >
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "8px",
-                padding: "4px 14px",
-                borderRadius: "20px",
-                background: "#DDEFE8",
-                border: "1px solid #B9DED4",
                 fontSize: "12px",
-                fontWeight: 600,
-                color: "#063C3D",
-                marginBottom: "16px",
+                fontWeight: 650,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "#07594F",
               }}
             >
+              <span
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "#169B77",
+                }}
+              />
               <span>Dedicated Experiences</span>
             </div>
 
             <h2
               style={{
-                fontSize: "clamp(28px, 4vw, 42px)",
+                fontSize: "clamp(28px, 3.2vw, 42px)",
                 fontWeight: 700,
-                color: "#063C3D",
-                lineHeight: 1.2,
+                color: "#073D40",
+                lineHeight: 1.18,
                 letterSpacing: "-0.025em",
-                margin: "0 0 16px 0",
+                margin: 0,
                 fontFamily: "var(--font-display, Inter, sans-serif)",
               }}
             >
               Built for applicants and legal teams alike.
             </h2>
 
-            <p style={{ fontSize: "16px", color: "#445451", lineHeight: 1.6, margin: "0 auto 28px auto" }}>
+            <p
+              style={{
+                fontSize: "15.5px",
+                color: "#5D6E7F",
+                lineHeight: 1.6,
+                margin: 0,
+              }}
+            >
               Immigration case management works only when both sides have clarity. Explore how Documento tailors tools for retained applicants and practicing immigration professionals.
             </p>
 
             {/* Persona Toggle */}
             <div
               style={{
-                display: "inline-flex",
-                background: "#E7EFEB",
-                borderRadius: "10px",
-                padding: "4px",
-                gap: "4px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+                marginTop: "8px",
+                borderTop: "1px solid #DCE7E3",
+                paddingTop: "14px",
               }}
             >
               <button
                 type="button"
                 id="tab-applicant"
                 aria-pressed={activePersonaTab === "applicant"}
-                aria-controls="panel-applicant"
                 onClick={() => setActivePersonaTab("applicant")}
                 style={{
-                  padding: "10px 22px",
-                  borderRadius: "8px",
-                  border: "none",
-                  fontSize: "14px",
-                  fontWeight: activePersonaTab === "applicant" ? 700 : 500,
-                  background: activePersonaTab === "applicant" ? "#FFFFFF" : "transparent",
-                  color: activePersonaTab === "applicant" ? "#063C3D" : "#445451",
-                  boxShadow: activePersonaTab === "applicant" ? "0 2px 6px rgba(0,0,0,0.08)" : "none",
-                  cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  gap: "8px",
+                  justifyContent: "space-between",
+                  padding: "10px 14px",
+                  borderRadius: "6px",
+                  background: activePersonaTab === "applicant" ? "#EAF5EF" : "transparent",
+                  color: activePersonaTab === "applicant" ? "#073D40" : "#5D6E7F",
+                  border: "none",
+                  borderLeft: activePersonaTab === "applicant" ? "3px solid #169B77" : "3px solid transparent",
+                  fontSize: "13.5px",
+                  fontWeight: activePersonaTab === "applicant" ? 650 : 500,
+                  cursor: "pointer",
+                  textAlign: "left",
                   transition: "all 0.15s ease",
                 }}
               >
+                <span>For Retained Applicants</span>
                 <span>👤</span>
-                <span>For Applicants &amp; Beneficiaries</span>
               </button>
 
               <button
                 type="button"
                 id="tab-lawfirm"
                 aria-pressed={activePersonaTab === "lawfirm"}
-                aria-controls="panel-lawfirm"
                 onClick={() => setActivePersonaTab("lawfirm")}
                 style={{
-                  padding: "10px 22px",
-                  borderRadius: "8px",
-                  border: "none",
-                  fontSize: "14px",
-                  fontWeight: activePersonaTab === "lawfirm" ? 700 : 500,
-                  background: activePersonaTab === "lawfirm" ? "#FFFFFF" : "transparent",
-                  color: activePersonaTab === "lawfirm" ? "#063C3D" : "#445451",
-                  boxShadow: activePersonaTab === "lawfirm" ? "0 2px 6px rgba(0,0,0,0.08)" : "none",
-                  cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  gap: "8px",
+                  justifyContent: "space-between",
+                  padding: "10px 14px",
+                  borderRadius: "6px",
+                  background: activePersonaTab === "lawfirm" ? "#EAF5EF" : "transparent",
+                  color: activePersonaTab === "lawfirm" ? "#073D40" : "#5D6E7F",
+                  border: "none",
+                  borderLeft: activePersonaTab === "lawfirm" ? "3px solid #169B77" : "3px solid transparent",
+                  fontSize: "13.5px",
+                  fontWeight: activePersonaTab === "lawfirm" ? 650 : 500,
+                  cursor: "pointer",
+                  textAlign: "left",
                   transition: "all 0.15s ease",
                 }}
               >
-                <span>⚖️</span>
                 <span>For Legal Teams &amp; Law Firms</span>
+                <span>⚖️</span>
               </button>
             </div>
           </div>
 
-          {/* Persona View Content */}
-          {activePersonaTab === "applicant" && (
-            <div
-              id="panel-applicant"
-              role="tabpanel"
-              aria-labelledby="tab-applicant"
-              className="animate-on-scroll delay-150"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
-                gap: "24px",
-              }}
-            >
-              {/* Card 1 */}
-              <div
-                style={{
-                  background: "#F8F7F2",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "14px",
-                  padding: "28px",
-                  display: "flex",
-                  flexDirection: "column",
-                  transition: "border-color 0.15s ease",
-                }}
-              >
+          {/* RIGHT COLUMN: ~2/3 (Persona Feature Rows) */}
+          <div
+            className="animate-on-scroll delay-150 tools-col-right"
+            style={{
+              gridColumn: "span 8",
+              minWidth: 0,
+              borderTop: "1px solid #DCE7E3",
+            }}
+          >
+            {activePersonaTab === "applicant" ? (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {/* Applicant Row 1 */}
                 <div
                   style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "10px",
-                    background: "#DDEFE8",
-                    border: "1px solid #B9DED4",
+                    padding: "24px 0",
+                    borderBottom: "1px solid #DCE7E3",
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "20px",
-                    marginBottom: "16px",
+                    alignItems: "flex-start",
+                    gap: "20px",
                   }}
                 >
-                  📋
+                  <div
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "10px",
+                      background: "#EAF5EF",
+                      border: "1px solid #DCE7E3",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    📋
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: "17.5px", fontWeight: 700, color: "#073D40", margin: "0 0 6px 0" }}>
+                      Know Exactly What Documents Are Needed
+                    </h3>
+                    <p style={{ fontSize: "14.5px", color: "#5D6E7F", lineHeight: 1.6, margin: 0 }}>
+                      Receive structured checklists with sample templates and file guidelines so you upload the right paperwork the first time.
+                    </p>
+                  </div>
                 </div>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#063C3D", margin: "0 0 10px 0" }}>
-                  Know Exactly What Documents Are Needed
-                </h3>
-                <p style={{ fontSize: "14px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-                  Receive structured checklists with sample templates and file guidelines so you upload the right paperwork the first time.
-                </p>
-              </div>
 
-              {/* Card 2 */}
-              <div
-                style={{
-                  background: "#F8F7F2",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "14px",
-                  padding: "28px",
-                  display: "flex",
-                  flexDirection: "column",
-                  transition: "border-color 0.15s ease",
-                }}
-              >
+                {/* Applicant Row 2 */}
                 <div
                   style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "10px",
-                    background: "#DDEFE8",
-                    border: "1px solid #B9DED4",
+                    padding: "24px 0",
+                    borderBottom: "1px solid #DCE7E3",
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "20px",
-                    marginBottom: "16px",
+                    alignItems: "flex-start",
+                    gap: "20px",
                   }}
                 >
-                  ⏳
+                  <div
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "10px",
+                      background: "#EAF5EF",
+                      border: "1px solid #DCE7E3",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    ⏳
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: "17.5px", fontWeight: 700, color: "#073D40", margin: "0 0 6px 0" }}>
+                      Clear Waiting-State Transparency
+                    </h3>
+                    <p style={{ fontSize: "14.5px", color: "#5D6E7F", lineHeight: 1.6, margin: 0 }}>
+                      Always see who acts next—whether your legal team is preparing filings or waiting on a specific document from you.
+                    </p>
+                  </div>
                 </div>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#063C3D", margin: "0 0 10px 0" }}>
-                  Clear Waiting-State Transparency
-                </h3>
-                <p style={{ fontSize: "14px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-                  Always see who acts next—whether your legal team is preparing filings or waiting on a specific document from you.
-                </p>
-              </div>
 
-              {/* Card 3 */}
-              <div
-                style={{
-                  background: "#F8F7F2",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "14px",
-                  padding: "28px",
-                  display: "flex",
-                  flexDirection: "column",
-                  transition: "border-color 0.15s ease",
-                }}
-              >
+                {/* Applicant Row 3 */}
                 <div
                   style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "10px",
-                    background: "#DDEFE8",
-                    border: "1px solid #B9DED4",
+                    padding: "24px 0",
+                    borderBottom: "1px solid #DCE7E3",
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "20px",
-                    marginBottom: "16px",
+                    alignItems: "flex-start",
+                    gap: "20px",
                   }}
                 >
-                  🔒
+                  <div
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "10px",
+                      background: "#EAF5EF",
+                      border: "1px solid #DCE7E3",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    🔒
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: "17.5px", fontWeight: 700, color: "#073D40", margin: "0 0 6px 0" }}>
+                      Private &amp; Secure Direct Uploads
+                    </h3>
+                    <p style={{ fontSize: "14.5px", color: "#5D6E7F", lineHeight: 1.6, margin: 0 }}>
+                      Upload sensitive identity documents straight to a private, encrypted vault with cryptographic audit protection.
+                    </p>
+                  </div>
                 </div>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#063C3D", margin: "0 0 10px 0" }}>
-                  Private &amp; Secure Direct Uploads
-                </h3>
-                <p style={{ fontSize: "14px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-                  Upload sensitive identity documents straight to a centralized repository with tamper-evident audit protection.
-                </p>
               </div>
-            </div>
-          )}
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {/* Law Firm Row 1 */}
+                <div
+                  style={{
+                    padding: "24px 0",
+                    borderBottom: "1px solid #DCE7E3",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "20px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "10px",
+                      background: "#EAF5EF",
+                      border: "1px solid #DCE7E3",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    🔍
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: "17.5px", fontWeight: 700, color: "#073D40", margin: "0 0 6px 0" }}>
+                      Automated Evidence Cross-Examination
+                    </h3>
+                    <p style={{ fontSize: "14.5px", color: "#5D6E7F", lineHeight: 1.6, margin: 0 }}>
+                      Cross-verify dates, entity spellings, and biographic facts across exhibits automatically to catch conflicting details early.
+                    </p>
+                  </div>
+                </div>
 
-          {activePersonaTab === "lawfirm" && (
-            <div
-              id="panel-lawfirm"
-              role="tabpanel"
-              aria-labelledby="tab-lawfirm"
-              className="animate-on-scroll delay-150"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
-                gap: "24px",
-              }}
-            >
-              {/* Card 1 */}
-              <div
-                style={{
-                  background: "#F8F7F2",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "14px",
-                  padding: "28px",
-                  display: "flex",
-                  flexDirection: "column",
-                  transition: "border-color 0.15s ease",
-                }}
-              >
+                {/* Law Firm Row 2 */}
                 <div
                   style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "10px",
-                    background: "#DDEFE8",
-                    border: "1px solid #B9DED4",
+                    padding: "24px 0",
+                    borderBottom: "1px solid #DCE7E3",
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "20px",
-                    marginBottom: "16px",
+                    alignItems: "flex-start",
+                    gap: "20px",
                   }}
                 >
-                  🔍
+                  <div
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "10px",
+                      background: "#EAF5EF",
+                      border: "1px solid #DCE7E3",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    📑
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: "17.5px", fontWeight: 700, color: "#073D40", margin: "0 0 6px 0" }}>
+                      Deterministic Exhibit Index &amp; Assembly
+                    </h3>
+                    <p style={{ fontSize: "14.5px", color: "#5D6E7F", lineHeight: 1.6, margin: 0 }}>
+                      Generate sequential exhibit tabs, tables of contents, and filing packages deterministically without manual PDF merging.
+                    </p>
+                  </div>
                 </div>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#063C3D", margin: "0 0 10px 0" }}>
-                  Automated Evidence Cross-Examination
-                </h3>
-                <p style={{ fontSize: "14px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-                  Cross-verify dates, entity spellings, and biographic facts across exhibits automatically to catch conflicting details early.
-                </p>
-              </div>
 
-              {/* Card 2 */}
-              <div
-                style={{
-                  background: "#F8F7F2",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "14px",
-                  padding: "28px",
-                  display: "flex",
-                  flexDirection: "column",
-                  transition: "border-color 0.15s ease",
-                }}
-              >
+                {/* Law Firm Row 3 */}
                 <div
                   style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "10px",
-                    background: "#DDEFE8",
-                    border: "1px solid #B9DED4",
+                    padding: "24px 0",
+                    borderBottom: "1px solid #DCE7E3",
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "20px",
-                    marginBottom: "16px",
+                    alignItems: "flex-start",
+                    gap: "20px",
                   }}
                 >
-                  📑
+                  <div
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "10px",
+                      background: "#EAF5EF",
+                      border: "1px solid #DCE7E3",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    ⚖️
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: "17.5px", fontWeight: 700, color: "#073D40", margin: "0 0 6px 0" }}>
+                      Strict Ethical Wall &amp; RBAC Control
+                    </h3>
+                    <p style={{ fontSize: "14.5px", color: "#5D6E7F", lineHeight: 1.6, margin: 0 }}>
+                      Isolate internal supervisory attorney work product, legal strategy memos, and private partner notes from client portal access.
+                    </p>
+                  </div>
                 </div>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#063C3D", margin: "0 0 10px 0" }}>
-                  Deterministic Exhibit Index &amp; Assembly
-                </h3>
-                <p style={{ fontSize: "14px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-                  Generate sequential exhibit tabs, tables of contents, and filing packages deterministically without manual PDF merging.
-                </p>
               </div>
-
-              {/* Card 3 */}
-              <div
-                style={{
-                  background: "#F8F7F2",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "14px",
-                  padding: "28px",
-                  display: "flex",
-                  flexDirection: "column",
-                  transition: "border-color 0.15s ease",
-                }}
-              >
-                <div
-                  style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "10px",
-                    background: "#DDEFE8",
-                    border: "1px solid #B9DED4",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "20px",
-                    marginBottom: "16px",
-                  }}
-                >
-                  ⚖️
-                </div>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#063C3D", margin: "0 0 10px 0" }}>
-                  Caseload Capacity &amp; Ethical Isolation
-                </h3>
-                <p style={{ fontSize: "14px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-                  Balance active casework across attorneys and paralegals while keeping internal legal strategies quarantined from the client portal.
-                </p>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </section>
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media (max-width: 1024px) {
+              .tools-col-left,
+              .tools-col-right {
+                grid-column: span 12 !important;
+                position: static !important;
+              }
+            }
+          `,
+        }}
+      />
     </div>
   );
 }

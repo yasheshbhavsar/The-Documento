@@ -75,7 +75,7 @@ const CHALLENGES: ChallengeComparison[] = [
   {
     id: "deadlines",
     category: "Timeline & Bottlenecks",
-    frictionTitle: "Missed Deadlines & Anxiety Over Who Acts Next",
+    frictionTitle: "Missed Filing Windows & Procedural Anxiety",
     traditionalPain: {
       heading: "The Traditional Hassle",
       description: "Applicants constantly wonder about the status of their case while law firm staff struggle to track which client is holding up a filing.",
@@ -87,7 +87,7 @@ const CHALLENGES: ChallengeComparison[] = [
       ],
     },
     documentoSolution: {
-      heading: "With Documento Milestones",
+      heading: "With Documento Workflow",
       description: "Transparent case pipelines with dual waiting-state indicators, procedural clocks, and unambiguous task ownership.",
       features: [
         "Dual Waiting-State: Instantly shows 'Waiting on You' vs 'Waiting on Firm'",
@@ -113,7 +113,7 @@ const CHALLENGES: ChallengeComparison[] = [
       ],
     },
     documentoSolution: {
-      heading: "With Documento Intelligence",
+      heading: "With Documento Workflow",
       description: "Automated OCR cross-compares dates, entity names, and biographic facts across all exhibits, flagging anomalies for attorney adjudication.",
       features: [
         "Biographic entity extraction anchored to exact source coordinates and pages",
@@ -139,7 +139,7 @@ const CHALLENGES: ChallengeComparison[] = [
       ],
     },
     documentoSolution: {
-      heading: "With Documento Portal",
+      heading: "With Documento Workflow",
       description: "Role-separated workspaces where applicants receive structured requests and law firms maintain private internal legal strategies.",
       features: [
         "Dedicated applicant portal with mobile-friendly questionnaire intake",
@@ -161,390 +161,316 @@ export function DocumentoProblemSolution() {
     <section
       id="comparison"
       style={{
-        padding: "80px 24px",
+        padding: "88px 24px",
         scrollMarginTop: "80px",
-        background: "#F8F7F2",
-        borderBottom: "1px solid #DCE5E1",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
-      <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
-        {/* Minimal Section Header */}
-        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 36px auto" }}>
+      <div
+        style={{
+          maxWidth: "1280px",
+          margin: "0 auto",
+          display: "grid",
+          gridTemplateColumns: "repeat(12, 1fr)",
+          gap: "48px 56px",
+          alignItems: "start",
+        }}
+      >
+        {/* LEFT COLUMN: ~1/3 */}
+        <div
+          className="animate-on-scroll comp-col-left"
+          style={{
+            gridColumn: "span 4",
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+            position: "sticky",
+            top: "100px",
+          }}
+        >
+          {/* Eyebrow */}
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              padding: "4px 12px",
-              borderRadius: "20px",
-              background: "#DDEFE8",
-              border: "1px solid #B9DED4",
               fontSize: "12px",
               fontWeight: 650,
-              color: "#063C3D",
-              marginBottom: "14px",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#07594F",
             }}
           >
+            <span
+              style={{
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                background: "#169B77",
+              }}
+            />
             <span>Real Problems • Practical Solutions</span>
           </div>
 
+          {/* Heading */}
           <h2
             style={{
-              fontSize: "clamp(26px, 3.6vw, 38px)",
+              fontSize: "clamp(28px, 3.2vw, 42px)",
               fontWeight: 700,
-              color: "#063C3D",
-              lineHeight: 1.25,
-              letterSpacing: "-0.02em",
-              margin: "0 0 12px 0",
+              color: "#073D40",
+              lineHeight: 1.18,
+              letterSpacing: "-0.025em",
+              margin: 0,
               fontFamily: "var(--font-display, Inter, sans-serif)",
             }}
           >
-            Immigration is complicated enough.
-            <br />
-            Managing it shouldn’t be.
+            <span>Immigration is complicated enough.</span>{" "}
+            <span>Managing it shouldn’t be.</span>
           </h2>
 
-          <p style={{ fontSize: "15px", color: "#445451", lineHeight: 1.55, margin: "0 auto 28px auto", maxWidth: "680px" }}>
+          {/* Subheading */}
+          <p
+            style={{
+              fontSize: "15.5px",
+              color: "#5D6E7F",
+              lineHeight: 1.6,
+              margin: 0,
+            }}
+          >
             Structured evidence, declarative criteria, and clear task ownership replace administrative disorganization and avoidable casework delays.
           </p>
 
-          {/* Compact Row of Challenge Selectors */}
+          {/* Challenge Selector Rows */}
           <div
             role="tablist"
-            aria-label="Immigration challenges"
+            aria-label="Casework Challenges"
             style={{
               display: "flex",
-              gap: "8px",
-              flexWrap: "wrap",
-              justifyContent: "center",
+              flexDirection: "column",
+              gap: "4px",
+              marginTop: "8px",
+              borderTop: "1px solid #DCE7E3",
+              paddingTop: "14px",
             }}
           >
-            {CHALLENGES.map((item, idx) => {
-              const isSelected = activeChallengeId === item.id;
+            <div
+              style={{
+                fontSize: "11.5px",
+                fontWeight: 650,
+                color: "#7B8E8B",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                marginBottom: "6px",
+              }}
+            >
+              Select Casework Challenge
+            </div>
+
+            {CHALLENGES.map((ch) => {
+              const isSelected = ch.id === activeChallengeId;
               return (
                 <button
-                  key={item.id}
-                  type="button"
+                  key={ch.id}
                   role="tab"
-                  id={`tab-${item.id}`}
-                  aria-controls={`panel-${item.id}`}
                   aria-selected={isSelected}
-                  onClick={() => setActiveChallengeId(item.id)}
+                  type="button"
+                  onClick={() => setActiveChallengeId(ch.id)}
                   style={{
-                    padding: "8px 16px",
-                    borderRadius: "8px",
-                    border: "1px solid",
-                    borderColor: isSelected ? "#063C3D" : "#DCE5E1",
-                    background: isSelected ? "#063C3D" : "#FFFFFF",
-                    color: isSelected ? "#FFFFFF" : "#445451",
-                    fontSize: "13px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "9px 12px",
+                    borderRadius: "6px",
+                    background: isSelected ? "#EAF5EF" : "transparent",
+                    color: isSelected ? "#073D40" : "#5D6E7F",
+                    border: "none",
+                    borderLeft: isSelected ? "3px solid #169B77" : "3px solid transparent",
+                    fontSize: "13.5px",
                     fontWeight: isSelected ? 650 : 500,
                     cursor: "pointer",
+                    textAlign: "left",
                     transition: "all 0.15s ease",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "8px",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = "rgba(234, 245, 239, 0.45)";
+                      e.currentTarget.style.color = "#073D40";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = "#5D6E7F";
+                    }
                   }}
                 >
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: "18px",
-                      height: "18px",
-                      borderRadius: "50%",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      background: isSelected ? "rgba(255,255,255,0.2)" : "#EAF2EE",
-                      color: isSelected ? "#FFFFFF" : "#0D6866",
-                    }}
-                  >
-                    {idx + 1}
+                  <span>{ch.category}</span>
+                  <span style={{ fontSize: "11px", color: isSelected ? "#07594F" : "#7B8E8B" }}>
+                    →
                   </span>
-                  <span>{item.category}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Active Challenge Before-and-After Card */}
+        {/* RIGHT COLUMN: ~2/3 (Side-by-side or stacked clean comparison) */}
         <div
-          id={`panel-${currentChallenge.id}`}
-          role="tabpanel"
-          aria-labelledby={`tab-${currentChallenge.id}`}
-          className="animate-on-scroll"
+          className="animate-on-scroll delay-150 comp-col-right"
           style={{
-            background: "#FFFFFF",
-            borderRadius: "14px",
-            border: "1px solid #DCE5E1",
-            boxShadow: "0 2px 12px rgba(6, 60, 61, 0.04)",
-            overflow: "hidden",
+            gridColumn: "span 8",
+            minWidth: 0,
+            borderTop: "1px solid #DCE7E3",
+            paddingTop: "24px",
           }}
         >
-          {/* Category & Friction Title Header Banner */}
-          <div
-            style={{
-              padding: "16px 24px",
-              background: "#FAF9F5",
-              borderBottom: "1px solid #DCE5E1",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "12px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-              <span
-                style={{
-                  display: "inline-block",
-                  padding: "3px 10px",
-                  borderRadius: "6px",
-                  background: "#DDEFE8",
-                  border: "1px solid #B9DED4",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "#063C3D",
-                }}
-              >
-                {currentChallenge.category}
-              </span>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: "15px",
-                  fontWeight: 700,
-                  color: "#063C3D",
-                }}
-              >
-                {currentChallenge.frictionTitle}
-              </h3>
-            </div>
-            <div style={{ fontSize: "12px", color: "#6E7F7C", fontWeight: 500 }}>
-              Challenge {CHALLENGES.findIndex((c) => c.id === activeChallengeId) + 1} of {CHALLENGES.length}
-            </div>
+          {/* Friction Title */}
+          <div style={{ marginBottom: "20px" }}>
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#07594F",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+              }}
+            >
+              Current Challenge
+            </span>
+            <h3
+              style={{
+                fontSize: "22px",
+                fontWeight: 700,
+                color: "#073D40",
+                margin: "4px 0 0 0",
+              }}
+            >
+              {currentChallenge.frictionTitle}
+            </h3>
           </div>
 
-          {/* Two Calm Columns (Side by Side on Desktop, Stacked on Mobile) */}
-          <div className="grid grid-cols-1 md:grid-cols-2">
-            {/* Left: Without Documento */}
+          {/* Two-Column Comparison Card Grid */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: "20px",
+              marginBottom: "24px",
+            }}
+          >
+            {/* The Traditional Hassle */}
             <div
-              className="p-6 md:p-8 border-b md:border-b-0 md:border-r border-[#DCE5E1]"
               style={{
-                background: "#FCFBF9",
+                background: "#FFFFFF",
+                border: "1px solid #DCE7E3",
+                borderRadius: "10px",
+                padding: "20px",
               }}
             >
               <div
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "4px 10px",
-                  borderRadius: "6px",
-                  background: "#F2EFE9",
-                  border: "1px solid #E3DFD5",
+                  display: "inline-block",
                   fontSize: "11px",
                   fontWeight: 700,
-                  color: "#544D42",
+                  color: "#8A5A10",
+                  background: "#FEF7EA",
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  marginBottom: "10px",
                   textTransform: "uppercase",
                   letterSpacing: "0.04em",
-                  marginBottom: "16px",
-                }}
-              >
-                <span>✕ Without Documento</span>
-              </div>
-
-              <h4
-                style={{
-                  margin: "0 0 10px 0",
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  color: "#172322",
                 }}
               >
                 {currentChallenge.traditionalPain.heading}
-              </h4>
+              </div>
 
-              <p
-                style={{
-                  margin: "0 0 20px 0",
-                  fontSize: "14px",
-                  color: "#445451",
-                  lineHeight: 1.6,
-                }}
-              >
+              <p style={{ fontSize: "13.5px", color: "#5D6E7F", lineHeight: 1.55, margin: "0 0 14px 0" }}>
                 {currentChallenge.traditionalPain.description}
               </p>
 
-              <div
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 650,
-                  color: "#6E7F7C",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.03em",
-                  marginBottom: "12px",
-                }}
-              >
-                Typical Bottlenecks
-              </div>
-
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
-                {currentChallenge.traditionalPain.symptoms.slice(0, 3).map((symptom, idx) => (
-                  <li
-                    key={idx}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "10px",
-                      fontSize: "13px",
-                      color: "#445451",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    <span style={{ color: "#8C8275", fontWeight: 700, flexShrink: 0, marginTop: "1px" }}>—</span>
-                    <span>{symptom}</span>
-                  </li>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {currentChallenge.traditionalPain.symptoms.map((s, idx) => (
+                  <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12.5px", color: "#5D6E7F", lineHeight: 1.45 }}>
+                    <span style={{ color: "#A62D35", fontWeight: 700, flexShrink: 0 }}>✕</span>
+                    <span>{s}</span>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
 
-            {/* Right: With Documento */}
+            {/* With Documento Workflow */}
             <div
-              className="p-6 md:p-8"
               style={{
-                background: "#FAFDFB",
+                background: "#FFFFFF",
+                border: "1px solid #DCE7E3",
+                borderTop: "3px solid #169B77",
+                borderRadius: "10px",
+                padding: "20px",
               }}
             >
               <div
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "4px 10px",
-                  borderRadius: "6px",
-                  background: "#DDEFE8",
-                  border: "1px solid #B9DED4",
+                  display: "inline-block",
                   fontSize: "11px",
                   fontWeight: 700,
-                  color: "#063C3D",
+                  color: "#07594F",
+                  background: "#EAF5EF",
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  marginBottom: "10px",
                   textTransform: "uppercase",
                   letterSpacing: "0.04em",
-                  marginBottom: "16px",
-                }}
-              >
-                <span>✓ With Documento Workspace</span>
-              </div>
-
-              <h4
-                style={{
-                  margin: "0 0 10px 0",
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  color: "#063C3D",
                 }}
               >
                 {currentChallenge.documentoSolution.heading}
-              </h4>
+              </div>
 
-              <p
-                style={{
-                  margin: "0 0 20px 0",
-                  fontSize: "14px",
-                  color: "#445451",
-                  lineHeight: 1.6,
-                }}
-              >
+              <p style={{ fontSize: "13.5px", color: "#073D40", lineHeight: 1.55, margin: "0 0 14px 0" }}>
                 {currentChallenge.documentoSolution.description}
               </p>
 
-              <div
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 650,
-                  color: "#0D6866",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.03em",
-                  marginBottom: "12px",
-                }}
-              >
-                Operational Improvements
-              </div>
-
-              <ul style={{ listStyle: "none", padding: 0, margin: "0 0 20px 0", display: "flex", flexDirection: "column", gap: "10px" }}>
-                {currentChallenge.documentoSolution.features.slice(0, 3).map((feat, idx) => (
-                  <li
-                    key={idx}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "10px",
-                      fontSize: "13px",
-                      color: "#172322",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    <span style={{ color: "#0D6866", fontWeight: 700, flexShrink: 0, marginTop: "1px" }}>✓</span>
-                    <span>{feat}</span>
-                  </li>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {currentChallenge.documentoSolution.features.map((f, idx) => (
+                  <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12.5px", color: "#073D40", lineHeight: 1.45 }}>
+                    <span style={{ color: "#169B77", fontWeight: 700, flexShrink: 0 }}>✓</span>
+                    <span>{f}</span>
+                  </div>
                 ))}
-              </ul>
-
-              {/* Practical Outcome */}
-              <div
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: "8px",
-                  background: "#F0F7F4",
-                  border: "1px solid #D1E5DC",
-                  fontSize: "13px",
-                  lineHeight: 1.5,
-                }}
-              >
-                <span style={{ fontWeight: 700, color: "#063C3D" }}>Practical Outcome: </span>
-                <span style={{ color: "#2E4744" }}>{currentChallenge.documentoSolution.practicalOutcome}</span>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Responsible Boundaries Note */}
-        <div
-          style={{
-            marginTop: "32px",
-            padding: "16px 20px",
-            borderRadius: "10px",
-            background: "#FFFFFF",
-            border: "1px solid #DCE5E1",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: "12px",
-            fontSize: "13px",
-            color: "#556461",
-            lineHeight: 1.55,
-          }}
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#0D6866"
-            strokeWidth="2"
-            style={{ flexShrink: 0, marginTop: "2px" }}
-            aria-hidden="true"
+          {/* Practical Outcome Callout */}
+          <div
+            style={{
+              background: "#EAF5EF",
+              border: "1px solid #DCE7E3",
+              borderLeft: "3px solid #169B77",
+              borderRadius: "0 8px 8px 0",
+              padding: "14px 18px",
+              fontSize: "13.5px",
+              color: "#073D40",
+              lineHeight: 1.55,
+            }}
           >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="16" x2="12" y2="12" />
-            <line x1="12" y1="8" x2="12.01" y2="8" />
-          </svg>
-          <div>
-            <strong style={{ color: "#063C3D" }}>Realistic Expectations:</strong> Documento optimizes evidence organization, administrative checklists, and team transparency. Software cannot eliminate all immigration friction, guarantee USCIS or IRCC processing timelines, or replace qualified attorney representation.
+            <strong style={{ color: "#07594F" }}>Practical Outcome:</strong> {currentChallenge.documentoSolution.practicalOutcome}
           </div>
         </div>
       </div>
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media (max-width: 1024px) {
+              .comp-col-left,
+              .comp-col-right {
+                grid-column: span 12 !important;
+                position: static !important;
+              }
+            }
+          `,
+        }}
+      />
     </section>
   );
 }

@@ -793,7 +793,7 @@ export default function OrbitImages({
   paused = false,
   depth = 0.5,
   itemRadius = 12,
-  shadow = 0.3,
+  shadow = 0,
   hoverScale = 1.08,
   hoverSpeed = 0.3,
   draggable = true,
@@ -925,6 +925,7 @@ export default function OrbitImages({
       aria-hidden={interactive ? undefined : true}
       data-intro={introPending ? '' : undefined}
       data-draggable={draggable ? '' : undefined}
+      data-shadow={shadow > 0 ? 'true' : undefined}
     >
       <svg
         className="orbit-path-svg"

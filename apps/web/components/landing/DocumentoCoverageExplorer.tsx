@@ -599,8 +599,8 @@ export function DocumentoCoverageExplorer() {
       style={{
         padding: "80px 24px",
         scrollMarginTop: "80px",
-        background: "#F8F7F2",
-        borderBottom: "1px solid #DCE5E1",
+        background: "transparent",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <div style={{ maxWidth: "1240px", margin: "0 auto" }}>

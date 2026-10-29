@@ -61,6 +61,15 @@ const FAQS: FAQItem[] = [
   },
 ];
 
+const CATEGORIES = [
+  "ALL",
+  "Coverage & Scope",
+  "Legal & Ethics",
+  "AI & Accuracy",
+  "Security & Privacy",
+  "Collaboration",
+] as const;
+
 export function DocumentoFAQ() {
   const [openId, setOpenId] = useState<string | null>("countries-supported");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -83,83 +92,95 @@ export function DocumentoFAQ() {
     setOpenId((prev) => (prev === id ? null : id));
   };
 
-  const categories = [
-    "ALL",
-    "Coverage & Scope",
-    "Legal & Ethics",
-    "AI & Accuracy",
-    "Security & Privacy",
-    "Collaboration",
-  ] as const;
+  const getCategoryCount = (cat: string) => {
+    if (cat === "ALL") return FAQS.length;
+    return FAQS.filter((f) => f.category === cat).length;
+  };
 
   return (
     <section
       id="faq"
       style={{
-        padding: "80px 24px",
-        background: "#F8F7F2",
-        borderBottom: "1px solid #DCE5E1",
+        padding: "88px 24px",
         scrollMarginTop: "80px",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
-      <div style={{ maxWidth: "860px", margin: "0 auto" }}>
-        {/* Section Header */}
+      <div
+        style={{
+          maxWidth: "1280px",
+          margin: "0 auto",
+          display: "grid",
+          gridTemplateColumns: "repeat(12, 1fr)",
+          gap: "48px 56px",
+          alignItems: "start",
+        }}
+      >
+        {/* LEFT COLUMN: ~1/3 (Intro, Search & Category Navigation List) */}
         <div
-          className="animate-on-scroll"
-          style={{ textAlign: "center", marginBottom: "36px" }}
+          className="animate-on-scroll faq-col-left"
+          style={{
+            gridColumn: "span 4",
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+            position: "sticky",
+            top: "100px",
+          }}
         >
+          {/* Eyebrow */}
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              padding: "4px 14px",
-              borderRadius: "20px",
-              background: "#DDEFE8",
-              border: "1px solid #B9DED4",
               fontSize: "12px",
-              fontWeight: 600,
-              color: "#063C3D",
-              marginBottom: "16px",
+              fontWeight: 650,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#07594F",
             }}
           >
+            <span
+              style={{
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                background: "#169B77",
+              }}
+            />
             <span>FAQ &amp; Verification</span>
           </div>
 
+          {/* Heading */}
           <h2
             style={{
-              fontSize: "clamp(28px, 4vw, 42px)",
+              fontSize: "clamp(28px, 3.2vw, 42px)",
               fontWeight: 700,
-              color: "#063C3D",
-              lineHeight: 1.2,
+              color: "#073D40",
+              lineHeight: 1.18,
               letterSpacing: "-0.025em",
-              margin: "0 0 16px 0",
+              margin: 0,
               fontFamily: "var(--font-display, Inter, sans-serif)",
             }}
           >
             Frequently Asked Questions
           </h2>
 
+          {/* Subheading */}
           <p
             style={{
-              fontSize: "16px",
-              color: "#445451",
+              fontSize: "15.5px",
+              color: "#5D6E7F",
               lineHeight: 1.6,
-              margin: "0 auto 28px auto",
-              maxWidth: "640px",
+              margin: 0,
             }}
           >
             Clear, verified answers regarding our supported jurisdictions, AI architecture, and legal boundaries.
           </p>
 
-          {/* Search Bar */}
-          <div
-            style={{
-              maxWidth: "460px",
-              margin: "0 auto 18px auto",
-              position: "relative",
-            }}
-          >
+          {/* Search Box */}
+          <div style={{ position: "relative", width: "100%", marginTop: "4px" }}>
             <input
               type="text"
               aria-label="Search frequently asked questions"
@@ -170,27 +191,27 @@ export function DocumentoFAQ() {
                 width: "100%",
                 padding: "10px 14px 10px 38px",
                 borderRadius: "8px",
-                border: "1px solid #DCE5E1",
+                border: "1px solid #DCE7E3",
                 background: "#FFFFFF",
-                fontSize: "14px",
-                color: "#172322",
+                fontSize: "13.5px",
+                color: "#073D40",
                 outline: "none",
                 transition: "border-color 0.15s ease",
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = "#0D6866")}
-              onBlur={(e) => (e.currentTarget.style.borderColor = "#DCE5E1")}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "#07594F")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "#DCE7E3")}
             />
             <svg
-              width="16"
-              height="16"
+              width="15"
+              height="15"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="#6E7F7C"
+              stroke="#5D6E7F"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
               aria-hidden="true"
-              style={{ position: "absolute", left: "12px", top: "12px" }}
+              style={{ position: "absolute", left: "12px", top: "12px", pointerEvents: "none" }}
             >
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -202,11 +223,11 @@ export function DocumentoFAQ() {
                 style={{
                   position: "absolute",
                   right: "10px",
-                  top: "10px",
+                  top: "9px",
                   background: "none",
                   border: "none",
-                  color: "#6E7F7C",
-                  fontSize: "15px",
+                  color: "#5D6E7F",
+                  fontSize: "14px",
                   cursor: "pointer",
                   padding: "2px 6px",
                 }}
@@ -217,17 +238,37 @@ export function DocumentoFAQ() {
             )}
           </div>
 
-          {/* Category Filter Pills */}
+          {/* Vertical Category Navigation List */}
           <div
+            role="navigation"
+            aria-label="FAQ Categories"
             style={{
               display: "flex",
-              justifyContent: "center",
-              flexWrap: "wrap",
-              gap: "6px",
+              flexDirection: "column",
+              gap: "4px",
+              marginTop: "8px",
+              borderTop: "1px solid #DCE7E3",
+              paddingTop: "14px",
             }}
           >
-            {categories.map((cat) => {
+            <div
+              style={{
+                fontSize: "11.5px",
+                fontWeight: 650,
+                color: "#7B8E8B",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                marginBottom: "6px",
+              }}
+            >
+              Browse By Topic
+            </div>
+
+            {CATEGORIES.map((cat) => {
               const isSelected = selectedCategory === cat;
+              const count = getCategoryCount(cat);
+              const label = cat === "ALL" ? "All Questions" : cat;
+
               return (
                 <button
                   key={cat}
@@ -235,42 +276,97 @@ export function DocumentoFAQ() {
                   aria-pressed={isSelected}
                   onClick={() => setSelectedCategory(cat)}
                   style={{
-                    padding: "5px 12px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "9px 12px",
                     borderRadius: "6px",
-                    border: `1px solid ${isSelected ? "#063C3D" : "#DCE5E1"}`,
-                    background: isSelected ? "#063C3D" : "#FFFFFF",
-                    color: isSelected ? "#FFFFFF" : "#445451",
-                    fontSize: "12px",
-                    fontWeight: isSelected ? 600 : 500,
+                    background: isSelected ? "#EAF5EF" : "transparent",
+                    color: isSelected ? "#073D40" : "#5D6E7F",
+                    border: "none",
+                    borderLeft: isSelected ? "3px solid #169B77" : "3px solid transparent",
+                    fontSize: "13.5px",
+                    fontWeight: isSelected ? 650 : 500,
                     cursor: "pointer",
+                    textAlign: "left",
                     transition: "all 0.15s ease",
                   }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = "rgba(234, 245, 239, 0.45)";
+                      e.currentTarget.style.color = "#073D40";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = "#5D6E7F";
+                    }
+                  }}
                 >
-                  {cat === "ALL" ? "All Questions" : cat}
+                  <span>{label}</span>
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      fontWeight: 600,
+                      color: isSelected ? "#07594F" : "#7B8E8B",
+                      padding: "1px 6px",
+                      borderRadius: "10px",
+                      background: isSelected ? "rgba(22, 155, 119, 0.15)" : "transparent",
+                    }}
+                  >
+                    {count}
+                  </span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Accordion Container */}
+        {/* RIGHT COLUMN: ~2/3 (Minimalist Open Accordion Rows separated by hairlines) */}
         <div
-          className="animate-on-scroll delay-150"
-          style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+          className="animate-on-scroll delay-150 faq-col-right"
+          style={{
+            gridColumn: "span 8",
+            minWidth: 0,
+            borderTop: "1px solid #DCE7E3",
+          }}
         >
           {filteredFaqs.length === 0 ? (
             <div
               style={{
                 textAlign: "center",
-                padding: "32px",
-                background: "#FFFFFF",
-                borderRadius: "10px",
-                border: "1px dashed #DCE5E1",
-                color: "#6E7F7C",
-                fontSize: "14px",
+                padding: "48px 24px",
+                color: "#5D6E7F",
+                fontSize: "14.5px",
               }}
             >
-              No questions matched your search query. Try resetting filters.
+              <div style={{ marginBottom: "12px", fontSize: "20px" }}>🔍</div>
+              <div style={{ fontWeight: 600, color: "#073D40", marginBottom: "6px" }}>
+                No questions matched your search
+              </div>
+              <p style={{ margin: "0 0 16px 0", fontSize: "13.5px" }}>
+                Try searching with different terms or reset your active filters.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("ALL");
+                }}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "6px",
+                  border: "1px solid #DCE7E3",
+                  background: "#FFFFFF",
+                  color: "#07594F",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Reset Filters
+              </button>
             </div>
           ) : (
             filteredFaqs.map((item) => {
@@ -279,11 +375,8 @@ export function DocumentoFAQ() {
                 <div
                   key={item.id}
                   style={{
-                    background: "#FFFFFF",
-                    border: `1px solid ${isOpen ? "#0D6866" : "#DCE5E1"}`,
-                    borderRadius: "10px",
-                    overflow: "hidden",
-                    transition: "border-color 0.15s ease",
+                    borderBottom: "1px solid #DCE7E3",
+                    transition: "background-color 0.15s ease",
                   }}
                 >
                   <button
@@ -294,60 +387,64 @@ export function DocumentoFAQ() {
                     onClick={() => toggleItem(item.id)}
                     style={{
                       width: "100%",
-                      padding: "16px 20px",
+                      padding: "22px 0",
                       background: "transparent",
                       border: "none",
                       display: "flex",
-                      alignItems: "center",
+                      alignItems: "flex-start",
                       justifyContent: "space-between",
-                      gap: "12px",
+                      gap: "24px",
                       cursor: "pointer",
                       textAlign: "left",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                       <span
                         style={{
                           fontSize: "11px",
-                          fontWeight: 600,
-                          color: "#063C3D",
-                          background: "#DDEFE8",
-                          border: "1px solid #B9DED4",
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          whiteSpace: "nowrap",
+                          fontWeight: 650,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                          color: "#169B77",
                         }}
                       >
                         {item.category}
                       </span>
                       <span
                         style={{
-                          fontSize: "15px",
+                          fontSize: "17px",
                           fontWeight: 650,
-                          color: "#063C3D",
+                          color: isOpen ? "#07594F" : "#073D40",
                           lineHeight: 1.35,
+                          transition: "color 0.15s ease",
                         }}
                       >
                         {item.question}
                       </span>
                     </div>
 
+                    {/* Plus / Minus Control on the far right */}
                     <span
                       style={{
-                        fontSize: "14px",
-                        color: isOpen ? "#0D6866" : "#6E7F7C",
-                        transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-                        transition: "transform 0.2s ease",
-                        flexShrink: 0,
-                        width: "20px",
-                        height: "20px",
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        border: "1px solid #DCE7E3",
+                        background: isOpen ? "#EAF5EF" : "#FFFFFF",
+                        color: isOpen ? "#07594F" : "#5D6E7F",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        fontSize: "18px",
+                        lineHeight: 1,
+                        flexShrink: 0,
+                        marginTop: "2px",
+                        fontWeight: 400,
+                        transition: "all 0.15s ease",
                       }}
                       aria-hidden="true"
                     >
-                      ▼
+                      {isOpen ? "−" : "+"}
                     </span>
                   </button>
 
@@ -357,12 +454,11 @@ export function DocumentoFAQ() {
                       role="region"
                       aria-labelledby={`faq-btn-${item.id}`}
                       style={{
-                        padding: "0 20px 18px 20px",
-                        fontSize: "14px",
-                        color: "#445451",
-                        lineHeight: 1.6,
-                        borderTop: "1px solid #EEF3F0",
-                        paddingTop: "14px",
+                        padding: "0 0 24px 0",
+                        fontSize: "15px",
+                        color: "#5D6E7F",
+                        lineHeight: 1.68,
+                        maxWidth: "720px",
                       }}
                     >
                       {item.answer}
@@ -374,6 +470,20 @@ export function DocumentoFAQ() {
           )}
         </div>
       </div>
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media (max-width: 1024px) {
+              .faq-col-left,
+              .faq-col-right {
+                grid-column: span 12 !important;
+                position: static !important;
+              }
+            }
+          `,
+        }}
+      />
     </section>
   );
 }
