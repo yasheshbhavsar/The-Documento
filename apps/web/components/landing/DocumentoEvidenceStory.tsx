@@ -107,7 +107,7 @@ export function DocumentoEvidenceStory() {
               <circle className={styles.flowDot} r="4">
                 <animateMotion dur="3.8s" repeatCount="indefinite" path="M 280 128 C 342 128, 362 162, 432 180" />
               </circle>
-              <circle className={styles.flowDot flowDotDelayed} r="4">
+              <circle className={`${styles.flowDot} ${styles.flowDotDelayed}`} r="4">
                 <animateMotion dur="4.4s" begin="-2s" repeatCount="indefinite" path="M 568 180 C 634 152, 656 128, 720 128" />
               </circle>
             </svg>
