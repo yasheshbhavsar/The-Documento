@@ -170,3 +170,27 @@ class NotificationService:
         db.commit()
         db.refresh(notification)
         return notification
+
+    @staticmethod
+    def cleanup_read_notifications(
+        db: Session,
+        organization_id: uuid.UUID,
+        older_than_days: int = 90,
+    ) -> int:
+        """
+        Enforces retention policy: purges read notifications older than the threshold (default 90 days).
+        Prevents unbounded growth of notification records over multi-year production operation.
+        """
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        deleted_count = (
+            db.query(Notification)
+            .filter(
+                Notification.organization_id == organization_id,
+                Notification.read_at.isnot(None),
+                Notification.read_at < cutoff,
+            )
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return deleted_count

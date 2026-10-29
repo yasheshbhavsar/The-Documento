@@ -56,6 +56,21 @@ services:
     networks:
       - internal_network
 
+  clamav:
+    image: clamav/clamav:latest
+    restart: always
+    environment:
+      CLAMAV_NO_FRESHCLAM: "false"
+    ports:
+      - "127.0.0.1:3310:3310"
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "10"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - internal_network
+
   backend:
     build:
       context: ./backend
@@ -68,6 +83,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      clamav:
+        condition: service_started
     environment:
       ENVIRONMENT: production
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -80,6 +97,10 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT secret key required}
       AUTH_REQUIRED: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:-https://app.ai-immigration.com}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      CLAMAV_ENABLED: "true"
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     ports:
       - "8000:8000"
     healthcheck:
@@ -102,6 +123,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      clamav:
+        condition: service_started
     environment:
       ENVIRONMENT: production
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -112,6 +135,9 @@ services:
       OBJECT_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER}
       OBJECT_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      CLAMAV_ENABLED: "true"
     networks:
       - internal_network
 

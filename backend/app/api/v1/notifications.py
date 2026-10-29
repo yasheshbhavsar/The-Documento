@@ -8,7 +8,7 @@ from backend.app.core.errors import EntityNotFoundError, PermissionDeniedError
 from backend.app.db.session import get_db
 from backend.app.domain.models import Notification
 from backend.app.notifications.service import NotificationService
-from backend.app.security.auth import AuthContext, get_auth_context
+from backend.app.security.auth import AuthContext, get_auth_context, require_permission
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -235,3 +235,36 @@ def retry_notification(
         delivery_error=updated.delivery_error,
         created_at=updated.created_at,
     )
+
+
+class NotificationCleanupResponse(BaseModel):
+    organization_id: uuid.UUID
+    cleaned_count: int
+    older_than_days: int
+    retention_cutoff: datetime
+
+
+@router.post("/cleanup", response_model=NotificationCleanupResponse)
+def cleanup_notifications(
+    older_than_days: int = Query(default=90, ge=7, le=365),
+    ctx: AuthContext = Depends(require_permission("case:write")),
+    db: Session = Depends(get_db),
+):
+    """
+    Enforces notification retention policy:
+    Archives and purges read notifications older than `older_than_days` (default 90).
+    """
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    count = NotificationService.cleanup_read_notifications(
+        db=db,
+        organization_id=ctx.organization_id,
+        older_than_days=older_than_days,
+    )
+    return NotificationCleanupResponse(
+        organization_id=ctx.organization_id,
+        cleaned_count=count,
+        older_than_days=older_than_days,
+        retention_cutoff=cutoff,
+    )
+

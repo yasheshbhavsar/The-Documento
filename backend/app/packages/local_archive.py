@@ -16,6 +16,7 @@ Key Deliverables:
 from __future__ import annotations
 
 import io
+import tempfile
 import json
 import os
 import re
@@ -573,8 +574,12 @@ def build_package_local_zip_archive(
     # Map candidate folder codes to names
     folder_map = {f.get("folder_code"): f.get("folder_name", f.get("folder_code")) for f in folder_structure}
 
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+    # Stream package concatenation through temporary disk storage to prevent RAM spikes on large packages
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_file:
+        tmp_path = tmp_file.name
+
+    try:
+        zf = zipfile.ZipFile(tmp_path, mode="w", compression=zipfile.ZIP_DEFLATED)
         # 1. Create directory entries for each folder in template
         for f in folder_structure:
             fname = sanitize_filename(f.get("folder_name", f.get("folder_code", "FOLDER")))
@@ -672,6 +677,15 @@ def build_package_local_zip_archive(
 
         assert_safe_zip_entry("ocr_and_anomaly_report.txt")
         zf.writestr("ocr_and_anomaly_report.txt", anomaly_text.encode("utf-8"))
+        zf.close()
 
-    zip_bytes = zip_buffer.getvalue()
+        with open(tmp_path, "rb") as f_out:
+            zip_bytes = f_out.read()
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
     return zip_bytes, canonical_manifest
