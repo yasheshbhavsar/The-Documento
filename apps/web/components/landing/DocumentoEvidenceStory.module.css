@@ -353,11 +353,21 @@
 .engineStage {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   min-width: 0;
-  padding-top: 28px;
+}
+
+.engineHeading {
+  margin-bottom: 18px;
+}
+
+.engineGraphic {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 162px;
 }
 
 .engineOrbit {
@@ -368,7 +378,7 @@
   height: 162px;
   border: 1px solid rgba(42, 146, 136, 0.2);
   border-radius: 50%;
-  transform: translate(-50%, -62%);
+  transform: translate(-50%, -50%);
   animation: orbitBreath 4.8s ease-in-out infinite;
   animation-play-state: paused;
 }
