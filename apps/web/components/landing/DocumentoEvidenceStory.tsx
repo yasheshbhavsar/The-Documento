@@ -58,7 +58,7 @@ export function DocumentoEvidenceStory() {
   return (
     <section
       ref={sectionRef}
-      id="evidence-story"
+      id="preview"
       className={styles.section}
       aria-labelledby="evidence-story-title"
     >
