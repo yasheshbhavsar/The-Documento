@@ -172,6 +172,10 @@
   stroke-dasharray: 3 8;
 }
 
+.isVisible .flowDot {
+  display: inline;
+}
+
 .isVisible .flowLine {
   animation: drawSignal 3.6s linear infinite;
 }
@@ -181,6 +185,7 @@
 }
 
 .flowDot {
+  display: none;
   fill: #2A9288;
   filter: drop-shadow(0 0 4px rgba(42, 146, 136, 0.55));
 }
@@ -786,6 +791,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .flowDot,
   .isVisible .flowLine,
   .isVisible .flowLineSecondary,
   .isVisible .sourceDocument,
