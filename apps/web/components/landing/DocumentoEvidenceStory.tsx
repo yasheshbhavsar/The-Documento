@@ -43,10 +43,7 @@ export function DocumentoEvidenceStory() {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.disconnect();
-        }
+        setIsVisible(entry.isIntersecting);
       },
       { threshold: 0.18 }
     );
@@ -142,15 +139,24 @@ export function DocumentoEvidenceStory() {
               </section>
 
               <section className={styles.engineStage} aria-label="Documento document intelligence">
-                <div className={styles.engineOrbit} aria-hidden="true">
-                  <span className={styles.orbitNode} />
-                  <span className={styles.orbitNode} />
-                  <span className={styles.orbitNode} />
+                <div className={`${styles.stageHeading} ${styles.engineHeading}`}>
+                  <span className={styles.stageNumber}>02</span>
+                  <div>
+                    <h3>Understand</h3>
+                    <p>Find structure in the details</p>
+                  </div>
                 </div>
-                <div className={styles.engineCore}>
-                  <div className={styles.engineIcon}><SparkGlyph /></div>
-                  <span className={styles.engineName}>Documento</span>
-                  <span className={styles.engineCaption}>Evidence intelligence</span>
+                <div className={styles.engineGraphic}>
+                  <div className={styles.engineOrbit} aria-hidden="true">
+                    <span className={styles.orbitNode} />
+                    <span className={styles.orbitNode} />
+                    <span className={styles.orbitNode} />
+                  </div>
+                  <div className={styles.engineCore}>
+                    <div className={styles.engineIcon}><SparkGlyph /></div>
+                    <span className={styles.engineName}>Documento</span>
+                    <span className={styles.engineCaption}>Evidence intelligence</span>
+                  </div>
                 </div>
                 <div className={styles.engineSteps} aria-label="Processing steps">
                   <span>Read</span>
@@ -163,7 +169,7 @@ export function DocumentoEvidenceStory() {
 
               <section className={styles.stage} aria-label="Organized evidence and review">
                 <div className={styles.stageHeading}>
-                  <span className={`${styles.stageNumber} ${styles.stageNumberFinal}`}>02</span>
+                  <span className={`${styles.stageNumber} ${styles.stageNumberFinal}`}>03</span>
                   <div>
                     <h3>Clarify</h3>
                     <p>Evidence with context</p>
