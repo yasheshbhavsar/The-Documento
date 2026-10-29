@@ -79,6 +79,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
       suppressHydrationWarning
       style={{
         position: "relative",
+        marginTop: "-72px",
         padding: "0 0 80px 0",
         background: "linear-gradient(180deg, #F8F7F2 0%, #FFFFFF 100%)",
         borderBottom: "1px solid #DCE5E1",
@@ -90,10 +91,28 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
         suppressHydrationWarning
         style={{
           position: "relative",
-          padding: "72px 24px 38px 24px",
+          padding: "108px 24px 38px 24px",
           overflow: "hidden",
         }}
       >
+        {/* Top ambient aura flowing directly behind the sticky glass navbar */}
+        <div
+          suppressHydrationWarning
+          style={{
+            position: "absolute",
+            top: "0",
+            left: "50%",
+            transform: "translate(-50%, -35%)",
+            width: "1360px",
+            height: "320px",
+            borderRadius: "50%",
+            background: "radial-gradient(ellipse 70% 55% at 50% 50%, rgba(185, 222, 212, 0.6) 0%, rgba(221, 239, 232, 0.35) 50%, transparent 75%)",
+            filter: "blur(60px)",
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+
         {/* Radiant ambient aura in soft seafoam to amplify wave luminosity & color depth */}
         <div
           suppressHydrationWarning

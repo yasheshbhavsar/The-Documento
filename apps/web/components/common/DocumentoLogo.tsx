@@ -5,6 +5,7 @@ interface DocumentoLogoProps {
   showWordmark?: boolean;
   showDomain?: boolean;
   useImage?: boolean;
+  theme?: "light" | "dark";
   className?: string;
 }
 
@@ -13,6 +14,7 @@ export function DocumentoLogo({
   showWordmark = true,
   showDomain = false,
   useImage = true,
+  theme = "light",
   className = "",
 }: DocumentoLogoProps) {
   const pixelDimensions = {
@@ -97,7 +99,7 @@ export function DocumentoLogo({
               fontSize: pixelDimensions.fontSize,
               fontWeight: 700,
               letterSpacing: "-0.03em",
-              color: "#063C3D",
+              color: theme === "dark" ? "#FFFFFF" : "#063C3D",
               fontFamily: "var(--font-sans, Inter, system-ui, sans-serif)",
             }}
           >
@@ -108,7 +110,7 @@ export function DocumentoLogo({
               style={{
                 fontSize: pixelDimensions.subtitleSize,
                 letterSpacing: "0.02em",
-                color: "#6E7F7C",
+                color: theme === "dark" ? "#99C5BC" : "#6E7F7C",
                 fontWeight: 500,
                 marginTop: "1px",
               }}

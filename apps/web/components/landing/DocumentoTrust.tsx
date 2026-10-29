@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import GradientWaves from "../ui/GradientWaves";
 
 export function DocumentoTrust() {
   return (
@@ -261,77 +260,6 @@ export function DocumentoTrust() {
                 <div>• Does NOT fabricate AI claims or allow unreviewed AI output into filings</div>
                 <div>• Does NOT share client case records across organizational tenant boundaries</div>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Interactive Case Flow & Legal Governance Canvas */}
-        <div
-          className="animate-on-scroll delay-250"
-          style={{
-            marginTop: "48px",
-            background: "linear-gradient(135deg, #063C3D 0%, #082F2F 100%)",
-            borderRadius: "20px",
-            overflow: "hidden",
-            boxShadow: "0 12px 36px rgba(6, 60, 61, 0.16)",
-            border: "1px solid #105A53",
-            position: "relative",
-          }}
-        >
-          <div
-            style={{
-              position: "relative",
-              height: "460px",
-              width: "100%",
-              overflow: "hidden",
-            }}
-          >
-            <GradientWaves
-              horizonColor="#064e3b"
-              waveColor="#34d399"
-              crestColor="#d1fae5"
-              speed={0.35}
-              amplitude={2.6}
-              relief={1}
-              lightAngle={170}
-              mouseInteraction
-              swellOnClick
-              waveScale={0.7}
-              swell={38}
-              turbulence={24}
-              fogDepth={12}
-              lightMode
-            />
-
-            {/* Floating Glassmorphic Overlay Card */}
-            <div
-              style={{
-                position: "absolute",
-                bottom: "24px",
-                left: "24px",
-                right: "24px",
-                maxWidth: "640px",
-                background: "rgba(255, 255, 255, 0.94)",
-                backdropFilter: "blur(12px)",
-                border: "1px solid rgba(255, 255, 255, 0.6)",
-                borderRadius: "14px",
-                padding: "20px 24px",
-                boxShadow: "0 8px 32px rgba(6, 60, 61, 0.18)",
-                pointerEvents: "auto",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-                <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#10B981" }} />
-                <span style={{ fontSize: "12px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "#063C3D" }}>
-                  Interactive Legal Evidence Stream
-                </span>
-                <span style={{ fontSize: "11px", color: "#6E7F7C", marginLeft: "auto" }}>
-                  Move cursor to steer • Click to create swell
-                </span>
-              </div>
-              <p style={{ margin: 0, fontSize: "13px", color: "#2E3E3B", lineHeight: 1.5 }}>
-                Continuous tamper-evident legal data topology and statutory verification stream, rendered live with WebGL2 shader physics.
-              </p>
             </div>
           </div>
         </div>

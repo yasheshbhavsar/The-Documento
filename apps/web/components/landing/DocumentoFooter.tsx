@@ -2,6 +2,7 @@
 
 import React from "react";
 import { DocumentoLogo } from "../common/DocumentoLogo";
+import GradientWaves from "../ui/GradientWaves";
 
 interface DocumentoFooterProps {
   onOpenLogin: (portal?: "firm" | "client") => void;
@@ -14,12 +15,55 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
     <footer
       role="contentinfo"
       style={{
-        background: "#F8F7F2",
-        borderTop: "1px solid #DCE5E1",
-        padding: "64px 24px 40px 24px",
+        position: "relative",
+        background: "linear-gradient(135deg, #063C3D 0%, #032525 100%)",
+        borderTop: "1px solid rgba(185, 222, 212, 0.22)",
+        padding: "72px 24px 44px 24px",
+        overflow: "hidden",
+        color: "#FFFFFF",
       }}
     >
-      <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
+      {/* Background Gradient Waves Animation - Balanced Luxury Silk Motion */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: "auto",
+        }}
+      >
+        <GradientWaves
+          horizonColor="#022121"
+          waveColor="#074e4c"
+          crestColor="#2dd4bf"
+          speed={0.22}
+          amplitude={2.0}
+          relief={0.75}
+          sheen={0.25}
+          brightness={0.92}
+          lightAngle={150}
+          height={5.6}
+          tilt={64}
+          waveScale={0.65}
+          waveRatio={1.15}
+          swell={12}
+          turbulence={10}
+          fogDepth={16}
+          mouseInteraction
+          swellOnClick={false}
+          lightMode={false}
+        />
+      </div>
+
+      {/* Content Layer on Top */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 10,
+          maxWidth: "1280px",
+          margin: "0 auto",
+        }}
+      >
         <div
           style={{
             display: "grid",
@@ -30,13 +74,14 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
         >
           {/* Brand & Mission */}
           <div style={{ maxWidth: "340px" }}>
-            <DocumentoLogo size="lg" showWordmark showDomain />
+            <DocumentoLogo size="lg" showWordmark showDomain theme="dark" />
             <p
               style={{
                 fontSize: "14px",
-                color: "#445451",
+                color: "#E2F2ED",
                 lineHeight: 1.6,
                 margin: "18px 0 0 0",
+                textShadow: "0 1px 4px rgba(0, 15, 15, 0.9), 0 2px 8px rgba(0, 10, 10, 0.8)",
               }}
             >
               Clarity through organized evidence, declarative statutory requirements, and unified case pipelines for immigration law firms and applicants.
@@ -45,51 +90,58 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
 
           {/* Product & Explorers */}
           <div>
-            <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginBottom: "16px" }}>
+            <div
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#FFFFFF",
+                marginBottom: "16px",
+                textShadow: "0 1px 4px rgba(0, 15, 15, 0.9)",
+              }}
+            >
               Explore Platform
             </div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
-              <li>
-                <a href="#preview" style={{ color: "#445451", textDecoration: "none" }}>
-                  Interactive Case Preview
-                </a>
-              </li>
-              <li>
-                <a href="#coverage" style={{ color: "#445451", textDecoration: "none" }}>
-                  Visa &amp; Jurisdiction Coverage
-                </a>
-              </li>
-              <li>
-                <a href="#comparison" style={{ color: "#445451", textDecoration: "none" }}>
-                  Problem vs. Solution Matrix
-                </a>
-              </li>
-              <li>
-                <a href="#workflow" style={{ color: "#445451", textDecoration: "none" }}>
-                  6-Stage Casework Journey
-                </a>
-              </li>
-              <li>
-                <a href="#pathway-finder" style={{ color: "#445451", textDecoration: "none" }}>
-                  Case Fit Matcher
-                </a>
-              </li>
-              <li>
-                <a href="#capabilities" style={{ color: "#445451", textDecoration: "none" }}>
-                  Core Capabilities
-                </a>
-              </li>
-              <li>
-                <a href="#faq" style={{ color: "#445451", textDecoration: "none" }}>
-                  Frequently Asked Questions
-                </a>
-              </li>
+              {[
+                { href: "#preview", label: "Interactive Case Preview" },
+                { href: "#coverage", label: "Visa & Jurisdiction Coverage" },
+                { href: "#comparison", label: "Problem vs. Solution Matrix" },
+                { href: "#workflow", label: "6-Stage Casework Journey" },
+                { href: "#pathway-finder", label: "Case Fit Matcher" },
+                { href: "#capabilities", label: "Core Capabilities" },
+                { href: "#faq", label: "Frequently Asked Questions" },
+              ].map((item) => (
+                <li key={item.href}>
+                  <a
+                    href={item.href}
+                    style={{
+                      color: "#E2F2ED",
+                      fontWeight: 500,
+                      textDecoration: "none",
+                      textShadow: "0 1px 3px rgba(0, 15, 15, 0.95)",
+                      transition: "color 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "#FFFFFF")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "#E2F2ED")}
+                  >
+                    {item.label}
+                  </a>
+                </li>
+              ))}
             </ul>
           </div>
 
           {/* Secure Portals & Access */}
           <div>
-            <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginBottom: "16px" }}>
+            <div
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#FFFFFF",
+                marginBottom: "16px",
+                textShadow: "0 1px 4px rgba(0, 15, 15, 0.9)",
+              }}
+            >
               Secure Portals
             </div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px" }}>
@@ -101,11 +153,15 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                     background: "none",
                     border: "none",
                     padding: 0,
-                    color: "#0D6866",
-                    fontWeight: 600,
+                    color: "#5EEAD4",
+                    fontWeight: 650,
                     cursor: "pointer",
                     textAlign: "left",
+                    textShadow: "0 1px 4px rgba(0, 15, 15, 0.95)",
+                    transition: "color 0.15s ease",
                   }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#A7F3D0")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "#5EEAD4")}
                 >
                   Law Firm &amp; Attorney Sign In →
                 </button>
@@ -118,11 +174,15 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                     background: "none",
                     border: "none",
                     padding: 0,
-                    color: "#0D6866",
-                    fontWeight: 600,
+                    color: "#5EEAD4",
+                    fontWeight: 650,
                     cursor: "pointer",
                     textAlign: "left",
+                    textShadow: "0 1px 4px rgba(0, 15, 15, 0.95)",
+                    transition: "color 0.15s ease",
                   }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#A7F3D0")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "#5EEAD4")}
                 >
                   Client &amp; Applicant Portal Sign In →
                 </button>
@@ -134,12 +194,22 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                   style={{
                     background: "#0D6866",
                     color: "#FFFFFF",
-                    border: "none",
-                    padding: "8px 16px",
-                    borderRadius: "6px",
-                    fontSize: "12px",
+                    border: "1px solid rgba(52, 211, 153, 0.4)",
+                    padding: "9px 18px",
+                    borderRadius: "8px",
+                    fontSize: "13px",
                     fontWeight: 650,
                     cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(13, 104, 102, 0.4)",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#128280";
+                    e.currentTarget.style.boxShadow = "0 4px 14px rgba(52, 211, 153, 0.45)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#0D6866";
+                    e.currentTarget.style.boxShadow = "0 2px 8px rgba(13, 104, 102, 0.4)";
                   }}
                 >
                   Launch Workspace
@@ -150,20 +220,30 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
 
           {/* Platform Security & Architecture */}
           <div>
-            <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginBottom: "16px" }}>
+            <div
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#FFFFFF",
+                marginBottom: "16px",
+                textShadow: "0 1px 4px rgba(0, 15, 15, 0.9)",
+              }}
+            >
               Integrity &amp; Security
             </div>
-            <div style={{ fontSize: "13px", color: "#445451", lineHeight: 1.6 }}>
+            <div style={{ fontSize: "13px", color: "#E2F2ED", lineHeight: 1.6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#176B50" }} />
-                <span style={{ fontWeight: 600, color: "#063C3D" }}>100% SHA-256 Provenance</span>
+                <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#34D399", boxShadow: "0 0 8px #34D399" }} />
+                <span style={{ fontWeight: 600, color: "#FFFFFF", textShadow: "0 1px 3px rgba(0, 15, 15, 0.95)" }}>100% SHA-256 Provenance</span>
               </div>
-              <div>Multi-tenant schema boundaries with strict row-level isolation.</div>
-              <div style={{ marginTop: "8px" }}>
+              <div style={{ textShadow: "0 1px 3px rgba(0, 15, 15, 0.9)" }}>
+                Multi-tenant schema boundaries with strict row-level isolation.
+              </div>
+              <div style={{ marginTop: "8px", textShadow: "0 1px 3px rgba(0, 15, 15, 0.9)" }}>
                 Encryption: TLS 1.3 in transit • AES-256 at rest.
               </div>
-              <div style={{ marginTop: "10px", fontSize: "12px", color: "#6E7F7C" }}>
-                Canonical domain: <strong>thedocumento.com</strong>
+              <div style={{ marginTop: "10px", fontSize: "12px", color: "#B8E2D8", textShadow: "0 1px 3px rgba(0, 15, 15, 0.9)" }}>
+                Canonical domain: <strong style={{ color: "#FFFFFF" }}>thedocumento.com</strong>
               </div>
             </div>
           </div>
@@ -172,15 +252,19 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
         {/* Legal Boundaries & Regulatory Disclaimer */}
         <div
           style={{
-            borderTop: "1px solid #DCE5E1",
-            paddingTop: "24px",
+            background: "rgba(2, 26, 26, 0.45)",
+            border: "1px solid rgba(52, 211, 153, 0.18)",
+            borderRadius: "10px",
+            padding: "16px 20px",
             marginBottom: "24px",
             fontSize: "12px",
-            color: "#6E7F7C",
+            color: "#B8E2D8",
             lineHeight: 1.6,
+            backdropFilter: "blur(4px)",
+            textShadow: "0 1px 2px rgba(0, 10, 10, 0.8)",
           }}
         >
-          <strong>Legal Disclaimer:</strong> Documento is immigration casework and evidence intelligence software. Documento is not an immigration law firm, does not provide legal advice, representation, or opinions, and is not affiliated with or endorsed by USCIS, the Department of Homeland Security, the UK Home Office, IRCC, or any government authority. Immigration requirements differ by country, visa category, and individual circumstances; final adjudicative decisions rest solely with sovereign government authorities. Consequential petition filings require the evaluation and signature of a licensed immigration attorney or accredited representative.
+          <strong style={{ color: "#FFFFFF" }}>Legal Disclaimer:</strong> Documento is immigration casework and evidence intelligence software. Documento is not an immigration law firm, does not provide legal advice, representation, or opinions, and is not affiliated with or endorsed by USCIS, the Department of Homeland Security, the UK Home Office, IRCC, or any government authority. Immigration requirements differ by country, visa category, and individual circumstances; final adjudicative decisions rest solely with sovereign government authorities. Consequential petition filings require the evaluation and signature of a licensed immigration attorney or accredited representative.
         </div>
 
         {/* Bottom Copyright & Standards */}
@@ -192,7 +276,7 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
             flexWrap: "wrap",
             gap: "12px",
             fontSize: "13px",
-            color: "#6E7F7C",
+            color: "#99C5BC",
           }}
         >
           <div>
