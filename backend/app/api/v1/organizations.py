@@ -140,6 +140,72 @@ def update_current_organization(
     )
 
 
+@router.post("/current/archive", response_model=OrganizationResponse)
+def archive_current_organization(
+    reason: str = "Organization archived by administrator",
+    ctx: AuthContext = Depends(require_permission("org:manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Safely archives the current organization (soft-deletion) rather than hard cascading deletion.
+    - Marks organization status as 'archived'.
+    - Revokes active sessions of all members.
+    - Preserves historical cases, evidence documents, and immutable audit logs.
+    """
+    if not (ctx.is_master_admin() or ctx.is_company_admin() or ctx.is_org_admin()):
+        raise PermissionDeniedError("Only organization owners or administrators can archive the firm workspace")
+
+    org = db.query(Organization).filter(Organization.id == ctx.organization_id).first()
+    if not org:
+        raise EntityNotFoundError("Organization", ctx.organization_id)
+
+    now = datetime.now(timezone.utc)
+    org.status = "archived"
+    org.updated_at = now
+
+    member_user_ids = [m.user_id for m in org.memberships]
+    if member_user_ids:
+        db.query(UserSession).filter(
+            UserSession.organization_id == org.id,
+            UserSession.revoked_at.is_(None),
+        ).update({"revoked_at": now}, synchronize_session=False)
+
+    audit = AuditEvent(
+        organization_id=org.id,
+        actor_id=ctx.user_id,
+        action="organization.archived",
+        object_type="organization",
+        object_id=str(org.id),
+        metadata_json={
+            "reason": reason,
+            "archived_at": now.isoformat(),
+            "actor_id": str(ctx.user_id),
+        },
+        occurred_at=now,
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(org)
+
+    return OrganizationResponse(
+        id=org.id,
+        name=org.name,
+        slug=org.slug,
+        status=org.status,
+        created_at=org.created_at,
+    )
+
+
+@router.delete("/current", response_model=OrganizationResponse)
+def delete_current_organization(
+    reason: str = "Organization archived by administrator",
+    ctx: AuthContext = Depends(require_permission("org:manage")),
+    db: Session = Depends(get_db),
+):
+    """Alias for soft-deletion (archive) to prevent destructive relational cascade data loss."""
+    return archive_current_organization(reason=reason, ctx=ctx, db=db)
+
+
 @router.post("/branches", response_model=BranchResponse, status_code=status.HTTP_201_CREATED)
 def create_branch(
     payload: BranchCreateRequest,

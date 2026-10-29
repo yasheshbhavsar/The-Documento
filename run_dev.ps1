@@ -46,7 +46,8 @@ if (-not (Test-Path $envFile) -and (Test-Path $envExample)) {
 
 # 4. Check Frontend node_modules
 $webModules = Join-Path $frontendDir "node_modules"
-if (-not (Test-Path $webModules)) {
+$cobeModule = Join-Path $webModules "cobe"
+if (-not (Test-Path $webModules) -or -not (Test-Path $cobeModule)) {
     Write-Host "[Setup] Installing frontend dependencies in apps/web..." -ForegroundColor Yellow
     npm --prefix $frontendDir install
 }

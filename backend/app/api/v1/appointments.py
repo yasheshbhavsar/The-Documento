@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -237,3 +237,73 @@ def delete_appointment(
     db.delete(appt)
     db.commit()
     return None
+
+
+def generate_ics_calendar(appt: VisaAppointment) -> str:
+    """Generates standard RFC 5545 iCalendar string for universal calendar integration."""
+    now_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    slot = appt.consular_interview_slot or appt.ofc_biometrics_slot or datetime.now(timezone.utc)
+    start_str = slot.strftime("%Y%m%dT%H%M%SZ")
+    end_str = (slot + timedelta(hours=1)).strftime("%Y%m%dT%H%M%SZ")
+
+    summary = f"Visa Appointment: {appt.vac_center} - {appt.consular_post}"
+    if appt.case and appt.case.case_number:
+        summary += f" ({appt.case.case_number})"
+
+    location = f"{appt.vac_center}, {appt.consular_post}"
+    desc = f"Visa Appointment Details:\nVAC Center: {appt.vac_center}\nConsular Post: {appt.consular_post}\nStatus: {appt.appointment_status}"
+    if appt.notes:
+        desc += f"\nInstructions: {appt.notes}"
+
+    ics_lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Documento Immigration SaaS//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        f"UID:{appt.id}@documento.immigration",
+        f"DTSTAMP:{now_str}",
+        f"DTSTART:{start_str}",
+        f"DTEND:{end_str}",
+        f"SUMMARY:{summary}",
+        f"LOCATION:{location}",
+        f"DESCRIPTION:{desc}",
+        "STATUS:CONFIRMED",
+        "BEGIN:VALARM",
+        "TRIGGER:-PT24H",
+        "ACTION:DISPLAY",
+        "DESCRIPTION:Visa Appointment Reminder (24h)",
+        "END:VALARM",
+        "END:VEVENT",
+        "END:VCALENDAR",
+    ]
+    return "\r\n".join(ics_lines)
+
+
+@router.get("/{appointment_id}/calendar-invite")
+def get_appointment_calendar_invite(
+    appointment_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Generates standard RFC 5545 iCalendar (.ics) file.
+    Enables one-click import into Google Calendar, Microsoft Outlook, and Apple Calendar.
+    """
+    appt = db.query(VisaAppointment).filter(
+        VisaAppointment.id == appointment_id,
+        VisaAppointment.organization_id == ctx.organization_id,
+    ).first()
+    if not appt:
+        raise EntityNotFoundError("VisaAppointment", appointment_id)
+
+    ics_text = generate_ics_calendar(appt)
+    return Response(
+        content=ics_text,
+        media_type="text/calendar",
+        headers={
+            "Content-Disposition": f"attachment; filename=visa_appointment_{appt.id}.ics",
+        },
+    )
+

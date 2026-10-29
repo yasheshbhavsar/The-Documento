@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const backendBaseUrl =
@@ -11,6 +12,9 @@ const targetDestination = backendBaseUrl.includes("/api/v1")
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  turbopack: {
+    root: path.resolve(__dirname, "../../"),
+  },
   reactStrictMode: true,
   async rewrites() {
     return [

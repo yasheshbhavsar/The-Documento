@@ -36,6 +36,15 @@ class Settings(BaseSettings):
     invitation_token_expire_days: int = 7
     session_cookie_name: str = "ai_immigration_session"
 
+    # Antivirus (ClamAV Daemon)
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_enabled: bool = False
+    clamav_timeout: float = 10.0
+
+    # Stripe Payments & Webhooks
+    stripe_webhook_secret: str = ""
+
     # OIDC Provider (optional external boundary)
     auth_issuer_url: str = ""
     auth_audience: str = "ai-immigration-api"
@@ -55,8 +64,16 @@ class Settings(BaseSettings):
     def validate_production_configuration(self) -> "Settings":
         env_lower = self.environment.lower()
         if env_lower in ("production", "prod", "staging", "uat"):
-            if "local_dev" in self.jwt_secret_key or len(self.jwt_secret_key) < 32:
-                raise ValueError("Insecure JWT secret key in production/staging environment! Must be >= 32 characters.")
+            insecure_patterns = (
+                "local_dev",
+                "change_in_production",
+                "default",
+                "secret",
+                "password",
+                "123456",
+            )
+            if any(p in self.jwt_secret_key.lower() for p in insecure_patterns) or len(self.jwt_secret_key) < 32:
+                raise ValueError("Insecure JWT secret key in production/staging environment! Must be >= 32 characters and not contain default patterns.")
             if "local_dev_only" in self.database_url:
                 raise ValueError("Insecure default database password detected in production/staging environment!")
             if not self.auth_required:

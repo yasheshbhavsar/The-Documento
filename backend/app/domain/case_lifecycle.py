@@ -307,6 +307,23 @@ class CaseLifecycleService:
                 f"Invalid preparation lifecycle transition from '{curr}' to '{tgt}'. Allowed next stages: {sorted(list(allowed))}"
             )
 
+        # Stage regression safeguard: Reverting to an earlier preparation stage requires supervisor or administrator approval
+        prep_order = [
+            PreparationStatus.CONSULTATION_ONLY.value,
+            PreparationStatus.PRELIMINARY_ASSESSMENT.value,
+            PreparationStatus.CLEARANCE_PENDING.value,
+            PreparationStatus.AUTHORIZED_FOR_PREPARATION.value,
+            PreparationStatus.PREPARATION_IN_PROGRESS.value,
+            PreparationStatus.READY_FOR_FINAL_REVIEW.value,
+            PreparationStatus.READY_TO_SUBMIT.value,
+            PreparationStatus.SUBMITTED.value,
+        ]
+        if curr in prep_order and tgt in prep_order and prep_order.index(tgt) < prep_order.index(curr):
+            if not (any(r in ELEVATED_ROLES for r in ctx.roles) or ctx.has_permission("case:stage_override") or ctx.has_permission("readiness:approve")):
+                raise PermissionDeniedError(
+                    f"Reverting case preparation status from '{curr}' back to '{tgt}' requires supervisor or administrator approval."
+                )
+
         # 1. Guard: Transition to AUTHORIZED_FOR_PREPARATION requires elevated role
         if tgt == PreparationStatus.AUTHORIZED_FOR_PREPARATION:
             if not (any(r in ELEVATED_ROLES for r in ctx.roles) or ctx.has_permission("readiness:approve")):

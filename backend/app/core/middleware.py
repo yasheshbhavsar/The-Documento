@@ -32,11 +32,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class SimpleRateLimiterMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, max_requests: int = 120, window_seconds: int = 60):
+    def __init__(self, app, max_requests: int = 120, window_seconds: int = 60, auth_max_requests: int = 20):
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
+        self.auth_max_requests = auth_max_requests
         self.request_counts = defaultdict(list)
+        self.auth_request_counts = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next) -> Response:
         client_ip = request.client.host if request.client else "unknown"
@@ -44,8 +46,27 @@ class SimpleRateLimiterMiddleware(BaseHTTPMiddleware):
         if request.url.path in ("/", "/api/v1/health", "/docs", "/openapi.json", "/redoc") or client_ip == "testclient":
             return await call_next(request)
         now = time.time()
-        
-        # Clean expired timestamps
+
+        # Dedicated strict rate limiting for authentication and credential-sensitive endpoints
+        is_auth_endpoint = any(
+            request.url.path.startswith(prefix)
+            for prefix in ("/api/v1/auth/login", "/api/v1/auth/password-reset")
+        )
+        if is_auth_endpoint:
+            auth_timestamps = [t for t in self.auth_request_counts[client_ip] if now - t < self.window_seconds]
+            if len(auth_timestamps) >= self.auth_max_requests:
+                return JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={
+                        "error": "RateLimitExceeded",
+                        "message": f"Too many authentication attempts. Limit is {self.auth_max_requests} attempts per minute.",
+                    },
+                    headers={"Retry-After": str(self.window_seconds)},
+                )
+            auth_timestamps.append(now)
+            self.auth_request_counts[client_ip] = auth_timestamps
+
+        # Clean expired timestamps for general requests
         timestamps = [t for t in self.request_counts[client_ip] if now - t < self.window_seconds]
         if len(timestamps) >= self.max_requests:
             return JSONResponse(

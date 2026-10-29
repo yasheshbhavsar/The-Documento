@@ -31,6 +31,7 @@ def detect_document_quality_issues(
     extracted_fields: List[Dict[str, Any]],
     ocr_applied: bool,
     now: Optional[datetime] = None,
+    image_dpi: Optional[int] = None,
 ) -> List[QualityFinding]:
     """Inspects an uploaded document for quality, completeness, and validity period issues."""
     findings: List[QualityFinding] = []
@@ -57,6 +58,22 @@ def detect_document_quality_issues(
                     suggested_clarification=f"Please upload all {tot_p} pages of '{title}', including any back pages or apostille certifications.",
                 )
             )
+
+    # 1b. Check for Low Resolution / DPI Advisory
+    if image_dpi is not None and image_dpi < 150:
+        findings.append(
+            QualityFinding(
+                finding_type="document_quality",
+                severity="major",
+                title=f"Low Resolution Scan Advisory ({image_dpi} DPI < 150 DPI Recommended)",
+                description=f"Evidence document '{title}' has a scan resolution of approximately {image_dpi} DPI. Mobile camera scans under 150 DPI frequently suffer character confusion (e.g. '0' vs 'O', '1' vs 'I') during automated OCR extraction and consular review.",
+                evidence_text=f"Estimated image resolution: {image_dpi} DPI",
+                page_number=1,
+                recommended_action="Obtain a high-resolution replacement scan (minimum 300 DPI or uncompressed mobile capture) with all corners visible.",
+                uncertainty_limitations="Calculated based on image raster pixel density.",
+                suggested_clarification="Please retake the photo in good lighting without zooming or cropping, or scan using a flatbed scanner at 300 DPI.",
+            )
+        )
 
     # 2. Check for Low OCR Quality / Poor, Torn, or Faded Scans
     scan_defect_matches = re.findall(r"\b(poor quality|faded|torn|illegible|blurred|creased|scan cut off|unreadable|faint print)\b", text, re.IGNORECASE)

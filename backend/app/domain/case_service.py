@@ -1,3 +1,4 @@
+import difflib
 import re
 import uuid
 from datetime import datetime, timezone
@@ -219,18 +220,63 @@ def detect_client_duplicates(
                 seen_client_ids.add(c.id)
                 continue
 
-        # 4. Name and Nationality Match
-        if norm_fn and norm_ln and c.first_name.lower().strip() == norm_fn and c.last_name.lower().strip() == norm_ln:
-            if norm_nat and c.nationality.upper().strip() == norm_nat:
+        # 4. Name and Date of Birth Match (Exact & Fuzzy)
+        c_fn = c.first_name.lower().strip()
+        c_ln = c.last_name.lower().strip()
+        fn_ratio = difflib.SequenceMatcher(None, norm_fn, c_fn).ratio() if norm_fn and c_fn else 0.0
+        ln_ratio = difflib.SequenceMatcher(None, norm_ln, c_ln).ratio() if norm_ln and c_ln else 0.0
+        avg_name_ratio = (fn_ratio + ln_ratio) / 2.0 if (fn_ratio and ln_ratio) else max(fn_ratio, ln_ratio)
+
+        dob_matches = False
+        if date_of_birth and c.date_of_birth:
+            try:
+                dob_matches = date_of_birth.date() == c.date_of_birth.date()
+            except Exception:
+                dob_matches = False
+
+        if dob_matches and avg_name_ratio >= 0.80:
+            match_t = "name_and_dob" if (fn_ratio == 1.0 and ln_ratio == 1.0) else "fuzzy_name_and_dob"
+            matches.append(
+                DuplicateMatch(
+                    client_id=c.id,
+                    client_name=f"{c.first_name} {c.last_name}",
+                    client_email=c.email,
+                    match_type=match_t,
+                    confidence="high",
+                    score=0.95 if match_t == "name_and_dob" else 0.88,
+                    details=f"Matching date of birth with high name similarity ({int(avg_name_ratio * 100)}%) with client {c.first_name} {c.last_name}",
+                )
+            )
+            seen_client_ids.add(c.id)
+            continue
+
+        # 5. Name and Nationality Match (Exact & Fuzzy)
+        if norm_fn and norm_ln:
+            if c_fn == norm_fn and c_ln == norm_ln:
+                if norm_nat and c.nationality.upper().strip() == norm_nat:
+                    matches.append(
+                        DuplicateMatch(
+                            client_id=c.id,
+                            client_name=f"{c.first_name} {c.last_name}",
+                            client_email=c.email,
+                            match_type="name_and_nationality",
+                            confidence="medium",
+                            score=0.75,
+                            details=f"Identical full name and nationality ({norm_nat}) with client {c.first_name} {c.last_name}",
+                        )
+                    )
+                    seen_client_ids.add(c.id)
+                    continue
+            elif avg_name_ratio >= 0.85 and norm_nat and c.nationality.upper().strip() == norm_nat:
                 matches.append(
                     DuplicateMatch(
                         client_id=c.id,
                         client_name=f"{c.first_name} {c.last_name}",
                         client_email=c.email,
-                        match_type="name_and_nationality",
+                        match_type="fuzzy_name_and_nationality",
                         confidence="medium",
-                        score=0.75,
-                        details=f"Identical full name and nationality ({norm_nat}) with client {c.first_name} {c.last_name}",
+                        score=0.70,
+                        details=f"High name similarity ({int(avg_name_ratio * 100)}%) and matching nationality ({norm_nat}) with client {c.first_name} {c.last_name}",
                     )
                 )
                 seen_client_ids.add(c.id)

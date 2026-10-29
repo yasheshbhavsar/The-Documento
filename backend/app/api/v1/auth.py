@@ -256,7 +256,8 @@ def request_password_reset(
         "status": "ok",
         "message": "If the email is registered, a password reset link has been issued.",
     }
-    if settings.environment == "development" or settings.debug:
+    is_prod_like = settings.environment.lower() in ("production", "prod", "staging", "uat")
+    if not is_prod_like and (settings.environment == "development" or settings.debug):
         response_data["dev_reset_token"] = raw_token
 
     return response_data
