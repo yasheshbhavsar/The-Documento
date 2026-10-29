@@ -161,31 +161,64 @@ export function DocumentoPreview() {
     setSampleReplyInput("");
   };
 
+  const tabList = [
+    {
+      id: "dashboard" as PreviewTab,
+      label: "Case Overview",
+      accessibleLabel: "1. Case Overview & Pipeline (Case Overview)",
+      badge: "68% Ready",
+    },
+    {
+      id: "checklist" as PreviewTab,
+      label: "Documents",
+      accessibleLabel: "2. Document Vault & Checklist (Documents)",
+      badge: `${sampleDocs.length} Exhibits`,
+    },
+    {
+      id: "timeline_tasks" as PreviewTab,
+      label: "Milestones",
+      accessibleLabel: "3. Procedural Milestones & Tasks (Milestones)",
+      badge: `${tasks.filter((t) => !t.completed).length} Pending`,
+    },
+    {
+      id: "ai_intelligence" as PreviewTab,
+      label: "AI Checks",
+      accessibleLabel: "4. AI Evidentiary Checks (AI Checks)",
+      badge: findingStatus === "resolved" ? "Resolved" : "1 Flag",
+    },
+    {
+      id: "collaboration" as PreviewTab,
+      label: "Client Messages",
+      accessibleLabel: "5. Client & Legal Coordination (Client Messages)",
+      badge: "Active",
+    },
+  ];
+
   return (
     <section
       id="preview"
       style={{
-        padding: "80px 24px",
+        padding: "72px 24px",
         background: "#F8F7F2",
         borderBottom: "1px solid #DCE5E1",
       }}
     >
-      <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
         {/* Section Header */}
-        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto 40px auto" }}>
+        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 36px auto" }}>
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              padding: "4px 14px",
+              padding: "4px 12px",
               borderRadius: "20px",
               background: "#DDEFE8",
               border: "1px solid #B9DED4",
               fontSize: "12px",
-              fontWeight: 600,
+              fontWeight: 650,
               color: "#063C3D",
-              marginBottom: "16px",
+              marginBottom: "14px",
             }}
           >
             <span>Interactive Operational Preview</span>
@@ -193,40 +226,40 @@ export function DocumentoPreview() {
 
           <h2
             style={{
-              fontSize: "clamp(28px, 4vw, 42px)",
+              fontSize: "clamp(26px, 3.6vw, 38px)",
               fontWeight: 700,
               color: "#063C3D",
-              lineHeight: 1.2,
-              letterSpacing: "-0.025em",
-              margin: "0 0 16px 0",
+              lineHeight: 1.25,
+              letterSpacing: "-0.02em",
+              margin: "0 0 12px 0",
               fontFamily: "var(--font-display, Inter, sans-serif)",
             }}
           >
             Explore a representative case workspace.
           </h2>
 
-          <p style={{ fontSize: "16px", color: "#445451", lineHeight: 1.6, margin: 0 }}>
-            Click between live case tabs to test Documento’s case overview, document vault, procedural timeline, AI discrepancy desk, and client messaging. All data is synthetic and non-confidential.
+          <p style={{ fontSize: "15px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
+            See how Documento organizes documents, identifies potential issues, and shows the next steps — all in one place.
           </p>
         </div>
 
-        {/* Interactive Mockup Shell Container */}
+        {/* Clean & Restrained Interactive Workspace Container */}
         <div
           className="animate-on-scroll delay-150"
           style={{
             background: "#FFFFFF",
-            borderRadius: "16px",
+            borderRadius: "14px",
             border: "1px solid #DCE5E1",
-            boxShadow: "0 8px 32px rgba(6, 60, 61, 0.08)",
+            boxShadow: "0 4px 20px rgba(6, 60, 61, 0.05)",
             overflow: "hidden",
           }}
         >
-          {/* Top Control Bar of the Interactive Mockup */}
+          {/* Compact Case Header */}
           <div
             style={{
-              background: "#F1F6F4",
+              background: "#FAFCFB",
               borderBottom: "1px solid #DCE5E1",
-              padding: "14px 20px",
+              padding: "12px 20px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -234,104 +267,100 @@ export function DocumentoPreview() {
               gap: "12px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#CBD5E1" }} />
-                <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#CBD5E1" }} />
-                <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#CBD5E1" }} />
-              </div>
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>
                   CASE-US-8841: Dr. Aris Thorne
                 </span>
-                <span style={{ fontSize: "12px", color: "#6E7F7C" }}>•</span>
-                <span style={{ fontSize: "12px", fontWeight: 600, color: "#0D6866" }}>
+                <span style={{ fontSize: "12px", color: "#A0B0AC" }}>•</span>
+                <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#0D6866" }}>
                   EB-1A Extraordinary Ability (Form I-140)
                 </span>
               </div>
             </div>
 
-            {/* Synthetic Data Label */}
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "4px 10px",
-                borderRadius: "6px",
-                background: "#FEF7EA",
-                border: "1px solid #F6D8A6",
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#8A5A10",
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              <span>Illustrative Interactive Workspace • Synthetic Case Data</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <span
+                style={{
+                  background: "#DDEFE8",
+                  color: "#063C3D",
+                  fontSize: "11.5px",
+                  fontWeight: 650,
+                  padding: "3px 9px",
+                  borderRadius: "6px",
+                }}
+              >
+                Readiness: 68%
+              </span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "3px 9px",
+                  borderRadius: "6px",
+                  background: "#FEF7EA",
+                  border: "1px solid #F6D8A6",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "#8A5A10",
+                }}
+              >
+                <span>Illustrative Workspace • Synthetic Case Data</span>
+              </span>
             </div>
           </div>
 
-          {/* Tab Selector Bar */}
+          {/* Compact Tab Selector Bar */}
           <div
             role="tablist"
-            aria-label="Interactive Documento features"
+            aria-label="Interactive case workspace sections"
             style={{
               display: "flex",
               borderBottom: "1px solid #DCE5E1",
               background: "#FFFFFF",
-              padding: "0 16px",
+              padding: "0 12px",
               overflowX: "auto",
+              scrollbarWidth: "none",
             }}
           >
-            {[
-              { id: "dashboard", label: "1. Case Overview & Pipeline", badge: "68% Ready" },
-              { id: "checklist", label: "2. Document Vault & Checklist", badge: "6 Exhibits" },
-              { id: "timeline_tasks", label: "3. Procedural Milestones & Tasks", badge: "2 Pending" },
-              { id: "ai_intelligence", label: "4. AI Evidentiary Checks", badge: findingStatus === "resolved" ? "Resolved" : "1 Flag" },
-              { id: "collaboration", label: "5. Client & Legal Coordination", badge: "Active Chat" },
-            ].map((tab) => {
+            {tabList.map((tab) => {
               const isSelected = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
+                  id={`workspace-tab-${tab.id}`}
                   type="button"
                   role="tab"
                   aria-selected={isSelected}
-                  onClick={() => setActiveTab(tab.id as PreviewTab)}
+                  aria-controls={`workspace-panel-${tab.id}`}
+                  aria-label={tab.accessibleLabel}
+                  onClick={() => setActiveTab(tab.id)}
                   style={{
-                    padding: "13px 18px",
+                    padding: "12px 16px",
                     fontSize: "13px",
                     fontWeight: isSelected ? 700 : 550,
                     color: isSelected ? "#063C3D" : "#445451",
                     border: "none",
-                    background: isSelected ? "rgba(221, 239, 232, 0.45)" : "transparent",
+                    background: "transparent",
                     borderBottom: isSelected ? "3px solid #0D6866" : "3px solid transparent",
-                    borderTopLeftRadius: "8px",
-                    borderTopRightRadius: "8px",
                     cursor: "pointer",
-                    display: "flex",
+                    display: "inline-flex",
                     alignItems: "center",
                     gap: "8px",
                     whiteSpace: "nowrap",
-                    transition: "all 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
+                    transition: "color 0.15s ease, border-color 0.15s ease",
                   }}
                 >
-                  <span style={{ letterSpacing: "-0.01em" }}>{tab.label}</span>
+                  <span>{tab.label}</span>
                   <span
                     style={{
-                      background: isSelected ? "#063C3D" : "#F1F6F4",
-                      color: isSelected ? "#DDEFE8" : "#6E7F7C",
-                      border: isSelected ? "1px solid #133c38" : "1px solid #E2E8F0",
+                      background: isSelected ? "#DDEFE8" : "#F1F6F4",
+                      color: isSelected ? "#063C3D" : "#6E7F7C",
                       fontSize: "11px",
-                      padding: "2px 8px",
-                      borderRadius: "12px",
-                      fontWeight: 650,
-                      boxShadow: isSelected ? "0 1px 3px rgba(6, 60, 61, 0.15)" : "none",
-                      transition: "all 0.18s ease",
+                      padding: "2px 7px",
+                      borderRadius: "10px",
+                      fontWeight: 600,
                     }}
                   >
                     {tab.badge}
@@ -341,29 +370,38 @@ export function DocumentoPreview() {
             })}
           </div>
 
-          {/* TAB 1: Case Overview & Pipeline */}
+          {/* TAB 1: Case Overview */}
           {activeTab === "dashboard" && (
-            <div style={{ padding: "28px", minHeight: "420px" }}>
-              {/* Progress Summary Header */}
+            <div
+              id="workspace-panel-dashboard"
+              role="tabpanel"
+              aria-labelledby="workspace-tab-dashboard"
+              style={{ padding: "24px", minHeight: "380px" }}
+            >
+              {/* Aligned Key Summary Strip */}
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                  gap: "16px",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: "12px",
                   marginBottom: "24px",
                 }}
               >
-                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "10px", padding: "16px" }}>
-                  <div style={{ fontSize: "12px", color: "#6E7F7C", marginBottom: "4px" }}>Filing Readiness</div>
-                  <div style={{ fontSize: "24px", fontWeight: 750, color: "#063C3D" }}>68%</div>
-                  <div style={{ fontSize: "12px", color: "#176B50", marginTop: "4px" }}>
+                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
+                  <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Filing Readiness
+                  </div>
+                  <div style={{ fontSize: "22px", fontWeight: 750, color: "#063C3D" }}>68%</div>
+                  <div style={{ fontSize: "12px", color: "#176B50", marginTop: "3px", fontWeight: 550 }}>
                     ✓ 3 of 10 Criteria Satisfied
                   </div>
                 </div>
 
-                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "10px", padding: "16px" }}>
-                  <div style={{ fontSize: "12px", color: "#6E7F7C", marginBottom: "4px" }}>Dual Waiting-State</div>
-                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#8A5A10", marginTop: "4px" }}>
+                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
+                  <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Active Status
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#8A5A10" }}>
                     Waiting on Firm Counsel
                   </div>
                   <div style={{ fontSize: "12px", color: "#445451", marginTop: "4px" }}>
@@ -371,9 +409,11 @@ export function DocumentoPreview() {
                   </div>
                 </div>
 
-                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "10px", padding: "16px" }}>
-                  <div style={{ fontSize: "12px", color: "#6E7F7C", marginBottom: "4px" }}>Target Submission Date</div>
-                  <div style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", marginTop: "4px" }}>
+                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
+                  <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Target Submission Date
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
                     November 15, 2024
                   </div>
                   <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "4px" }}>
@@ -381,127 +421,136 @@ export function DocumentoPreview() {
                   </div>
                 </div>
 
-                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "10px", padding: "16px" }}>
-                  <div style={{ fontSize: "12px", color: "#6E7F7C", marginBottom: "4px" }}>Supervising Attorney</div>
-                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginTop: "4px" }}>
+                <div style={{ background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
+                  <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Supervising Attorney
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
                     Eleanor Vance, Esq.
                   </div>
                   <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "4px" }}>
-                    Senior Partner (Bar # NY-4921)
+                    Lead Counsel (Bar # NY-4921)
                   </div>
                 </div>
               </div>
 
-              {/* Visual 5-Stage Procedural Timeline */}
-              <div style={{ marginBottom: "28px" }}>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D", marginBottom: "12px" }}>
+              {/* Single Five-Stage Progression Line */}
+              <div style={{ marginBottom: "24px" }}>
+                <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#063C3D", marginBottom: "12px" }}>
                   Case Progression Pipeline:
                 </div>
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
                     gap: "8px",
                   }}
                 >
                   {[
-                    { step: "1. Intake", status: "completed", desc: "Questionnaire submitted" },
-                    { step: "2. Evidence Vault", status: "completed", desc: "6 exhibits verified" },
-                    { step: "3. Discrepancy Check", status: "active", desc: "1 date flag under review" },
-                    { step: "4. Package Assembly", status: "pending", desc: "Exhibit tab compilation" },
-                    { step: "5. Attorney Sign-Off", status: "pending", desc: "Final USCIS review" },
-                  ].map((s, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        padding: "12px",
-                        borderRadius: "8px",
-                        border: "1px solid",
-                        borderColor:
-                          s.status === "completed"
-                            ? "#B9DED4"
-                            : s.status === "active"
-                            ? "#0D6866"
-                            : "#DCE5E1",
-                        background:
-                          s.status === "completed"
-                            ? "#EAF6F0"
-                            : s.status === "active"
-                            ? "#DDEFE8"
-                            : "#F8F7F2",
-                      }}
-                    >
+                    { step: "Intake", status: "completed", desc: "Questionnaire submitted" },
+                    { step: "Documents", status: "completed", desc: "6 exhibits verified" },
+                    { step: "Review", status: "active", desc: "1 date flag under review" },
+                    { step: "Package", status: "pending", desc: "Exhibit bundle assembly" },
+                    { step: "Attorney Sign-off", status: "pending", desc: "Final USCIS evaluation" },
+                  ].map((s, idx) => {
+                    const isCompleted = s.status === "completed";
+                    const isActive = s.status === "active";
+                    return (
                       <div
+                        key={idx}
                         style={{
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          color: s.status === "active" ? "#063C3D" : "#445451",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
+                          padding: "10px 12px",
+                          borderRadius: "8px",
+                          border: "1px solid",
+                          borderColor: isCompleted ? "#B9DED4" : isActive ? "#0D6866" : "#E2E8E4",
+                          background: isCompleted ? "#F0F8F5" : isActive ? "#DDEFE8" : "#F8F7F2",
                         }}
                       >
-                        <span>{s.step}</span>
-                        <span>{s.status === "completed" ? "✓" : s.status === "active" ? "●" : "○"}</span>
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: isActive ? "#063C3D" : isCompleted ? "#176B50" : "#445451",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <span>{idx + 1}. {s.step}</span>
+                          <span>{isCompleted ? "✓" : isActive ? "●" : "○"}</span>
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "3px" }}>
+                          {s.desc}
+                        </div>
                       </div>
-                      <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>{s.desc}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Explanatory note */}
+              {/* Restrained Progressive Tip */}
               <div
                 style={{
-                  background: "#F1F6F4",
+                  background: "#FAFCFB",
                   border: "1px solid #DCE5E1",
                   borderRadius: "8px",
-                  padding: "12px 16px",
-                  fontSize: "13px",
+                  padding: "10px 14px",
+                  fontSize: "12.5px",
                   color: "#445451",
                   display: "flex",
                   alignItems: "center",
-                  gap: "10px",
+                  gap: "8px",
                 }}
               >
-                <span>💡</span>
+                <span style={{ color: "#0D6866", fontWeight: 700 }}>💡 Note:</span>
                 <span>
-                  <strong>Interactive Tip:</strong> Click the tabs above to explore the Document Vault, procedural tasks, AI discrepancy resolution, and client messaging.
+                  Select any tab above to explore the Document Vault, procedural tasks, AI discrepancy resolution, or client messaging.
                 </span>
               </div>
             </div>
           )}
 
-          {/* TAB 2: Document Vault & Checklist */}
+          {/* TAB 2: Documents */}
           {activeTab === "checklist" && (
-            <div style={{ padding: "24px", minHeight: "420px" }}>
+            <div
+              id="workspace-panel-checklist"
+              role="tabpanel"
+              aria-labelledby="workspace-tab-checklist"
+              style={{ padding: "24px", minHeight: "380px" }}
+            >
               {/* Category Filter Pills */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "12px", fontWeight: 650, color: "#6E7F7C" }}>Filter Exhibits:</span>
-                {["ALL", "Identity", "Academic", "Publications", "Patents", "Support Letters", "Forms"].map((cat) => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setDocCategoryFilter(cat)}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid",
-                      borderColor: docCategoryFilter === cat ? "#0D6866" : "#DCE5E1",
-                      background: docCategoryFilter === cat ? "#0D6866" : "#FFFFFF",
-                      color: docCategoryFilter === cat ? "#FFFFFF" : "#445451",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {cat}
-                  </button>
-                ))}
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "16px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "12px", fontWeight: 650, color: "#6E7F7C", marginRight: "4px" }}>
+                  Filter:
+                </span>
+                {["ALL", "Identity", "Academic", "Publications", "Patents", "Support Letters", "Forms"].map((cat) => {
+                  const isCatSelected = docCategoryFilter === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setDocCategoryFilter(cat)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "6px",
+                        border: "1px solid",
+                        borderColor: isCatSelected ? "#0D6866" : "#DCE5E1",
+                        background: isCatSelected ? "#0D6866" : "#FFFFFF",
+                        color: isCatSelected ? "#FFFFFF" : "#445451",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all 0.12s ease",
+                      }}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Master-Detail Document Layout */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "18px" }}>
                 {/* Left: Document List */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                   {filteredDocs.map((doc) => {
@@ -509,9 +558,17 @@ export function DocumentoPreview() {
                     return (
                       <div
                         key={doc.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => setSelectedDocId(doc.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedDocId(doc.id);
+                          }
+                        }}
                         style={{
-                          padding: "12px 14px",
+                          padding: "10px 14px",
                           borderRadius: "8px",
                           border: "1px solid",
                           borderColor: isSelected ? "#0D6866" : "#DCE5E1",
@@ -520,11 +577,21 @@ export function DocumentoPreview() {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "space-between",
-                          transition: "all 0.15s ease",
+                          gap: "10px",
+                          transition: "border-color 0.12s ease",
                         }}
                       >
-                        <div>
-                          <div style={{ fontSize: "13px", fontWeight: 650, color: "#063C3D" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              fontWeight: 650,
+                              color: "#063C3D",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
                             {doc.exhibitCode}: {doc.title}
                           </div>
                           <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "2px" }}>
@@ -533,17 +600,17 @@ export function DocumentoPreview() {
                         </div>
 
                         {doc.status === "verified" && (
-                          <span style={{ background: "#EAF6F0", color: "#176B50", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px" }}>
+                          <span style={{ background: "#EAF6F0", color: "#176B50", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", flexShrink: 0 }}>
                             Verified
                           </span>
                         )}
                         {doc.status === "flagged" && (
-                          <span style={{ background: "#FEF7EA", color: "#8A5A10", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px" }}>
+                          <span style={{ background: "#FEF7EA", color: "#8A5A10", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", flexShrink: 0 }}>
                             Flagged
                           </span>
                         )}
                         {doc.status === "pending_review" && (
-                          <span style={{ background: "#F1F6F4", color: "#445451", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px" }}>
+                          <span style={{ background: "#F1F6F4", color: "#445451", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", flexShrink: 0 }}>
                             Draft Form
                           </span>
                         )}
@@ -557,12 +624,12 @@ export function DocumentoPreview() {
                   style={{
                     background: "#F8F7F2",
                     border: "1px solid #DCE5E1",
-                    borderRadius: "10px",
-                    padding: "20px",
+                    borderRadius: "8px",
+                    padding: "18px",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#0D6866", textTransform: "uppercase" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", flexWrap: "wrap", gap: "6px" }}>
+                    <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#0D6866", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                       Exhibit Metadata Inspector
                     </span>
                     <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#6E7F7C" }}>
@@ -570,29 +637,35 @@ export function DocumentoPreview() {
                     </span>
                   </div>
 
-                  <h3 style={{ fontSize: "16px", fontWeight: 750, color: "#063C3D", margin: "0 0 6px 0" }}>
+                  <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#063C3D", margin: "0 0 6px 0", lineHeight: 1.35 }}>
                     {selectedDoc.title}
                   </h3>
 
-                  <div style={{ fontSize: "13px", color: "#445451", marginBottom: "14px" }}>
+                  <div style={{ fontSize: "12.5px", color: "#445451", marginBottom: "12px", lineHeight: 1.45 }}>
                     <strong>Regulatory Mapping:</strong> {selectedDoc.criterion}
                   </div>
 
-                  <div style={{ background: "#FFFFFF", borderRadius: "8px", border: "1px solid #DCE5E1", padding: "12px", marginBottom: "14px", fontSize: "12px", color: "#445451" }}>
-                    <div style={{ marginBottom: "4px" }}>• <strong>Vault Storage:</strong> Encrypted AES-256 at Rest</div>
-                    <div style={{ marginBottom: "4px" }}>• <strong>OCR Status:</strong> 100% Parsed (Coordinates Indexed)</div>
-                    <div>• <strong>Integrity Guarantee:</strong> Immutable SHA-256 Hash Registered</div>
+                  <div style={{ background: "#FFFFFF", borderRadius: "6px", border: "1px solid #DCE5E1", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#445451" }}>
+                    <div style={{ marginBottom: "3px" }}>• <strong>Vault Storage:</strong> Encrypted AES-256 at Rest</div>
+                    <div style={{ marginBottom: "3px" }}>• <strong>OCR Status:</strong> Parsed &amp; Coordinates Indexed</div>
+                    <div>• <strong>Integrity Audit:</strong> Immutable Hash Registered</div>
                   </div>
 
                   {selectedDoc.status === "flagged" && (
-                    <div style={{ background: "#FEF7EA", border: "1px solid #F6D8A6", borderRadius: "8px", padding: "10px 12px", fontSize: "12px", color: "#8A5A10" }}>
-                      ⚠️ <strong>Discrepancy Detected:</strong> Employment start date variance on Page 2. See AI Evidentiary Checks tab to review attorney disposition.
+                    <div style={{ background: "#FEF7EA", border: "1px solid #F6D8A6", borderRadius: "6px", padding: "10px 12px", fontSize: "12px", color: "#8A5A10", lineHeight: 1.45 }}>
+                      ⚠️ <strong>Discrepancy Detected:</strong> Employment start date variance on Page 2. See AI Checks tab to review attorney disposition.
                     </div>
                   )}
 
                   {selectedDoc.status === "verified" && (
-                    <div style={{ background: "#EAF6F0", border: "1px solid #B9DED4", borderRadius: "8px", padding: "10px 12px", fontSize: "12px", color: "#176B50" }}>
+                    <div style={{ background: "#EAF6F0", border: "1px solid #B9DED4", borderRadius: "6px", padding: "10px 12px", fontSize: "12px", color: "#176B50", lineHeight: 1.45 }}>
                       ✓ <strong>Filing Ready:</strong> Formatted and indexed for petition bundle inclusion.
+                    </div>
+                  )}
+
+                  {selectedDoc.status === "pending_review" && (
+                    <div style={{ background: "#F1F6F4", border: "1px solid #DCE5E1", borderRadius: "6px", padding: "10px 12px", fontSize: "12px", color: "#445451", lineHeight: 1.45 }}>
+                      Form Draft: Awaiting attorney final review before submission bundle assembly.
                     </div>
                   )}
                 </div>
@@ -600,9 +673,14 @@ export function DocumentoPreview() {
             </div>
           )}
 
-          {/* TAB 3: Procedural Milestones & Tasks */}
+          {/* TAB 3: Milestones & Tasks */}
           {activeTab === "timeline_tasks" && (
-            <div style={{ padding: "24px", minHeight: "420px" }}>
+            <div
+              id="workspace-panel-timeline_tasks"
+              role="tabpanel"
+              aria-labelledby="workspace-tab-timeline_tasks"
+              style={{ padding: "24px", minHeight: "380px" }}
+            >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
                 <div>
                   <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
@@ -612,12 +690,12 @@ export function DocumentoPreview() {
                     Interactive: Click checkboxes to toggle task completion.
                   </div>
                 </div>
-                <div style={{ fontSize: "12px", color: "#0D6866", fontWeight: 600 }}>
+                <div style={{ fontSize: "12px", color: "#0D6866", fontWeight: 650 }}>
                   {tasks.filter((t) => t.completed).length} of {tasks.length} Completed
                 </div>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {tasks.map((task) => (
                   <div
                     key={task.id}
@@ -626,22 +704,22 @@ export function DocumentoPreview() {
                       background: task.completed ? "#F8FDFB" : "#FFFFFF",
                       border: "1px solid",
                       borderColor: task.completed ? "#B9DED4" : "#DCE5E1",
-                      borderRadius: "10px",
-                      padding: "14px 18px",
+                      borderRadius: "8px",
+                      padding: "12px 16px",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      gap: "14px",
+                      gap: "12px",
                       cursor: "pointer",
-                      transition: "all 0.15s ease",
+                      transition: "border-color 0.12s ease",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <input
                         type="checkbox"
                         checked={task.completed}
                         onChange={() => {}} // controlled by wrapper click
-                        style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: "#0D6866" }}
+                        style={{ width: "17px", height: "17px", cursor: "pointer", accentColor: "#0D6866" }}
                       />
                       <div>
                         <div
@@ -654,26 +732,25 @@ export function DocumentoPreview() {
                         >
                           {task.title}
                         </div>
-                        <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "2px" }}>
+                        <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginTop: "2px" }}>
                           Assignee: {task.assignee}
                         </div>
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          background: task.completed ? "#EAF6F0" : task.priority === "high" ? "#FEF7EA" : "#F1F6F4",
-                          color: task.completed ? "#176B50" : task.priority === "high" ? "#8A5A10" : "#445451",
-                        }}
-                      >
-                        {task.completed ? "Done" : task.dueDate}
-                      </span>
-                    </div>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 650,
+                        padding: "2px 8px",
+                        borderRadius: "4px",
+                        background: task.completed ? "#EAF6F0" : task.priority === "high" ? "#FEF7EA" : "#F1F6F4",
+                        color: task.completed ? "#176B50" : task.priority === "high" ? "#8A5A10" : "#445451",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {task.completed ? "Done" : task.dueDate}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -682,44 +759,52 @@ export function DocumentoPreview() {
 
           {/* TAB 4: AI Evidentiary Checks */}
           {activeTab === "ai_intelligence" && (
-            <div style={{ padding: "24px", minHeight: "420px" }}>
-              <div style={{ marginBottom: "20px" }}>
+            <div
+              id="workspace-panel-ai_intelligence"
+              role="tabpanel"
+              aria-labelledby="workspace-tab-ai_intelligence"
+              style={{ padding: "24px", minHeight: "380px" }}
+            >
+              <div style={{ marginBottom: "16px" }}>
                 <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
                   AI Discrepancy Detection &amp; Attorney Adjudication Desk
                 </div>
                 <div style={{ fontSize: "12px", color: "#6E7F7C" }}>
-                  Cross-checks extract facts between exhibits. Consequential actions require explicit human decision.
+                  Automated checks highlight potential variances across exhibits for licensed attorney review. Suggestions do not constitute legal conclusions.
                 </div>
               </div>
 
-              {/* Finding Card */}
+              {/* Finding Card with Restrained Amber Review Treatment */}
               <div
                 style={{
                   border: "1px solid",
-                  borderColor: findingStatus === "resolved" ? "#B9DED4" : findingStatus === "escalated" ? "#063C3D" : "#F6D8A6",
+                  borderColor: findingStatus === "resolved" ? "#B9DED4" : findingStatus === "escalated" ? "#0D6866" : "#F6D8A6",
                   background: findingStatus === "resolved" ? "#F8FDFB" : findingStatus === "escalated" ? "#F1F6F4" : "#FFFDF8",
-                  borderRadius: "12px",
-                  padding: "20px",
-                  marginBottom: "20px",
+                  borderRadius: "10px",
+                  padding: "18px",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", marginBottom: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <span
                       style={{
                         fontSize: "11px",
                         fontWeight: 700,
-                        padding: "3px 8px",
-                        borderRadius: "10px",
+                        padding: "2px 8px",
+                        borderRadius: "6px",
                         background: findingStatus === "resolved" ? "#EAF6F0" : findingStatus === "escalated" ? "#DDEFE8" : "#FEF7EA",
                         color: findingStatus === "resolved" ? "#176B50" : findingStatus === "escalated" ? "#063C3D" : "#8A5A10",
                       }}
                     >
-                      {findingStatus === "resolved" ? "STATUS: RESOLVED BY COUNSEL" : findingStatus === "escalated" ? "STATUS: ESCALATED TO SENIOR PARTNER" : "FLAG: TIMELINE DISCREPANCY"}
+                      {findingStatus === "resolved"
+                        ? "STATUS: RESOLVED BY COUNSEL"
+                        : findingStatus === "escalated"
+                        ? "STATUS: ESCALATED TO SENIOR PARTNER"
+                        : "FLAG: TIMELINE DISCREPANCY"}
                     </span>
-                    <span style={{ fontSize: "12px", color: "#6E7F7C" }}>Confidence Score: 94%</span>
+                    <span style={{ fontSize: "11.5px", color: "#6E7F7C" }}>Confidence: 94%</span>
                   </div>
-                  <span style={{ fontSize: "12px", color: "#6E7F7C", fontFamily: "monospace" }}>
+                  <span style={{ fontSize: "11px", color: "#6E7F7C", fontFamily: "monospace" }}>
                     Rule: USCIS-CRIT-03-CHRONO
                   </span>
                 </div>
@@ -732,7 +817,7 @@ export function DocumentoPreview() {
                   Exhibit E-2 (MIT Employer Support Letter, Page 2, Para 3) lists appointment commencement as <strong>September 1, 2021</strong>. However, Exhibit E-1 (Curriculum Vitae) states full-time appointment as <strong>October 2021</strong>.
                 </p>
 
-                <div style={{ background: "#FFFFFF", padding: "10px 12px", borderRadius: "6px", border: "1px solid #DCE5E1", fontSize: "12px", color: "#063C3D", marginBottom: "16px" }}>
+                <div style={{ background: "#FFFFFF", padding: "8px 12px", borderRadius: "6px", border: "1px solid #DCE5E1", fontSize: "11.5px", color: "#063C3D", marginBottom: "14px" }}>
                   <strong>Source Provenance:</strong> [Exhibit_E2_SupportLetter.pdf • Page 2 • Bounding Box: (x: 140, y: 320, w: 410, h: 45)]
                 </div>
 
@@ -747,7 +832,7 @@ export function DocumentoPreview() {
                           background: "#0D6866",
                           color: "#FFFFFF",
                           border: "none",
-                          padding: "8px 16px",
+                          padding: "8px 14px",
                           borderRadius: "6px",
                           fontSize: "12px",
                           fontWeight: 650,
@@ -781,7 +866,7 @@ export function DocumentoPreview() {
                         background: "#F1F6F4",
                         color: "#063C3D",
                         border: "1px solid #DCE5E1",
-                        padding: "6px 14px",
+                        padding: "6px 12px",
                         borderRadius: "6px",
                         fontSize: "12px",
                         fontWeight: 600,
@@ -796,15 +881,20 @@ export function DocumentoPreview() {
             </div>
           )}
 
-          {/* TAB 5: Client & Legal Coordination */}
+          {/* TAB 5: Client Messages */}
           {activeTab === "collaboration" && (
-            <div style={{ padding: "24px", minHeight: "420px" }}>
-              <div style={{ marginBottom: "16px" }}>
+            <div
+              id="workspace-panel-collaboration"
+              role="tabpanel"
+              aria-labelledby="workspace-tab-collaboration"
+              style={{ padding: "24px", minHeight: "380px" }}
+            >
+              <div style={{ marginBottom: "14px" }}>
                 <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
                   Case Coordination &amp; Document Request Thread
                 </div>
                 <div style={{ fontSize: "12px", color: "#6E7F7C" }}>
-                  Direct, encrypted channel linking applicant with assigned legal team without email clutter.
+                  Direct communication thread linking applicant and assigned legal counsel.
                 </div>
               </div>
 
@@ -813,12 +903,12 @@ export function DocumentoPreview() {
                 style={{
                   background: "#F8F7F2",
                   border: "1px solid #DCE5E1",
-                  borderRadius: "10px",
-                  padding: "16px",
+                  borderRadius: "8px",
+                  padding: "14px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "12px",
-                  marginBottom: "16px",
+                  gap: "10px",
+                  marginBottom: "14px",
                   maxHeight: "260px",
                   overflowY: "auto",
                 }}
@@ -831,12 +921,12 @@ export function DocumentoPreview() {
                       border: "1px solid",
                       borderColor: msg.sender === "firm" ? "#DCE5E1" : "#B9DED4",
                       borderRadius: "8px",
-                      padding: "12px 14px",
+                      padding: "10px 14px",
                       maxWidth: "85%",
                       alignSelf: msg.sender === "firm" ? "flex-start" : "flex-end",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "4px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", marginBottom: "4px" }}>
                       <span style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D" }}>
                         {msg.senderName}
                       </span>
@@ -850,7 +940,7 @@ export function DocumentoPreview() {
               </div>
 
               {/* Illustrative Reply Bar */}
-              <form onSubmit={handleSendSampleReply} style={{ display: "flex", gap: "10px" }}>
+              <form onSubmit={handleSendSampleReply} style={{ display: "flex", gap: "8px" }}>
                 <input
                   type="text"
                   placeholder="Test reply: e.g., 'Uploaded the amended HR confirmation letter'..."
@@ -858,8 +948,8 @@ export function DocumentoPreview() {
                   onChange={(e) => setSampleReplyInput(e.target.value)}
                   style={{
                     flex: 1,
-                    padding: "10px 14px",
-                    borderRadius: "8px",
+                    padding: "9px 12px",
+                    borderRadius: "6px",
                     border: "1px solid #DCE5E1",
                     fontSize: "13px",
                     outline: "none",
@@ -871,8 +961,8 @@ export function DocumentoPreview() {
                     background: "#0D6866",
                     color: "#FFFFFF",
                     border: "none",
-                    padding: "10px 18px",
-                    borderRadius: "8px",
+                    padding: "9px 16px",
+                    borderRadius: "6px",
                     fontSize: "13px",
                     fontWeight: 650,
                     cursor: "pointer",

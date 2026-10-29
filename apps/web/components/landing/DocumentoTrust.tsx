@@ -3,6 +3,96 @@
 import React from "react";
 
 export function DocumentoTrust() {
+  const principles = [
+    {
+      title: "Human-in-the-Loop Review",
+      description:
+        "Consequential filings, legal arguments, and client submissions require licensed attorney adjudication and authorization.",
+      icon: (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          <polyline points="9 12 11 14 15 10" />
+        </svg>
+      ),
+    },
+    {
+      title: "Evidence-Linked Findings",
+      description:
+        "Automated findings cite specific exhibit coordinates and page numbers, surfacing low-confidence indicators when text is ambiguous.",
+      icon: (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          <path d="M11 8v6" />
+          <path d="M8 11h6" />
+        </svg>
+      ),
+    },
+    {
+      title: "Tenant & Role Isolation",
+      description:
+        "Internal legal strategies and firm notes are separated by role-based permissions and quarantined from client-facing portals.",
+      icon: (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      ),
+    },
+    {
+      title: "Provenance & Audit Trails",
+      description:
+        "Uploaded exhibits are recorded with cryptographic SHA-256 verification and immutable activity timestamps.",
+      icon: (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <path d="m9 15 2 2 4-4" />
+        </svg>
+      ),
+    },
+  ];
+
   return (
     <section
       id="trust"
@@ -10,11 +100,15 @@ export function DocumentoTrust() {
         padding: "80px 24px",
         background: "#FFFFFF",
         borderBottom: "1px solid #DCE5E1",
+        scrollMarginTop: "80px",
       }}
     >
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         {/* Section Header */}
-        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto 50px auto" }}>
+        <div
+          className="animate-on-scroll"
+          style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto 48px auto" }}
+        >
           <div
             style={{
               display: "inline-flex",
@@ -30,7 +124,7 @@ export function DocumentoTrust() {
               marginBottom: "16px",
             }}
           >
-            <span>Transparency, Privacy &amp; Legal Governance</span>
+            <span>Trust &amp; Governance</span>
           </div>
 
           <h2
@@ -48,180 +142,95 @@ export function DocumentoTrust() {
           </h2>
 
           <p style={{ fontSize: "16px", color: "#445451", lineHeight: 1.6, margin: 0 }}>
-            Immigration law carries life-altering consequences. Documento guarantees that software serves strictly as an accountable evidence organizer under human attorney direction.
+            Immigration casework demands accountable human oversight. Documento is engineered to support licensed legal professionals with structured evidence organization—never to replace their judgment.
           </p>
         </div>
 
-        {/* 4 Pillars of Architecture & Trust */}
+        {/* 4 Core Trust Principles */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: "24px",
-            marginBottom: "48px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
+            gap: "20px",
+            marginBottom: "40px",
           }}
         >
-          {/* Pillar 1 */}
-          <div
-            className="animate-on-scroll delay-100"
-            style={{
-              background: "#F8F7F2",
-              border: "1px solid #DCE5E1",
-              borderRadius: "14px",
-              padding: "26px",
-            }}
-          >
+          {principles.map((p, i) => (
             <div
+              key={p.title}
+              className={`animate-on-scroll ${
+                i % 2 === 0 ? "delay-100" : "delay-200"
+              }`}
               style={{
-                width: "40px",
-                height: "40px",
-                borderRadius: "10px",
-                background: "#DDEFE8",
+                background: "#F8F7F2",
+                border: "1px solid #DCE5E1",
+                borderRadius: "14px",
+                padding: "24px",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#063C3D",
-                marginBottom: "16px",
+                flexDirection: "column",
+                gap: "14px",
+                transition: "border-color 0.15s ease",
               }}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "10px",
+                  background: "#DDEFE8",
+                  border: "1px solid #B9DED4",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                {p.icon}
+              </div>
+              <div>
+                <h3
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 700,
+                    color: "#063C3D",
+                    margin: "0 0 8px 0",
+                    fontFamily: "var(--font-display, Inter, sans-serif)",
+                  }}
+                >
+                  {p.title}
+                </h3>
+                <p style={{ fontSize: "13.5px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
+                  {p.description}
+                </p>
+              </div>
             </div>
-            <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 8px 0" }}>
-              Mandatory Human Sign-Off
-            </h3>
-            <p style={{ fontSize: "13px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-              AI findings never directly alter legal submissions or approve petition packages. Only licensed attorneys or accredited legal representatives can adjudicate findings and authorize filing.
-            </p>
-          </div>
-
-          {/* Pillar 2 */}
-          <div
-            className="animate-on-scroll delay-150"
-            style={{
-              background: "#F8F7F2",
-              border: "1px solid #DCE5E1",
-              borderRadius: "14px",
-              padding: "26px",
-            }}
-          >
-            <div
-              style={{
-                width: "40px",
-                height: "40px",
-                borderRadius: "10px",
-                background: "#DDEFE8",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#063C3D",
-                marginBottom: "16px",
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
-            </div>
-            <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 8px 0" }}>
-              Zero Hallucinated Facts
-            </h3>
-            <p style={{ fontSize: "13px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-              Every extracted field is strictly bound to its physical source exhibit coordinate and page number. If a document is blurred or ambiguous, Documento transparently flags low-confidence.
-            </p>
-          </div>
-
-          {/* Pillar 3 */}
-          <div
-            className="animate-on-scroll delay-200"
-            style={{
-              background: "#F8F7F2",
-              border: "1px solid #DCE5E1",
-              borderRadius: "14px",
-              padding: "26px",
-            }}
-          >
-            <div
-              style={{
-                width: "40px",
-                height: "40px",
-                borderRadius: "10px",
-                background: "#DDEFE8",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#063C3D",
-                marginBottom: "16px",
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-            </div>
-            <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 8px 0" }}>
-              Multi-Tenant Role Isolation
-            </h3>
-            <p style={{ fontSize: "13px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-              Internal attorney case notes, strategy assessments, and colleague deliberations are enforced by backend object-level security and are strictly inaccessible in the client portal.
-            </p>
-          </div>
-
-          {/* Pillar 4 */}
-          <div
-            className="animate-on-scroll delay-300"
-            style={{
-              background: "#F8F7F2",
-              border: "1px solid #DCE5E1",
-              borderRadius: "14px",
-              padding: "26px",
-            }}
-          >
-            <div
-              style={{
-                width: "40px",
-                height: "40px",
-                borderRadius: "10px",
-                background: "#DDEFE8",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#063C3D",
-                marginBottom: "16px",
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-            </div>
-            <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 8px 0" }}>
-              Versioned Statutory Citations
-            </h3>
-            <p style={{ fontSize: "13px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-              Requirement criteria are linked to official USCIS policy manual editions and regulatory updates with effective date tracking, preventing reliance on obsolete statutory guidelines.
-            </p>
-          </div>
+          ))}
         </div>
 
-        {/* Clear Transparency Box: What Documento Does vs What Documento Does NOT Do */}
+        {/* Concise Two-Column Operational Boundaries */}
         <div
           className="animate-on-scroll delay-200"
           style={{
             background: "#F8F7F2",
             border: "1px solid #DCE5E1",
             borderRadius: "16px",
-            padding: "32px",
-            boxShadow: "0 4px 20px rgba(6, 60, 61, 0.04)",
+            padding: "32px 28px",
           }}
         >
-          <div style={{ textAlign: "center", marginBottom: "24px" }}>
-            <h3 style={{ fontSize: "20px", fontWeight: 750, color: "#063C3D", margin: "0 0 8px 0" }}>
-              Our Clear Boundaries: What Documento Does &amp; Does Not Do
+          <div style={{ textAlign: "center", maxWidth: "680px", margin: "0 auto 28px auto" }}>
+            <h3
+              style={{
+                fontSize: "20px",
+                fontWeight: 700,
+                color: "#063C3D",
+                margin: "0 0 8px 0",
+                fontFamily: "var(--font-display, Inter, sans-serif)",
+              }}
+            >
+              Clear Operational Boundaries
             </h3>
-            <p style={{ fontSize: "14px", color: "#445451", margin: 0 }}>
-              Transparency is the cornerstone of responsible immigration technology.
+            <p style={{ fontSize: "14px", color: "#445451", lineHeight: 1.5, margin: 0 }}>
+              Responsible legal technology requires unambiguous separation between administrative assistance and formal legal representation.
             </p>
           </div>
 
@@ -229,38 +238,172 @@ export function DocumentoTrust() {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
-              gap: "24px",
+              gap: "20px",
             }}
           >
-            {/* What Documento Does */}
-            <div style={{ background: "#FFFFFF", borderRadius: "12px", border: "1px solid #B9DED4", padding: "20px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
-                <span style={{ color: "#176B50", fontWeight: 700, fontSize: "16px" }}>✓</span>
-                <span style={{ fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>What Documento Does</span>
+            {/* What Documento helps with */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                borderRadius: "12px",
+                border: "1px solid #B9DED4",
+                padding: "24px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "14px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    width: "24px",
+                    height: "24px",
+                    borderRadius: "50%",
+                    background: "#DDEFE8",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#0D6866",
+                    fontWeight: 700,
+                    fontSize: "13px",
+                    flexShrink: 0,
+                  }}
+                >
+                  ✓
+                </div>
+                <h4
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    color: "#063C3D",
+                    margin: 0,
+                  }}
+                >
+                  Documento helps with
+                </h4>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px", color: "#445451" }}>
-                <div>• Organizes case files into an encrypted, SHA-256 verified exhibit vault</div>
-                <div>• Evaluates uploaded evidence against published government criteria checklists</div>
-                <div>• Flags date variances and potential discrepancies across exhibits for review</div>
-                <div>• Provides dual waiting-state transparency between legal staff and applicants</div>
-                <div>• Generates sequential exhibit tabs (Exhibits A-1 to E-12) and indexed catalogs</div>
-              </div>
+
+              <ul
+                style={{
+                  margin: 0,
+                  padding: 0,
+                  listStyle: "none",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  fontSize: "13.5px",
+                  color: "#445451",
+                  lineHeight: 1.5,
+                }}
+              >
+                <li style={{ display: "flex", gap: "8px" }}>
+                  <span style={{ color: "#0D6866", fontWeight: 700 }}>•</span>
+                  <span><strong>Document organization:</strong> Structuring client records and exhibits in an audited repository.</span>
+                </li>
+                <li style={{ display: "flex", gap: "8px" }}>
+                  <span style={{ color: "#0D6866", fontWeight: 700 }}>•</span>
+                  <span><strong>Administrative checks:</strong> Verifying completeness against published criteria and identifying missing items.</span>
+                </li>
+                <li style={{ display: "flex", gap: "8px" }}>
+                  <span style={{ color: "#0D6866", fontWeight: 700 }}>•</span>
+                  <span><strong>Source-linked discrepancy flags:</strong> Highlighting date, name, or employer variances across exhibits for human review.</span>
+                </li>
+                <li style={{ display: "flex", gap: "8px" }}>
+                  <span style={{ color: "#0D6866", fontWeight: 700 }}>•</span>
+                  <span><strong>Workflow transparency:</strong> Providing clear status tracking and waiting-state visibility between teams and applicants.</span>
+                </li>
+              </ul>
             </div>
 
-            {/* What Documento Does NOT Do */}
-            <div style={{ background: "#FFFFFF", borderRadius: "12px", border: "1px solid #F5D3D1", padding: "20px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
-                <span style={{ color: "#B42318", fontWeight: 700, fontSize: "16px" }}>✕</span>
-                <span style={{ fontSize: "15px", fontWeight: 700, color: "#912018" }}>What Documento Does NOT Do</span>
+            {/* What Documento does not do */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                borderRadius: "12px",
+                border: "1px solid #E2D7D5",
+                padding: "24px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "14px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    width: "24px",
+                    height: "24px",
+                    borderRadius: "50%",
+                    background: "#F6ECEB",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#8C4A47",
+                    fontWeight: 700,
+                    fontSize: "13px",
+                    flexShrink: 0,
+                  }}
+                >
+                  ✕
+                </div>
+                <h4
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    color: "#4A2825",
+                    margin: 0,
+                  }}
+                >
+                  Documento does not do
+                </h4>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px", color: "#5F3735" }}>
-                <div>• Does NOT provide legal advice, statutory opinions, or legal representation</div>
-                <div>• Does NOT guarantee visa approval, interview waivers, or processing timelines</div>
-                <div>• Does NOT file petitions with USCIS or foreign embassies without attorney authorization</div>
-                <div>• Does NOT fabricate AI claims or allow unreviewed AI output into filings</div>
-                <div>• Does NOT share client case records across organizational tenant boundaries</div>
-              </div>
+
+              <ul
+                style={{
+                  margin: 0,
+                  padding: 0,
+                  listStyle: "none",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  fontSize: "13.5px",
+                  color: "#445451",
+                  lineHeight: 1.5,
+                }}
+              >
+                <li style={{ display: "flex", gap: "8px" }}>
+                  <span style={{ color: "#8C4A47", fontWeight: 700 }}>•</span>
+                  <span><strong>Replace legal professionals:</strong> Software cannot substitute for the legal analysis, strategy, and advice of licensed counsel.</span>
+                </li>
+                <li style={{ display: "flex", gap: "8px" }}>
+                  <span style={{ color: "#8C4A47", fontWeight: 700 }}>•</span>
+                  <span><strong>Guarantee immigration outcomes:</strong> No petition approval, expedite request, or visa issuance can ever be guaranteed.</span>
+                </li>
+                <li style={{ display: "flex", gap: "8px" }}>
+                  <span style={{ color: "#8C4A47", fontWeight: 700 }}>•</span>
+                  <span><strong>Make final legal determinations:</strong> AI suggestions are unadjudicated findings that require attorney verification.</span>
+                </li>
+                <li style={{ display: "flex", gap: "8px" }}>
+                  <span style={{ color: "#8C4A47", fontWeight: 700 }}>•</span>
+                  <span><strong>Claim government endorsement:</strong> Documento is independent software not affiliated with or endorsed by any immigration authority.</span>
+                </li>
+              </ul>
             </div>
+          </div>
+
+          {/* Applicable Legal Disclaimer */}
+          <div
+            style={{
+              marginTop: "24px",
+              padding: "14px 18px",
+              background: "#F2F0E8",
+              borderRadius: "10px",
+              border: "1px solid #DCE5E1",
+              fontSize: "12px",
+              color: "#5C6E6B",
+              lineHeight: 1.55,
+            }}
+          >
+            <strong style={{ color: "#063C3D" }}>Legal Disclaimer:</strong> Documento is an evidence organization and casework intelligence platform, not an immigration law firm. Documento does not provide legal advice, opinions, or representation. Consequential petition filings and statutory determinations require evaluation by a licensed immigration attorney or accredited representative.
           </div>
         </div>
       </div>

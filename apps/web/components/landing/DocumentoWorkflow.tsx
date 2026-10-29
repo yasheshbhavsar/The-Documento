@@ -8,7 +8,6 @@ interface WorkflowStage {
   title: string;
   shortSummary: string;
   purpose: string;
-  frictionAddressed: string;
   documentoFunctionality: string[];
   samplePreview: {
     badge: string;
@@ -24,12 +23,10 @@ const WORKFLOW_STAGES: WorkflowStage[] = [
     title: "Case Setup & Profile Intake",
     shortSummary: "Establish verified case records without messy email attachments.",
     purpose: "Create the primary case docket, configure petitioner and dependant profiles, and map target jurisdiction guidelines.",
-    frictionAddressed: "Scattered introductory emails, uncoordinated intake forms, and duplicated client records.",
     documentoFunctionality: [
       "Multi-lingual guided questionnaire for applicants and dependants",
       "Automatic duplicate-record detection across historical firm archives",
       "Role-based assignment to supervising partner and primary paralegal",
-      "Initial biographic record verification with passport name validation",
     ],
     samplePreview: {
       badge: "Stage 1 Active",
@@ -47,12 +44,10 @@ const WORKFLOW_STAGES: WorkflowStage[] = [
     title: "Requirements Mapping & Statutory Engine",
     shortSummary: "Evaluate case needs against versioned government criteria.",
     purpose: "Map the petition against authoritative statutory standards (e.g. 8 CFR § 204.5(h), Matter of Dhanasar, or UK Appendix Global Talent).",
-    frictionAddressed: "Vague checklists that leave applicants guessing which exhibits establish threshold eligibility.",
     documentoFunctionality: [
       "Versioned declarative rule sets linked to official USCIS policy manual editions",
       "Dynamic criteria scorecard showing satisfied vs needed evidentiary categories",
       "Dhanasar 3-prong matrix organizer for National Interest Waiver petitions",
-      "Kazarian two-stage analysis framework for final merits evaluation",
     ],
     samplePreview: {
       badge: "Statutory Check",
@@ -70,12 +65,10 @@ const WORKFLOW_STAGES: WorkflowStage[] = [
     title: "Document Collection & OCR Vault",
     shortSummary: "Secure exhibit ingestion with immutable cryptographic hashing.",
     purpose: "Gather evidence directly from applicants with instant quality, format, and resolution validation.",
-    frictionAddressed: "Lost file attachments, unencrypted emails, blurry scans, and untracked document revisions.",
     documentoFunctionality: [
       "Direct client upload interface supporting mobile photos and high-res PDFs",
       "Cryptographic SHA-256 Merkle root hashing on every uploaded file",
       "Automated optical extraction of vital dates, names, and biographic entities",
-      "Automatic exhibit classification into identity, academic, and support letter tiers",
     ],
     samplePreview: {
       badge: "Vault Ingested",
@@ -93,12 +86,10 @@ const WORKFLOW_STAGES: WorkflowStage[] = [
     title: "Task & Anomaly Review (Human-in-the-Loop)",
     shortSummary: "Cross-examine facts across exhibits before petition drafting.",
     purpose: "Scan for chronological inconsistencies, typographical errors, and evidentiary contradictions.",
-    frictionAddressed: "Avoidable Requests for Evidence (RFEs) triggered by conflicting dates across CVs and employer letters.",
     documentoFunctionality: [
       "Cross-exhibit anomaly engine comparing dates and entity titles across files",
       "Discrepancy adjudication desk: attorneys resolve, dismiss, or escalate",
       "Source exhibit coordinate anchors linking findings to exact page locations",
-      "Accountable human oversight: AI suggestions never alter files autonomously",
     ],
     samplePreview: {
       badge: "Adjudication Desk",
@@ -116,12 +107,10 @@ const WORKFLOW_STAGES: WorkflowStage[] = [
     title: "Team Coordination & Client Messaging",
     shortSummary: "Unambiguous waiting states and transparent task ownership.",
     purpose: "Ensure both legal staff and applicants know exactly who holds the next action item.",
-    frictionAddressed: "Status anxiety, repetitive 'any updates?' emails, and uncoordinated task handoffs.",
     documentoFunctionality: [
       "Dual waiting-state indicator ('Waiting on You' vs 'Waiting on Firm')",
       "Structured document requests with translation and notary instructions",
       "Assigned task docket with priority deadlines and automated reminders",
-      "Strict multi-tenant security quarantining confidential attorney notes",
     ],
     samplePreview: {
       badge: "Active Alignment",
@@ -139,12 +128,10 @@ const WORKFLOW_STAGES: WorkflowStage[] = [
     title: "Filing Readiness & Package Assembly",
     shortSummary: "Deterministic bundle generation with sequential exhibit tabs.",
     purpose: "Compile indexed, submission-ready petition packages with full supervisory attorney approval.",
-    frictionAddressed: "Hours wasted manually indexing exhibit tabs, numbering pages, and cross-checking checklists.",
     documentoFunctionality: [
       "Automated sequential exhibit tab generator (Exhibits A-1 through E-12)",
       "Comprehensive exhibit index and table of authorities compiler",
-      "Pre-populated petition forms (e.g. Form I-140 / Form I-129) from verified exhibits",
-      "Supervisory managing attorney sign-off with permanent audit trail",
+      "Pre-populated petition forms from verified primary exhibits",
     ],
     samplePreview: {
       badge: "Bundle Assembled",
@@ -169,26 +156,27 @@ export function DocumentoWorkflow() {
       id="workflow"
       style={{
         padding: "80px 24px",
+        scrollMarginTop: "80px",
         background: "#F8F7F2",
         borderBottom: "1px solid #DCE5E1",
       }}
     >
-      <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
-        {/* Section Header */}
-        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "820px", margin: "0 auto 48px auto" }}>
+      <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
+        {/* Minimal Section Header */}
+        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 36px auto" }}>
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              padding: "4px 14px",
+              padding: "4px 12px",
               borderRadius: "20px",
               background: "#DDEFE8",
               border: "1px solid #B9DED4",
               fontSize: "12px",
-              fontWeight: 600,
+              fontWeight: 650,
               color: "#063C3D",
-              marginBottom: "16px",
+              marginBottom: "14px",
             }}
           >
             <span>The 6-Stage Casework Journey</span>
@@ -196,31 +184,30 @@ export function DocumentoWorkflow() {
 
           <h2
             style={{
-              fontSize: "clamp(28px, 4vw, 42px)",
+              fontSize: "clamp(26px, 3.6vw, 38px)",
               fontWeight: 700,
               color: "#063C3D",
-              lineHeight: 1.2,
-              letterSpacing: "-0.025em",
-              margin: "0 0 16px 0",
+              lineHeight: 1.25,
+              letterSpacing: "-0.02em",
+              margin: "0 0 12px 0",
               fontFamily: "var(--font-display, Inter, sans-serif)",
             }}
           >
             From overwhelming paperwork to an organized process.
           </h2>
 
-          <p style={{ fontSize: "16px", color: "#445451", lineHeight: 1.6, margin: 0 }}>
+          <p style={{ fontSize: "15px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
             Every stage in Documento replaces administrative friction with transparent milestones, deterministic checklists, and strict attorney accountability.
           </p>
         </div>
 
-        {/* 6-Stage Interactive Stepper Header Bar */}
+        {/* 6-Stage Compact Step Navigator (Horizontal Grid on Desktop, Horizontal Scroll on Mobile) */}
         <div
-          className="animate-on-scroll delay-100"
+          role="tablist"
+          aria-label="Casework Journey Stages"
+          className="flex md:grid md:grid-cols-6 gap-2 overflow-x-auto pb-2 mb-6"
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-            gap: "10px",
-            marginBottom: "32px",
+            WebkitOverflowScrolling: "touch",
           }}
         >
           {WORKFLOW_STAGES.map((item, idx) => {
@@ -230,36 +217,43 @@ export function DocumentoWorkflow() {
               <button
                 key={item.id}
                 type="button"
+                role="tab"
+                id={`stage-tab-${item.id}`}
+                aria-controls={`stage-panel-${item.id}`}
+                aria-selected={isSelected}
                 onClick={() => setActiveStepId(item.id)}
+                className="flex-shrink-0 min-w-[190px] md:min-w-0"
                 style={{
-                  background: isSelected ? "#063C3D" : isPast ? "#EAF6F0" : "#FFFFFF",
+                  background: isSelected ? "#063C3D" : isPast ? "#F2F8F5" : "#FFFFFF",
                   border: "1px solid",
                   borderColor: isSelected ? "#063C3D" : isPast ? "#B9DED4" : "#DCE5E1",
-                  borderRadius: "12px",
-                  padding: "14px 12px",
+                  borderRadius: "10px",
+                  padding: "12px 14px",
                   cursor: "pointer",
                   textAlign: "left",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "6px",
+                  gap: "4px",
                   transition: "all 0.15s ease",
-                  boxShadow: isSelected ? "0 4px 14px rgba(6, 60, 61, 0.18)" : "none",
+                  boxShadow: isSelected ? "0 2px 8px rgba(6, 60, 61, 0.12)" : "none",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <span
                     style={{
-                      fontSize: "12px",
-                      fontWeight: 750,
-                      color: isSelected ? "#B9DED4" : isPast ? "#176B50" : "#6E7F7C",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: isSelected ? "#B9DED4" : isPast ? "#0D6866" : "#6E7F7C",
+                      letterSpacing: "0.03em",
                     }}
                   >
-                    Stage {item.step}
+                    STAGE {item.step}
                   </span>
                   <span
                     style={{
                       fontSize: "11px",
-                      color: isSelected ? "#FFFFFF" : isPast ? "#176B50" : "#CBD5E1",
+                      fontWeight: 700,
+                      color: isSelected ? "#B9DED4" : isPast ? "#0D6866" : "#CBD5E1",
                     }}
                   >
                     {isPast ? "✓" : isSelected ? "●" : "○"}
@@ -268,7 +262,7 @@ export function DocumentoWorkflow() {
                 <div
                   style={{
                     fontSize: "13px",
-                    fontWeight: 700,
+                    fontWeight: 650,
                     color: isSelected ? "#FFFFFF" : "#063C3D",
                     lineHeight: 1.3,
                   }}
@@ -280,186 +274,270 @@ export function DocumentoWorkflow() {
           })}
         </div>
 
-        {/* Deep Dive Interactive Stage Detail Card */}
+        {/* Focused Active Stage Panel */}
         <div
-          className="animate-on-scroll delay-150"
+          id={`stage-panel-${activeStage.id}`}
+          role="tabpanel"
+          aria-labelledby={`stage-tab-${activeStage.id}`}
+          className="animate-on-scroll"
           style={{
             background: "#FFFFFF",
             border: "1px solid #DCE5E1",
-            borderRadius: "16px",
-            boxShadow: "0 8px 30px rgba(6, 60, 61, 0.06)",
-            padding: "36px 32px",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
-            gap: "36px",
-            alignItems: "center",
+            borderRadius: "14px",
+            boxShadow: "0 2px 12px rgba(6, 60, 61, 0.04)",
+            overflow: "hidden",
           }}
         >
-          {/* Left Column: Stage Purpose, Friction Addressed & Capabilities */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+          {/* Header Banner */}
+          <div
+            style={{
+              padding: "16px 24px",
+              background: "#FAF9F5",
+              borderBottom: "1px solid #DCE5E1",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <span
                 style={{
-                  background: "#DDEFE8",
-                  color: "#063C3D",
-                  fontSize: "12px",
-                  fontWeight: 750,
-                  padding: "4px 10px",
+                  display: "inline-block",
+                  padding: "3px 10px",
                   borderRadius: "6px",
+                  background: "#DDEFE8",
+                  border: "1px solid #B9DED4",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "#063C3D",
                 }}
               >
                 Stage {activeStage.step} of 06
               </span>
-              <span style={{ fontSize: "14px", fontWeight: 700, color: "#0D6866" }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  color: "#063C3D",
+                }}
+              >
                 {activeStage.title}
-              </span>
+              </h3>
             </div>
-
-            <h3
-              style={{
-                fontSize: "24px",
-                fontWeight: 750,
-                color: "#063C3D",
-                margin: "0 0 14px 0",
-                fontFamily: "var(--font-display, Inter, sans-serif)",
-              }}
-            >
-              {activeStage.shortSummary}
-            </h3>
-
-            {/* Purpose */}
-            <div style={{ marginBottom: "16px" }}>
-              <div style={{ fontSize: "12px", fontWeight: 700, color: "#6E7F7C", textTransform: "uppercase", marginBottom: "4px" }}>
-                Stage Purpose
-              </div>
-              <p style={{ fontSize: "14px", color: "#172322", lineHeight: 1.55, margin: 0 }}>
-                {activeStage.purpose}
-              </p>
-            </div>
-
-            {/* Friction Addressed */}
-            <div
-              style={{
-                background: "#FFFBFB",
-                border: "1px solid #F5D3D1",
-                borderRadius: "10px",
-                padding: "14px 16px",
-                marginBottom: "20px",
-              }}
-            >
-              <div style={{ fontSize: "12px", fontWeight: 700, color: "#B42318", marginBottom: "4px" }}>
-                Friction Addressed &amp; Eliminated:
-              </div>
-              <div style={{ fontSize: "13px", color: "#5F3735", lineHeight: 1.5 }}>
-                {activeStage.frictionAddressed}
-              </div>
-            </div>
-
-            {/* Documento Built-in Features */}
-            <div>
-              <div style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D", textTransform: "uppercase", marginBottom: "10px" }}>
-                Documento Functionality Applied:
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {activeStage.documentoFunctionality.map((feat, idx) => (
-                  <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "10px", fontSize: "13px", color: "#445451" }}>
-                    <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
-                    <span>{feat}</span>
-                  </div>
-                ))}
-              </div>
+            <div style={{ fontSize: "12px", color: "#6E7F7C", fontWeight: 500 }}>
+              Casework Progression
             </div>
           </div>
 
-          {/* Right Column: Live Mockup / Visual State Demonstration */}
-          <div
-            style={{
-              background: "#F8F7F2",
-              border: "1px solid #DCE5E1",
-              borderRadius: "14px",
-              padding: "24px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-              <span
-                style={{
-                  background: "#EAF6F0",
-                  color: "#176B50",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  padding: "3px 8px",
-                  borderRadius: "12px",
-                }}
-              >
-                {activeStage.samplePreview.badge}
-              </span>
-              <span style={{ fontSize: "11px", color: "#6E7F7C" }}>Illustrative Data</span>
-            </div>
-
-            <div style={{ fontSize: "15px", fontWeight: 700, color: "#063C3D", marginBottom: "14px" }}>
-              {activeStage.samplePreview.headline}
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
-              {activeStage.samplePreview.items.map((item, idx) => (
-                <div
-                  key={idx}
+          {/* Two-Column Stage Details */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 md:p-8">
+            {/* Left: Purpose & Functionality (7 cols) */}
+            <div className="lg:col-span-7 flex flex-col justify-between">
+              <div>
+                <h4
                   style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E7EFEB",
-                    borderRadius: "8px",
-                    padding: "12px 14px",
-                    fontSize: "13px",
+                    fontSize: "20px",
+                    fontWeight: 700,
                     color: "#063C3D",
-                    fontWeight: 500,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
+                    margin: "0 0 12px 0",
+                    lineHeight: 1.35,
+                    fontFamily: "var(--font-display, Inter, sans-serif)",
                   }}
                 >
-                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#0D6866" }} />
-                  <span>{item}</span>
+                  {activeStage.shortSummary}
+                </h4>
+
+                {/* Short Purpose Statement */}
+                <div style={{ marginBottom: "20px" }}>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#6E7F7C",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Stage Purpose
+                  </div>
+                  <p style={{ fontSize: "14px", color: "#445451", lineHeight: 1.6, margin: 0 }}>
+                    {activeStage.purpose}
+                  </p>
                 </div>
-              ))}
+
+                {/* Up to 3 Concise Functionality Bullets */}
+                <div>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#0D6866",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    Core Operational Capabilities
+                  </div>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {activeStage.documentoFunctionality.slice(0, 3).map((feat, idx) => (
+                      <li
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "10px",
+                          fontSize: "13px",
+                          color: "#172322",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        <span style={{ color: "#0D6866", fontWeight: 700, flexShrink: 0, marginTop: "1px" }}>✓</span>
+                        <span>{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Stepper Navigation Actions */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  marginTop: "28px",
+                  paddingTop: "16px",
+                  borderTop: "1px solid #DCE5E1",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={activeIndex === 0}
+                  onClick={() => setActiveStepId(WORKFLOW_STAGES[activeIndex - 1].id)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "6px",
+                    padding: "7px 14px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: activeIndex === 0 ? "#CBD5E1" : "#445451",
+                    cursor: activeIndex === 0 ? "not-allowed" : "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  ← Previous Stage
+                </button>
+
+                <span style={{ fontSize: "12px", color: "#6E7F7C", fontWeight: 500 }}>
+                  Stage {activeIndex + 1} of {WORKFLOW_STAGES.length}
+                </span>
+
+                <button
+                  type="button"
+                  disabled={activeIndex === WORKFLOW_STAGES.length - 1}
+                  onClick={() => setActiveStepId(WORKFLOW_STAGES[activeIndex + 1].id)}
+                  style={{
+                    background: activeIndex === WORKFLOW_STAGES.length - 1 ? "#F1F6F4" : "#0D6866",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "7px 16px",
+                    fontSize: "12px",
+                    fontWeight: 650,
+                    color: activeIndex === WORKFLOW_STAGES.length - 1 ? "#CBD5E1" : "#FFFFFF",
+                    cursor: activeIndex === WORKFLOW_STAGES.length - 1 ? "not-allowed" : "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  Next Stage →
+                </button>
+              </div>
             </div>
 
-            {/* Stepper Navigation Buttons */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #DCE5E1", paddingTop: "14px" }}>
-              <button
-                type="button"
-                disabled={activeIndex === 0}
-                onClick={() => setActiveStepId(WORKFLOW_STAGES[activeIndex - 1].id)}
-                style={{
-                  background: "transparent",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "6px",
-                  padding: "6px 14px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  color: activeIndex === 0 ? "#CBD5E1" : "#445451",
-                  cursor: activeIndex === 0 ? "not-allowed" : "pointer",
-                }}
-              >
-                ← Previous Stage
-              </button>
+            {/* Right: Focused Sample Preview (5 cols) */}
+            <div
+              className="lg:col-span-5"
+              style={{
+                background: "#FAF9F5",
+                border: "1px solid #DCE5E1",
+                borderRadius: "10px",
+                padding: "20px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+                  <span
+                    style={{
+                      background: "#DDEFE8",
+                      border: "1px solid #B9DED4",
+                      color: "#063C3D",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                    }}
+                  >
+                    {activeStage.samplePreview.badge}
+                  </span>
+                  <span style={{ fontSize: "11px", color: "#6E7F7C" }}>Illustrative Data</span>
+                </div>
 
-              <button
-                type="button"
-                disabled={activeIndex === WORKFLOW_STAGES.length - 1}
-                onClick={() => setActiveStepId(WORKFLOW_STAGES[activeIndex + 1].id)}
+                <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginBottom: "12px" }}>
+                  {activeStage.samplePreview.headline}
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {activeStage.samplePreview.items.map((item, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        background: "#FFFFFF",
+                        border: "1px solid #E3EBE7",
+                        borderRadius: "6px",
+                        padding: "10px 12px",
+                        fontSize: "12px",
+                        color: "#172322",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "6px",
+                          height: "6px",
+                          borderRadius: "50%",
+                          background: "#0D6866",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div
                 style={{
-                  background: activeIndex === WORKFLOW_STAGES.length - 1 ? "#F1F6F4" : "#0D6866",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "6px 14px",
-                  fontSize: "12px",
-                  fontWeight: 650,
-                  color: activeIndex === WORKFLOW_STAGES.length - 1 ? "#CBD5E1" : "#FFFFFF",
-                  cursor: activeIndex === WORKFLOW_STAGES.length - 1 ? "not-allowed" : "pointer",
+                  marginTop: "16px",
+                  paddingTop: "12px",
+                  borderTop: "1px solid #E3EBE7",
+                  fontSize: "11px",
+                  color: "#6E7F7C",
+                  lineHeight: 1.4,
                 }}
               >
-                Next Stage →
-              </button>
+                Demonstrates verified data artifacts recorded during Stage {activeStage.step}.
+              </div>
             </div>
           </div>
         </div>
@@ -467,7 +545,7 @@ export function DocumentoWorkflow() {
         {/* Disclaimer Note */}
         <div
           style={{
-            marginTop: "32px",
+            marginTop: "28px",
             textAlign: "center",
             fontSize: "12px",
             color: "#6E7F7C",

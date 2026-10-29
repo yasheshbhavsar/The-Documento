@@ -1248,10 +1248,10 @@ export function DocumentDossierWorkbench({
                       This is to certify that we have verified the books of accounts, title deeds, and bank statements of:
                     </div>
                     <div className="text-sm font-bold text-slate-900 font-mono">
-                      MR. PANKAJ KALIDAS PATEL
+                      MRS. MARIA ELENA VASQUEZ
                     </div>
                     <div className="text-[10px] text-slate-500">
-                      Residing at: 14 Anand Society, Race Course Road, Vadodara, Gujarat 390007, India
+                      Primary Sponsor: Lucas Vasquez (Son) • 488 University Ave, Suite 1902, Toronto, ON M5G 1V2
                     </div>
                   </div>
 

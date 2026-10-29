@@ -83,6 +83,15 @@ export function DocumentoFAQ() {
     setOpenId((prev) => (prev === id ? null : id));
   };
 
+  const categories = [
+    "ALL",
+    "Coverage & Scope",
+    "Legal & Ethics",
+    "AI & Accuracy",
+    "Security & Privacy",
+    "Collaboration",
+  ] as const;
+
   return (
     <section
       id="faq"
@@ -90,11 +99,15 @@ export function DocumentoFAQ() {
         padding: "80px 24px",
         background: "#F8F7F2",
         borderBottom: "1px solid #DCE5E1",
+        scrollMarginTop: "80px",
       }}
     >
-      <div style={{ maxWidth: "980px", margin: "0 auto" }}>
-        {/* Header */}
-        <div className="animate-on-scroll" style={{ textAlign: "center", marginBottom: "40px" }}>
+      <div style={{ maxWidth: "860px", margin: "0 auto" }}>
+        {/* Section Header */}
+        <div
+          className="animate-on-scroll"
+          style={{ textAlign: "center", marginBottom: "36px" }}
+        >
           <div
             style={{
               display: "inline-flex",
@@ -110,7 +123,7 @@ export function DocumentoFAQ() {
               marginBottom: "16px",
             }}
           >
-            <span>Truthful &amp; Transparent Answers</span>
+            <span>FAQ &amp; Verification</span>
           </div>
 
           <h2
@@ -127,14 +140,29 @@ export function DocumentoFAQ() {
             Frequently Asked Questions
           </h2>
 
-          <p style={{ fontSize: "16px", color: "#445451", lineHeight: 1.6, margin: "0 auto 28px auto", maxWidth: "660px" }}>
-            Clear answers derived directly from our verified product capabilities, legal governance architecture, and current release scope.
+          <p
+            style={{
+              fontSize: "16px",
+              color: "#445451",
+              lineHeight: 1.6,
+              margin: "0 auto 28px auto",
+              maxWidth: "640px",
+            }}
+          >
+            Clear, verified answers regarding our supported jurisdictions, AI architecture, and legal boundaries.
           </p>
 
           {/* Search Bar */}
-          <div style={{ maxWidth: "480px", margin: "0 auto 20px auto", position: "relative" }}>
+          <div
+            style={{
+              maxWidth: "460px",
+              margin: "0 auto 18px auto",
+              position: "relative",
+            }}
+          >
             <input
               type="text"
+              aria-label="Search frequently asked questions"
               placeholder="Search frequently asked questions..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -147,7 +175,10 @@ export function DocumentoFAQ() {
                 fontSize: "14px",
                 color: "#172322",
                 outline: "none",
+                transition: "border-color 0.15s ease",
               }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "#0D6866")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "#DCE5E1")}
             />
             <svg
               width="16"
@@ -156,6 +187,9 @@ export function DocumentoFAQ() {
               fill="none"
               stroke="#6E7F7C"
               strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
               style={{ position: "absolute", left: "12px", top: "12px" }}
             >
               <circle cx="11" cy="11" r="8" />
@@ -172,8 +206,9 @@ export function DocumentoFAQ() {
                   background: "none",
                   border: "none",
                   color: "#6E7F7C",
-                  fontSize: "16px",
+                  fontSize: "15px",
                   cursor: "pointer",
+                  padding: "2px 6px",
                 }}
                 aria-label="Clear search"
               >
@@ -183,42 +218,53 @@ export function DocumentoFAQ() {
           </div>
 
           {/* Category Filter Pills */}
-          <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "6px" }}>
-            {["ALL", "Coverage & Scope", "Legal & Ethics", "AI & Accuracy", "Security & Privacy", "Collaboration"].map(
-              (cat) => (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              flexWrap: "wrap",
+              gap: "6px",
+            }}
+          >
+            {categories.map((cat) => {
+              const isSelected = selectedCategory === cat;
+              return (
                 <button
                   key={cat}
                   type="button"
+                  aria-pressed={isSelected}
                   onClick={() => setSelectedCategory(cat)}
                   style={{
                     padding: "5px 12px",
                     borderRadius: "6px",
-                    border: "1px solid",
-                    borderColor: selectedCategory === cat ? "#0D6866" : "#DCE5E1",
-                    background: selectedCategory === cat ? "#0D6866" : "#FFFFFF",
-                    color: selectedCategory === cat ? "#FFFFFF" : "#445451",
+                    border: `1px solid ${isSelected ? "#063C3D" : "#DCE5E1"}`,
+                    background: isSelected ? "#063C3D" : "#FFFFFF",
+                    color: isSelected ? "#FFFFFF" : "#445451",
                     fontSize: "12px",
-                    fontWeight: selectedCategory === cat ? 600 : 500,
+                    fontWeight: isSelected ? 600 : 500,
                     cursor: "pointer",
                     transition: "all 0.15s ease",
                   }}
                 >
                   {cat === "ALL" ? "All Questions" : cat}
                 </button>
-              )
-            )}
+              );
+            })}
           </div>
         </div>
 
         {/* Accordion Container */}
-        <div className="animate-on-scroll delay-150" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div
+          className="animate-on-scroll delay-150"
+          style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+        >
           {filteredFaqs.length === 0 ? (
             <div
               style={{
                 textAlign: "center",
-                padding: "36px",
+                padding: "32px",
                 background: "#FFFFFF",
-                borderRadius: "12px",
+                borderRadius: "10px",
                 border: "1px dashed #DCE5E1",
                 color: "#6E7F7C",
                 fontSize: "14px",
@@ -234,71 +280,88 @@ export function DocumentoFAQ() {
                   key={item.id}
                   style={{
                     background: "#FFFFFF",
-                    border: "1px solid",
-                    borderColor: isOpen ? "#0D6866" : "#DCE5E1",
-                    borderRadius: "12px",
+                    border: `1px solid ${isOpen ? "#0D6866" : "#DCE5E1"}`,
+                    borderRadius: "10px",
                     overflow: "hidden",
                     transition: "border-color 0.15s ease",
-                    boxShadow: isOpen ? "0 4px 16px rgba(13, 104, 102, 0.06)" : "0 1px 3px rgba(0,0,0,0.02)",
                   }}
                 >
                   <button
                     type="button"
-                    onClick={() => toggleItem(item.id)}
+                    id={`faq-btn-${item.id}`}
                     aria-expanded={isOpen}
+                    aria-controls={`faq-answer-${item.id}`}
+                    onClick={() => toggleItem(item.id)}
                     style={{
                       width: "100%",
-                      padding: "18px 22px",
+                      padding: "16px 20px",
                       background: "transparent",
                       border: "none",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      gap: "14px",
+                      gap: "12px",
                       cursor: "pointer",
                       textAlign: "left",
                     }}
                   >
-                    <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                       <span
                         style={{
                           fontSize: "11px",
-                          fontWeight: 700,
-                          color: "#0D6866",
+                          fontWeight: 600,
+                          color: "#063C3D",
                           background: "#DDEFE8",
+                          border: "1px solid #B9DED4",
                           padding: "2px 8px",
                           borderRadius: "4px",
-                          marginRight: "8px",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {item.category}
                       </span>
-                      <span style={{ fontSize: "16px", fontWeight: 650, color: "#063C3D" }}>
+                      <span
+                        style={{
+                          fontSize: "15px",
+                          fontWeight: 650,
+                          color: "#063C3D",
+                          lineHeight: 1.35,
+                        }}
+                      >
                         {item.question}
                       </span>
                     </div>
 
                     <span
                       style={{
-                        fontSize: "18px",
+                        fontSize: "14px",
                         color: isOpen ? "#0D6866" : "#6E7F7C",
                         transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
                         transition: "transform 0.2s ease",
                         flexShrink: 0,
+                        width: "20px",
+                        height: "20px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
+                      aria-hidden="true"
                     >
-                      ▾
+                      ▼
                     </span>
                   </button>
 
                   {isOpen && (
                     <div
+                      id={`faq-answer-${item.id}`}
+                      role="region"
+                      aria-labelledby={`faq-btn-${item.id}`}
                       style={{
-                        padding: "0 22px 20px 22px",
+                        padding: "0 20px 18px 20px",
                         fontSize: "14px",
                         color: "#445451",
                         lineHeight: 1.6,
-                        borderTop: "1px solid #F1F6F4",
+                        borderTop: "1px solid #EEF3F0",
                         paddingTop: "14px",
                       }}
                     >

@@ -1,14 +1,49 @@
 import React from "react";
 
+interface CapabilityItem {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+}
+
 export function DocumentoCapabilities() {
-  const capabilities = [
+  const capabilities: CapabilityItem[] = [
     {
-      title: "Document Intelligence",
-      tag: "Extraction & Vault",
+      title: "Intake & Organization",
       description:
-        "Extracts names, dates, immigration numbers, and biographic entities from PDFs and scans, anchoring each fact to SHA-256 fingerprint records.",
+        "Collect and structure client evidence in a centralized repository with automated categorization and cryptographic audit stamping.",
       icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </svg>
+      ),
+    },
+    {
+      title: "OCR & Field Extraction",
+      description:
+        "Extract dates, biographic details, and form fields directly from PDFs and scanned documents to eliminate manual transcription.",
+      icon: (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
           <polyline points="14 2 14 8 20 8" />
           <line x1="16" y1="13" x2="8" y2="13" />
@@ -18,12 +53,43 @@ export function DocumentoCapabilities() {
       ),
     },
     {
-      title: "Requirement Mapping",
-      tag: "Statutory Engine",
+      title: "Cross-Document Verification",
       description:
-        "Evaluates evidence against versioned USCIS policy memos, statutory criteria (e.g. 8 CFR § 204.5), and jurisdictional guidelines with full audit diffs.",
+        "Compare dates, names, and employer entities across multiple exhibits to identify conflicting facts before filing.",
       icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          <path d="m9 11 2 2 4-4" />
+        </svg>
+      ),
+    },
+    {
+      title: "Requirements Mapping",
+      description:
+        "Map submitted documents directly against visa criteria and jurisdictional checklists with real-time gap analysis.",
+      icon: (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <rect x="3" y="3" width="7" height="7" />
           <rect x="14" y="3" width="7" height="7" />
           <rect x="14" y="14" width="7" height="7" />
@@ -32,12 +98,21 @@ export function DocumentoCapabilities() {
       ),
     },
     {
-      title: "Case Coordination",
-      tag: "Multi-Role Queues",
+      title: "Caseload Coordination",
       description:
-        "Seamless division of responsibilities across managing partners, senior paralegals, and review attorneys with workload capacity balancing.",
+        "Balance workflow across attorneys and paralegals with role-based permissions and strict ethical wall boundaries.",
       icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
           <circle cx="9" cy="7" r="4" />
           <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -46,37 +121,24 @@ export function DocumentoCapabilities() {
       ),
     },
     {
-      title: "Evidence Comparison",
-      tag: "Timeline Alignment",
+      title: "Package Assembly",
       description:
-        "Cross-compares dates, employer entities, and travel histories across diverse exhibits to surface inconsistencies before package submission.",
+        "Generate sequential exhibit tabs, tables of contents, and organized filing packages ready for final legal review.",
       icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-      ),
-    },
-    {
-      title: "Client Collaboration",
-      tag: "Intake & Requests",
-      description:
-        "Mobile-first applicant onboarding, guided multi-lingual questionnaires, explicit document requests, and dual waiting-state transparency.",
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-      ),
-    },
-    {
-      title: "Application Preparation",
-      tag: "Readiness Checklists",
-      description:
-        "Deterministic filing verification, exhibit indexing, USCIS petition bundle assembly, and attorney sign-off workflows prior to physical or digital filing.",
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2">
-          <polyline points="20 6 9 17 4 12" />
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0D6866"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <polygon points="12 2 2 7 12 12 22 7 12 2" />
+          <polyline points="2 17 12 22 22 17" />
+          <polyline points="2 12 12 17 22 12" />
         </svg>
       ),
     },
@@ -93,24 +155,28 @@ export function DocumentoCapabilities() {
     >
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         {/* Section Header */}
-        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 54px auto" }}>
+        <div
+          className="animate-on-scroll"
+          style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 48px auto" }}
+        >
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              padding: "4px 12px",
+              padding: "4px 14px",
               borderRadius: "20px",
               background: "#DDEFE8",
               border: "1px solid #B9DED4",
               fontSize: "12px",
               fontWeight: 600,
               color: "#063C3D",
-              marginBottom: "14px",
+              marginBottom: "16px",
             }}
           >
             <span>Core Capabilities</span>
           </div>
+
           <h2
             style={{
               fontSize: "clamp(28px, 4vw, 42px)",
@@ -118,14 +184,15 @@ export function DocumentoCapabilities() {
               color: "#063C3D",
               lineHeight: 1.2,
               letterSpacing: "-0.025em",
-              margin: "0 0 14px 0",
+              margin: "0 0 16px 0",
               fontFamily: "var(--font-display, Inter, sans-serif)",
             }}
           >
             Engineered for high-volume legal precision.
           </h2>
+
           <p style={{ fontSize: "16px", color: "#445451", lineHeight: 1.6, margin: 0 }}>
-            Every capability in Documento is structured to eliminate administrative chaos, prevent avoidable RFEs, and preserve full attorney accountability.
+            Six core operational areas designed to organize evidence, extract key data, verify cross-document consistency, and assemble complete filing packages.
           </p>
         </div>
 
@@ -133,13 +200,13 @@ export function DocumentoCapabilities() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
-            gap: "24px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
+            gap: "20px",
           }}
         >
           {capabilities.map((cap, i) => (
             <div
-              key={i}
+              key={cap.title}
               className={`animate-on-scroll ${
                 i % 3 === 0 ? "delay-100" : i % 3 === 1 ? "delay-200" : "delay-300"
               }`}
@@ -147,57 +214,36 @@ export function DocumentoCapabilities() {
                 background: "#F8F7F2",
                 border: "1px solid #DCE5E1",
                 borderRadius: "14px",
-                padding: "28px 26px",
-                transition: "all 0.2s ease",
+                padding: "24px",
                 display: "flex",
                 flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#0D6866";
-                e.currentTarget.style.background = "#FFFFFF";
-                e.currentTarget.style.boxShadow = "0 8px 24px rgba(6, 60, 61, 0.06)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#DCE5E1";
-                e.currentTarget.style.background = "#F8F7F2";
-                e.currentTarget.style.boxShadow = "none";
+                gap: "14px",
+                transition: "border-color 0.15s ease",
               }}
             >
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "10px",
+                  background: "#DDEFE8",
+                  border: "1px solid #B9DED4",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                {cap.icon}
+              </div>
+
               <div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-                  <div
-                    style={{
-                      width: "44px",
-                      height: "44px",
-                      borderRadius: "10px",
-                      background: "#DDEFE8",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {cap.icon}
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 650,
-                      color: "#063C3D",
-                      background: "#E7EFEB",
-                      padding: "3px 8px",
-                      borderRadius: "6px",
-                    }}
-                  >
-                    {cap.tag}
-                  </span>
-                </div>
                 <h3
                   style={{
-                    fontSize: "18px",
+                    fontSize: "17px",
                     fontWeight: 700,
                     color: "#063C3D",
-                    margin: "0 0 10px 0",
+                    margin: "0 0 8px 0",
                     fontFamily: "var(--font-display, Inter, sans-serif)",
                   }}
                 >
