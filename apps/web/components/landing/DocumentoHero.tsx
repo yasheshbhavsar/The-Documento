@@ -668,20 +668,22 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
           </a>
         </div>
 
-        {/* Interactive Live AI Dossier Showcase */}
+        {/* Illustrative AI Dossier Showcase */}
         <div
-          className="animate-on-scroll delay-300 glass-panel"
+          id="hero-dossier-showcase"
+          className="animate-on-scroll delay-300"
           style={{
             marginTop: "36px",
-            borderRadius: "18px",
-            padding: "24px",
+            borderRadius: "14px",
+            padding: "20px 24px 24px 24px",
             background: "#FFFFFF",
             border: "1px solid #DCE5E1",
-            boxShadow: "0 10px 30px rgba(6, 60, 61, 0.05), 0 1px 3px rgba(6, 60, 61, 0.03)",
+            boxShadow: "0 4px 20px rgba(6, 60, 61, 0.04)",
             position: "relative",
             zIndex: 2,
           }}
         >
+          {/* Header: Restrained, Factual Context */}
           <div
             style={{
               display: "flex",
@@ -689,44 +691,45 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               justifyContent: "space-between",
               flexWrap: "wrap",
               gap: "12px",
-              paddingBottom: "18px",
+              paddingBottom: "16px",
               borderBottom: "1px solid #DCE5E1",
-              marginBottom: "20px",
+              marginBottom: "16px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div>
               <div
                 style={{
-                  width: "10px",
-                  height: "10px",
-                  borderRadius: "50%",
-                  background: "#176B50",
-                }}
-                className="status-dot-pulse"
-              />
-              <span style={{ fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>
-                Live Verification Radar: Canadian Super Visa Dossier
-              </span>
-              <span
-                style={{
-                  background: "#DDEFE8",
-                  color: "#063C3D",
-                  padding: "2px 8px",
-                  borderRadius: "12px",
                   fontSize: "11px",
                   fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "#0D6866",
+                  marginBottom: "4px",
                 }}
               >
-                Applicant: PANKAJ KALIDAS PATEL
-              </span>
+                Illustrative Document-Intelligence Preview
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>
+                  Canadian Super Visa Case Dossier
+                </span>
+                <span
+                  style={{
+                    background: "#DDEFE8",
+                    color: "#063C3D",
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    fontWeight: 650,
+                  }}
+                >
+                  Applicant: Maria Elena Vasquez
+                </span>
+              </div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#6E7F7C" }}>
-              <span style={{ color: "#176B50", fontWeight: 650 }}>16/16 Files Verified</span>
-              <span>•</span>
-              <span>100% Field Precision</span>
-              <span>•</span>
-              <span style={{ color: "#0D6866", fontWeight: 600 }}>SHA-256 Provenance</span>
+            <div style={{ fontSize: "12px", color: "#6E7F7C" }}>
+              Sample Dossier • Human Attorney Adjudication Required
             </div>
           </div>
 
@@ -740,62 +743,75 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
 const DOSSIER_DEMO_ITEMS = [
   {
     id: "imm5257",
-    filename: "0. IMM5257e - Application for Visitor Visa",
-    tag: "IRCC XFA Form",
-    category: "Government Forms & Correspondence",
-    conf: "0.99",
-    source: "Adobe LiveCycle XFA XML Dataset",
-    hash: "sha256:7f8a91c2...b42e90",
+    tabLabel: "IMM 5257 Form",
+    hasIssue: true,
+    filename: "IMM 5257 Application for Visitor Visa (Super Visa)",
+    category: "Statutory Application Form",
+    source: "IRCC AcroForm (v06-2023) • Page 3, Statutory Questions",
+    status: {
+      type: "attention" as const,
+      badge: "Needs Attention",
+      message: "Prior 2023 visa refusal declared. Flagged for attorney statutory statement review.",
+    },
     fields: [
-      { label: "Unique Client Identifier (UCI)", value: "1113386574", conf: 0.99, tag: "AcroForm XFA" },
-      { label: "Available Funds (CAD)", value: "$20,000 CAD", conf: 0.99, tag: "Liquidity Check" },
-      { label: "Prior Visa Refusal Disclosure", value: "Declared: 2023 Study Visa Refusal", conf: 0.98, tag: "Statutory Admissibility" },
-      { label: "Principal Applicant", value: "Pankaj Kalidas Patel", conf: 0.98, tag: "Biographic Match" },
+      { label: "Unique Client Identifier (UCI)", value: "8194028511", status: "Extracted", statusType: "neutral" as const },
+      { label: "Inviting Host (Child in Canada)", value: "Lucas Vasquez (Toronto, ON)", status: "Verified", statusType: "ready" as const },
+      { label: "Prior Refusal Disclosure", value: "Declared: 2023 Study Visa Refusal", status: "Needs Review", statusType: "attention" as const },
+      { label: "Principal Applicant", value: "Maria Elena Vasquez", status: "Verified", statusType: "ready" as const },
     ],
   },
   {
     id: "medical",
-    filename: "11. PROOF OF UPFRONT MEDICAL",
-    tag: "Apollo Hospitals",
-    category: "Police and Medical Documents",
-    conf: "0.99",
-    source: "RapidOCR Neural Layout Engine (150 DPI)",
-    hash: "sha256:9e3c11da...884fc1",
+    tabLabel: "Medical Assessment",
+    filename: "eMedical Upfront Health Assessment Sheet",
+    category: "Statutory Medical Admissibility",
+    source: "IRCC eMedical Clinic Summary (IME #31849204)",
+    status: {
+      type: "ready" as const,
+      badge: "Cleared",
+      message: "No statutory health inadmissibility identified under IRPA § 38(1).",
+    },
     fields: [
-      { label: "Upfront Medical Identifier (UMI)", value: "U012019036", conf: 0.98, tag: "eMedical Record" },
-      { label: "Immigration Medical Exam (IME)", value: "22007306", conf: 0.98, tag: "IRCC Verified" },
-      { label: "Medical Examiner Doctor", value: "Dr. Dhiraj Saxena", conf: 0.96, tag: "Panel Physician" },
-      { label: "Medical Examination Date", value: "2025-04-29", conf: 0.98, tag: "Validity 12mo" },
+      { label: "Upfront Medical Identifier (UMI)", value: "U940182650", status: "Verified", statusType: "ready" as const },
+      { label: "Immigration Medical Exam (IME)", value: "31849204", status: "Completed", statusType: "ready" as const },
+      { label: "Designated Panel Physician", value: "Dr. Alistair Finch, MD", status: "Verified", statusType: "neutral" as const },
+      { label: "Admissibility Determination", value: "Passed (Valid 12 Months)", status: "Cleared", statusType: "ready" as const },
     ],
   },
   {
     id: "finance",
-    filename: "6. PROOF OF FINANCIAL SUPPORT - CA Net Worth",
-    tag: "Net Worth Valuation",
-    category: "Financial Evidence & Forensics",
-    conf: "0.99",
-    source: "Financial Forensics & Property Parser",
-    hash: "sha256:3a4b5c77...771ad2",
+    tabLabel: "Financial Proof (LICO)",
+    filename: "Proof of Financial Support — CRA Notice of Assessment",
+    category: "Financial Support & Eligibility",
+    source: "CRA Notice of Assessment (2024 Tax Year)",
+    status: {
+      type: "ready" as const,
+      badge: "Threshold Met",
+      message: "Host income ($98,450 CAD) exceeds statutory LICO requirement ($44,530 CAD for 3-person household).",
+    },
     fields: [
-      { label: "CA Certified Total Net Worth (INR)", value: "Rs. 1,69,45,000/-", conf: 0.98, tag: "Liquid + Immovable" },
-      { label: "CA Certified Total Net Worth (CAD)", value: "CAD $260,692", conf: 0.98, tag: "LICO Met (382%)" },
-      { label: "Chartered Accountant Firm", value: "JAISHIL PATEL & CO", conf: 0.95, tag: "ICAI Registered" },
-      { label: "CA Unique Document Identification (UDIN)", value: "25137580BMUOISI831", conf: 0.99, tag: "ICAI Portal Verified" },
+      { label: "Line 15000 Total Income", value: "$98,450 CAD", status: "Verified", statusType: "ready" as const },
+      { label: "Statutory 2024 LICO Threshold", value: "$44,530 CAD (Household of 3)", status: "Exceeded", statusType: "ready" as const },
+      { label: "CRA Tax Assessment Year", value: "2024 Tax Year", status: "Valid", statusType: "neutral" as const },
+      { label: "Host Sponsor", value: "Lucas Vasquez", status: "Verified", statusType: "ready" as const },
     ],
   },
   {
     id: "insurance",
-    filename: "12. CLIENT INFORMATION - Super Visa Insurance",
-    tag: "Manulife Super Visa",
-    category: "Insurance & Accommodation Evidence",
-    conf: "0.99",
-    source: "Statutory Insurance Policy Inspector",
-    hash: "sha256:1d2e3f44...990b7a",
+    tabLabel: "Super Visa Insurance",
+    filename: "Comprehensive Super Visa Medical Insurance Policy",
+    category: "Mandatory Healthcare Undertaking",
+    source: "Canadian Underwriter Policy Certificate (AZ-CAN-SV-8841920)",
+    status: {
+      type: "ready" as const,
+      badge: "Policy Validated",
+      message: "Prepaid 365-day emergency medical coverage exceeds statutory $100,000 CAD minimum.",
+    },
     fields: [
-      { label: "Insurance Provider", value: "Manulife Financial", conf: 0.95, tag: "Approved Canadian Underwriter" },
-      { label: "Insurance Policy Number", value: "CMX217018133", conf: 0.98, tag: "Policy Bound" },
-      { label: "Coverage Amount", value: "$100,000 USD / CAD", conf: 0.98, tag: "IRCC Super Visa Compliant" },
-      { label: "Insurance Deductible", value: "$0.00 (Nil)", conf: 0.95, tag: "Zero Out-of-Pocket" },
+      { label: "Canadian Insurance Underwriter", value: "Allianz Global Assistance Canada", status: "Authorized", statusType: "neutral" as const },
+      { label: "Emergency Medical Coverage", value: "$150,000 CAD (Prepaid 365 Days)", status: "Compliant", statusType: "ready" as const },
+      { label: "Policy Deductible", value: "$0.00 CAD (Nil Deductible)", status: "Standard", statusType: "neutral" as const },
+      { label: "Policy Status", value: "Active & Bound", status: "Valid", statusType: "ready" as const },
     ],
   },
 ];
@@ -808,12 +824,15 @@ function LiveDossierHeroDemo({ onOpenLogin }: { onOpenLogin: (portal?: "firm" | 
     <div>
       {/* Exhibit selector tabs */}
       <div
+        role="tablist"
+        aria-label="Super Visa sample documents"
         style={{
           display: "flex",
           gap: "8px",
           overflowX: "auto",
           paddingBottom: "12px",
-          marginBottom: "14px",
+          marginBottom: "16px",
+          scrollbarWidth: "none",
         }}
       >
         {DOSSIER_DEMO_ITEMS.map((item, idx) => {
@@ -821,185 +840,256 @@ function LiveDossierHeroDemo({ onOpenLogin }: { onOpenLogin: (portal?: "firm" | 
           return (
             <button
               key={item.id}
+              role="tab"
+              id={`dossier-tab-${item.id}`}
+              aria-selected={isSelected}
+              aria-controls={`dossier-panel-${item.id}`}
               type="button"
               onClick={() => setSelectedIdx(idx)}
               style={{
-                background: isSelected ? "#0D6866" : "#FFFFFF",
-                color: isSelected ? "#FFFFFF" : "#063C3D",
+                background: isSelected ? "#0D6866" : "#F8F7F2",
+                color: isSelected ? "#FFFFFF" : "#445451",
                 border: isSelected ? "1px solid #063C3D" : "1px solid #DCE5E1",
-                padding: "8px 14px",
-                borderRadius: "10px",
-                fontSize: "13px",
-                fontWeight: 650,
+                padding: "7px 13px",
+                borderRadius: "8px",
+                fontSize: "12.5px",
+                fontWeight: isSelected ? 650 : 550,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "8px",
-                transition: "all 0.18s ease",
-                boxShadow: isSelected ? "0 4px 12px rgba(13, 104, 102, 0.22)" : "0 1px 2px rgba(6, 60, 61, 0.03)",
+                gap: "7px",
+                transition: "all 0.16s ease",
               }}
             >
-              <span
-                style={{
-                  width: "6px",
-                  height: "6px",
-                  borderRadius: "50%",
-                  background: isSelected ? "#2A9288" : "#B9DED4",
-                }}
-              />
-              <span>{item.tag}</span>
+              {item.hasIssue ? (
+                <span
+                  title="Needs attention"
+                  style={{
+                    width: "7px",
+                    height: "7px",
+                    borderRadius: "50%",
+                    background: isSelected ? "#FFD166" : "#D97706",
+                  }}
+                />
+              ) : (
+                <span
+                  style={{
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: isSelected ? "#B9DED4" : "#9BB8B0",
+                  }}
+                />
+              )}
+              <span>{item.tabLabel}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Main split-view showcase card */}
+      {/* Selected document detail panel */}
       <div
+        role="tabpanel"
+        id={`dossier-panel-${activeDoc.id}`}
+        aria-labelledby={`dossier-tab-${activeDoc.id}`}
         style={{
-          background: "#FFFFFF",
-          border: "1px solid #DCE5E1",
-          borderRadius: "14px",
-          padding: "20px",
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: "20px",
-          boxShadow: "0 4px 16px rgba(6, 60, 61, 0.04)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: "24px",
+          alignItems: "start",
         }}
       >
-        {/* Left Side: Document Metadata & Classification */}
-        <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        {/* Left Column: Document Identity, Status Callout, Provenance, & CTA */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-              <span
-                style={{
-                  background: "#EAF6F0",
-                  color: "#176B50",
-                  padding: "3px 9px",
-                  borderRadius: "12px",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  border: "1px solid #B9DED4",
-                }}
-              >
-                CONFIDENCE: {activeDoc.conf} (Match)
-              </span>
-              <span style={{ fontSize: "11px", color: "#6E7F7C", fontFamily: "monospace" }}>
-                {activeDoc.hash}
-              </span>
-            </div>
-
-            <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 6px 0" }}>
+            <h3
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#063C3D",
+                margin: "0 0 4px 0",
+                lineHeight: 1.35,
+              }}
+            >
               {activeDoc.filename}
             </h3>
-            <p style={{ fontSize: "13px", color: "#445451", margin: "0 0 14px 0" }}>
-              Category: <strong>{activeDoc.category}</strong>
-            </p>
-
-            <div
-              style={{
-                background: "#F8F7F2",
-                border: "1px solid #DCE5E1",
-                borderRadius: "10px",
-                padding: "12px 14px",
-                fontSize: "12px",
-                color: "#445451",
-                marginBottom: "16px",
-              }}
-            >
-              <div style={{ fontWeight: 650, color: "#063C3D", marginBottom: "4px" }}>
-                Extraction Method: {activeDoc.source}
-              </div>
-              <div style={{ color: "#6E7F7C" }}>
-                Extracted with zero manual entry, anchored to page geometry with tamper-evident audit trail.
-              </div>
+            <div style={{ fontSize: "12.5px", color: "#6E7F7C" }}>
+              Category: <span style={{ color: "#172322", fontWeight: 600 }}>{activeDoc.category}</span>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => onOpenLogin("firm")}
-            className="hover-lift"
+          {/* Attention / Ready Status Callout */}
+          <div
             style={{
-              background: "#0D6866",
-              color: "#FFFFFF",
-              border: "none",
-              padding: "10px 18px",
-              borderRadius: "8px",
-              fontSize: "13px",
-              fontWeight: 650,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              boxShadow: "0 2px 8px rgba(13, 104, 102, 0.25)",
+              padding: "12px 14px",
+              borderRadius: "10px",
+              background: activeDoc.status.type === "attention" ? "#FEF9EE" : "#F0F8F5",
+              border: `1px solid ${activeDoc.status.type === "attention" ? "#F3DFB0" : "#B9DED4"}`,
             }}
           >
-            <span>Open in Full Legal AI Dossier Workbench</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Right Side: Structured Fields Verified */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <div style={{ fontSize: "12px", fontWeight: 700, color: "#6E7F7C", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-            Extracted Structured Entities ({activeDoc.fields.length})
-          </div>
-
-          {activeDoc.fields.map((field) => (
             <div
-              key={field.label}
               style={{
-                background: "#F8F7F2",
-                border: "1px solid #DCE5E1",
-                borderRadius: "10px",
-                padding: "10px 14px",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#0D6866";
-                e.currentTarget.style.background = "#FFFFFF";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#DCE5E1";
-                e.currentTarget.style.background = "#F8F7F2";
+                gap: "8px",
+                marginBottom: "4px",
               }}
             >
-              <div>
-                <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 550, marginBottom: "2px" }}>
-                  {field.label}
-                </div>
-                <div style={{ fontSize: "13px", color: "#063C3D", fontWeight: 700 }}>
-                  {field.value}
-                </div>
-              </div>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "18px",
+                  height: "18px",
+                  borderRadius: "50%",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  background: activeDoc.status.type === "attention" ? "#F59E0B" : "#0D6866",
+                  color: "#FFFFFF",
+                }}
+              >
+                {activeDoc.status.type === "attention" ? "!" : "✓"}
+              </span>
+              <span
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: activeDoc.status.type === "attention" ? "#92400E" : "#063C3D",
+                }}
+              >
+                {activeDoc.status.badge}
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: "12px",
+                lineHeight: 1.45,
+                color: activeDoc.status.type === "attention" ? "#78350F" : "#284A43",
+              }}
+            >
+              {activeDoc.status.message}
+            </div>
+          </div>
 
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <span
+          {/* Compact Source Hint */}
+          <div
+            style={{
+              fontSize: "11.5px",
+              color: "#6E7F7C",
+              lineHeight: 1.4,
+            }}
+          >
+            <span style={{ fontWeight: 600, color: "#445451" }}>Source:</span> {activeDoc.source}
+          </div>
+
+          {/* Route CTA */}
+          <div>
+            <button
+              type="button"
+              onClick={() => onOpenLogin("firm")}
+              className="hover-lift"
+              style={{
+                background: "#0D6866",
+                color: "#FFFFFF",
+                border: "none",
+                padding: "9px 16px",
+                borderRadius: "8px",
+                fontSize: "12.5px",
+                fontWeight: 650,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                transition: "background 0.15s ease",
+              }}
+            >
+              <span>Open in Case Dossier Workbench</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column: Representative Extracted Fields */}
+        <div>
+          <div
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              color: "#6E7F7C",
+              marginBottom: "10px",
+            }}
+          >
+            Extracted Key Fields
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {activeDoc.fields.map((field) => {
+              const isAttention = field.statusType === "attention";
+              const isReady = field.statusType === "ready";
+              return (
+                <div
+                  key={field.label}
                   style={{
-                    background: "#DDEFE8",
-                    color: "#063C3D",
-                    fontSize: "11px",
-                    fontWeight: 650,
-                    padding: "2px 8px",
-                    borderRadius: "10px",
+                    background: "#F8F7F2",
+                    border: isAttention ? "1px solid #F3DFB0" : "1px solid #E4ECE8",
+                    borderRadius: "8px",
+                    padding: "9px 12px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "12px",
                   }}
                 >
-                  {field.tag}
-                </span>
-                <div style={{ fontSize: "10px", color: "#176B50", fontWeight: 600, marginTop: "2px" }}>
-                  ✓ {(field.conf * 100).toFixed(0)}% Conf
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#6E7F7C",
+                        marginBottom: "2px",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {field.label}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 650,
+                        color: isAttention ? "#92400E" : "#172322",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {field.value}
+                    </div>
+                  </div>
+
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      fontSize: "11px",
+                      fontWeight: 650,
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      background: isAttention ? "#FEF3C7" : isReady ? "#DDEFE8" : "#E8ECEB",
+                      color: isAttention ? "#92400E" : isReady ? "#063C3D" : "#445451",
+                    }}
+                  >
+                    {field.status}
+                  </span>
                 </div>
-              </div>
-            </div>
-          ))}
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

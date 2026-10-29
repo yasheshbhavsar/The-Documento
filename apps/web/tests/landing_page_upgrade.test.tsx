@@ -117,13 +117,15 @@ describe("Landing Page Enhanced Features & Quality Gate", () => {
       expect(screen.getByText(/Managing it shouldn’t be\./i)).toBeDefined();
       expect(screen.getAllByText(/Scattered Documents & Version Confusion/i).length).toBeGreaterThan(0);
       expect(screen.getByText(/With Documento Vault/i)).toBeDefined();
+      expect(screen.getByRole("tab", { name: /Evidence Management/i })).toBeDefined();
+      expect(screen.getByRole("tab", { name: /Statutory Criteria/i })).toBeDefined();
+      expect(screen.getByRole("tab", { name: /Timeline & Bottlenecks/i })).toBeDefined();
 
-      // Switch to Side-by-side mode
-      const matrixBtn = screen.getByRole("button", { name: /Full Side-by-Side Matrix/i });
-      fireEvent.click(matrixBtn);
-      expect(screen.getByText(/1\. Evidence Management/i)).toBeDefined();
-      expect(screen.getByText(/2\. Statutory Criteria/i)).toBeDefined();
-      expect(screen.getByText(/3\. Timeline & Bottlenecks/i)).toBeDefined();
+      // Switch to Challenge 2
+      const tab2 = screen.getByRole("tab", { name: /Statutory Criteria/i });
+      fireEvent.click(tab2);
+      expect(screen.getAllByText(/Unclear Requirements & Regulatory Guesswork/i).length).toBeGreaterThan(0);
+      expect(screen.getByText(/With Documento Rule Engine/i)).toBeDefined();
     });
   });
 
