@@ -16,7 +16,7 @@ import { GuidedQuestionnaireModal } from "../components/modals/GuidedQuestionnai
 import { AlertBanner } from "../components/common/NotificationToast";
 import { DocumentoNavbar } from "../components/landing/DocumentoNavbar";
 import { DocumentoHero } from "../components/landing/DocumentoHero";
-import { DocumentoPreview } from "../components/landing/DocumentoPreview";
+import { DocumentoEvidenceStory } from "../components/landing/DocumentoEvidenceStory";
 import { DocumentoCoverageExplorer } from "../components/landing/DocumentoCoverageExplorer";
 import { DocumentoProblemSolution } from "../components/landing/DocumentoProblemSolution";
 import { DocumentoWorkflow } from "../components/landing/DocumentoWorkflow";
@@ -422,7 +422,7 @@ export default function Home() {
           <DocumentoHero
             onOpenLogin={handleOpenLogin}
           />
-          <DocumentoPreview />
+          <DocumentoEvidenceStory />
           <DocumentoCoverageExplorer />
           <DocumentoProblemSolution />
           <DocumentoWorkflow />
