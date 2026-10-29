@@ -722,8 +722,8 @@
 }
 
 @keyframes orbitBreath {
-  0%, 100% { transform: translate(-50%, -62%) scale(0.98); opacity: 0.75; }
-  50% { transform: translate(-50%, -62%) scale(1.03); opacity: 1; }
+  0%, 100% { transform: translate(-50%, -50%) scale(0.98); opacity: 0.75; }
+  50% { transform: translate(-50%, -50%) scale(1.03); opacity: 1; }
 }
 
 @keyframes outputArrive {
@@ -771,7 +771,7 @@
     order: 2;
     padding: 4px 0 8px;
   }
-  .engineOrbit { width: 142px; height: 142px; transform: translate(-50%, -58%); }
+  .engineOrbit { width: 142px; height: 142px; transform: translate(-50%, -50%); }
   .engineCore { width: 112px; height: 112px; }
   .engineSteps { margin-top: 18px; }
   .stage:nth-child(3) { order: 3; }
