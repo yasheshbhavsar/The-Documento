@@ -25,7 +25,7 @@ export function DocumentoNavbar({
   }, []);
 
   const navLinks = [
-    { href: "#preview", label: "Interactive Preview" },
+    { href: "#preview", label: "Evidence Preview" },
     { href: "#coverage", label: "Visa Coverage" },
     { href: "#comparison", label: "Problem & Solution" },
     { href: "#workflow", label: "6-Step Journey" },
