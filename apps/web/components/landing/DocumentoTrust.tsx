@@ -136,69 +136,6 @@ export function DocumentoTrust() {
           >
             Immigration casework demands accountable human oversight. Documento is engineered to support licensed legal professionals with structured evidence organization—never to replace their judgment.
           </p>
-
-          {/* Navigation by topic */}
-          <div
-            role="navigation"
-            aria-label="Trust Principles"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "4px",
-              marginTop: "8px",
-              borderTop: "1px solid #DCE7E3",
-              paddingTop: "14px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "11.5px",
-                fontWeight: 650,
-                color: "#7B8E8B",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                marginBottom: "6px",
-              }}
-            >
-              Governance Pillars
-            </div>
-
-            {principles.map((p, idx) => {
-              const isSelected = activePrincipleIdx === idx;
-              return (
-                <button
-                  key={p.title}
-                  type="button"
-                  onClick={() => {
-                    setActivePrincipleIdx(idx);
-                    const el = document.getElementById(`principle-row-${idx}`);
-                    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "9px 12px",
-                    borderRadius: "6px",
-                    background: isSelected ? "#EAF5EF" : "transparent",
-                    color: isSelected ? "#073D40" : "#5D6E7F",
-                    border: "none",
-                    borderLeft: isSelected ? "3px solid #169B77" : "3px solid transparent",
-                    fontSize: "13.5px",
-                    fontWeight: isSelected ? 650 : 500,
-                    cursor: "pointer",
-                    textAlign: "left",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  <span>{p.title}</span>
-                  <span style={{ fontSize: "11px", color: isSelected ? "#07594F" : "#7B8E8B" }}>
-                    ✓
-                  </span>
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         {/* RIGHT COLUMN: ~2/3 (Principles & Operational Boundaries Matrix) */}

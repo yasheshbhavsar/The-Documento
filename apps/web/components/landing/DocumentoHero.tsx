@@ -6,7 +6,6 @@ import { Globe, type Marker } from "../ui/cobe-globe";
 import OrbitImages from "../ui/OrbitImages";
 
 const ROTATING_HERO_HEADLINES = [
-  "Smarter Document Workflows.",
   "Clearer by Design.",
   "Workflows, Reimagined.",
   "AI-Powered Clarity.",
@@ -214,7 +213,6 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
             >
               Every immigration case.
               <br />
-              <span className="sr-only">Clearer by design.</span>
               <RotatingText
                 texts={ROTATING_HERO_HEADLINES}
                 effect="blur"
