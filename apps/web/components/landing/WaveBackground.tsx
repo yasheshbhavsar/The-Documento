@@ -4,7 +4,7 @@ import React from "react";
 
 /**
  * WaveBackground
- * Renders the Documento warm ivory canvas (#FAF9F6) wrapper.
+ * Renders the Documento white canvas (#ffffff) wrapper.
  * Provides a calm, clean, distraction-free backdrop for all sections.
  */
 export function WaveBackground({
@@ -20,7 +20,7 @@ export function WaveBackground({
     <div
       className={`relative w-full overflow-hidden ${className}`}
       style={{
-        background: "#FAF9F6",
+        background: "#ffffff",
         color: "#172322",
         minHeight: "100%",
         ...style,

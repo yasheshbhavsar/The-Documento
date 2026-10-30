@@ -26,6 +26,7 @@ import { DocumentoTrust } from "../components/landing/DocumentoTrust";
 import { DocumentoFAQ } from "../components/landing/DocumentoFAQ";
 import { DocumentoFooter } from "../components/landing/DocumentoFooter";
 import { WaveBackground } from "../components/landing/WaveBackground";
+import { SectionWaveBackground } from "../components/landing/SectionWaveBackground";
 import { DocumentoLoginModal } from "../components/auth/DocumentoLoginModal";
 import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
 import { useAnimationOnScroll } from "../components/landing/useAnimationOnScroll";
@@ -343,7 +344,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: currentUser ? "var(--bg, #F8F7F2)" : "#FAF9F6" }}>
+    <div className="min-h-screen" style={{ background: currentUser ? "var(--bg, #F8F7F2)" : "#ffffff" }}>
       {/* Global Alert Notification (Floating Toast Notification) */}
       {bannerAlert && (
         <div
@@ -422,16 +423,32 @@ export default function Home() {
           <DocumentoHero
             onOpenLogin={handleOpenLogin}
           />
-          <DocumentoPreview />
-          <DocumentoCoverageExplorer />
-          <DocumentoProblemSolution />
-          <DocumentoWorkflow />
-          <DocumentoInteractiveTools
-            onOpenLogin={handleOpenLogin}
-          />
-          <DocumentoCapabilities />
-          <DocumentoTrust />
-          <DocumentoFAQ />
+          <SectionWaveBackground>
+            <DocumentoPreview />
+          </SectionWaveBackground>
+          <SectionWaveBackground>
+            <DocumentoCoverageExplorer />
+          </SectionWaveBackground>
+          <SectionWaveBackground>
+            <DocumentoProblemSolution />
+          </SectionWaveBackground>
+          <SectionWaveBackground>
+            <DocumentoWorkflow />
+          </SectionWaveBackground>
+          <SectionWaveBackground>
+            <DocumentoInteractiveTools
+              onOpenLogin={handleOpenLogin}
+            />
+          </SectionWaveBackground>
+          <SectionWaveBackground>
+            <DocumentoCapabilities />
+          </SectionWaveBackground>
+          <SectionWaveBackground>
+            <DocumentoTrust />
+          </SectionWaveBackground>
+          <SectionWaveBackground>
+            <DocumentoFAQ />
+          </SectionWaveBackground>
           <DocumentoFooter
             onOpenLogin={handleOpenLogin}
           />

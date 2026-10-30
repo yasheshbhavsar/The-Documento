@@ -4,7 +4,7 @@
  */
 export const landingTokens = {
   colors: {
-    bg: "#FAF9F6",         // Warm ivory section surface
+    bg: "#ffffff",         // Warm ivory section surface -> pure white
     heading: "#073D40",    // Headings and strong text
     primary: "#07594F",    // Buttons, active controls, links
     primaryHover: "#05413A",

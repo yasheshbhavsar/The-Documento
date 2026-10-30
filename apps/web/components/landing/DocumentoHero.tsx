@@ -438,8 +438,9 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               rotation={-12}
               duration={26}
               itemSize={125}
+              itemRadius={24}
               depth={0.65}
-              showPath={true}
+              showPath={false}
               pathColor="#0D6866"
               pathWidth={2.4}
               shadow={0}
