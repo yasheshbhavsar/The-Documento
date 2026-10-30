@@ -165,9 +165,9 @@ export function DocumentoWorkflow() {
     <section
       id="workflow"
       style={{
-        padding: "96px 24px",
+        padding: "88px 24px",
         scrollMarginTop: "80px",
-        background: "transparent",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <div

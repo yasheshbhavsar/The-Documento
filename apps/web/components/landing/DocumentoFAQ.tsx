@@ -101,9 +101,9 @@ export function DocumentoFAQ() {
     <section
       id="faq"
       style={{
-        padding: "96px 24px 120px",
+        padding: "88px 24px",
         scrollMarginTop: "80px",
-        background: "transparent",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <div

@@ -198,8 +198,9 @@ export function DocumentoPreview() {
     <section
       id="preview"
       style={{
-        padding: "88px 24px 96px",
+        padding: "72px 24px",
         background: "transparent",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
