@@ -106,9 +106,9 @@ export function DocumentoCapabilities() {
     <section
       id="capabilities"
       style={{
-        padding: "88px 24px",
+        padding: "96px 24px",
         scrollMarginTop: "80px",
-        borderBottom: "1px solid #DCE7E3",
+        background: "transparent",
       }}
     >
       <div

@@ -26,7 +26,7 @@ import { DocumentoTrust } from "../components/landing/DocumentoTrust";
 import { DocumentoFAQ } from "../components/landing/DocumentoFAQ";
 import { DocumentoFooter } from "../components/landing/DocumentoFooter";
 import { WaveBackground } from "../components/landing/WaveBackground";
-import { SectionWaveBackground } from "../components/landing/SectionWaveBackground";
+import { FluidSectionContainer } from "../components/landing/FluidSectionContainer";
 import { DocumentoLoginModal } from "../components/auth/DocumentoLoginModal";
 import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
 import { useAnimationOnScroll } from "../components/landing/useAnimationOnScroll";
@@ -423,32 +423,18 @@ export default function Home() {
           <DocumentoHero
             onOpenLogin={handleOpenLogin}
           />
-          <SectionWaveBackground>
+          <FluidSectionContainer>
             <DocumentoPreview />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
             <DocumentoCoverageExplorer />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
             <DocumentoProblemSolution />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
             <DocumentoWorkflow />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
             <DocumentoInteractiveTools
               onOpenLogin={handleOpenLogin}
             />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
             <DocumentoCapabilities />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
             <DocumentoTrust />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
             <DocumentoFAQ />
-          </SectionWaveBackground>
+          </FluidSectionContainer>
           <DocumentoFooter
             onOpenLogin={handleOpenLogin}
           />

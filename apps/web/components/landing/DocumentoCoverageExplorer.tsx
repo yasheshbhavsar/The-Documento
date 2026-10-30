@@ -597,10 +597,9 @@ export function DocumentoCoverageExplorer() {
     <section
       id="coverage"
       style={{
-        padding: "80px 24px",
+        padding: "96px 24px",
         scrollMarginTop: "80px",
         background: "transparent",
-        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
