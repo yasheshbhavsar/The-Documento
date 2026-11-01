@@ -214,13 +214,13 @@ SAMPLE_DOCUMENTS: list[dict[str, str]] = [
         "id": "sample-professional-resume",
         "title": "Professional Tech Resume / CV (Full Stack & AI Engineer)",
         "category": "employment_records",
-        "filename": "RESUME_YASHESH_BHAVSAR.pdf",
+        "filename": "RESUME_ROHAN_VERMA.pdf",
         "description": "Modern software engineering resume with candidate contact, LinkedIn/GitHub, technical skills, and experience.",
         "text_content": (
-            "YASHESH BHAVSAR\n"
+            "ROHAN VERMA\n"
             "Senior Full Stack & AI Systems Engineer\n"
-            "Ahmedabad, Gujarat, India | yashesh@example.com | +91 98765 43210\n"
-            "LinkedIn: linkedin.com/in/yashesh-bhavsar | GitHub: github.com/yasheshbhavsar\n\n"
+            "Ahmedabad, Gujarat, India | rohan.verma@example.com | +91 98765 43210\n"
+            "LinkedIn: linkedin.com/in/rohan-verma | GitHub: github.com/rohanverma\n\n"
             "PROFESSIONAL SUMMARY\n"
             "Results-driven Senior Full Stack & AI Systems Engineer with 6+ years of experience architecting "
             "high-performance web applications, enterprise microservices, and multimodal AI document processing pipelines.\n\n"
@@ -412,10 +412,14 @@ async def analyze_document_standalone(
     except Exception:
         extracted_fields = []
 
-    # Format fields into provenances and structured response
+    # Format fields into provenances and structured response (deduplicated by field_name)
     formatted_fields: list[dict[str, Any]] = []
+    seen_field_names: set[str] = set()
     for field in extracted_fields:
         try:
+            if field.field_name in seen_field_names:
+                continue
+            seen_field_names.add(field.field_name)
             prov = format_field_extraction_provenance(field)
             formatted_fields.append({
                 "field_name": field.field_name,
@@ -654,8 +658,26 @@ async def analyze_document_standalone(
     major_issues = sum(1 for qf in quality_findings if qf["severity"] == "major")
     overall_health_score = max(20, round(100 - (critical_issues * 30) - (major_issues * 15)))
 
-    # Geometries summary
+    # Geometries summary & rendered page previews for Spatial Canvas
     total_blocks = sum(len(p.blocks) for p in pages)
+    page_images: dict[int, str] = {}
+    if file is not None and document_bytes:
+        try:
+            import base64
+            import fitz
+
+            if mime_type == "application/pdf" or document_bytes.startswith(b"%PDF"):
+                pdf_doc = fitz.open(stream=document_bytes, filetype="pdf")
+                for idx in range(min(len(pdf_doc), 20)):
+                    pix = pdf_doc[idx].get_pixmap(matrix=fitz.Matrix(1.6, 1.6), alpha=False)
+                    img_b64 = base64.b64encode(pix.tobytes("jpeg", jpg_quality=85)).decode("ascii")
+                    page_images[idx + 1] = f"data:image/jpeg;base64,{img_b64}"
+                pdf_doc.close()
+            elif mime_type.startswith("image/"):
+                img_b64 = base64.b64encode(document_bytes).decode("ascii")
+                page_images[1] = f"data:{mime_type};base64,{img_b64}"
+        except Exception:
+            pass
 
     return {
         "status": "success",
@@ -691,6 +713,7 @@ async def analyze_document_standalone(
                     "rotation_corrected": p.is_rotation_corrected,
                     "detected_rotation": p.detected_rotation,
                     "block_count": len(p.blocks),
+                    "page_image_data_url": page_images.get(p.page_number),
                     "blocks": [
                         {
                             "block_idx": b.block_idx,
@@ -698,7 +721,7 @@ async def analyze_document_standalone(
                             "confidence": round(b.confidence, 2),
                             "coordinates": [b.x0, b.y0, b.x1, b.y1],
                         }
-                        for b in p.blocks[:15]  # first 15 blocks per page for preview
+                        for b in p.blocks[:35]  # up to 35 blocks per page for spatial canvas preview
                     ],
                 }
                 for p in pages
@@ -717,3 +740,195 @@ async def analyze_text_standalone(request: AnalyzeTextRequest) -> dict[str, Any]
         filename=request.filename,
         declared_category=request.declared_category,
     )
+
+
+class DossierDocumentInput(BaseModel):
+    title: str = Field(..., description="Document title or filename")
+    text: str = Field(..., description="Document text content")
+    declared_category: Optional[str] = None
+
+
+class CompareDocumentSetRequest(BaseModel):
+    applicant_name: Optional[str] = Field(None, description="Optional reference applicant full name")
+    applicant_dob: Optional[str] = Field(None, description="Optional reference date of birth")
+    documents: List[DossierDocumentInput] = Field(..., min_length=2, description="2 or more documents belonging to the same person")
+
+
+@router.post("/compare-set")
+async def compare_same_person_document_set(payload: CompareDocumentSetRequest) -> dict[str, Any]:
+    """
+    Cross-compares a set of documents belonging to the same person.
+    Detects changes/discrepancies across:
+    1. Applicant Legal Name (spelling, middle name/patronymic omission, maiden/married surname change)
+    2. Date of Birth (DD/MM vs MM/DD inversion, year/day discrepancy across Passport, Aadhaar, PAN, Birth/Marriage certs)
+    3. Parents' Names (Father's Name & Mother's Name changes, '-bhai'/'-ben'/'-kumar' suffixes, middle name expansions)
+    4. Residential Address & PIN/Postal Code changes (Permanent Passport address vs Present Aadhaar/Bank address)
+    """
+    from backend.app.ai.comparators import (
+        compare_addresses,
+        compare_dates_of_birth,
+        compare_names,
+        compare_parent_names,
+    )
+
+    analyzed_docs: list[dict[str, Any]] = []
+    for idx, doc_in in enumerate(payload.documents):
+        res = await analyze_document_standalone(
+            file=None,
+            raw_text=doc_in.text,
+            filename=doc_in.title,
+            declared_category=doc_in.declared_category,
+        )
+        fields_map: dict[str, str] = {}
+        for f in res.get("extracted_fields", []):
+            fname = f.get("field_name")
+            val = (f.get("normalized_value") or f.get("original_value") or "").strip()
+            if fname and val and fname not in fields_map:
+                fields_map[fname] = val
+
+        # Also pull from specialized identity compliance if present
+        ident = res.get("specialized_intelligence", {}).get("identity_compliance", {})
+        ind_p = ident.get("indian_passport") or {}
+        aadh = ident.get("aadhaar") or {}
+        pan_d = ident.get("pan") or {}
+
+        holder_name = (
+            fields_map.get("full_name")
+            or fields_map.get("applicant_name")
+            or fields_map.get("groom_name")
+            or fields_map.get("bride_name")
+            or ind_p.get("holder_name")
+            or aadh.get("holder_name")
+            or pan_d.get("holder_name")
+        )
+        dob_val = (
+            fields_map.get("date_of_birth")
+            or ind_p.get("date_of_birth")
+            or aadh.get("dob")
+        )
+        father_val = (
+            fields_map.get("father_legal_name")
+            or fields_map.get("father_name")
+            or fields_map.get("father_or_spouse_name")
+            or fields_map.get("guardian_or_spouse_name")
+            or fields_map.get("groom_father_name")
+            or fields_map.get("bride_father_name")
+            or ind_p.get("father_name")
+            or aadh.get("father_or_spouse")
+        )
+        mother_val = (
+            fields_map.get("mother_legal_name")
+            or fields_map.get("mother_name")
+            or ind_p.get("mother_name")
+        )
+        addr_val = (
+            fields_map.get("residential_address")
+            or fields_map.get("address")
+            or fields_map.get("permanent_address")
+            or ind_p.get("address")
+        )
+
+        analyzed_docs.append({
+            "doc_index": idx + 1,
+            "title": doc_in.title,
+            "category": res.get("recognition", {}).get("category", "supporting_evidence"),
+            "holder_name": holder_name,
+            "date_of_birth": dob_val,
+            "father_name": father_val,
+            "mother_name": mother_val,
+            "address": addr_val,
+            "extracted_fields": res.get("extracted_fields", []),
+        })
+
+    has_marriage_doc = any(d["category"] in ("civil_status_family", "civil_status") or "marriage" in d["title"].lower() for d in analyzed_docs)
+
+    discrepancies: list[dict[str, Any]] = []
+
+    def _compare_dimension(
+        dimension_key: str,
+        dimension_label: str,
+        field_attr: str,
+        comparator_fn,
+    ):
+        docs_with_val = [d for d in analyzed_docs if d.get(field_attr)]
+        if len(docs_with_val) < 2:
+            return
+        anchor = docs_with_val[0]
+        anchor_val = anchor[field_attr]
+        for other in docs_with_val[1:]:
+            other_val = other[field_attr]
+            cmp_res = comparator_fn(anchor_val, other_val)
+            # Also catch middle-name / patronymic omission on applicant name even if compare_names marks subset as concordant
+            is_subset_name_diff = (
+                dimension_key == "applicant_name"
+                and cmp_res.variation_type == "name_change"
+                and anchor_val.strip().lower() != other_val.strip().lower()
+            )
+            if not cmp_res.is_concordant or is_subset_name_diff:
+                discrepancies.append({
+                    "dimension": dimension_key,
+                    "dimension_label": dimension_label,
+                    "severity": "critical" if cmp_res.is_confirmed_contradiction else "major" if dimension_key in ("date_of_birth", "father_name", "mother_name") else "minor",
+                    "variation_type": cmp_res.variation_type or "discrepancy",
+                    "anchor_document": anchor["title"],
+                    "anchor_value": anchor_val,
+                    "compared_document": other["title"],
+                    "compared_value": other_val,
+                    "similarity_score": round(cmp_res.similarity_score, 2),
+                    "is_confirmed_contradiction": cmp_res.is_confirmed_contradiction,
+                    "explanation": cmp_res.explanation,
+                    "recommended_action": cmp_res.suggested_clarification or (
+                        "Execute a notarized 'One and the Same Person' Affidavit bridging the name/middle-name variance across documents."
+                    ),
+                })
+
+    _compare_dimension(
+        "applicant_name",
+        "Applicant Legal Name",
+        "holder_name",
+        lambda a, b: compare_names(a, b, has_marriage_record=has_marriage_doc),
+    )
+    _compare_dimension(
+        "date_of_birth",
+        "Date of Birth (DOB)",
+        "date_of_birth",
+        compare_dates_of_birth,
+    )
+    _compare_dimension(
+        "father_name",
+        "Father's Name",
+        "father_name",
+        lambda a, b: compare_parent_names(a, b, parent_role="Father"),
+    )
+    _compare_dimension(
+        "mother_name",
+        "Mother's Name",
+        "mother_name",
+        lambda a, b: compare_parent_names(a, b, parent_role="Mother"),
+    )
+    _compare_dimension(
+        "address",
+        "Residential Address & PIN Code",
+        "address",
+        compare_addresses,
+    )
+
+    return {
+        "status": "success",
+        "documents_analyzed": len(analyzed_docs),
+        "discrepancies_count": len(discrepancies),
+        "identity_matrix": [
+            {
+                "title": d["title"],
+                "category": d["category"],
+                "holder_name": d["holder_name"],
+                "date_of_birth": d["date_of_birth"],
+                "father_name": d["father_name"],
+                "mother_name": d["mother_name"],
+                "address": d["address"],
+            }
+            for d in analyzed_docs
+        ],
+        "discrepancies": discrepancies,
+    }
+

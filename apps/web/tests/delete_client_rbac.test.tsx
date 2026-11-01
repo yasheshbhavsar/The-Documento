@@ -12,11 +12,11 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
   const mockClients: ClientProfile[] = [
     {
       id: "client-001",
-      first_name: "Yash",
-      last_name: "Bhavsar",
-      email: "yash.bhavsar@example.com",
+      first_name: "Aarav",
+      last_name: "Mehta",
+      email: "aarav.mehta@example.com",
       nationality: "IND",
-      phone: "+917202063858",
+      phone: "+919876500101",
       organization_id: "org-01",
       created_at: "2026-10-23T10:00:00Z",
       portal_credentials_provided: true,
@@ -24,11 +24,11 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
     },
     {
       id: "client-002",
-      first_name: "Yashesh",
-      last_name: "Bhavsar",
-      email: "yashesh.bhavsar@example.com",
+      first_name: "Rohan",
+      last_name: "Verma",
+      email: "rohan.verma@example.com",
       nationality: "IND",
-      phone: "+917202063859",
+      phone: "+919876500102",
       organization_id: "org-01",
       created_at: "2026-10-23T10:05:00Z",
       portal_credentials_provided: true,
@@ -180,7 +180,7 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
       const clientsTab = container.querySelector("#tab-btn-clients");
       fireEvent.click(clientsTab!);
 
-      const deleteFirst = screen.getByRole("button", { name: /Delete client Yash Bhavsar/i });
+      const deleteFirst = screen.getByRole("button", { name: /Delete client Aarav Mehta/i });
       fireEvent.click(deleteFirst);
 
       expect(window.confirm).toHaveBeenCalled();
@@ -212,7 +212,7 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
 
       // Verify "Manage Credentials" exists, but NO "Delete Client" button
       await waitFor(() => {
-        expect(screen.getByText("yash.bhavsar@example.com")).toBeDefined();
+        expect(screen.getByText("aarav.mehta@example.com")).toBeDefined();
       });
 
       const deleteButtons = screen.queryAllByRole("button", { name: /Delete client/i });

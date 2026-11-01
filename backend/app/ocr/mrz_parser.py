@@ -250,14 +250,25 @@ class MRZParser:
         issuing_country = ICAO_COUNTRY_CODES.get(issuing_code, issuing_code)
 
         name_part = line1_cand[5:44]
+        # Strip trailing '<' filler first so we don't accidentally split on trailing '<<<<'
+        # when the separator '<<' between surname and given names had an OCR 'K<' or '<K' glitch
+        name_trimmed = re.sub(r"<+$", "", name_part)
+        # Also strip trailing OCR filler noise like '<K<' at the very end
+        name_trimmed = re.sub(r"(?:<+[KL0-9])+$", "", name_trimmed)
+
+        if "<<" not in name_trimmed:
+            # Repair common OCR misread of '<<' separator as 'K<', '<K', or 'L<'
+            name_trimmed = re.sub(r"^([A-Z]{2,20}?)[KL]<([A-Z])", r"\1<<\2", name_trimmed)
+            name_trimmed = re.sub(r"^([A-Z]{2,20}?)<[KL]([A-Z])", r"\1<<\2", name_trimmed)
+
         surname = ""
         given_names = ""
-        if "<<" in name_part:
-            parts = name_part.split("<<", 1)
+        if "<<" in name_trimmed:
+            parts = name_trimmed.split("<<", 1)
             surname = parts[0].replace("<", " ").strip()
             given_names = parts[1].replace("<", " ").strip()
         else:
-            surname = name_part.replace("<", " ").strip()
+            surname = name_trimmed.replace("<", " ").strip()
 
         full_name = f"{given_names} {surname}".strip() if given_names and surname else surname or given_names
 

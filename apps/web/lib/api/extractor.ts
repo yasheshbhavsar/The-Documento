@@ -175,6 +175,7 @@ export interface ExtractorAnalysisResult {
       rotation_corrected: boolean;
       detected_rotation: number;
       block_count: number;
+      page_image_data_url?: string;
       blocks: Array<{
         block_idx: number;
         text: string;
@@ -369,12 +370,12 @@ Registered under the authority of the Registrar of Marriages, Ahmedabad Municipa
     id: "sample-professional-resume",
     title: "Professional Tech Resume / CV (Full Stack & AI Engineer)",
     category: "employment_records",
-    filename: "RESUME_YASHESH_BHAVSAR.pdf",
+    filename: "RESUME_ROHAN_VERMA.pdf",
     description: "Modern software engineering resume with candidate contact, LinkedIn/GitHub, technical skills, and experience.",
-    text_content: `YASHESH BHAVSAR
+    text_content: `ROHAN VERMA
 Senior Full Stack & AI Systems Engineer
-Ahmedabad, Gujarat, India | yashesh@example.com | +91 98765 43210
-LinkedIn: linkedin.com/in/yashesh-bhavsar | GitHub: github.com/yasheshbhavsar
+Ahmedabad, Gujarat, India | rohan.verma@example.com | +91 98765 43210
+LinkedIn: linkedin.com/in/rohan-verma | GitHub: github.com/rohanverma
 
 PROFESSIONAL SUMMARY
 Results-driven Senior Full Stack & AI Systems Engineer with 6+ years of experience architecting high-performance web applications, enterprise microservices, and multimodal AI document processing pipelines.

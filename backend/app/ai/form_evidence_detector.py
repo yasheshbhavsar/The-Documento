@@ -10,6 +10,8 @@ from backend.app.ai.comparators import (
     compare_names,
     compare_dates_of_birth,
     compare_document_numbers,
+    compare_parent_names,
+    compare_addresses,
     FieldComparisonResult,
 )
 
@@ -178,5 +180,142 @@ def analyze_cross_document_consistency(
                                 confidence_score=0.91,
                             )
                         )
+
+    # 5. Multi-Document Cross-Comparison (Anchor Document vs All Other Documents in Set)
+    # Checks: (a) Applicant Name (including middle-name / honorific variance), (b) DOB,
+    #         (c) Father's Name & Mother's Name, (d) Residential Address & PIN Code.
+    def _get_field(doc_obj: Dict[str, Any], field_names: List[str]) -> Optional[Dict[str, Any]]:
+        for f in doc_obj.get("extracted_fields", []):
+            if f.get("field_name") in field_names:
+                val = (f.get("normalized_value") or f.get("original_value") or "").strip()
+                if val:
+                    return f
+        return None
+
+    # 5a. Cross-Document Date of Birth Comparison across all documents that contain a DOB
+    dob_docs = []
+    for d in documents:
+        dob_f = _get_field(d, ["date_of_birth", "dob", "birth_date"])
+        if dob_f:
+            dob_docs.append((d, dob_f))
+
+    if len(dob_docs) >= 2:
+        anchor_doc, anchor_dob_f = dob_docs[0]
+        anchor_dob_val = (anchor_dob_f.get("normalized_value") or anchor_dob_f.get("original_value") or "").strip()
+        for other_doc, other_dob_f in dob_docs[1:]:
+            other_dob_val = (other_dob_f.get("normalized_value") or other_dob_f.get("original_value") or "").strip()
+            dob_cmp = compare_dates_of_birth(anchor_dob_val, other_dob_val)
+            if not dob_cmp.is_concordant:
+                sev = "critical" if dob_cmp.is_confirmed_contradiction else "major"
+                findings.append(
+                    DiscrepancyFinding(
+                        finding_type="consistency_discrepancy",
+                        severity=sev,
+                        title=f"Cross-Document Date of Birth Mismatch: {anchor_doc.get('title')} vs {other_doc.get('title')}",
+                        description=(
+                            f"'{anchor_doc.get('title')}' lists Date of Birth as '{anchor_dob_val}', whereas "
+                            f"'{other_doc.get('title')}' lists '{other_dob_val}'. {dob_cmp.explanation}"
+                        ),
+                        evidence_text=f"{anchor_doc.get('title')}: '{anchor_dob_val}' | {other_doc.get('title')}: '{other_dob_val}'",
+                        source_location=other_dob_f.get("source_location"),
+                        related_documents=[
+                            {"id": str(anchor_doc.get("id")), "title": anchor_doc.get("title"), "version": anchor_doc.get("version", 1)},
+                            {"id": str(other_doc.get("id")), "title": other_doc.get("title"), "version": other_doc.get("version", 1)},
+                        ],
+                        related_fields=["document.date_of_birth"],
+                        relevant_requirement="8 CFR § 103.2(b)(1) / IRCC Identity Concordance — Date of Birth Verification",
+                        recommended_action="Cross-verify against government Birth Certificate and Passport biodata page; obtain statutory correction or affidavit if secondary ID has a typographical DOB error.",
+                        clarification_question=dob_cmp.suggested_clarification,
+                        uncertainty_limitations="Evaluated across extracted date fields from multiple applicant documents.",
+                        is_confirmed_contradiction=dob_cmp.is_confirmed_contradiction,
+                        confidence_score=dob_cmp.similarity_score,
+                    )
+                )
+
+    # 5b. Cross-Document Father's Name & Mother's Name Comparison
+    for parent_role, field_keys in [
+        ("Father", ["father_legal_name", "father_name", "father_or_spouse_name", "guardian_or_spouse_name", "groom_father_name", "bride_father_name"]),
+        ("Mother", ["mother_legal_name", "mother_name"]),
+    ]:
+        parent_docs = []
+        for d in documents:
+            pf = _get_field(d, field_keys)
+            if pf:
+                parent_docs.append((d, pf))
+
+        if len(parent_docs) >= 2:
+            anc_doc, anc_pf = parent_docs[0]
+            anc_val = (anc_pf.get("normalized_value") or anc_pf.get("original_value") or "").strip()
+            for oth_doc, oth_pf in parent_docs[1:]:
+                oth_val = (oth_pf.get("normalized_value") or oth_pf.get("original_value") or "").strip()
+                p_cmp = compare_parent_names(anc_val, oth_val, parent_role=parent_role)
+                if not p_cmp.is_concordant:
+                    sev = "critical" if p_cmp.is_confirmed_contradiction else "major"
+                    findings.append(
+                        DiscrepancyFinding(
+                            finding_type="consistency_discrepancy",
+                            severity=sev,
+                            title=f"{parent_role}'s Name Discrepancy Across Documents ({p_cmp.variation_type or 'variance'})",
+                            description=(
+                                f"'{anc_doc.get('title')}' records {parent_role}'s Name as '{anc_val}', whereas "
+                                f"'{oth_doc.get('title')}' records '{oth_val}'. {p_cmp.explanation}"
+                            ),
+                            evidence_text=f"{anc_doc.get('title')}: '{anc_val}' | {oth_doc.get('title')}: '{oth_val}'",
+                            source_location=oth_pf.get("source_location"),
+                            related_documents=[
+                                {"id": str(anc_doc.get("id")), "title": anc_doc.get("title"), "version": anc_doc.get("version", 1)},
+                                {"id": str(oth_doc.get("id")), "title": oth_doc.get("title"), "version": oth_doc.get("version", 1)},
+                            ],
+                            related_fields=[f"document.{parent_role.lower()}_name"],
+                            relevant_requirement="Consular Civil Lineage Verification — Parent Name Concordance (Passport Page 36 vs Civil/Tax IDs)",
+                            recommended_action=(
+                                f"Execute a notarized 'One and the Same Person' Affidavit from {parent_role.lower()} "
+                                f"confirming that '{anc_val}' and '{oth_val}' refer to the same individual."
+                            ),
+                            clarification_question=p_cmp.suggested_clarification,
+                            uncertainty_limitations="Automated comparison of extracted parental lineage fields across submitted documents.",
+                            is_confirmed_contradiction=p_cmp.is_confirmed_contradiction,
+                            confidence_score=p_cmp.similarity_score,
+                        )
+                    )
+
+    # 5c. Cross-Document Residential Address & PIN Code Comparison
+    addr_docs = []
+    for d in documents:
+        af = _get_field(d, ["address", "residential_address", "permanent_address"])
+        if af:
+            addr_docs.append((d, af))
+
+    if len(addr_docs) >= 2:
+        anc_doc, anc_af = addr_docs[0]
+        anc_addr = (anc_af.get("normalized_value") or anc_af.get("original_value") or "").strip()
+        for oth_doc, oth_af in addr_docs[1:]:
+            oth_addr = (oth_af.get("normalized_value") or oth_af.get("original_value") or "").strip()
+            a_cmp = compare_addresses(anc_addr, oth_addr)
+            if not a_cmp.is_concordant:
+                findings.append(
+                    DiscrepancyFinding(
+                        finding_type="consistency_discrepancy",
+                        severity="minor" if not a_cmp.is_confirmed_contradiction else "major",
+                        title=f"Residential Address Change / Mismatch: {anc_doc.get('title')} vs {oth_doc.get('title')}",
+                        description=(
+                            f"'{anc_doc.get('title')}' lists address '{anc_addr}', while "
+                            f"'{oth_doc.get('title')}' lists '{oth_addr}'. {a_cmp.explanation}"
+                        ),
+                        evidence_text=f"{anc_doc.get('title')}: '{anc_addr}' | {oth_doc.get('title')}: '{oth_addr}'",
+                        source_location=oth_af.get("source_location"),
+                        related_documents=[
+                            {"id": str(anc_doc.get("id")), "title": anc_doc.get("title"), "version": anc_doc.get("version", 1)},
+                            {"id": str(oth_doc.get("id")), "title": oth_doc.get("title"), "version": oth_doc.get("version", 1)},
+                        ],
+                        related_fields=["document.address"],
+                        relevant_requirement="Address History & Jurisdiction Verification (Permanent vs Present Address)",
+                        recommended_action="Disclose both Permanent Address (as on Passport) and Present/Mailing Address on visa forms, and attach supporting proof of current residence.",
+                        clarification_question=a_cmp.suggested_clarification,
+                        uncertainty_limitations="Evaluated locality tokens and 6-digit PIN / postal codes across identity and financial records.",
+                        is_confirmed_contradiction=a_cmp.is_confirmed_contradiction,
+                        confidence_score=a_cmp.similarity_score,
+                    )
+                )
 
     return findings

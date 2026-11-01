@@ -105,10 +105,10 @@ def test_analyze_missing_input_error(client: TestClient):
 def test_analyze_resume_extraction(client: TestClient):
     """Verify resume recognition, candidate name from text header, links, and skills."""
     resume_text = (
-        "YASHESH BHAVSAR\n"
+        "ROHAN VERMA\n"
         "Senior Full Stack & AI Systems Engineer\n"
-        "Ahmedabad, Gujarat, India | yashesh@example.com | +91 98765 43210\n"
-        "LinkedIn: linkedin.com/in/yashesh-bhavsar | GitHub: github.com/yasheshbhavsar\n\n"
+        "Ahmedabad, Gujarat, India | rohan.verma@example.com | +91 98765 43210\n"
+        "LinkedIn: linkedin.com/in/rohan-verma | GitHub: github.com/rohanverma\n\n"
         "PROFESSIONAL SUMMARY\n"
         "Senior Full Stack & AI Systems Engineer with 6+ years of experience designing scalable web and cloud architectures.\n\n"
         "TECHNICAL SKILLS\n"
@@ -125,7 +125,7 @@ def test_analyze_resume_extraction(client: TestClient):
 
     resp = client.post(
         "/api/v1/extractor/analyze",
-        data={"raw_text": resume_text, "filename": "Yashesh bhavsar - Resume - Final.pdf"},
+        data={"raw_text": resume_text, "filename": "Rohan Verma - Resume - Final.pdf"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -134,11 +134,11 @@ def test_analyze_resume_extraction(client: TestClient):
 
     # Verify extracted fields
     field_map = {f["field_name"]: f["normalized_value"] for f in data["extracted_fields"]}
-    assert "Yashesh Bhavsar" in field_map.get("applicant_name", "") or "Yashesh Bhavsar" in field_map.get("full_name", "")
-    assert field_map.get("email_address") == "yashesh@example.com"
+    assert "Rohan Verma" in field_map.get("applicant_name", "") or "Rohan Verma" in field_map.get("full_name", "")
+    assert field_map.get("email_address") == "rohan.verma@example.com"
     assert "+91 98765 43210" in field_map.get("phone_number", "")
-    assert "linkedin.com/in/yashesh-bhavsar" in field_map.get("linkedin_profile", "")
-    assert "github.com/yasheshbhavsar" in field_map.get("github_profile", "")
+    assert "linkedin.com/in/rohan-verma" in field_map.get("linkedin_profile", "")
+    assert "github.com/rohanverma" in field_map.get("github_profile", "")
     assert "Engineer" in field_map.get("job_title", "") and "Senior" in field_map.get("job_title", "")
     assert "Python" in field_map.get("technical_skills", "")
     assert "Bachelor Of Technology" in field_map.get("degree_title", "")
@@ -146,10 +146,10 @@ def test_analyze_resume_extraction(client: TestClient):
     # Verify resume intelligence section
     assert "resume_intelligence" in data["specialized_intelligence"]
     ri = data["specialized_intelligence"]["resume_intelligence"]
-    assert "Yashesh" in ri["candidate_name"]
-    assert ri["email"] == "yashesh@example.com"
-    assert "linkedin.com/in/yashesh-bhavsar" in ri["linkedin"]
-    assert "github.com/yasheshbhavsar" in ri["github"]
+    assert "Rohan" in ri["candidate_name"]
+    assert ri["email"] == "rohan.verma@example.com"
+    assert "linkedin.com/in/rohan-verma" in ri["linkedin"]
+    assert "github.com/rohanverma" in ri["github"]
 
 
 def test_analyze_aadhaar_pan_identity(client: TestClient):
@@ -221,4 +221,70 @@ def test_analyze_driving_licence_and_voter_id(client: TestClient):
     assert "GJ0120150001234" in field_map.get("driving_licence_number", "").replace(" ", "")
     assert "Gujarat" in field_map.get("driving_licence_jurisdiction", "")
     assert field_map.get("voter_id_number") == "ABC1234567"
+
+
+def test_compare_same_person_document_set_all_dimensions(client: TestClient):
+    """
+    Verify that POST /api/v1/extractor/compare-set detects discrepancies across a set of the
+    same person's documents for:
+    1. Applicant Legal Name (middle name omission, '-kumar'/'-bhai' honorific expansion)
+    2. Date of Birth (DOB year/day discrepancy)
+    3. Parents' Names (Father's Name & Mother's Name changes / patronymic additions)
+    4. Residential Address & PIN Code changes
+    """
+    payload = {
+        "applicant_name": "Vikram Ramesh Mehta",
+        "applicant_dob": "1965-05-14",
+        "documents": [
+            {
+                "title": "PASSPORT_FRONT_BACK.pdf",
+                "text": (
+                    "REPUBLIC OF INDIA\n"
+                    "Passport No: Z3948102\n"
+                    "Surname: MEHTA\n"
+                    "Given Name: VIKRAM RAMESH\n"
+                    "Date of Birth: 14/05/1965\n"
+                    "Father's Legal Name: RAMESH MEHTA\n"
+                    "Mother's Legal Name: SAVITA MEHTA\n"
+                    "Address: 204 SUNRISE APARTMENTS, NAVRANGPURA, AHMEDABAD - 380009\n"
+                ),
+            },
+            {
+                "title": "AADHAAR_CARD.pdf",
+                "text": (
+                    "GOVERNMENT OF INDIA\n"
+                    "Name: Vikram Mehta\n"
+                    "DOB: 14/05/1966\n"
+                    "S/O: Rameshbhai Mohanbhai Mehta\n"
+                    "Address: 12 SHIVALIK BUNGALOWS, SATELLITE, AHMEDABAD - 380015\n"
+                    "4589 1234 9087\n"
+                ),
+            },
+            {
+                "title": "MARRIAGE_CERTIFICATE.pdf",
+                "text": (
+                    "MEMORANDUM OF MARRIAGE\n"
+                    "Date of Marriage: 22/11/1991\n"
+                    "Bridegroom Name: Vikramkumar Rameshbhai Mehta\n"
+                    "Father's Name: Ramesh Mohanbhai Mehta\n"
+                    "Mother's Name: Savitaben Ramesh Mehta\n"
+                    "Address: 204 SUNRISE APARTMENTS, NAVRANGPURA, AHMEDABAD - 380009\n"
+                ),
+            },
+        ],
+    }
+
+    resp = client.post("/api/v1/extractor/compare-set", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert data["documents_analyzed"] == 3
+
+    dims = {d["dimension"] for d in data["discrepancies"]}
+    assert "applicant_name" in dims
+    assert "date_of_birth" in dims
+    assert "father_name" in dims
+    assert "mother_name" in dims
+    assert "address" in dims
+
 

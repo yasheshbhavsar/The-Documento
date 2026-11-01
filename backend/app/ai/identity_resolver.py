@@ -52,6 +52,7 @@ class AadhaarExtraction:
     date_of_birth: Optional[str] = None
     year_of_birth: Optional[int] = None
     father_or_spouse_name: Optional[str] = None
+    address: Optional[str] = None
 
 
 @dataclass
@@ -59,6 +60,7 @@ class PANExtraction:
     is_valid: bool
     pan_number: str
     holder_name: Optional[str] = None
+    father_name: Optional[str] = None
     entity_type: str = "Individual"  # Individual, Company, Firm, Trust, etc.
     fifth_char_surname_match: bool = True
     date_of_birth_or_incorporation: Optional[str] = None
@@ -204,9 +206,25 @@ class IdentityResolver:
 
         # Father or husband name
         father = None
-        rel_m = re.search(r"(?:S/O|D/O|W/O|C/O|आत्मज|पत्नी)[\s:]+([A-Za-z\s\.-]+)", text)
+        rel_m = re.search(
+            r"(?:S/O|D/O|W/O|C/O|Father(?:'s)?\s*Name|आत्मज|पत्नी)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
+            text,
+            re.IGNORECASE,
+        )
         if rel_m:
             father = rel_m.group(1).split("\n")[0].split(",")[0].strip()
+
+        # Address on Aadhaar
+        addr = None
+        addr_m = re.search(r"(?:Address|पता)[\s:]+([^\r\n]+(?:\r?\n[^\r\n]+)?)", text, re.IGNORECASE)
+        if addr_m:
+            raw_addr_lines = [ln.strip() for ln in addr_m.group(1).splitlines() if ln.strip()]
+            filtered_lines = [
+                ln for ln in raw_addr_lines
+                if not re.search(r"^\d{4}\s+\d{4}\s+\d{4}$|^X{4}[- ]X{4}", ln)
+            ]
+            if filtered_lines:
+                addr = ", ".join(filtered_lines)
 
         return AadhaarExtraction(
             is_valid=True,
@@ -216,6 +234,7 @@ class IdentityResolver:
             date_of_birth=dob,
             year_of_birth=yob,
             father_or_spouse_name=father,
+            address=addr,
         )
 
     @staticmethod
@@ -250,9 +269,14 @@ class IdentityResolver:
 
         # Name extraction attempt
         name = None
-        name_m = re.search(r"(?:Name|नाम)[\s:]+([A-Za-z\s\.-]{3,50})", text, re.IGNORECASE)
+        name_m = re.search(r"(?:^|\n)\s*(?:Name|Holder\s*Name|नाम)[\s:]+([A-Za-z\s\.-]{3,50})", text, re.IGNORECASE)
         if name_m:
             name = name_m.group(1).split("\n")[0].strip().title()
+
+        father_name = None
+        father_m = re.search(r"(?:Father(?:'s)?\s*Name|पिता\s*का\s*नाम)[\s:]+([A-Za-z\s\.-]{3,50})", text, re.IGNORECASE)
+        if father_m:
+            father_name = father_m.group(1).split("\n")[0].strip().title()
 
         # Check surname initial
         surname_match = True
@@ -262,7 +286,7 @@ class IdentityResolver:
                 surname_match = False
 
         dob = None
-        dob_m = re.search(r"(?:Date of Birth|Incorporation Date|जन्म तिथि)[\s:]+([0-9]{2}/[0-9]{2}/[0-9]{4})", text)
+        dob_m = re.search(r"(?:Date of Birth|Incorporation Date|DOB|जन्म तिथि)[\s:]+([0-9]{2}/[0-9]{2}/[0-9]{4})", text, re.IGNORECASE)
         if dob_m:
             dob = dob_m.group(1)
 
@@ -270,6 +294,7 @@ class IdentityResolver:
             is_valid=True,
             pan_number=pan_num,
             holder_name=name,
+            father_name=father_name,
             entity_type=entity_types.get(entity_char, "Other"),
             fifth_char_surname_match=surname_match,
             date_of_birth_or_incorporation=dob,
@@ -428,7 +453,7 @@ class IdentityResolver:
             # Father / Guardian
             if re.search(r"(?:Father|Guardian|पिता)", line, re.IGNORECASE) and not father:
                 # Check same line
-                fat_same = re.search(r"(?:Father(?:'s)?(?:\s*Legal)?\s*Name)[\s:]+([A-Za-z\s\.-]+)", line, re.IGNORECASE)
+                fat_same = re.search(r"(?:Father(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Father)[\s:]+([A-Za-z\s\.-]+)", line, re.IGNORECASE)
                 if fat_same:
                     father = fat_same.group(1).strip().title()
                 else:
@@ -441,7 +466,7 @@ class IdentityResolver:
 
             # Mother
             if re.search(r"(?:Mother|माता)", line, re.IGNORECASE) and not mother:
-                mot_same = re.search(r"(?:Mother(?:'s)?(?:\s*Legal)?\s*Name)[\s:]+([A-Za-z\s\.-]+)", line, re.IGNORECASE)
+                mot_same = re.search(r"(?:Mother(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Mother)[\s:]+([A-Za-z\s\.-]+)", line, re.IGNORECASE)
                 if mot_same:
                     mother = mot_same.group(1).strip().title()
                 else:
@@ -453,7 +478,7 @@ class IdentityResolver:
 
             # Spouse
             if re.search(r"(?:Spouse|पति|पत्नी)", line, re.IGNORECASE) and not spouse:
-                sp_same = re.search(r"(?:Spouse(?:'s)?(?:\s*Legal)?\s*Name)[\s:]+([A-Za-z\s\.-]+)", line, re.IGNORECASE)
+                sp_same = re.search(r"(?:Spouse(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Spouse)[\s:]+([A-Za-z\s\.-]+)", line, re.IGNORECASE)
                 if sp_same:
                     spouse = sp_same.group(1).strip().title()
 
@@ -472,10 +497,13 @@ class IdentityResolver:
 
             # Address block
             if re.search(r"(?:Address|पता)", line, re.IGNORECASE):
+                same_addr_m = re.search(r"(?:Permanent\s*Address|Residential\s*Address|Present\s*Address|Address|पता)[\s:]+(.+)$", line, re.IGNORECASE)
+                if same_addr_m and same_addr_m.group(1).strip():
+                    addr_lines.append(same_addr_m.group(1).strip())
                 in_addr = True
                 continue
             if in_addr:
-                if any(k in line.lower() for k in ("fileno", "oldpassport", "observation", "file no", "passport")):
+                if any(k in line.lower() for k in ("fileno", "oldpassport", "observation", "file no", "passport", "father", "mother", "spouse")):
                     in_addr = False
                 else:
                     addr_lines.append(line)

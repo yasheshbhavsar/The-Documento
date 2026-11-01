@@ -1452,6 +1452,8 @@ export const api = {
       email: string;
       phone?: string;
       nationality: string;
+      passport_number?: string;
+      date_of_birth?: string;
       organization_id?: string;
       user_id?: string;
       portal_credentials_provided?: boolean;

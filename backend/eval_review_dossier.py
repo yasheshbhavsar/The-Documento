@@ -11,7 +11,7 @@ from backend.app.ocr.engine import OCREngine
 from backend.app.extraction.classifier import classify_document
 from backend.app.extraction.service import extract_structured_fields
 
-folder = r"C:\Users\Yashesh\Downloads\REVIEW"
+folder = os.environ.get("EVAL_DOSSIER_DIR", "./sample_dossier")
 if not os.path.exists(folder):
     print(f"Directory {folder} does not exist")
     exit(1)

@@ -169,6 +169,8 @@ def extract_structured_fields(
         method: Optional[str] = None,
         model_ver: Optional[str] = None,
     ):
+        if field_name in added_keys:
+            return
         if not original_value or not str(original_value).strip():
             return
 
@@ -348,10 +350,23 @@ def extract_structured_fields(
                     if not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality", "passport")):
                         vis_given = cand
 
+        # Corroborate MRZ vs Visual Surname/Given Names if MRZ had '<' -> 'K' separator glitch
+        if vis_surname and vis_given:
+            existing_sur = next((f.normalized_value for f in extracted_fields if f.field_name == "surname"), "")
+            if "given_names" not in added_keys or (
+                existing_sur and existing_sur.upper().startswith(vis_surname.upper() + "K")
+            ):
+                extracted_fields = [
+                    f for f in extracted_fields
+                    if f.field_name not in ("surname", "given_names", "full_name", "applicant_name")
+                ]
+                for k in ("surname", "given_names", "full_name", "applicant_name"):
+                    added_keys.discard(k)
+
         if "surname" not in added_keys and vis_surname:
-            add_field("surname", "Surname / Family Name", vis_surname, vis_surname.upper(), 1, 0.90)
+            add_field("surname", "Surname / Family Name", vis_surname, vis_surname.upper(), 1, 0.94)
         if "given_names" not in added_keys and vis_given:
-            add_field("given_names", "Given Names", vis_given, vis_given.title(), 1, 0.90)
+            add_field("given_names", "Given Names", vis_given, vis_given.title(), 1, 0.94)
 
         if "full_name" not in added_keys:
             if vis_given and vis_surname:
@@ -498,6 +513,10 @@ def extract_structured_fields(
             add_field("year_of_birth", "Year of Birth", str(aadhaar_info.year_of_birth), str(aadhaar_info.year_of_birth), 1, 0.95, method="statutory_identity_resolver")
         if aadhaar_info.father_or_spouse_name and "guardian_or_spouse_name" not in added_keys:
             add_field("guardian_or_spouse_name", "Father / Spouse Legal Name", aadhaar_info.father_or_spouse_name, aadhaar_info.father_or_spouse_name.title(), 1, 0.92, method="statutory_identity_resolver")
+            if re.search(r"\b(S/O|D/O|Father)\b", full_text, re.IGNORECASE) and "father_legal_name" not in added_keys:
+                add_field("father_legal_name", "Father's Legal Name", aadhaar_info.father_or_spouse_name, aadhaar_info.father_or_spouse_name.title(), 1, 0.92, method="statutory_identity_resolver")
+        if aadhaar_info.address and "residential_address" not in added_keys:
+            add_field("residential_address", "Residential Address", aadhaar_info.address, aadhaar_info.address, 1, 0.92, method="statutory_identity_resolver")
 
     # PAN Card structure & entity classification
     pan_info = IdentityResolver.parse_pan(full_text)
@@ -506,6 +525,12 @@ def extract_structured_fields(
         add_field("pan_taxpayer_type", "PAN Taxpayer Classification", pan_info.entity_type, pan_info.entity_type, 1, 0.98, method="statutory_identity_resolver")
         if pan_info.holder_name and "pan_holder_name" not in added_keys:
             add_field("pan_holder_name", "PAN Registered Name", pan_info.holder_name, pan_info.holder_name, 1, 0.94, method="statutory_identity_resolver")
+            if "full_name" not in added_keys:
+                add_field("full_name", "Full Name", pan_info.holder_name, pan_info.holder_name, 1, 0.94, method="statutory_identity_resolver")
+        if pan_info.father_name and "father_legal_name" not in added_keys:
+            add_field("father_legal_name", "Father's Legal Name", pan_info.father_name, pan_info.father_name, 1, 0.94, method="statutory_identity_resolver")
+        if pan_info.date_of_birth_or_incorporation and "date_of_birth" not in added_keys:
+            add_field("date_of_birth", "Date of Birth", pan_info.date_of_birth_or_incorporation, normalize_date(pan_info.date_of_birth_or_incorporation) or pan_info.date_of_birth_or_incorporation, 1, 0.94, method="statutory_identity_resolver")
 
     # Indian Passport Endorsements (ECR vs ECNR, File Number, Booklet Type, Family, Biodata)
     indian_passport = IdentityResolver.parse_indian_passport(full_text)
@@ -537,8 +562,44 @@ def extract_structured_fields(
             add_field("mother_legal_name", "Mother's Legal Name", indian_passport.mother_name, indian_passport.mother_name, 1, 0.95, method="statutory_identity_resolver")
         if indian_passport.spouse_name and "spouse_legal_name" not in added_keys:
             add_field("spouse_legal_name", "Spouse's Legal Name", indian_passport.spouse_name, indian_passport.spouse_name, 1, 0.95, method="statutory_identity_resolver")
+        if indian_passport.address and "residential_address" not in added_keys:
+            add_field("residential_address", "Permanent / Residential Address", indian_passport.address, indian_passport.address, 1, 0.95, method="statutory_identity_resolver")
         if "passport_booklet_type" not in added_keys:
             add_field("passport_booklet_type", "Passport Booklet Type", indian_passport.booklet_type, indian_passport.booklet_type, 1, 0.95, method="statutory_identity_resolver")
+
+    # Generic Parent & Address Extraction Fallback across Civil / Identity / Supporting Documents
+    if "father_legal_name" not in added_keys:
+        gen_fat_m = re.search(
+            r"(?:Father(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Father)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
+            full_text,
+            re.IGNORECASE,
+        )
+        if gen_fat_m:
+            raw_fat = gen_fat_m.group(1).splitlines()[0].strip()
+            if raw_fat and not any(k in raw_fat.lower() for k in ("mother", "spouse", "address", "date", "birth")):
+                add_field("father_legal_name", "Father's Legal Name", raw_fat, raw_fat.title(), 1, 0.92)
+
+    if "mother_legal_name" not in added_keys:
+        gen_mot_m = re.search(
+            r"(?:Mother(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Mother)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
+            full_text,
+            re.IGNORECASE,
+        )
+        if gen_mot_m:
+            raw_mot = gen_mot_m.group(1).splitlines()[0].strip()
+            if raw_mot and not any(k in raw_mot.lower() for k in ("father", "spouse", "address", "date", "birth")):
+                add_field("mother_legal_name", "Mother's Legal Name", raw_mot, raw_mot.title(), 1, 0.92)
+
+    if "residential_address" not in added_keys:
+        gen_addr_m = re.search(
+            r"(?:Permanent\s*Address|Residential\s*Address|Present\s*Address|Address)[\s:]+([^\r\n]{8,140})",
+            full_text,
+            re.IGNORECASE,
+        )
+        if gen_addr_m:
+            raw_addr = gen_addr_m.group(1).strip()
+            if raw_addr and not any(raw_addr.lower().startswith(p) for p in ("http", "www", "email")):
+                add_field("residential_address", "Residential Address", raw_addr, raw_addr, 1, 0.90)
 
     # Driving Licence detection
     dl_info = IdentityResolver.parse_driving_licence(full_text)
@@ -584,33 +645,28 @@ def extract_structured_fields(
         if "USE OF A FAMILY" in full_text.upper() or "FAMILY MEMBER REPRESENTATIVE" in full_text.upper() or "IMM5713" in (filename or "").upper():
             if "ircc_form_number" not in added_keys:
                 add_field("ircc_form_number", "IRCC Form Identifier", "IMM 5713", "IMM 5713", 1, 0.98)
-            if "PANKAJ KALIDAS" in full_text.upper():
-                if "representative_name" not in added_keys:
-                    add_field("representative_name", "Appointed Family Representative", "Pankaj Kalidas Patel", "Pankaj Kalidas Patel", 1, 0.98)
-                if "full_name" not in added_keys or any(f.field_name == "full_name" and "patel" not in f.normalized_value.lower() for f in extracted_fields):
-                    extracted_fields = [f for f in extracted_fields if f.field_name != "full_name"]
-                    added_keys.discard("full_name")
-                    add_field("full_name", "Full Name", "Pankaj Kalidas Patel", "Pankaj Kalidas Patel", 1, 0.98)
+            rep_m = re.search(r"(?:Representative\s*Name|Appointed\s*Representative)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            if rep_m and "representative_name" not in added_keys:
+                raw_rep = rep_m.group(1).splitlines()[0].strip().title()
+                add_field("representative_name", "Appointed Family Representative", raw_rep, raw_rep, 1, 0.96)
 
-            app_name = re.search(r"\b(HANSABEN\s+PANKAJKUMAR\s+PATEL)\b", full_text, re.IGNORECASE)
+            app_name = re.search(r"(?:Family\s*Member\s*Name|Represented\s*Family\s*Member)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
             if app_name and "represented_family_member" not in added_keys:
-                add_field("represented_family_member", "Represented Family Member", "Hansaben Pankajkumar Patel", "Hansaben Pankajkumar Patel", 1, 0.98)
+                raw_fam = app_name.group(1).splitlines()[0].strip().title()
+                add_field("represented_family_member", "Represented Family Member", raw_fam, raw_fam, 1, 0.96)
 
         # IRCC IMM 5645 Family Information Form
         if "FAMILY INFORMATION" in full_text.upper() or "IMM5645" in (filename or "").upper():
             if "ircc_form_number" not in added_keys:
                 add_field("ircc_form_number", "IRCC Form Identifier", "IMM 5645", "IMM 5645", 1, 0.99)
-            if "PATEL PANKAJ KALIDAS" in full_text.upper() or ("PANKAJ KALIDAS" in full_text.upper() and "PATEL" in full_text.upper()):
-                extracted_fields = [f for f in extracted_fields if f.field_name != "full_name"]
-                added_keys.discard("full_name")
-                add_field("full_name", "Full Name", "Pankaj Kalidas Patel", "Pankaj Kalidas Patel", 1, 0.98)
-            if "PATEL HANSABEN PANKAJKUMAR" in full_text.upper() or "HANSABEN PANKAJKUMAR" in full_text.upper():
-                if "spouse_legal_name" not in added_keys:
-                    add_field("spouse_legal_name", "Spouse's Legal Name", "Hansaben Pankajkumar Patel", "Hansaben Pankajkumar Patel", 1, 0.98)
-            if "PATEL KALIDAS SHIVABHAI" in full_text.upper() and "father_legal_name" not in added_keys:
-                add_field("father_legal_name", "Father's Legal Name", "Kalidas Shivabhai Patel", "Kalidas Shivabhai Patel", 1, 0.98)
-            if "PATEL INDIRABEN KALIDAS" in full_text.upper() and "mother_legal_name" not in added_keys:
-                add_field("mother_legal_name", "Mother's Legal Name", "Indiraben Kalidas Patel", "Indiraben Kalidas Patel", 1, 0.98)
+            app_m = re.search(r"(?:Applicant\s*Name|Full\s*Name)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            if app_m and "full_name" not in added_keys:
+                raw_app = app_m.group(1).splitlines()[0].strip().title()
+                add_field("full_name", "Full Name", raw_app, raw_app, 1, 0.96)
+            sp_m = re.search(r"(?:Spouse\s*or\s*Common-law\s*Partner|Spouse\s*Name)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            if sp_m and "spouse_legal_name" not in added_keys:
+                raw_sp = sp_m.group(1).splitlines()[0].strip().title()
+                add_field("spouse_legal_name", "Spouse's Legal Name", raw_sp, raw_sp, 1, 0.96)
 
         # Memorandum / Certificate of Marriage
         if "MEMRANDUM OF MARRIAGE" in full_text.upper() or "MEMORANDUM OF MARRIAGE" in full_text.upper() or "CERTIFICATE OF MARRIAGE" in full_text.upper() or "MARRIAGE" in (filename or "").upper():
@@ -634,35 +690,21 @@ def extract_structured_fields(
                 add_field("groom_name", "Bridegroom Legal Name", raw_g, raw_g.title(), 1, 0.98)
                 if "full_name" not in added_keys:
                     add_field("full_name", "Full Name", raw_g, raw_g.title(), 1, 0.98)
-            else:
-                groom_m = re.search(r"\b([A-Z\s\.-]{3,35}\s+PATEL),\s*\n+\d+\s*years", full_text)
-                if groom_m and "groom_name" not in added_keys:
-                    raw_g = groom_m.group(1).replace(".", "").strip()
-                    add_field("groom_name", "Bridegroom Legal Name", raw_g, raw_g.title(), 1, 0.98)
-                    if "full_name" not in added_keys:
-                        add_field("full_name", "Full Name", raw_g, raw_g.title(), 1, 0.98)
 
             bride_label_m = re.search(r"(?:FULL\s+NAME\s+OF\s+THE\s+BRIDE|BRIDE\s+NAME)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
             if bride_label_m and "bride_name" not in added_keys:
                 raw_b = bride_label_m.group(1).splitlines()[0].strip()
                 add_field("bride_name", "Bride Legal Name", raw_b, raw_b.title(), 1, 0.98)
-            else:
-                bride_m = re.search(r"\b(HANSA[\s\n]+[A-Z\s\n]+AMIN)", full_text)
-                if bride_m and "bride_name" not in added_keys:
-                    raw_b = " ".join(bride_m.group(1).split())
-                    add_field("bride_name", "Bride Legal Name", raw_b, raw_b.title(), 1, 0.98)
 
-            priest_m = re.search(r"\b([A-Z\s]+TRIVEDI[a-z]*)\s*\n+\d+\s*years", full_text)
+            priest_m = re.search(r"(?:Officiating\s+Priest|Priest\s+Name)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
             if priest_m and "officiating_priest" not in added_keys:
-                raw_p = priest_m.group(1).strip()
+                raw_p = priest_m.group(1).splitlines()[0].strip()
                 add_field("officiating_priest", "Officiating Priest Name", raw_p, raw_p.title(), 1, 0.95)
 
             place_m = re.search(r"(?:Place\s+of\s+Marriage)[\s:]+([^\r\n]{4,80})", full_text, re.IGNORECASE)
             if place_m and "marriage_place" not in added_keys:
                 raw_pl = place_m.group(1).strip()
                 add_field("marriage_place", "Place of Marriage", raw_pl, raw_pl, 1, 0.96)
-            elif "CHELLOVAS" in full_text.upper() and "marriage_place" not in added_keys:
-                add_field("marriage_place", "Place of Marriage", "440, Chellovas, Nava Wadaj, Ahmedabad - 13", "440, Chellovas, Nava Wadaj, Ahmedabad - 13", 1, 0.95)
 
             act_m = re.search(r"\b(Bombay Registration of Marriages Act[^\n\r,]*|Registration of Marriages Act(?:,\s*\d{4})?|Special Marriage Act|Hindu Marriage Act)\b", full_text, re.IGNORECASE)
             if act_m and "marriage_governing_act" not in added_keys:
@@ -1041,18 +1083,9 @@ def extract_structured_fields(
             raw_e = travel_end.group(1).strip()
             add_field("travel_end_date", "Intended Travel End Date", raw_e, normalize_date(raw_e) or raw_e, 1, 0.92)
 
-        if "full_name" not in added_keys:
-            if "PANKAJ KALIDAS" in full_text.upper() and ("PATEL" in full_text.upper() or "PATEL" in (filename or "").upper()):
-                add_field("full_name", "Full Name", "Pankaj Kalidas Patel", "Pankaj Kalidas Patel", 1, 0.98)
-
-        if "HANSABEN PANKAJKUMAR" in full_text.upper() and "spouse_legal_name" not in added_keys:
-            add_field("spouse_legal_name", "Spouse Legal Name", "Hansaben Pankajkumar Patel", "Hansaben Pankajkumar Patel", 1, 0.98)
-
-        if "2025-05-29" in full_text and "form_signing_date" not in added_keys:
-            add_field("form_signing_date", "Form Signing Date", "2025-05-29", "2025-05-29", 1, 0.98)
-
-        if "ETOBICOKE" in full_text.upper() and "prior_travel_history" not in added_keys:
-            add_field("prior_travel_history", "Prior International Travel History", "Canada (Etobicoke) - Multiple visits: 172 days, 108 days", "Canada (Etobicoke) - Multiple visits: 172 days, 108 days", 1, 0.96)
+        sign_date_m = re.search(r"(?:Date\s*Signed|Signing\s*Date)[\s:]*([0-9]{4}-[0-9]{2}-[0-9]{2})", full_text, re.IGNORECASE)
+        if sign_date_m and "form_signing_date" not in added_keys:
+            add_field("form_signing_date", "Form Signing Date", sign_date_m.group(1), sign_date_m.group(1), 1, 0.96)
 
     # 11. INSURANCE & ACCOMMODATION EXTRACTION (Super Visa Coverage)
     if category in ("insurance_accommodation", "supporting_evidence"):
@@ -1085,11 +1118,10 @@ def extract_structured_fields(
             raw_exp = exp_date.group(1).strip().split("\n")[0]
             add_field("insurance_expiry_date", "Insurance Policy Expiry Date", raw_exp, normalize_date(raw_exp), 1, 0.95)
 
-        if "PATEL, PANKAJ KALIDAS" in full_text:
-            if "insured_person_name" not in added_keys:
-                add_field("insured_person_name", "Insured Person Name", "PATEL, PANKAJ KALIDAS", "Pankaj Kalidas Patel", 1, 0.98)
-            if "full_name" not in added_keys:
-                add_field("full_name", "Full Name", "Pankaj Kalidas Patel", "Pankaj Kalidas Patel", 1, 0.98)
+        insured_m = re.search(r"(?:Primary\s*Insured|Insured\s*Person(?:\s*Name)?)[\s:]+([A-Za-z\s,\.-]{3,45})", full_text, re.IGNORECASE)
+        if insured_m and "insured_person_name" not in added_keys:
+            raw_ins = insured_m.group(1).splitlines()[0].strip()
+            add_field("insured_person_name", "Insured Person Name", raw_ins, raw_ins.title(), 1, 0.96)
 
     # 12. POLICE & UPFRONT MEDICAL EXTRACTION (eMedical / IME / UMI)
     if category in ("police_medical", "supporting_evidence"):
@@ -1110,21 +1142,18 @@ def extract_structured_fields(
         if med_clinic and "medical_exam_clinic" not in added_keys:
             add_field("medical_exam_clinic", "Designated Medical Clinic", med_clinic.group(1).strip(), med_clinic.group(1).strip().title(), 1, 0.95)
 
-        med_doc = re.search(r"\b(D[rT]\.?\s*[A-Z\s]+SAXENA)\b", full_text, re.IGNORECASE)
+        med_doc = re.search(r"(?:Panel\s*Physician|Examining\s*Doctor)[\s:]+(Dr\.?\s*[A-Za-z\s\.-]{3,40})", full_text, re.IGNORECASE)
         if med_doc and "medical_examiner_doctor" not in added_keys:
-            add_field("medical_examiner_doctor", "Designated Panel Physician", "Dr. Dhiraj Saxena", "Dr. Dhiraj Saxena", 1, 0.95)
+            raw_doc = med_doc.group(1).splitlines()[0].strip()
+            add_field("medical_examiner_doctor", "Designated Panel Physician", raw_doc, raw_doc.title(), 1, 0.95)
 
         if "501MedicalExamination" in full_text or "501 Medical Examination" in full_text:
             if "medical_exam_type" not in added_keys:
                 add_field("medical_exam_type", "Medical Examination Protocol", "501 Medical Examination (Upfront Visitor)", "501 Medical Examination", 1, 0.96)
 
-        if "PANKAJ KALIDAS" in full_text:
-            if "full_name" not in added_keys:
-                add_field("full_name", "Full Name", "Pankaj Kalidas Patel", "Pankaj Kalidas Patel", 1, 0.98)
-
-        p_med = re.search(r"(?:Identity document number:[\s\n]*|C1684816)([A-Z0-9]{7,10})?", full_text, re.IGNORECASE)
-        if "C1684816" in full_text and "passport_number" not in added_keys:
-            add_field("passport_number", "Passport Number", "C1684816", "C1684816", 1, 0.98)
+        p_med = re.search(r"Identity\s*document\s*number[\s:]+([A-Z0-9]{7,10})", full_text, re.IGNORECASE)
+        if p_med and "passport_number" not in added_keys:
+            add_field("passport_number", "Passport Number", p_med.group(1).upper(), p_med.group(1).upper(), 1, 0.96)
 
     return extracted_fields
 

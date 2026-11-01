@@ -432,3 +432,205 @@ def compare_document_numbers(doc_num_a: str, doc_num_b: str) -> FieldComparisonR
         explanation=f"Confirmed mismatch between document numbers '{clean_a}' and '{clean_b}'. Unique identifiers must not be fuzzy-matched.",
         suggested_clarification="Upload clear uncropped copy of the relevant passport biodata page or confirm whether a separate document was submitted.",
     )
+
+
+INDIAN_HONORIFIC_SUFFIXES = ("bhai", "ben", "kumar", "kumari", "devi", "lal", "chand", "sinh", "singh", "rao", "reddy")
+HONORIFIC_PREFIXES = {"shri", "smt", "mr", "mrs", "ms", "dr", "late", "sh", "kum"}
+
+
+def _strip_indian_honorific_suffix(token: str) -> str:
+    for suf in INDIAN_HONORIFIC_SUFFIXES:
+        if token.endswith(suf) and len(token) > len(suf) + 2:
+            return token[: -len(suf)]
+    return token
+
+
+def compare_parent_names(
+    parent_a: str,
+    parent_b: str,
+    parent_role: str = "Parent",
+) -> FieldComparisonResult:
+    """
+    Compares Father's or Mother's names across civil and identity documents
+    (e.g., Indian Passport Page 36 vs Aadhaar S/O vs PAN Card vs Birth/Marriage Certificate).
+    Specifically detects:
+    - Indian regional honorific suffixes (-bhai, -ben, -kumar, -devi, -lal)
+    - Grandfather patronymic / middle name inclusion or omission (e.g., 'Rajesh Sharma' vs 'Rajeshbhai Kishorbhai Sharma')
+    - Transliteration / spelling differences
+    - Complete parent name discrepancies requiring a 'One and the Same Person' Affidavit.
+    """
+    if not parent_a or not parent_b:
+        return FieldComparisonResult(
+            is_concordant=False,
+            is_confirmed_contradiction=False,
+            similarity_score=0.0,
+            variation_type="missing_data",
+            explanation=f"One or both {parent_role.lower()} name fields are missing.",
+        )
+
+    raw_tokens_a = [
+        clean_name_token(t)
+        for t in re.sub(r"[-_/.]", " ", parent_a).split()
+        if clean_name_token(t) and clean_name_token(t) not in HONORIFIC_PREFIXES
+    ]
+    raw_tokens_b = [
+        clean_name_token(t)
+        for t in re.sub(r"[-_/.]", " ", parent_b).split()
+        if clean_name_token(t) and clean_name_token(t) not in HONORIFIC_PREFIXES
+    ]
+
+    if raw_tokens_a == raw_tokens_b:
+        return FieldComparisonResult(
+            is_concordant=True,
+            is_confirmed_contradiction=False,
+            similarity_score=1.0,
+            variation_type=None,
+            explanation=f"{parent_role} names '{parent_a}' and '{parent_b}' match exactly.",
+        )
+
+    stemmed_a = [_strip_indian_honorific_suffix(t) for t in raw_tokens_a]
+    stemmed_b = [_strip_indian_honorific_suffix(t) for t in raw_tokens_b]
+
+    # Case 1: Honorific suffix variation (e.g. 'Rajesh Sharma' vs 'Rajeshbhai Sharma' or 'Priya Sharma' vs 'Priyaben Sharma')
+    if stemmed_a == stemmed_b and raw_tokens_a != raw_tokens_b:
+        return FieldComparisonResult(
+            is_concordant=False,
+            is_confirmed_contradiction=False,
+            similarity_score=0.88,
+            variation_type="honorific_suffix_variation",
+            explanation=(
+                f"{parent_role} name differs by regional honorific suffix ('{parent_a}' vs '{parent_b}', "
+                "e.g., '-bhai' / '-ben' / '-kumar' / '-devi'). Consular officers frequently flag this on Birth/Marriage certificates."
+            ),
+            suggested_clarification=(
+                f"Execute a notarized 'One and the Same Person' Affidavit affirming that '{parent_a}' and '{parent_b}' "
+                f"refer to the same {parent_role.lower()}."
+            ),
+        )
+
+    # Case 2: Middle name / Grandfather patronymic added or omitted (e.g. 'Rajesh Sharma' vs 'Rajeshbhai Kishorbhai Sharma')
+    set_stem_a = set(stemmed_a)
+    set_stem_b = set(stemmed_b)
+    if set_stem_a and set_stem_b and (set_stem_a.issubset(set_stem_b) or set_stem_b.issubset(set_stem_a)):
+        return FieldComparisonResult(
+            is_concordant=False,
+            is_confirmed_contradiction=False,
+            similarity_score=0.84,
+            variation_type="middle_name_or_patronymic_variance",
+            explanation=(
+                f"{parent_role} name shows middle-name / patronymic expansion or honorific variance between "
+                f"'{parent_a}' and '{parent_b}'."
+            ),
+            suggested_clarification=(
+                f"Provide a 'One and the Same Person' Affidavit bridging '{parent_a}' and '{parent_b}' across "
+                "Passport endorsement page, PAN/Aadhaar, and civil records."
+            ),
+        )
+
+    # Case 3: First name matches (or stemmed first name matches) or minor Levenshtein spelling difference
+    str_stem_a = " ".join(stemmed_a)
+    str_stem_b = " ".join(stemmed_b)
+    dist = _levenshtein_distance(str_stem_a, str_stem_b)
+    max_len = max(len(str_stem_a), len(str_stem_b), 1)
+    sim = max(0.0, 1.0 - (dist / max_len))
+
+    if dist <= 2 and sim >= 0.80:
+        return FieldComparisonResult(
+            is_concordant=False,
+            is_confirmed_contradiction=False,
+            similarity_score=sim,
+            variation_type="transliteration_or_spelling_variance",
+            explanation=f"{parent_role} name has a spelling/transliteration variance between '{parent_a}' and '{parent_b}'.",
+            suggested_clarification=(
+                f"Attach a 'One and the Same Person' Affidavit confirming '{parent_a}' and '{parent_b}' are identical."
+            ),
+        )
+
+    # Case 4: Confirmed contradiction (different parent name entirely)
+    return FieldComparisonResult(
+        is_concordant=False,
+        is_confirmed_contradiction=True,
+        similarity_score=sim,
+        variation_type="parent_name_change",
+        explanation=f"Substantial {parent_role.lower()} name change/contradiction detected between '{parent_a}' and '{parent_b}'.",
+        suggested_clarification=(
+            f"Provide official Gazette Notification of Name Change, Marriage Certificate, or notarized "
+            f"'One and the Same Person' Affidavit explaining the change from '{parent_a}' to '{parent_b}'."
+        ),
+    )
+
+
+def compare_addresses(addr_a: str, addr_b: str) -> FieldComparisonResult:
+    """
+    Compares residential addresses across identity and financial documents
+    (e.g., Passport Page 36 vs Aadhaar Card vs Bank Statement / Utility Bill).
+    Checks 6-digit Indian PIN codes / 5-digit US ZIP codes, city/state tokens, and street/locality overlap.
+    """
+    if not addr_a or not addr_b:
+        return FieldComparisonResult(
+            is_concordant=False,
+            is_confirmed_contradiction=False,
+            similarity_score=0.0,
+            variation_type="missing_data",
+            explanation="One or both address strings are missing.",
+        )
+
+    # Extract 6-digit Indian PIN code or 5-digit US ZIP code
+    pin_a = re.search(r"\b(\d{6})\b", addr_a)
+    pin_b = re.search(r"\b(\d{6})\b", addr_b)
+
+    norm_a = re.sub(r"[^a-z0-9\s]", " ", addr_a.lower())
+    norm_b = re.sub(r"[^a-z0-9\s]", " ", addr_b.lower())
+    stop_words = {"road", "rd", "street", "st", "apt", "apartment", "apartments", "flat", "no", "near", "opp", "floor", "india", "usa"}
+    toks_a = {t for t in norm_a.split() if len(t) >= 2 and t not in stop_words}
+    toks_b = {t for t in norm_b.split() if len(t) >= 2 and t not in stop_words}
+
+    if norm_a.split() == norm_b.split():
+        return FieldComparisonResult(
+            is_concordant=True,
+            is_confirmed_contradiction=False,
+            similarity_score=1.0,
+            variation_type=None,
+            explanation="Addresses match with complete concordance.",
+        )
+
+    overlap = len(toks_a & toks_b) / max(min(len(toks_a), len(toks_b)), 1)
+
+    # Check if PIN codes explicitly conflict
+    if pin_a and pin_b and pin_a.group(1) != pin_b.group(1):
+        return FieldComparisonResult(
+            is_concordant=False,
+            is_confirmed_contradiction=True,
+            similarity_score=round(overlap, 2),
+            variation_type="address_relocation_or_mismatch",
+            explanation=(
+                f"Residential address mismatch: Postal/PIN code differs ({pin_a.group(1)} vs {pin_b.group(1)}) "
+                f"between '{addr_a}' and '{addr_b}'."
+            ),
+            suggested_clarification=(
+                "Disclose both permanent (Passport) and current/correspondence (Aadhaar/Bank) addresses on visa forms "
+                "(DS-160 / IMM 5257), or provide utility bill / rental agreement bridging the address change."
+            ),
+        )
+
+    if overlap >= 0.70:
+        return FieldComparisonResult(
+            is_concordant=True,
+            is_confirmed_contradiction=False,
+            similarity_score=round(overlap, 2),
+            variation_type="address_formatting_variance",
+            explanation=f"Addresses '{addr_a}' and '{addr_b}' refer to the same locality/PIN with minor formatting differences.",
+        )
+
+    return FieldComparisonResult(
+        is_concordant=False,
+        is_confirmed_contradiction=overlap < 0.35,
+        similarity_score=round(overlap, 2),
+        variation_type="address_relocation_or_mismatch",
+        explanation=f"Residential address changed between documents: '{addr_a}' vs '{addr_b}'.",
+        suggested_clarification=(
+            "Ensure current residential address and permanent passport address are accurately separated on the petition "
+            "and supported by updated Aadhaar / utility bill proof."
+        ),
+    )
+

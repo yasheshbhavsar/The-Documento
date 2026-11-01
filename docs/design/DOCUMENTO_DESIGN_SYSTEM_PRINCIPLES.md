@@ -1,7 +1,7 @@
 # DOCUMENTO Design System & UI/UX Principles
 ## Product-specific visual language, components, layouts, and interaction standards
 
-**Repository:** `yasheshbhavsar/The-Documento`  
+**Repository:** `documento-ai/The-Documento`  
 **Primary implementation:** `apps/web/app/globals.css`, `apps/web/app/layout.tsx`, `apps/web/app/page.tsx`, and `apps/web/components/**`  
 **Audience:** Claude Code CLI, frontend engineers, product designers, QA, and contributors  
 **Status:** Design contract for incremental implementation. Existing patterns should be audited and consolidated—not blindly replaced.

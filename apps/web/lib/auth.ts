@@ -191,16 +191,16 @@ export function authenticateUser(
 
     // Direct support for provisioned client credentials
     if (
-      (normalizedEmail === "yasheshbhavsar61@gmail.com" || normalizedEmail === "yasheshbhavsar61@gmail.co") &&
+      (normalizedEmail === "rohan.verma@example.com" || normalizedEmail === "client@documento.ai") &&
       (!password || password === "Doc2026!C7Ed2x" || password === "ClientPass2026!")
     ) {
       return {
         success: true,
         user: {
-          id: "client-yashesh",
-          name: "Yashesh Bhavsar",
-          full_name: "Yashesh Bhavsar",
-          email: "yasheshbhavsar61@gmail.com",
+          id: "client-rohan",
+          name: "Rohan Verma",
+          full_name: "Rohan Verma",
+          email: "rohan.verma@example.com",
           role: "retained_client",
           organization_id: "ten-vanguard",
           organization_name: "Vanguard Immigration Law Group LLP",
