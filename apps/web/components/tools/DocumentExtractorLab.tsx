@@ -219,21 +219,20 @@ export function DocumentExtractorLab() {
   }, [analysisResult]);
 
   // Filtered fields
-    const filteredFields = uniqueExtractedFields.filter((f) => {
-      if (!fieldSearchQuery.trim()) return true;
-      const q = fieldSearchQuery.toLowerCase();
-      return (
-        f.field_name.toLowerCase().includes(q) ||
-        f.field_label.toLowerCase().includes(q) ||
-        f.original_value.toLowerCase().includes(q) ||
-        f.normalized_value.toLowerCase().includes(q)
-      );
-    });
-
-    const selectedFieldObj = analysisResult?.extracted_fields.find(
-  const selectedFieldObj = uniqueExtractedFields.find(
-      (f) => f.field_name === selectedFieldForBbox
+  const filteredFields = uniqueExtractedFields.filter((f) => {
+    if (!fieldSearchQuery.trim()) return true;
+    const q = fieldSearchQuery.toLowerCase();
+    return (
+      f.field_name.toLowerCase().includes(q) ||
+      f.field_label.toLowerCase().includes(q) ||
+      f.original_value.toLowerCase().includes(q) ||
+      f.normalized_value.toLowerCase().includes(q)
     );
+  });
+
+  const selectedFieldObj = uniqueExtractedFields.find(
+    (f) => f.field_name === selectedFieldForBbox
+  );
 
     return (
       <div
@@ -1194,16 +1193,13 @@ export function DocumentExtractorLab() {
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredFields?.map((field) => {
-                              {
-                                filteredFields?.map((field, idx) => {
-                                  const isSelected = selectedFieldForBbox === field.field_name;
-                                  const confPct = Math.round(field.calibrated_confidence * 100);
-                                  return (
-                                    <tr
-                                      key={field.field_name}
-                                      key={`${field.field_name}-${idx}`}
-                                      onClick={() => setSelectedFieldForBbox(field.field_name)}
+                            {filteredFields?.map((field, idx) => {
+                              const isSelected = selectedFieldForBbox === field.field_name;
+                              const confPct = Math.round(field.calibrated_confidence * 100);
+                              return (
+                                <tr
+                                  key={`${field.field_name}-${idx}`}
+                                  onClick={() => setSelectedFieldForBbox(field.field_name)}
                                       style={{
                                         borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
                                         background: isSelected
@@ -1338,8 +1334,7 @@ export function DocumentExtractorLab() {
                                 (p) => p.page_number === activePageNum
                               ) || analysisResult.ocr_summary?.pages?.[0];
                             const pageImageUrl = pageMeta?.page_image_data_url;
-                            const pageFields = (analysisResult.extracted_fields || []).filter(
-                          const pageFields = uniqueExtractedFields.filter(
+                            const pageFields = uniqueExtractedFields.filter(
                               (f) => (f.source_page || 1) === activePageNum
                             );
                             const docLines = (analysisResult.raw_text_preview || pastedText || "")
@@ -1554,16 +1549,13 @@ export function DocumentExtractorLab() {
                                 )}
 
                                 {/* Layer 2: Secondary field bounding boxes on this page (clickable) */}
-                                {pageFields.map((pf) => {
-                                  {
-                                    pageFields.map((pf, pfIdx) => {
-                                      if (pf.field_name === selectedFieldObj.field_name) return null;
-                                      const [py0, px0, py1, px1] = pf.bounding_box || [0.1, 0.1, 0.2, 0.4];
-                                      return (
-                                        <div
-                                          key={pf.field_name}
-                                          key={`${pf.field_name}-${pfIdx}`}
-                                          onClick={() => setSelectedFieldForBbox(pf.field_name)}
+                                {pageFields.map((pf, pfIdx) => {
+                                  if (pf.field_name === selectedFieldObj.field_name) return null;
+                                  const [py0, px0, py1, px1] = pf.bounding_box || [0.1, 0.1, 0.2, 0.4];
+                                  return (
+                                    <div
+                                      key={`${pf.field_name}-${pfIdx}`}
+                                      onClick={() => setSelectedFieldForBbox(pf.field_name)}
                                           title={`${pf.field_label}: ${pf.normalized_value} (Click to inspect)`}
                                           style={{
                                             position: "absolute",
@@ -2540,8 +2532,7 @@ export function DocumentExtractorLab() {
               const currentPageMeta =
                 pagesList.find((p) => p.page_number === maximizedPageNum) || pagesList[0];
               const currentImgUrl = currentPageMeta?.page_image_data_url;
-              const fieldsOnPage = (analysisResult.extracted_fields || []).filter(
-            const fieldsOnPage = uniqueExtractedFields.filter(
+              const fieldsOnPage = uniqueExtractedFields.filter(
                 (f) => (f.source_page || 1) === maximizedPageNum
               );
               const docLines = (analysisResult.raw_text_preview || pastedText || "")
@@ -2841,15 +2832,13 @@ export function DocumentExtractorLab() {
 
                         {/* Overlaid Bounding Boxes in Maximized View */}
                         {showOverlayInMax &&
-                          fieldsOnPage.map((pf) => {
-                            fieldsOnPage.map((pf, pfIdx) => {
-                              const isSelected = selectedFieldForBbox === pf.field_name;
-                              const [ymin, xmin, ymax, xmax] = pf.bounding_box || [0.1, 0.1, 0.2, 0.5];
-                              return (
-                                <div
-                                  key={pf.field_name}
-                                  key={`${pf.field_name}-${pfIdx}`}
-                                  onClick={() => setSelectedFieldForBbox(pf.field_name)}
+                          fieldsOnPage.map((pf, pfIdx) => {
+                            const isSelected = selectedFieldForBbox === pf.field_name;
+                            const [ymin, xmin, ymax, xmax] = pf.bounding_box || [0.1, 0.1, 0.2, 0.5];
+                            return (
+                              <div
+                                key={`${pf.field_name}-${pfIdx}`}
+                                onClick={() => setSelectedFieldForBbox(pf.field_name)}
                                   title={`${pf.field_label}: ${pf.normalized_value}`}
                                   style={{
                                     position: "absolute",
@@ -2931,14 +2920,12 @@ export function DocumentExtractorLab() {
                           No structured fields mapped to Page {maximizedPageNum}. Use the page switcher above to inspect other pages.
                         </div>
                       ) : (
-                        fieldsOnPage.map((f) => {
-                          fieldsOnPage.map((f, fIdx) => {
-                            const isSel = selectedFieldForBbox === f.field_name;
-                            return (
-                              <div
-                                key={f.field_name}
-                                key={`${f.field_name}-${fIdx}`}
-                                onClick={() => setSelectedFieldForBbox(f.field_name)}
+                        fieldsOnPage.map((f, fIdx) => {
+                          const isSel = selectedFieldForBbox === f.field_name;
+                          return (
+                            <div
+                              key={`${f.field_name}-${fIdx}`}
+                              onClick={() => setSelectedFieldForBbox(f.field_name)}
                                 style={{
                                   padding: "10px 12px",
                                   borderRadius: "8px",

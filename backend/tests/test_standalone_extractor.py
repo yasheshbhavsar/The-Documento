@@ -288,3 +288,89 @@ def test_compare_same_person_document_set_all_dimensions(client: TestClient):
     assert "address" in dims
 
 
+def test_english_gujarati_hindi_character_filtering_and_birth_certificate(client: TestClient):
+    """
+    Verify that:
+    1. Only English, Gujarati (\u0A80-\u0AFF), and Hindi (\u0900-\u097F) characters are kept while
+       non-supported scripts (Chinese/CJK, Cyrillic, Arabic) and dotted form leader lines ('........')
+       are stripped.
+    2. A bilingual Gujarati + English Birth Certificate with dotted leader lines and multi-line field
+       placement accurately extracts Child Name, Sex, Date of Birth, Place of Birth, Mother's Name,
+       Father's Name, Parents' Address, Registration No., and Date of Registration without ever
+       emitting 'Of Mother . ........................' or dotted strings.
+    """
+    bilingual_birth_cert = (
+        "BIRTH CERTIFICATE 中文测试 Привет مرحبا\n"
+        "(જન્મ અને મરણ નોંધણી અધિનિયમ ૧૯૬૯ની કલમ ૧૨/૧૭ અને\n"
+        "ગુજરાત જન્મ-મરણ નોંધણી નિયમો, ૨૦૦૪ નિયમ-૮/૧૩ મુજબ.\n"
+        "(Issued under Section 12/17 of the Registration of Births and Deaths Act, 1969\n"
+        "and Rule 8/13 of the Gujarat Registration of Births and Deaths Rules, 2004)\n"
+        "આથી પ્રમાણિત કરવામાં આવે છે કે નીચેની માહિતી જન્મના મૂળ રેકર્ડમાંથી લેવામાં આવી છે. જે ગુજરાત રાજ્યનાં.........................\n"
+        "જિલ્લાનાં ......................... તાલુકાનાં ......................... ગામ/શહેરના રજિસ્ટરમાં છે.\n"
+        "This is to Certify that the following information has been taken from the original record of birth which is in the register\n"
+        "for village/City .....KALOL............ of Taluka .....KALOL.......... of District ..GANDHINAGAR. Gujarat State\n"
+        "૧. નામ : ..............................................\n"
+        "AARAV\n"
+        "1. Name : ..............................................\n"
+        "૨. જાતિ (પુ./સ્ત્રી) : ..............................................\n"
+        "Male\n"
+        "2. Sex (M/F) : ..............................................\n"
+        "૩. જન્મ તારીખ : ..............................................\n"
+        "05/02/2005\n"
+        "3. Date of Birth : ..............................................\n"
+        "૪. જન્મ સ્થળ : ..............................................\n"
+        "4. Place of Birth\n"
+        "SUNRISE HOSPITAL KALOL\n"
+        "૫. માતાનું નામ : ..............................................\n"
+        "5. Name of Mother : ....MEERABEN.........................\n"
+        "૬. પિતાનું નામ : ..............................................\n"
+        "6. Name of Father\n"
+        "RAJESHWAR DAHYABHAI SHARMA\n"
+        "૭. બાળકના જન્મ સમયે માતા-પિતાનું સરનામું\n"
+        "7. Address of parents at the time of Birth of child\n"
+        "17,SURYODAY SOCIETY,\n"
+        "KALOL\n"
+        "..............................................................\n"
+        "૮. માતા/પિતાનું કાયમી સરનામું\n"
+        "8. Permanent Address of Parents\n"
+        "17,SURYODAY SOCIETY,\n"
+        "KALOL\n"
+        "..............................................................\n"
+        "૯. નોંધણી ક્રમાંક : ..............................................\n"
+        "9. Registration No. : ....466................................\n"
+        "૧૦. નોંધણીની તારીખ : ..............................................\n"
+        "10. Date of Registration ......10/02/2005...................\n"
+    )
+
+    resp = client.post(
+        "/api/v1/extractor/analyze",
+        data={"raw_text": bilingual_birth_cert, "filename": "8. PROOF OF RELATIONSHIP - SAMPLE.pdf"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert data["recognition"]["category"] == "civil_status_family"
+    assert data["metadata"]["detected_language"] == "gu"
+
+    # Ensure CJK, Cyrillic, Arabic, and dotted runs were stripped from raw_text_preview
+    cleaned_full = data["raw_text_preview"]
+    assert "中文" not in cleaned_full
+    assert "Привет" not in cleaned_full
+    assert "مرحبا" not in cleaned_full
+    assert "........" not in cleaned_full
+    assert "જન્મ અને મરણ" in cleaned_full
+
+    field_map = {f["field_name"]: f["normalized_value"] for f in data["extracted_fields"]}
+    assert field_map.get("full_name") == "Aarav"
+    assert field_map.get("applicant_name") == "Aarav"
+    assert field_map.get("gender") == "Male"
+    assert field_map.get("date_of_birth") == "2005-02-05"
+    assert field_map.get("place_of_birth") == "Sunrise Hospital Kalol"
+    assert field_map.get("mother_legal_name") == "Meeraben"
+    assert field_map.get("father_legal_name") == "Rajeshwar Dahyabhai Sharma"
+    assert "17, Suryoday Society, Kalol" in field_map.get("residential_address", "")
+    assert field_map.get("birth_registration_number") == "466"
+    assert field_map.get("birth_registration_date") == "2005-02-10"
+
+
+

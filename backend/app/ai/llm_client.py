@@ -120,7 +120,8 @@ class GeminiVisionClient(BaseAIClient):
 
         prompt = (
             f"You are an expert legal immigration document examiner analyzing a {category} file named '{filename}'. "
-            "Extract all primary identity, financial, employment, or academic entities with exact verbatim text and normalized values. "
+            "Focus strictly on English, Gujarati (ગુજરાતી), and Hindi (हिन्दी) characters and labels; ignore all dotted form leader lines (........), blanks, and any other scripts or noise. "
+            "Extract all primary identity, civil, financial, employment, or academic entities with exact verbatim text and normalized values. "
             "Respond strictly in valid JSON adhering to the following structure:\n"
             "{\n"
             '  "detected_category": "string",\n'
@@ -244,7 +245,8 @@ class ClaudeSonnetClient(BaseAIClient):
 
         prompt_text = (
             f"You are an expert immigration legal document analyst. Analyze this legal document '{filename}' "
-            f"(expected category: '{category}'). Extract all key entities (full names, passport numbers, birth dates, "
+            f"(expected category: '{category}'). Focus strictly on English, Gujarati (ગુજરાતી), and Hindi (हिन्दी) characters and labels; "
+            f"ignore dotted leader lines (........), blanks, and any other scripts. Extract all key entities (full names, passport numbers, birth dates, "
             f"degrees, dates, financial balances, MRZ codes) with high precision.\n"
             f"Return ONLY valid JSON matching this schema:\n"
             "{\n"
@@ -351,7 +353,18 @@ class MockLocalVisionClient(BaseAIClient):
     INVALID_NAME_PREFIXES = (
         "of the",
         "of registered",
+        "of mother",
+        "of father",
+        "of parents",
+        "of child",
+        "of birth",
+        "of registration",
+        "of village",
+        "of taluka",
+        "of district",
         "date of",
+        "place of",
+        "name of",
         "immigration",
         "family name",
         "surname",
@@ -361,6 +374,8 @@ class MockLocalVisionClient(BaseAIClient):
         "signature",
         "pull name",
         "full name",
+        "sex",
+        "address",
     )
 
     def extract_document_entities(
@@ -405,6 +420,9 @@ class MockLocalVisionClient(BaseAIClient):
         except Exception:
             text = ""
 
+        from backend.app.ocr.engine import clean_ocr_text
+        text = clean_ocr_text(text)
+
         entities: List[ExtractedEntity] = []
 
         import re
@@ -425,12 +443,20 @@ class MockLocalVisionClient(BaseAIClient):
                     entities.append(ExtractedEntity("passport_number", "Passport Number", p_match.group(1), p_match.group(1).upper(), 0.95, 1))
 
             if category in ("identity_passport", "civil_status_family", "supporting_evidence"):
-                name_match = re.search(r"(?:Name|Full Name|Given Names)[\s:]+([A-Za-z\s\.-]{3,40})", text, re.IGNORECASE)
+                name_match = re.search(
+                    r"\b(?:Full\s*Name|Given\s*Names?|Name(?!\s+of\s+(?:Mother|Father|Parents|Child|Bride|Bridegroom|Village|City|Taluka|District|Hospital|State|Registration|Registered)))[\s:]+([A-Za-z][A-Za-z\s\.-]{2,40})",
+                    text,
+                    re.IGNORECASE,
+                )
                 if name_match:
-                    cand = name_match.group(1).strip()
+                    cand = re.sub(r"[\.\-_]{2,}", " ", name_match.group(1).splitlines()[0]).strip(" .:-_")
                     lower_cand = cand.lower()
-                    if not any(lower_cand.startswith(prefix) for prefix in self.INVALID_NAME_PREFIXES) and lower_cand not in (
-                        "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details"
+                    if (
+                        len(re.findall(r"[A-Za-z]", cand)) >= 3
+                        and not any(lower_cand.startswith(prefix) for prefix in self.INVALID_NAME_PREFIXES)
+                        and lower_cand not in (
+                            "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details", "female", "male"
+                        )
                     ):
                         entities.append(ExtractedEntity("full_name", "Full Name", cand, cand.title(), 0.92, 1))
 

@@ -174,11 +174,60 @@ def extract_structured_fields(
         if not original_value or not str(original_value).strip():
             return
 
-        clean_orig = str(original_value).strip()
+        # Strip dotted leader lines and leading/trailing punctuation noise
+        clean_orig = re.sub(r"(?:\.\s*){2,}", " ", str(original_value))
+        clean_orig = re.sub(r"^[\s\.:;\-_]+|[\s\.:;\-_]+$", "", clean_orig).strip()
+        if not clean_orig:
+            return
+
+        # Must contain at least one English, Gujarati, or Hindi letter or digit
+        if not re.search(r"[A-Za-z0-9\u0900-\u097F\u0A80-\u0AFF]", clean_orig):
+            return
+
         # Invariant (Master Vision §4.3): Never fabricate or accept phantom placeholder values as extracted legal entities
         clean_lower = clean_orig.lower()
         if clean_lower in ("null", "none", "n/a", "na", "undefined", "unknown", "not applicable"):
             return
+
+        # Guardrail for person name fields: reject label fragments ("Of Mother", "Of Father", etc.) or dot-heavy noise
+        if "name" in field_name or field_name in (
+            "full_name",
+            "applicant_name",
+            "surname",
+            "given_names",
+            "father_legal_name",
+            "mother_legal_name",
+            "spouse_legal_name",
+            "guardian_or_spouse_name",
+            "child_legal_name",
+        ):
+            if len(re.findall(r"[A-Za-z\u0900-\u097F\u0A80-\u0AFF]", clean_orig)) < 2:
+                return
+            bad_name_prefixes = (
+                "of mother",
+                "of father",
+                "of parents",
+                "of child",
+                "of birth",
+                "of registration",
+                "of the",
+                "of registered",
+                "of village",
+                "of taluka",
+                "of district",
+                "date of",
+                "place of",
+                "name of",
+                "sex (m/f)",
+                "address of",
+                "permanent address",
+                "registration no",
+            )
+            if any(clean_lower.startswith(p) or clean_lower == p for p in bad_name_prefixes):
+                return
+
+        clean_norm = re.sub(r"(?:\.\s*){2,}", " ", str(normalized_value if normalized_value is not None else clean_orig))
+        clean_norm = re.sub(r"^[\s\.:;\-_]+|[\s\.:;\-_]+$", "", clean_norm).strip() or clean_orig
 
         loc = location or _find_block_location(pages, clean_orig, source_page)
 
@@ -204,7 +253,7 @@ def extract_structured_fields(
             field_name=field_name,
             field_label=field_label,
             original_value=clean_orig,
-            normalized_value=str(normalized_value if normalized_value is not None else clean_orig).strip(),
+            normalized_value=clean_norm,
             source_page=actual_page,
             source_location=loc,
             extraction_method=page_method,
@@ -227,7 +276,7 @@ def extract_structured_fields(
                 field_name="applicant_name",
                 field_label="Candidate Applicant Name",
                 original_value=clean_orig,
-                normalized_value=str(normalized_value if normalized_value is not None else clean_orig).strip(),
+                normalized_value=clean_norm,
                 source_page=actual_page,
                 source_location=loc,
                 extraction_method=page_method,
@@ -248,7 +297,7 @@ def extract_structured_fields(
                 field_name="full_name",
                 field_label="Full Name",
                 original_value=clean_orig,
-                normalized_value=str(normalized_value if normalized_value is not None else clean_orig).strip(),
+                normalized_value=clean_norm,
                 source_page=actual_page,
                 source_location=loc,
                 extraction_method=page_method,
@@ -289,7 +338,7 @@ def extract_structured_fields(
             pass
 
     # 2. PASSPORT & IDENTITY EXTRACTION
-    if category in ("identity_passport", "supporting_evidence"):
+    if category in ("identity_passport", "supporting_evidence") or "P<" in full_text or "REPUBLIC OF INDIA" in full_text.upper():
         # Primary: ICAO Doc 9303 Machine Readable Zone (MRZ) parser
         mrz = MRZParser.parse_text(full_text) if MRZParser else None
         if mrz:
@@ -377,18 +426,23 @@ def extract_structured_fields(
                 add_field("full_name", "Full Name", vis_given, vis_given.title(), 1, 0.88)
                 add_field("applicant_name", "Candidate Applicant Name", vis_given, vis_given.title(), 1, 0.88)
             else:
-                name_m = re.search(r"\b(?:Full\s*Name|Legal\s*Name|Name)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})", full_text, re.IGNORECASE)
+                name_m = re.search(
+                    r"\b(?:Full\s*Name|Legal\s*Name|Name(?!\s+of\s+(?:Mother|Father|Parents|Child|Bride|Bridegroom|Village|City|Taluka|District|Hospital|State|Registration|Registered)))[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
+                    full_text,
+                    re.IGNORECASE,
+                )
                 if name_m:
-                    cand_name = name_m.group(1).split("\n")[0].strip()
+                    cand_name = name_m.group(1).split("\n")[0].strip(" .:-_")
                     # Strip single-letter trailing noise (e.g. 'Patel f' -> 'Patel')
                     cand_name = re.sub(r'\s+[a-zA-Z]$', '', cand_name)
                     invalid_prefixes = (
-                        "of the", "of registered", "date of", "immigration", "family name",
+                        "of the", "of registered", "of mother", "of father", "of parents",
+                        "of child", "of birth", "date of", "place of", "immigration", "family name",
                         "surname", "given name", "desc srgb", "iec61966", "signature",
                         "pull name", "full name", "client personal", "status", "nom de famille"
                     )
                     if not any(cand_name.lower().startswith(p) for p in invalid_prefixes) and cand_name.lower() not in (
-                        "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details"
+                        "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details", "female", "male"
                     ):
                         add_field("full_name", "Full Name", cand_name, cand_name.title(), 1, 0.88)
                         add_field("applicant_name", "Candidate Applicant Name", cand_name, cand_name.title(), 1, 0.88)
@@ -635,8 +689,424 @@ def extract_structured_fields(
                 add_field("single_name_ukvi_given", "UKVI Given Name", single_res.ukvi_given_name, single_res.ukvi_given_name, 1, 0.99, method="statutory_identity_resolver")
                 add_field("single_name_guidance", "Single Name Form Guidance", single_res.guidance_notes, single_res.guidance_notes, 1, 0.99, method="statutory_identity_resolver")
 
-    # 4. CIVIL STATUS & MARRIAGE CERTIFICATE EXTRACTION
-    if category in ("civil_status_family", "civil_status", "supporting_evidence"):
+    # 4. CIVIL STATUS, BIRTH CERTIFICATE & MARRIAGE CERTIFICATE EXTRACTION
+    has_birth_cert_any_page = any(
+        re.search(
+            r"BIRTH\s*CERTIFICATE|CERTIFICATE\s*OF\s*BIRTH|Registration\s+of\s+Births\s+and\s+Deaths|જન્મ\s*અને\s*મરણ|જન્મના\s*મૂળ\s*રેકર્ડ|जन्म\s*प्रमाण\s*पत्र|(?:Name\s*of\s*Mother.*?Name\s*of\s*Father)",
+            p.text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        for p in pages
+    )
+    if category in ("civil_status_family", "civil_status", "supporting_evidence", "identity_passport") or has_birth_cert_any_page:
+        # Dedicated Bilingual (English / Gujarati / Hindi) Birth Certificate Extractor (Page-by-Page + 2D Spatial Blocks)
+        bc_bad_name_tokens = {
+            "birth", "certificate", "issued", "under", "section", "registration", "births", "deaths",
+            "act", "rule", "rules", "gujarat", "government", "this", "certify", "that", "following",
+            "information", "taken", "from", "original", "record", "which", "register", "village",
+            "city", "taluka", "district", "state", "name", "sex", "female", "male", "date", "place",
+            "hospital", "maternity", "clinic", "nursing", "mother", "father", "address", "parents",
+            "time", "child", "permanent", "society", "colony", "nagar", "road", "remarks", "signature",
+            "issuing", "authority", "municipal", "corporation", "panchayat", "kalol", "gandhinagar",
+            "ahmedabad", "surat", "vadodara", "rajkot", "india", "of", "the", "and", "in", "for", "at",
+        }
+
+        def _clean_bc_candidate_name(raw_str: str) -> str:
+            s = re.sub(
+                r"^(?:[1-9]|10|[૧૨૩૪૫૬૭૮૯૦]+)?\s*[\.\)\-]?\s*(?:Name\s*of\s*Mother|Name\s*of\s*Father|Full\s*Name|Name|નામ|માતાનું\s*નામ|પિતાનું\s*નામ|माता\s*का\s*नाम|पिता\s*का\s*नाम)\b[\s:\.\-]*",
+                "",
+                raw_str or "",
+                flags=re.IGNORECASE,
+            )
+            s = re.sub(r"(?:\.\s*){2,}", " ", s)
+            s = re.sub(r"^[\s\.:;\-_,/]+|[\s\.:;\-_,/]+$", "", s).strip()
+            return s
+
+        def _is_valid_bc_person_name(raw_str: str) -> bool:
+            cand = _clean_bc_candidate_name(raw_str)
+            if not cand or len(cand) < 3 or len(cand) > 55:
+                return False
+            if re.search(r"\d", cand):
+                return False
+            letters = re.findall(r"[A-Za-z\u0900-\u097F\u0A80-\u0AFF]", cand)
+            if len(letters) < 3:
+                return False
+            eng_words = [w.lower() for w in re.findall(r"[A-Za-z]+", cand)]
+            if eng_words:
+                if any(w in bc_bad_name_tokens for w in eng_words):
+                    return False
+                if not all(len(w) >= 2 or len(eng_words) > 1 for w in eng_words):
+                    return False
+            return True
+
+        def _block_to_loc(b: Any, page_obj: PageExtractionResult) -> dict:
+            w = max(page_obj.width, 1.0)
+            h = max(page_obj.height, 1.0)
+            return {
+                "x0": round(b.x0, 2),
+                "y0": round(b.y0, 2),
+                "x1": round(b.x1, 2),
+                "y1": round(b.y1, 2),
+                "page_width": round(w, 2),
+                "page_height": round(h, 2),
+                "bounding_box": [
+                    round(max(0.0, min(1.0, b.y0 / h)), 2),
+                    round(max(0.0, min(1.0, b.x0 / w)), 2),
+                    round(max(0.0, min(1.0, b.y1 / h)), 2),
+                    round(max(0.0, min(1.0, b.x1 / w)), 2),
+                ],
+                "block_idx": b.block_idx,
+                "page_number": page_obj.page_number,
+            }
+
+        def _add_bc_field(
+            primary_key: str,
+            alt_key: str,
+            label: str,
+            orig_val: str,
+            norm_val: Optional[str],
+            page_num: int,
+            conf: float = 0.96,
+            loc: Optional[dict] = None,
+        ):
+            # If primary_key was previously populated on the SAME page by a generic/fallback rule, replace it
+            existing_same_page = [
+                f for f in extracted_fields if f.field_name == primary_key and f.source_page == page_num
+            ]
+            if existing_same_page:
+                extracted_fields[:] = [
+                    f for f in extracted_fields
+                    if not (
+                        f.source_page == page_num
+                        and (
+                            f.field_name == primary_key
+                            or (primary_key == "full_name" and f.field_name == "applicant_name")
+                        )
+                    )
+                ]
+                added_keys.discard(primary_key)
+                if primary_key == "full_name":
+                    added_keys.discard("applicant_name")
+
+            if primary_key not in added_keys:
+                add_field(primary_key, label, orig_val, norm_val, page_num, conf, loc)
+            elif alt_key not in added_keys:
+                add_field(alt_key, label, orig_val, norm_val, page_num, conf, loc)
+            else:
+                scoped = f"{alt_key}_p{page_num}"
+                if scoped not in added_keys:
+                    add_field(scoped, label, orig_val, norm_val, page_num, conf, loc)
+
+        for p in pages:
+            p_text = clean_ocr_text(p.text or "")
+            is_bc_page = bool(
+                re.search(
+                    r"BIRTH\s*CERTIFICATE|CERTIFICATE\s*OF\s*BIRTH|Registration\s+of\s+Births\s+and\s+Deaths|જન્મ\s*અને\s*મરણ|જન્મના\s*મૂળ\s*રેકર્ડ|जन्म\s*प्रमाण\s*पत्र|(?:Name\s*of\s*Mother.*?Name\s*of\s*Father)",
+                    p_text,
+                    re.IGNORECASE | re.DOTALL,
+                )
+            )
+            if not is_bc_page:
+                continue
+
+            p_num = p.page_number
+            p_lines = [ln.strip() for ln in p_text.splitlines() if ln.strip()]
+            pw = max(p.width, 1.0)
+            ph = max(p.height, 1.0)
+
+            # Classify spatial person-name blocks on this Birth Certificate page into Left Column vs Right Column
+            left_name_blocks: list[tuple[str, Any]] = []
+            right_name_blocks: list[tuple[str, Any]] = []
+            for b in sorted(p.blocks, key=lambda blk: (blk.y0, blk.x0)):
+                # Only consider body region of certificate (0.25*H to 0.72*H)
+                if b.y0 < ph * 0.22 or b.y0 > ph * 0.75:
+                    continue
+                cand_b = _clean_bc_candidate_name(b.text)
+                if _is_valid_bc_person_name(cand_b):
+                    if b.x0 < pw * 0.45:
+                        left_name_blocks.append((cand_b, b))
+                    else:
+                        right_name_blocks.append((cand_b, b))
+
+            # 1. Child / Subject Name (1. Name / ૧. નામ / 1. नाम)
+            bc_child_name: Optional[str] = None
+            bc_child_loc: Optional[dict] = None
+            for idx_l, ln in enumerate(p_lines):
+                if re.search(r"(?:^|\b)(?:1\s*[\.\)]?\s*Name|૧\s*[\.\)]?\s*નામ|1\s*[\.\)]?\s*नाम)(?!\s+of\b)", ln, re.IGNORECASE):
+                    same_val = _clean_bc_candidate_name(ln)
+                    if _is_valid_bc_person_name(same_val):
+                        bc_child_name = same_val
+                        break
+                    # Check line immediately ABOVE (on Gujarat certificates, value is typed between ૧. નામ and 1. Name)
+                    if idx_l - 1 >= 0 and _is_valid_bc_person_name(p_lines[idx_l - 1]):
+                        bc_child_name = _clean_bc_candidate_name(p_lines[idx_l - 1])
+                        break
+                    # Check line immediately BELOW
+                    if idx_l + 1 < len(p_lines) and _is_valid_bc_person_name(p_lines[idx_l + 1]):
+                        bc_child_name = _clean_bc_candidate_name(p_lines[idx_l + 1])
+                        break
+
+            if not bc_child_name and left_name_blocks:
+                # Uppermost left-column person name block is 1. Name (e.g. BHOOMI)
+                first_cand, first_blk = left_name_blocks[0]
+                if first_blk.y0 < ph * 0.50 or len(left_name_blocks) >= 2:
+                    bc_child_name = first_cand
+                    bc_child_loc = _block_to_loc(first_blk, p)
+
+            if bc_child_name:
+                if not bc_child_loc:
+                    bc_child_loc = _find_block_location([p], bc_child_name, p_num)
+                _add_bc_field("full_name", "child_legal_name", "Full Name (Birth Certificate)", bc_child_name, bc_child_name.title(), p_num, 0.97, bc_child_loc)
+
+            # 2. Sex / Gender (2. Sex (M/F) / ૨. જાતિ)
+            bc_sex: Optional[str] = None
+            bc_sex_loc: Optional[dict] = None
+            for b in p.blocks:
+                m_sex = re.search(r"\b(Female|Male|સ્ત્રી|પુરુષ|પુરૂષ|महिला|पुरुष)\b", b.text, re.IGNORECASE)
+                if m_sex:
+                    raw_s = m_sex.group(1)
+                    bc_sex = "Female" if raw_s.lower() in ("female", "સ્ત્રી", "महिला") else "Male"
+                    bc_sex_loc = _block_to_loc(b, p)
+                    break
+            if not bc_sex:
+                m_sex_txt = re.search(r"\b(Female|Male|સ્ત્રી|પુરુષ|પુરૂષ|महिला|पुरुष)\b", p_text, re.IGNORECASE)
+                if m_sex_txt:
+                    raw_s = m_sex_txt.group(1)
+                    bc_sex = "Female" if raw_s.lower() in ("female", "સ્ત્રી", "महिला") else "Male"
+            if bc_sex:
+                _add_bc_field("gender", "child_gender", "Sex (M/F)", bc_sex, bc_sex, p_num, 0.97, bc_sex_loc)
+
+            # 3 & 10. Date of Birth (3. Date of Birth) and Date of Registration (10. Date of Registration)
+            bc_dob: Optional[str] = None
+            bc_dob_loc: Optional[dict] = None
+            bc_reg_date: Optional[str] = None
+            bc_reg_date_loc: Optional[dict] = None
+
+            m_reg_dt = re.search(
+                r"(?:10\s*[\.\)]?\s*)?(?:Date\s*of\s*Registration|નોંધણીની\s*તારીખ|पंजीकरण\s*की\s*तिथि)[\s:]*([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4})",
+                p_text,
+                re.IGNORECASE,
+            )
+            if m_reg_dt:
+                bc_reg_date = m_reg_dt.group(1).strip()
+
+            m_dob_dt = re.search(
+                r"(?:3\s*[\.\)]?\s*)?(?:Date\s*of\s*Birth|જન્મ\s*તારીખ|जन्म\s*तिथि)[\s:]*([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4})",
+                p_text,
+                re.IGNORECASE,
+            )
+            if m_dob_dt:
+                bc_dob = m_dob_dt.group(1).strip()
+
+            # Spatial date block inspection on Birth Certificate page
+            for b in p.blocks:
+                for dm in re.finditer(r"\b([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{4})\b", b.text):
+                    d_val = dm.group(1)
+                    if b.y0 >= ph * 0.60 or (b.x0 >= pw * 0.45 and b.y0 >= ph * 0.55):
+                        if not bc_reg_date:
+                            bc_reg_date = d_val
+                        if d_val == bc_reg_date and not bc_reg_date_loc:
+                            bc_reg_date_loc = _block_to_loc(b, p)
+                    elif b.x0 < pw * 0.48 and b.y0 < ph * 0.60:
+                        if not bc_dob:
+                            bc_dob = d_val
+                        if d_val == bc_dob and not bc_dob_loc:
+                            bc_dob_loc = _block_to_loc(b, p)
+
+            if bc_dob:
+                if not bc_dob_loc:
+                    bc_dob_loc = _find_block_location([p], bc_dob, p_num)
+                _add_bc_field("date_of_birth", "child_date_of_birth", "Date of Birth", bc_dob, normalize_date(bc_dob) or bc_dob, p_num, 0.96, bc_dob_loc)
+
+            if bc_reg_date:
+                if not bc_reg_date_loc:
+                    bc_reg_date_loc = _find_block_location([p], bc_reg_date, p_num)
+                _add_bc_field("birth_registration_date", "date_of_registration", "Date of Registration", bc_reg_date, normalize_date(bc_reg_date) or bc_reg_date, p_num, 0.97, bc_reg_date_loc)
+
+            # 4. Place of Birth (4. Place of Birth / ૪. જન્મ સ્થળ)
+            bc_pob: Optional[str] = None
+            bc_pob_loc: Optional[dict] = None
+            for idx_l, ln in enumerate(p_lines):
+                if re.search(r"(?:4\s*[\.\)]?\s*)?(?:Place\s*of\s*Birth|જન્મ\s*સ્થળ|जन्म\s*स्थान)", ln, re.IGNORECASE):
+                    m_same_pob = re.search(r"(?:Place\s*of\s*Birth|જન્મ\s*સ્થળ|जन्म\s*स्थान)[\s:]+([A-Za-z][A-Za-z0-9\s,\.-]{2,60})$", ln, re.IGNORECASE)
+                    if m_same_pob:
+                        cand_pob = m_same_pob.group(1).strip(" .:-_")
+                        if not any(k in cand_pob.lower() for k in ("name of", "mother", "father", "date of", "sex")):
+                            bc_pob = cand_pob
+                            break
+                    if idx_l + 1 < len(p_lines):
+                        cand_next = p_lines[idx_l + 1].strip(" .:-_")
+                        if (
+                            len(re.findall(r"[A-Za-z]", cand_next)) >= 3
+                            and not any(k in cand_next.lower() for k in ("name of", "mother", "father", "date of", "sex", "address", "પિતાનું", "માતાનું"))
+                        ):
+                            bc_pob = cand_next
+                            break
+
+            if not bc_pob:
+                for b in p.blocks:
+                    m_hosp = re.search(
+                        r"\b([A-Za-z][A-Za-z\s,\.-]{1,35}\b(?:HOSPITAL|MATERNITY\s*HOME|NURSING\s*HOME|CLINIC|DISPENSARY|HEALTH\s*CENTRE)(?:[\s,]+[A-Za-z]+)?)\b",
+                        b.text,
+                        re.IGNORECASE,
+                    )
+                    if m_hosp:
+                        bc_pob = re.sub(r"^(?:Place\s*of\s*Birth|4\s*[\.\)])[\s:]*", "", m_hosp.group(1), flags=re.IGNORECASE).strip(" .:-_")
+                        bc_pob_loc = _block_to_loc(b, p)
+                        break
+
+            if bc_pob:
+                if not bc_pob_loc:
+                    bc_pob_loc = _find_block_location([p], bc_pob, p_num)
+                _add_bc_field("place_of_birth", "birth_cert_place_of_birth", "Place of Birth", bc_pob, bc_pob.title(), p_num, 0.96, bc_pob_loc)
+
+            # 5. Name of Mother (5. Name of Mother / ૫. માતાનું નામ / माता का नाम)
+            bc_mother: Optional[str] = None
+            bc_mother_loc: Optional[dict] = None
+            for idx_l, ln in enumerate(p_lines):
+                if re.search(r"(?:5\s*[\.\)]?\s*)?(?:Name\s*of\s*Mother|Mother(?:'s)?\s*Name|માતાનું\s*નામ|माता\s*का\s*नाम)", ln, re.IGNORECASE):
+                    m_mot = re.search(
+                        r"(?:Name\s*of\s*Mother|Mother(?:'s)?\s*Name|માતાનું\s*નામ|माता\s*का\s*नाम)[\s:]*([A-Za-z][A-Za-z\s\.-]{2,50})",
+                        ln,
+                        re.IGNORECASE,
+                    )
+                    if m_mot and _is_valid_bc_person_name(m_mot.group(1)):
+                        bc_mother = _clean_bc_candidate_name(m_mot.group(1))
+                        break
+                    for adj in (idx_l + 1, idx_l - 1):
+                        if 0 <= adj < len(p_lines) and _is_valid_bc_person_name(p_lines[adj]):
+                            cand_m = _clean_bc_candidate_name(p_lines[adj])
+                            if cand_m != bc_child_name:
+                                bc_mother = cand_m
+                                break
+                    if bc_mother:
+                        break
+
+            if not bc_mother and left_name_blocks:
+                for cand_m, blk_m in left_name_blocks:
+                    if cand_m != bc_child_name and blk_m.y0 >= ph * 0.44:
+                        bc_mother = cand_m
+                        bc_mother_loc = _block_to_loc(blk_m, p)
+                        break
+
+            if bc_mother:
+                if not bc_mother_loc:
+                    bc_mother_loc = _find_block_location([p], bc_mother, p_num)
+                _add_bc_field("mother_legal_name", "birth_cert_mother_name", "Mother's Legal Name", bc_mother, bc_mother.title(), p_num, 0.97, bc_mother_loc)
+
+            # 6. Name of Father (6. Name of Father / ૬. પિતાનું નામ / पिता का नाम)
+            bc_father: Optional[str] = None
+            bc_father_loc: Optional[dict] = None
+            for idx_l, ln in enumerate(p_lines):
+                if re.search(r"(?:6\s*[\.\)]?\s*)?(?:Name\s*of\s*Father|Father(?:'s)?\s*Name|પિતાનું\s*નામ|पिता\s*का\s*नाम)", ln, re.IGNORECASE):
+                    m_fat = re.search(
+                        r"(?:Name\s*of\s*Father|Father(?:'s)?\s*Name|પિતાનું\s*નામ|पिता\s*का\s*नाम)[\s:]*([A-Za-z][A-Za-z\s\.-]{2,50})",
+                        ln,
+                        re.IGNORECASE,
+                    )
+                    if m_fat and _is_valid_bc_person_name(m_fat.group(1)):
+                        bc_father = _clean_bc_candidate_name(m_fat.group(1))
+                        break
+                    for adj in (idx_l + 1, idx_l - 1):
+                        if 0 <= adj < len(p_lines) and _is_valid_bc_person_name(p_lines[adj]):
+                            cand_f = _clean_bc_candidate_name(p_lines[adj])
+                            if cand_f not in (bc_child_name, bc_mother):
+                                bc_father = cand_f
+                                break
+                    if bc_father:
+                        break
+
+            if not bc_father and right_name_blocks:
+                for cand_f, blk_f in right_name_blocks:
+                    if cand_f not in (bc_child_name, bc_mother):
+                        bc_father = cand_f
+                        bc_father_loc = _block_to_loc(blk_f, p)
+                        break
+
+            if bc_father:
+                if not bc_father_loc:
+                    bc_father_loc = _find_block_location([p], bc_father, p_num)
+                _add_bc_field("father_legal_name", "birth_cert_father_name", "Father's Legal Name", bc_father, bc_father.title(), p_num, 0.97, bc_father_loc)
+
+            # 7 & 8. Address of Parents (7. Address of parents at the time of Birth / 8. Permanent Address of Parents)
+            bc_address: Optional[str] = None
+            bc_address_loc: Optional[dict] = None
+            for idx_l, ln in enumerate(p_lines):
+                if re.search(r"(?:Address\s+of\s+parents\s+at\s+the\s+time\s+of\s+Birth|Permanent\s+Address\s+of\s+Parents|માતા[\-\s/]*પિતાનું\s*(?:કાયમી\s*)?સરનામું)", ln, re.IGNORECASE):
+                    collected_addr: list[str] = []
+                    same_a = re.sub(
+                        r"^.*?(?:Birth\s+of\s+child|Permanent\s+Address\s+of\s+Parents|સરનામું)[\s:]*",
+                        "",
+                        ln,
+                        flags=re.IGNORECASE,
+                    ).strip(" .:-_")
+                    if same_a and len(re.findall(r"[A-Za-z0-9]", same_a)) >= 4 and not any(k in same_a.lower() for k in ("permanent address", "address of parents")):
+                        collected_addr.append(same_a)
+                    for j in range(idx_l + 1, min(idx_l + 4, len(p_lines))):
+                        nxt = p_lines[j].strip(" .:-_")
+                        if re.search(r"(?:^|\b)(?:[89]|10|૮|૯|૧૦)\s*[\.\)]|Registration\s*No|Date\s*of\s*Registration|Permanent\s*Address|નોંધણી|રીમાર્ક|Remarks", nxt, re.IGNORECASE):
+                            break
+                        if re.search(r"[\u0A80-\u0AFF]{3,}", nxt) and not re.search(r"[A-Za-z0-9]{3,}", nxt):
+                            continue
+                        if nxt and nxt not in collected_addr:
+                            collected_addr.append(nxt)
+                    if collected_addr:
+                        bc_address = ", ".join(c.rstrip(",") for c in collected_addr)
+                        break
+
+            if not bc_address:
+                for b in p.blocks:
+                    m_soc = re.search(
+                        r"\b(\d{1,4}\s*,\s*[A-Za-z0-9\s,\.-]+(?:SOCIETY|NAGAR|PARK|COLONY|APARTMENT|ROAD|SECTOR)[A-Za-z0-9\s,\.-]*)",
+                        b.text,
+                        re.IGNORECASE,
+                    )
+                    if m_soc:
+                        bc_address = m_soc.group(1).strip(" .:-_,")
+                        bc_address_loc = _block_to_loc(b, p)
+                        break
+
+            if bc_address:
+                if not bc_address_loc:
+                    bc_address_loc = _find_block_location([p], bc_address.split(",")[0], p_num)
+                _add_bc_field("residential_address", "parents_residential_address", "Address of Parents (Birth Certificate)", bc_address, bc_address.title(), p_num, 0.95, bc_address_loc)
+
+            # 9. Registration Number (9. Registration No. / ૯. નોંધણી ક્રમાંક)
+            bc_reg_no: Optional[str] = None
+            bc_reg_no_loc: Optional[dict] = None
+            m_reg_no = re.search(
+                r"(?:9\s*[\.\)]?\s*)?(?:Registration\s*No\.?|નોંધણી\s*ક્રમાંક|पंजीकरण\s*संख्या)[ \t:]*([0-9]{1,10}(?:/[0-9]{2,4})?)(?!\s*[\.\)])\b",
+                p_text,
+                re.IGNORECASE,
+            )
+            if m_reg_no:
+                bc_reg_no = m_reg_no.group(1).strip()
+            else:
+                for idx_l, ln in enumerate(p_lines):
+                    if re.search(r"(?:9\s*[\.\)]?\s*)?(?:Registration\s*No\.?|નોંધણી\s*ક્રમાંક)", ln, re.IGNORECASE) and idx_l + 1 < len(p_lines):
+                        m_nxt_no = re.search(r"^([0-9]{1,8}(?:/[0-9]{2,4})?)(?!\s*[\.\)])$", p_lines[idx_l + 1].strip(" .:-_"))
+                        if m_nxt_no:
+                            bc_reg_no = m_nxt_no.group(1)
+                            break
+
+            if bc_reg_no:
+                bc_reg_no_loc = _find_block_location([p], bc_reg_no, p_num)
+                _add_bc_field("birth_registration_number", "registration_number", "Birth Registration No.", bc_reg_no, bc_reg_no, p_num, 0.97, bc_reg_no_loc)
+
+            # Municipality / Village / Taluka / District from Header
+            m_muni = re.search(
+                r"village\s*/\s*City[\s:]*([A-Za-z]+)(?:.*?Taluka[\s:]*([A-Za-z]+))?(?:.*?District[\s:]*([A-Za-z]+))?",
+                p_text,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if m_muni:
+                parts_muni = [g.strip().title() for g in m_muni.groups() if g and g.strip()]
+                dedup_muni = list(dict.fromkeys(parts_muni))
+                if dedup_muni:
+                    muni_str = ", ".join(dedup_muni)
+                    muni_loc = _find_block_location([p], parts_muni[-1], p_num)
+                    _add_bc_field("registration_municipality", "birth_registration_district", "Registration Municipality & District", muni_str, muni_str, p_num, 0.94, muni_loc)
+
         # IRCC IMM 5713 Use of a Family Representative
         rep_form = re.search(r"\b(IMM\s*(?:5713|6713|S713))\b", full_text, re.IGNORECASE)
         if rep_form and "ircc_form_number" not in added_keys:

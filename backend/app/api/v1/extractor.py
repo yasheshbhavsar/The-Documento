@@ -25,7 +25,9 @@ from backend.app.ocr.engine import (
     OCREngine,
     PageBlock,
     PageExtractionResult,
+    clean_ocr_text,
     detect_language,
+    has_meaningful_script_chars,
 )
 
 router = APIRouter(prefix="/extractor", tags=["extractor"])
@@ -315,12 +317,13 @@ async def analyze_document_standalone(
     # 1. OCR Extraction & Geometries
     pages: list[PageExtractionResult] = []
     if mime_type == "text/plain" or (mime_type == "application/octet-stream" and not document_bytes.startswith(b"%PDF")):
-        # Pure text input
-        text_str = document_bytes.decode("utf-8", errors="replace")
+        # Pure text input - filter strictly to English, Gujarati, and Hindi characters and strip dotted leader lines
+        raw_text_str = document_bytes.decode("utf-8", errors="replace")
+        text_str = clean_ocr_text(raw_text_str)
         blocks: list[PageBlock] = []
         for idx, line in enumerate(text_str.splitlines()):
-            line_clean = line.strip()
-            if line_clean:
+            line_clean = clean_ocr_text(line.strip())
+            if line_clean and has_meaningful_script_chars(line_clean):
                 blocks.append(
                     PageBlock(
                         x0=50.0,

@@ -33,55 +33,62 @@ class PageExtractionResult:
     is_rotation_corrected: bool = False
 
 
+def filter_supported_scripts(text: str) -> str:
+    """
+    Strictly filters text to retain ONLY:
+    - English (ASCII printable characters \x20-\x7E and whitespace \r\n\t)
+    - Gujarati script (\u0A80-\u0AFF, including Gujarati letters અ-હ and digits ૦-૯)
+    - Hindi / Devanagari script (\u0900-\u097F, including Hindi letters अ-ह and digits ०-९)
+    - Standard currency symbols (₹, £, €)
+    All other scripts (CJK/Chinese, Cyrillic, Arabic, control chars, OCR mojibake) are stripped.
+    """
+    if not text:
+        return ""
+    return re.sub(r"[^\x20-\x7E\r\n\t\u0900-\u097F\u0A80-\u0AFF₹£€]", "", text)
+
+
+def normalize_indic_digits(text: str) -> str:
+    """Translates Gujarati (૦-૯) and Hindi/Devanagari (०-९) digits into ASCII 0-9."""
+    if not text:
+        return ""
+    out = []
+    for ch in text:
+        code = ord(ch)
+        if 0x0AE6 <= code <= 0x0AEF:  # Gujarati digits ૦-૯
+            out.append(chr(ord("0") + (code - 0x0AE6)))
+        elif 0x0966 <= code <= 0x096F:  # Devanagari digits ०-९
+            out.append(chr(ord("0") + (code - 0x0966)))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def has_meaningful_script_chars(text: str) -> bool:
+    """Returns True only if text contains at least one English, Gujarati, or Hindi letter or digit."""
+    if not text:
+        return False
+    return bool(re.search(r"[A-Za-z0-9\u0900-\u097F\u0A80-\u0AFF]", text))
+
+
 def detect_language(text: str) -> str:
     """
-    Detects language based on script heuristics and high-frequency linguistic markers.
-    Returns ISO 639-1 language code (e.g., 'en', 'es', 'fr', 'de', 'ru', 'uk', 'zh', 'ar', 'hi').
+    Detects language focused strictly on English ('en'), Gujarati ('gu'), and Hindi ('hi').
+    Returns ISO 639-1 language code ('en', 'gu', 'hi').
     """
     if not text or not text.strip():
         return "en"
 
-    cleaned = text.strip()
+    cleaned = filter_supported_scripts(text.strip())
 
-    # Script-based detection
-    # Cyrillic
-    if re.search(r"[\u0400-\u04FF]", cleaned):
-        # Distinguish Ukrainian specific letters (і, ї, є, ґ) from Russian
-        if re.search(r"[іїєґІЇЄҐ]", cleaned):
-            return "uk"
-        return "ru"
+    # Gujarati script (\u0A80-\u0AFF)
+    gujarati_chars = len(re.findall(r"[\u0A80-\u0AFF]", cleaned))
+    # Devanagari / Hindi script (\u0900-\u097F)
+    hindi_chars = len(re.findall(r"[\u0900-\u097F]", cleaned))
 
-    # CJK (Chinese / Japanese / Korean)
-    if re.search(r"[\u4E00-\u9FFF]", cleaned):
-        return "zh"
-
-    # Arabic script
-    if re.search(r"[\u0600-\u06FF]", cleaned):
-        return "ar"
-
-    # Devanagari (Hindi)
-    if re.search(r"[\u0900-\u097F]", cleaned):
+    if gujarati_chars > 0 and gujarati_chars >= hindi_chars:
+        return "gu"
+    if hindi_chars > 0:
         return "hi"
-
-    lower = cleaned.lower()
-
-    # Spanish markers
-    if re.search(r"\b(de|la|el|en|y|a|los|del|se|las|por|un|para|con|no|una|su|al|lo|como|certifico|pasaporte|nacimiento|republica)\b", lower):
-        spanish_hits = len(re.findall(r"\b(de|la|el|en|y|a|los|del|se|las|por|un|para|con|nacimiento|pasaporte|republica)\b", lower))
-        if spanish_hits >= 3:
-            return "es"
-
-    # French markers
-    if re.search(r"\b(le|la|de|et|en|du|des|un|une|est|dans|qui|pour|sur|avec|certificat|passeport|nationalite|republique)\b", lower):
-        french_hits = len(re.findall(r"\b(le|la|de|et|en|du|des|un|une|pour|avec|certificat|passeport|republique)\b", lower))
-        if french_hits >= 3:
-            return "fr"
-
-    # German markers
-    if re.search(r"\b(der|die|das|und|in|den|von|zu|mit|sich|des|auf|fuer|ist|im|dem|urkunde|pass|bundesrepublik)\b", lower):
-        german_hits = len(re.findall(r"\b(der|die|das|und|in|den|von|zu|mit|urkunde|pass|bundesrepublik)\b", lower))
-        if german_hits >= 3:
-            return "de"
 
     # Default to English
     return "en"
@@ -89,7 +96,10 @@ def detect_language(text: str) -> str:
 
 def clean_ocr_text(text: str) -> str:
     """
-    Cleans OCR artifacts, hallucinations, and formatting issues:
+    Cleans OCR artifacts, hallucinations, and formatting issues while focusing strictly on
+    English, Gujarati, and Hindi characters:
+    0. Filters out any character outside English, Gujarati (\u0A80-\u0AFF), and Hindi (\u0900-\u097F),
+       and strips dotted/dashed/underscored form leader lines (e.g., '....................').
     1. Normalizes missing spaces after punctuation (e.g. 'AHMEDABAD,GUJARAT' -> 'AHMEDABAD, GUJARAT').
     2. Fixes CamelCase / lowercase-uppercase concatenated words (e.g. 'ofBirth' -> 'of Birth', 'PlaceofBirth' -> 'Place of Birth').
     3. Strips spurious single-letter/punctuation hallucinations preceding slashes before standard document labels
@@ -101,10 +111,21 @@ def clean_ocr_text(text: str) -> str:
     if not text:
         return text
 
+    # Step 0a: Strictly keep only English, Gujarati, and Hindi characters
+    text = filter_supported_scripts(text)
+
+    # Step 0b: Strip dotted, underscored, and dashed form leader lines (e.g. ': ...........................')
+    # Preserve '--- PAGE N ---' markers while removing form blanks
+    text = re.sub(r"(?:\.\s*){2,}", " ", text)
+    text = re.sub(r"(?:[_\~]\s*){2,}", " ", text)
+    text = re.sub(r"(?<!PAGE\s)(?<!PAGE\s\d)(?<!PAGE\s\d\d)-{3,}(?!\s*PAGE\s+\d+)", " ", text)
+    # Remove isolated dots after colons (e.g. ': .' -> ':')
+    text = re.sub(r":\s*\.(?!\d)", ": ", text)
+
     # Step 1: Punctuation space normalization: ',word' -> ', word' (never inside numbers like '245,000')
     text = re.sub(r',([A-Za-z])', r', \1', text)
     text = re.sub(r';([A-Za-z0-9])', r'; \1', text)
-    text = re.sub(r':([A-Za-z])', r': \1', text)
+    text = re.sub(r':([A-Za-z0-9])', r': \1', text)
 
     # Step 2: Remove intra-word stray periods in capital words (e.g. 'GU.JARAT' -> 'GUJARAT')
     text = re.sub(r'(?<=[A-Z])\.(?=[A-Z])', '', text)
@@ -147,19 +168,29 @@ def clean_ocr_text(text: str) -> str:
         r'Address|File\s*No'
     )
     def clean_label_line(line: str) -> str:
+        # Drop lines that contain only punctuation/dots/colons
+        if not has_meaningful_script_chars(line):
+            return ""
         m = re.search(rf'\b({label_keywords})\b', line, re.IGNORECASE)
         if m:
             prefix = line[:m.start()].strip()
-            if prefix and not any(k in prefix.lower() for k in ('surname', 'name', 'passport', 'republic', 'india', 'canada', 'united')):
+            # Keep numbered certificate prefixes like '1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.' or Gujarati/Hindi labels
+            if (
+                prefix
+                and not re.search(r"[\u0900-\u097F\u0A80-\u0AFF]", prefix)
+                and not re.match(r"^\d{1,2}[\.\)]?$", prefix)
+                and not any(k in prefix.lower() for k in ('surname', 'name', 'passport', 'republic', 'india', 'canada', 'united', 'permanent', 'child'))
+            ):
                 return line[m.start():].strip()
-        return line
+        return line.strip()
 
     cleaned_lines = [clean_label_line(l) for l in text.splitlines()]
+    cleaned_lines = [l for l in cleaned_lines if l]
     text = "\n".join(cleaned_lines)
 
     # Step 7: Separate concatenated administrative regions / cities (e.g. 'VIRAMGAMAHMEDABAD' -> 'VIRAMGAM AHMEDABAD')
     text = re.sub(
-        r'(?i)\b([a-z]{3,})(Ahmedabad|Surat|Vadodara|Rajkot|Mumbai|Pune|Delhi|Chandigarh|Amritsar|Jalandhar|Ludhiana|Jaipur|Lucknow|Kolkata|Hyderabad|Bengaluru|Bangalore|Chennai|Gujarat|Maharashtra|Punjab|Haryana|Rajasthan|Kerala|Goa)\b',
+        r'(?i)\b([a-z]{3,})(Ahmedabad|Gandhinagar|Kalol|Surat|Vadodara|Rajkot|Mumbai|Pune|Delhi|Chandigarh|Amritsar|Jalandhar|Ludhiana|Jaipur|Lucknow|Kolkata|Hyderabad|Bengaluru|Bangalore|Chennai|Gujarat|Maharashtra|Punjab|Haryana|Rajasthan|Kerala|Goa)\b',
         r'\1 \2',
         text
     )
@@ -289,8 +320,8 @@ class OCREngine:
 
                     for idx, b in enumerate(raw_blocks):
                         x0, y0, x1, y1, b_text, b_no, b_type = b[:7]
-                        text_content = b_text.strip()
-                        if text_content:
+                        text_content = clean_ocr_text(b_text.strip())
+                        if text_content and has_meaningful_script_chars(text_content):
                             blocks.append(
                                 PageBlock(
                                     x0=float(x0),
@@ -491,14 +522,28 @@ class OCREngine:
         """
         Clusters OCR bounding boxes into horizontal lines based on vertical overlap,
         sorts lines top-to-bottom, sorts words in each line left-to-right,
-        and joins words on the same line with spaces.
+        splits across two-column layout boundaries when present,
+        and joins words in the same column/line with spaces.
+        Filters out pure punctuation/dotted leader blocks and non-(English/Gujarati/Hindi) noise.
         Returns cleaned combined text and flat PageBlock list.
         """
         if not parsed_items:
             return "", []
 
+        # Pre-clean and discard boxes that have no English, Gujarati, or Hindi letters/digits
+        valid_items: list[tuple[float, float, float, float, str, float]] = []
+        for x0, y0, x1, y1, raw_text, score in parsed_items:
+            cleaned = clean_ocr_text(raw_text)
+            if cleaned and has_meaningful_script_chars(cleaned):
+                valid_items.append((x0, y0, x1, y1, cleaned, score))
+
+        if not valid_items:
+            return "", []
+
+        max_x = max(it[2] for it in valid_items) or 612.0
+
         # Sort primarily by y0 to process roughly top-to-bottom
-        sorted_items = sorted(parsed_items, key=lambda it: (it[1], it[0]))
+        sorted_items = sorted(valid_items, key=lambda it: (it[1], it[0]))
 
         clustered_lines: list[list[tuple[float, float, float, float, str, float]]] = []
         for item in sorted_items:
@@ -532,25 +577,41 @@ class OCREngine:
 
         for line in clustered_lines:
             line.sort(key=lambda it: it[0])
-            # Merge boxes on the same line with a space
-            line_str = " ".join(it[4] for it in line if it[4].strip())
-            line_str = clean_ocr_text(line_str)
-            if line_str:
-                result_lines.append(line_str)
+            avg_h = max(sum((it[3] - it[1]) for it in line) / len(line), 1.0)
+
+            # Split horizontal line into column segments if a wide two-column gap is crossed
+            segments: list[list[tuple[float, float, float, float, str, float]]] = [[line[0]]]
+            for it in line[1:]:
+                prev = segments[-1][-1]
+                gap = it[0] - prev[2]
+                crosses_mid = (prev[2] <= max_x * 0.54 and it[0] >= max_x * 0.44 and gap > max(avg_h * 2.0, max_x * 0.06))
+                starts_numbered_col = bool(re.match(r"^(?:[2468]|10|૨|૪|૬|૮|૧૦)[\.\)]\s*", it[4])) and gap > avg_h * 1.2
+                if crosses_mid or starts_numbered_col:
+                    segments.append([it])
+                else:
+                    segments[-1].append(it)
+
+            for seg in segments:
+                line_str = " ".join(it[4] for it in seg if it[4].strip())
+                line_str = clean_ocr_text(line_str)
+                if line_str and has_meaningful_script_chars(line_str):
+                    result_lines.append(line_str)
+
             for it in line:
                 cleaned_block_text = clean_ocr_text(it[4])
-                blocks.append(
-                    PageBlock(
-                        x0=round(it[0], 2),
-                        y0=round(it[1], 2),
-                        x1=round(it[2], 2),
-                        y1=round(it[3], 2),
-                        text=cleaned_block_text,
-                        confidence=it[5],
-                        block_idx=block_idx,
+                if cleaned_block_text and has_meaningful_script_chars(cleaned_block_text):
+                    blocks.append(
+                        PageBlock(
+                            x0=round(it[0], 2),
+                            y0=round(it[1], 2),
+                            x1=round(it[2], 2),
+                            y1=round(it[3], 2),
+                            text=cleaned_block_text,
+                            confidence=it[5],
+                            block_idx=block_idx,
+                        )
                     )
-                )
-                block_idx += 1
+                    block_idx += 1
 
         combined_text = "\n".join(result_lines)
         return combined_text, blocks
