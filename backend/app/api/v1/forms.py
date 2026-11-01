@@ -118,6 +118,49 @@ def get_form_schema_details(
     }
 
 
+@router.get("/cases/{case_id}/submissions")
+def list_case_form_submissions(
+    case_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Lists all form submissions associated with a specific case within the tenant."""
+    case = db.execute(
+        select(ImmigrationCase).where(
+            ImmigrationCase.id == case_id,
+            ImmigrationCase.organization_id == auth.organization_id,
+        )
+    ).scalar_one_or_none()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", str(case_id))
+
+    submissions = db.execute(
+        select(FormSubmission)
+        .where(
+            FormSubmission.case_id == case_id,
+            FormSubmission.organization_id == auth.organization_id,
+        )
+        .order_by(FormSubmission.created_at.desc())
+    ).scalars().all()
+
+    return [
+        {
+            "id": str(s.id),
+            "case_id": str(s.case_id),
+            "form_code": s.schema_version.schema.form_code,
+            "form_name": s.schema_version.schema.name,
+            "version_number": s.schema_version.version_number,
+            "status": s.status,
+            "completion_percentage": s.completion_percentage,
+            "has_unconfirmed_ai_fields": s.has_unconfirmed_ai_fields,
+            "sensitive_fields_reviewed": s.sensitive_fields_reviewed,
+            "revision_number": s.revision_number,
+            "answers": s.answers_json,
+        }
+        for s in submissions
+    ]
+
+
 @router.post("/cases/{case_id}/submissions", status_code=status.HTTP_201_CREATED)
 def create_form_submission(
     case_id: uuid.UUID,

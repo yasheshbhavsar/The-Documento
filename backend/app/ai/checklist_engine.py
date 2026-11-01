@@ -884,6 +884,24 @@ def audit_case_checklist(
 
     checklist_items: List[ChecklistItem] = []
 
+    category_equivalents: Dict[str, set[str]] = {
+        "educational_record": {"educational_record", "educational_records"},
+        "educational_records": {"educational_record", "educational_records"},
+        "employment_record": {"employment_record", "employment_records"},
+        "employment_records": {"employment_record", "employment_records"},
+        "civil_status": {"civil_status", "civil_status_family"},
+        "civil_status_family": {"civil_status", "civil_status_family"},
+        "other_evidence": {
+            "other_evidence",
+            "supporting_evidence",
+            "police_medical",
+            "travel_records",
+            "insurance_accommodation",
+            "visas_residence_permits",
+            "translations_certifications",
+        },
+    }
+
     for t in matched_template:
         item = ChecklistItem(
             item_id=t["item_id"],
@@ -893,12 +911,17 @@ def audit_case_checklist(
             acceptable_categories=t["acceptable_categories"],
         )
 
+        expanded_acceptable: set[str] = set()
+        for acc in item.acceptable_categories:
+            expanded_acceptable.add(acc)
+            expanded_acceptable.update(category_equivalents.get(acc, set()))
+
         # Match against uploaded documents
-        # Document matches if its category matches acceptable categories
+        # Document matches if its category (or canonical equivalent) matches acceptable categories
         for doc in documents:
             doc_cat = doc.get("category", "")
             # Check processing status not failed
-            if doc.get("processing_status") != "failed" and doc_cat in item.acceptable_categories:
+            if doc.get("processing_status") != "failed" and doc_cat in expanded_acceptable:
                 item.is_satisfied = True
                 item.matching_document_id = str(doc.get("id"))
                 item.matching_document_title = doc.get("title") or doc.get("filename")

@@ -106,6 +106,7 @@ export function CreateClientModal({
           email,
           phone: phone || undefined,
           nationality,
+          passport_number: passportNumber || undefined,
           portal_credentials_provided: grantPortalAccess,
           portal_access_enabled: grantPortalAccess,
           temporary_password: grantPortalAccess ? portalPassword : undefined,

@@ -321,6 +321,49 @@ def build_filing_package(
     }
 
 
+@router.get("/cases/{case_id}")
+def list_case_filing_packages(
+    case_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Lists all assembled filing packages for a specific case within the tenant."""
+    case = db.execute(
+        select(ImmigrationCase).where(
+            ImmigrationCase.id == case_id,
+            ImmigrationCase.organization_id == auth.organization_id,
+        )
+    ).scalar_one_or_none()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", str(case_id))
+
+    packages = db.execute(
+        select(FilingPackage)
+        .where(
+            FilingPackage.case_id == case_id,
+            FilingPackage.organization_id == auth.organization_id,
+        )
+        .order_by(FilingPackage.version_number.desc())
+    ).scalars().all()
+
+    return [
+        {
+            "id": str(p.id),
+            "case_id": str(p.case_id),
+            "name": p.name,
+            "version_number": p.version_number,
+            "status": p.status,
+            "package_hash": p.package_hash,
+            "manifest": p.manifest_json,
+            "readiness_summary": p.readiness_checklist_json,
+            "approval_chain": p.approval_chain_json,
+            "created_at": p.created_at.isoformat(),
+            "updated_at": p.updated_at.isoformat(),
+        }
+        for p in packages
+    ]
+
+
 @router.get("/{package_id}")
 def get_filing_package_details(
     package_id: uuid.UUID,

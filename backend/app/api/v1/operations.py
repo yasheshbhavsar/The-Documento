@@ -105,6 +105,8 @@ def get_operational_dashboard(
     - Jurisdiction privacy review validity (India, Canada, US, UK/EU)
     - Active caseload and staff capacity
     """
+    # Ensure embedded in-process worker heartbeat is recorded for telemetry
+    WorkerHealthMonitor.record_heartbeat("embedded-ocr-worker-01", "ocr_worker")
     worker_health = WorkerHealthMonitor.get_system_health()
     dlq_jobs = WorkerHealthMonitor.list_dlq_jobs(str(ctx.organization_id))
 

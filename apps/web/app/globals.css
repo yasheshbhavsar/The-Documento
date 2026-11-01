@@ -810,48 +810,336 @@ a {
   }
 }
 
-/* ==========================================================================
-   Animation On Scroll (Landing Page)
-   ========================================================================== */
-@keyframes animationIn {
-  0% {
-    opacity: 0;
-    transform: translateY(28px);
-    filter: blur(6px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0px);
-  }
-}
+/* =========================================
+   DOCUMENTO — PREMIUM SCROLL ANIMATIONS
+========================================= */
 
 .animate-on-scroll {
-  animation: animationIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-play-state: paused;
-  will-change: transform, opacity, filter;
+  opacity: 0;
+  transform: translate3d(0, 24px, 0);
+  filter: blur(4px);
+  transition:
+    opacity 820ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 820ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 820ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform, filter;
 }
 
 .animate-on-scroll.animate {
-  animation-play-state: running !important;
-  opacity: 1 !important;
-  transform: none !important;
-  filter: none !important;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  filter: blur(0);
 }
 
-/* Stagger delay utilities */
-.delay-100 { animation-delay: 100ms !important; }
-.delay-150 { animation-delay: 150ms !important; }
-.delay-200 { animation-delay: 200ms !important; }
-.delay-300 { animation-delay: 300ms !important; }
-.delay-400 { animation-delay: 400ms !important; }
+/* Directional transitions */
+
+.animate-on-scroll[data-motion="left"] {
+  transform: translate3d(-45px, 0, 0);
+}
+
+.animate-on-scroll[data-motion="right"] {
+  transform: translate3d(45px, 0, 0);
+}
+
+.animate-on-scroll[data-motion="scale"] {
+  transform: scale(0.94);
+}
+
+.animate-on-scroll[data-motion="up"] {
+  transform: translate3d(0, 22px, 0);
+}
+
+.animate-on-scroll[data-motion="left"].animate,
+.animate-on-scroll[data-motion="right"].animate,
+.animate-on-scroll[data-motion="up"].animate {
+  transform: translate3d(0, 0, 0);
+}
+
+.animate-on-scroll[data-motion="scale"].animate {
+  transform: scale(1);
+}
+
+/* Staggered Section Header Text-Reveal (opacity 0->1, translateY 20px->0, blur 4px->0) */
+.section-header-reveal > * {
+  opacity: 0;
+  transform: translate3d(0, 20px, 0);
+  filter: blur(4px);
+  transition:
+    opacity 720ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 720ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 720ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.section-header-reveal.animate > * {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  filter: blur(0);
+}
+
+.section-header-reveal.animate > *:nth-child(1) { transition-delay: 40ms; }
+.section-header-reveal.animate > *:nth-child(2) { transition-delay: 115ms; }
+.section-header-reveal.animate > *:nth-child(3) { transition-delay: 190ms; }
+.section-header-reveal.animate > *:nth-child(4) { transition-delay: 265ms; }
+
+/* Staggered child animations */
+
+.stagger-children > * {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0);
+  filter: blur(3px);
+  transition:
+    opacity 720ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 720ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 720ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.stagger-children.animate > * {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  filter: blur(0);
+}
+
+.stagger-children.animate > *:nth-child(1) {
+  transition-delay: 70ms;
+}
+
+.stagger-children.animate > *:nth-child(2) {
+  transition-delay: 145ms;
+}
+
+.stagger-children.animate > *:nth-child(3) {
+  transition-delay: 220ms;
+}
+
+.stagger-children.animate > *:nth-child(4) {
+  transition-delay: 295ms;
+}
+
+.stagger-children.animate > *:nth-child(5) {
+  transition-delay: 370ms;
+}
+
+.stagger-children.animate > *:nth-child(6) {
+  transition-delay: 445ms;
+}
+
+/* Backward-compatible transition delay utilities */
+.delay-100 { transition-delay: 100ms !important; }
+.delay-150 { transition-delay: 150ms !important; }
+.delay-200 { transition-delay: 200ms !important; }
+.delay-300 { transition-delay: 300ms !important; }
+.delay-400 { transition-delay: 400ms !important; }
+
+/* Premium hover interaction */
+
+.hover-lift {
+  transition:
+    transform 350ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 350ms ease,
+    border-color 350ms ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 18px 45px rgba(6, 60, 61, 0.09);
+}
+
+/* =========================================================
+   CURSOR-TRACKING SPOTLIGHT BENTO CARDS (.spotlight-card)
+========================================================= */
+
+.spotlight-card {
+  position: relative;
+  isolation: isolate;
+}
+
+.spotlight-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    440px circle at var(--mouse-x, -999px) var(--mouse-y, -999px),
+    rgba(22, 155, 119, 0.08),
+    rgba(185, 222, 212, 0.03) 45%,
+    transparent 70%
+  );
+  opacity: 1;
+  transition: opacity 300ms ease;
+}
+
+.spotlight-card::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(
+    280px circle at var(--mouse-x, -999px) var(--mouse-y, -999px),
+    rgba(13, 104, 102, 0.72),
+    rgba(22, 155, 119, 0.28) 45%,
+    transparent 72%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.spotlight-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Spring-physics floating badge micro-animation */
+.spring-badge {
+  display: inline-flex;
+  align-items: center;
+  transition:
+    transform 360ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.spotlight-card:hover .spring-badge,
+.spring-badge:hover {
+  transform: translateY(-1.5px) scale(1.035);
+  box-shadow: 0 4px 10px rgba(13, 104, 102, 0.12);
+}
+
+/* =========================================================
+   SECTION-SPECIFIC INTERACTIVE BACKGROUNDS
+========================================================= */
+
+.documento-arch-grid-pattern {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(13, 104, 102, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(13, 104, 102, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.85) 14%,
+    rgba(0, 0, 0, 0.85) 86%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.85) 14%,
+    rgba(0, 0, 0, 0.85) 86%,
+    transparent 100%
+  );
+}
+
+.documento-interactive-bg {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+.documento-arch-grid-spotlight {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      560px circle at var(--bg-mouse-x, 50%) var(--bg-mouse-y, 40%),
+      rgba(185, 222, 212, 0.36),
+      rgba(221, 239, 232, 0.14) 48%,
+      transparent 74%
+    ),
+    radial-gradient(
+      480px circle at 85% 30%,
+      rgba(221, 239, 232, 0.28),
+      transparent 70%
+    );
+}
+
+.documento-ambient-mesh-gradient {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      620px circle at var(--bg-mouse-x, 65%) var(--bg-mouse-y, 35%),
+      rgba(185, 222, 212, 0.34),
+      transparent 68%
+    ),
+    radial-gradient(
+      540px circle at calc(18% + var(--scroll-progress, 0.5) * 30%) calc(30% + var(--scroll-progress, 0.5) * 35%),
+      rgba(221, 239, 232, 0.46),
+      transparent 70%
+    ),
+    radial-gradient(
+      560px circle at calc(84% - var(--scroll-progress, 0.5) * 22%) calc(62% - var(--scroll-progress, 0.5) * 28%),
+      rgba(185, 222, 212, 0.38),
+      transparent 70%
+    );
+}
+
+.documento-ambient-crosshairs {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle at center,
+    rgba(13, 104, 102, 0.16) 1.25px,
+    transparent 1.5px
+  );
+  background-size: 36px 36px;
+  mask-image: radial-gradient(ellipse 80% 75% at 50% 50%, #000 35%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 75% at 50% 50%, #000 35%, transparent 100%);
+}
+
+/* =========================================================
+   SVG NODE / PATHWAY CONNECTOR ANIMATIONS
+========================================================= */
+
+@keyframes pathwayPulseStroke {
+  0% {
+    stroke-dashoffset: 240;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.pathway-pulse-line {
+  stroke-dasharray: 10 14;
+  animation: pathwayPulseStroke 4.5s linear infinite;
+}
+
+.pathway-connector-node {
+  transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1), fill 250ms ease;
+}
+
+/* Respect accessibility preferences */
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-on-scroll {
-    animation: none !important;
+  .animate-on-scroll,
+  .section-header-reveal > *,
+  .stagger-children > *,
+  .hover-lift,
+  .spring-badge {
     opacity: 1 !important;
     transform: none !important;
     filter: none !important;
+    transition: none !important;
+  }
+  .pathway-pulse-line,
+  .documento-grid-data-line-h1,
+  .documento-grid-data-line-h2,
+  .documento-grid-data-line-v1,
+  .documento-grid-data-line-v2 {
+    animation: none !important;
   }
 }
 
@@ -1026,6 +1314,67 @@ a {
   background: var(--brand-teal);
 }
 
+/* ==========================================================================
+   Documento Floating Card System & Motion Engineering
+   ========================================================================== */
+.floating-card {
+  background: #FFFFFF;
+  border: 1px solid #DCE5E1;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(6, 60, 61, 0.04), 0 1px 3px rgba(6, 60, 61, 0.02);
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.2s ease;
+  will-change: transform, box-shadow;
+}
+
+.floating-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 34px rgba(6, 60, 61, 0.08), 0 2px 6px rgba(6, 60, 61, 0.03);
+  border-color: #0D6866;
+}
+
+.floating-card-focal {
+  background: #FFFFFF;
+  border: 1.5px solid #0D6866;
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(6, 60, 61, 0.07), 0 2px 8px rgba(6, 60, 61, 0.03);
+  position: relative;
+  z-index: 2;
+}
+
+.floating-card-offset {
+  position: relative;
+  z-index: 1;
+}
+
+@media (min-width: 1024px) {
+  .floating-card-offset-right {
+    transform: translateY(18px);
+  }
+  .floating-card-offset-left {
+    transform: translateY(10px);
+  }
+}
+
+/* Staggered entrance animation for card compositions */
+.stagger-card-1 { animation-delay: 80ms !important; }
+.stagger-card-2 { animation-delay: 160ms !important; }
+.stagger-card-3 { animation-delay: 240ms !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-card,
+  .floating-card:hover,
+  .hover-lift,
+  .hover-lift:hover,
+  .floating-card-offset-right,
+  .floating-card-offset-left {
+    transform: none !important;
+    transition: none !important;
+    box-shadow: 0 2px 8px rgba(6, 60, 61, 0.05) !important;
+  }
+}
+
 /* Bounding Box Highlights in Document Dossier Workbench */
 .ocr-bounding-box-active {
   animation: statusPulse 1.5s infinite;
@@ -1033,3 +1382,285 @@ a {
   background: rgba(42, 146, 136, 0.18) !important;
 }
 
+
+
+/* --------------------------------------------------------------------------
+   Documento landing page refresh
+   Inspired by editorial SaaS storytelling, restrained motion and product-led
+   demonstrations. Brand palette intentionally remains unchanged.
+   Hero and footer are intentionally untouched.
+   -------------------------------------------------------------------------- */
+
+.documento-signal-strip {
+  position: relative;
+  z-index: 2;
+  padding: 34px 24px 38px;
+  background: #ffffff;
+  border-bottom: 1px solid #DCE7E3;
+}
+.documento-signal-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(230px, .78fr) 2fr;
+  gap: clamp(28px, 5vw, 76px);
+  align-items: center;
+}
+.documento-signal-intro { padding-right: 22px; }
+.documento-signal-eyebrow {
+  display: block;
+  color: #07594F;
+  font-size: 10px;
+  line-height: 1.4;
+  font-weight: 750;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.documento-signal-intro p {
+  color: #073D40;
+  font-family: var(--font-display);
+  font-size: clamp(20px, 2.2vw, 27px);
+  font-weight: 700;
+  letter-spacing: -.045em;
+  line-height: 1.13;
+  margin: 0;
+}
+.documento-signal-intro em {
+  color: #0D6866;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -.02em;
+}
+.documento-signal-items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-left: 1px solid #DCE7E3;
+}
+.documento-signal-item {
+  min-height: 82px;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 20px;
+  border-right: 1px solid #DCE7E3;
+}
+.documento-signal-index {
+  color: #169B77;
+  font: 650 10px/1.5 var(--font-sans);
+  letter-spacing: .08em;
+}
+.documento-signal-item h3 {
+  color: #073D40;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0 16px 5px 0;
+}
+.documento-signal-item p {
+  color: #5D6E7F;
+  font-size: 11.5px;
+  line-height: 1.5;
+  margin: 0;
+}
+.documento-signal-arrow {
+  position: absolute;
+  right: 17px;
+  top: 7px;
+  color: #9BB9AE;
+  font-size: 14px;
+}
+
+/* Consistent editorial rhythm across the existing interactive sections */
+.preview-section,
+#workflow,
+#coverage,
+#case-fit-content,
+#personas,
+#trust-content,
+#faq-content {
+  scroll-margin-top: 76px;
+}
+.preview-section,
+#coverage,
+#case-fit-content,
+#personas,
+#faq-content {
+  background: #ffffff !important;
+}
+#workflow,
+#trust-content {
+  background:
+    radial-gradient(ellipse at 12% 14%, rgba(221,239,232,.54), transparent 42%),
+    radial-gradient(ellipse at 88% 82%, rgba(185,222,212,.44), transparent 42%),
+    linear-gradient(180deg, #F8FAF9 0%, #F5F8F6 100%) !important;
+}
+.preview-section,
+#workflow,
+#coverage,
+#case-fit-content,
+#personas,
+#trust-content,
+#faq-content {
+  padding-top: clamp(64px, 7vw, 96px) !important;
+  padding-bottom: clamp(64px, 7vw, 96px) !important;
+  border-bottom: 1px solid #DCE7E3 !important;
+}
+.preview-section > div:not(.documento-interactive-bg),
+#workflow > div:not(.documento-interactive-bg),
+#coverage > div:not(.documento-interactive-bg),
+#trust-content > div:not(.documento-interactive-bg),
+#faq-content > div:not(.documento-interactive-bg) {
+  max-width: 1240px;
+}
+.preview-section h2,
+#workflow h2,
+#coverage h2,
+#case-fit-content h2,
+#personas h2,
+#trust-content h2,
+#faq-content h2 {
+  font-family: var(--font-display) !important;
+  letter-spacing: -.045em !important;
+  line-height: 1.12 !important;
+  font-weight: 700 !important;
+}
+.preview-section h2,
+#workflow h2,
+#coverage h2,
+#trust-content h2 {
+  font-size: clamp(30px, 4vw, 48px) !important;
+}
+#case-fit-content h2,
+#personas h2,
+#faq-content h2 {
+  font-size: clamp(30px, 3.6vw, 44px) !important;
+}
+
+/* Softly elevate product surfaces without changing the underlying UI */
+.preview-section [style*="border-radius: 14px"],
+.preview-section [style*="borderRadius: \"14px\""],
+#workflow [style*="borderRadius: \"14px\""],
+#coverage [style*="borderRadius: \"14px\""],
+#trust-content [style*="borderRadius: \"14px\""],
+#case-fit-content [style*="borderRadius: \"14px\""],
+#personas [style*="borderRadius: \"14px\""] {
+  box-shadow: 0 18px 55px rgba(6, 60, 61, .075) !important;
+}
+.preview-section button,
+#workflow button,
+#coverage button,
+#case-fit-content button,
+#personas button,
+#trust-content button,
+#faq-content button {
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease, background-color .2s ease;
+}
+.preview-section button:hover,
+#workflow button:hover,
+#coverage button:hover,
+#case-fit-content button:hover,
+#personas button:hover,
+#trust-content button:hover {
+  transform: translateY(-1px);
+}
+#case-fit-content,
+#personas {
+  background: #ffffff !important;
+}
+#case-fit-content > div:not(.documento-interactive-bg),
+#personas > div:not(.documento-interactive-bg) {
+  max-width: 1240px;
+}
+#case-fit-content .tools-col-left,
+#personas .tools-col-left {
+  top: 110px !important;
+}
+#faq-content {
+  background:
+    radial-gradient(ellipse at 12% 18%, rgba(221,239,232,.36), transparent 40%),
+    radial-gradient(ellipse at 90% 12%, rgba(221,239,232,.45), transparent 40%),
+    #ffffff !important;
+}
+#faq-content > div:not(.documento-interactive-bg) {
+  max-width: 1240px;
+}
+
+/* Motion is deliberately subtle and respects reduced-motion preferences */
+@media (prefers-reduced-motion: no-preference) {
+  .documento-signal-item {
+    transition: background .22s ease, transform .22s ease;
+  }
+  .documento-signal-item:hover {
+    background: #F8FAF9;
+    transform: translateY(-2px);
+  }
+}
+@media (max-width: 900px) {
+  .documento-signal-inner { grid-template-columns: 1fr; gap: 24px; }
+  .documento-signal-intro { padding-right: 0; }
+}
+@media (max-width: 640px) {
+  .documento-signal-strip { padding: 28px 18px; }
+  .documento-signal-items { grid-template-columns: 1fr; border-left: 0; border-top: 1px solid #DCE7E3; }
+  .documento-signal-item { min-height: 0; padding: 16px 4px; border-right: 0; border-bottom: 1px solid #DCE7E3; }
+  .documento-signal-arrow { right: 5px; top: 14px; }
+  .preview-section,
+  #workflow,
+  #coverage,
+  #case-fit-content,
+  #personas,
+  #trust-content,
+  #faq-content {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+  }
+}
+
+
+/* Product-story card language */
+.floating-card {
+  border: 1px solid rgba(7, 89, 79, .12) !important;
+  border-radius: 18px !important;
+  background: rgba(255,255,255,.94) !important;
+  box-shadow: 0 12px 36px rgba(6,60,61,.055) !important;
+  transition: transform .24s ease, box-shadow .24s ease, border-color .24s ease !important;
+}
+.floating-card:hover {
+  transform: translateY(-4px) !important;
+  border-color: rgba(13,104,102,.28) !important;
+  box-shadow: 0 20px 48px rgba(6,60,61,.10) !important;
+}
+.floating-card-focal {
+  border: 1.5px solid #0D6866 !important;
+  box-shadow: 0 16px 42px rgba(6, 60, 61, 0.085) !important;
+}
+.floating-card-focal:hover {
+  transform: translateY(-5px) !important;
+  border-color: #063C3D !important;
+  box-shadow: 0 24px 54px rgba(6, 60, 61, 0.13) !important;
+}
+.stagger-card-1 { animation-delay: 0.08s; }
+.stagger-card-2 { animation-delay: 0.16s; }
+.stagger-card-3 { animation-delay: 0.24s; }
+#workflow .wf-left-col,
+#workflow .wf-right-col {
+  border-radius: 18px;
+}
+#workflow [role="tablist"] button[aria-selected="true"] {
+  box-shadow: 0 5px 18px rgba(13,104,102,.12);
+}
+#coverage input,
+#coverage select,
+#case-fit-content input,
+#case-fit-content select {
+  border-radius: 10px !important;
+}
+@media (max-width: 760px) {
+  #case-fit-content .tools-col-left,
+  #personas .tools-col-left {
+    position: relative !important;
+    top: auto !important;
+  }
+}

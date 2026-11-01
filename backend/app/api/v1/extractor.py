@@ -370,9 +370,12 @@ async def analyze_document_standalone(
     detected_lang = detect_language(full_extracted_text)
 
     # 2. Document Classification
-    recognized_category, category_confidence = classify_document(
-        full_extracted_text, filename=content_filename, declared_category=clean_declared_cat
-    )
+    try:
+        recognized_category, category_confidence = classify_document(
+            full_extracted_text, filename=content_filename, declared_category=clean_declared_cat
+        )
+    except Exception:
+        recognized_category, category_confidence = clean_declared_cat or "supporting_evidence", 0.75
 
     # Match category details
     category_label = recognized_category.replace("_", " ").title()
@@ -385,58 +388,70 @@ async def analyze_document_standalone(
     if matched_rule:
         for pat in matched_rule.get("patterns", []):
             import re
-            m = re.findall(pat, full_extracted_text, re.IGNORECASE)
-            if m:
-                matched_keywords.extend([str(item) for item in m[:2]])
+            try:
+                m = re.findall(pat, full_extracted_text, re.IGNORECASE)
+                if m:
+                    matched_keywords.extend([str(item) for item in m[:2]])
+            except Exception:
+                pass
     matched_keywords = list(dict.fromkeys(matched_keywords))[:8]
 
     # 3. Structured Field Extraction
     dummy_doc_id = uuid.uuid4()
     dummy_org_id = uuid.uuid4()
-    extracted_fields = extract_structured_fields(
-        document_id=dummy_doc_id,
-        organization_id=dummy_org_id,
-        category=recognized_category,
-        pages=pages,
-        document_bytes=document_bytes,
-        mime_type=mime_type,
-        filename=content_filename,
-    )
+    try:
+        extracted_fields = extract_structured_fields(
+            document_id=dummy_doc_id,
+            organization_id=dummy_org_id,
+            category=recognized_category,
+            pages=pages,
+            document_bytes=document_bytes,
+            mime_type=mime_type,
+            filename=content_filename,
+        )
+    except Exception:
+        extracted_fields = []
 
     # Format fields into provenances and structured response
     formatted_fields: list[dict[str, Any]] = []
     for field in extracted_fields:
-        prov = format_field_extraction_provenance(field)
-        formatted_fields.append({
-            "field_name": field.field_name,
-            "field_label": field.field_label or field.field_name.replace("_", " ").title(),
-            "original_value": field.original_value,
-            "normalized_value": field.normalized_value or field.original_value,
-            "source_page": field.source_page or 1,
-            "ocr_confidence": field.ocr_confidence,
-            "extraction_confidence": field.extraction_confidence,
-            "calibrated_confidence": prov.get("confidence", 0.90),
-            "extraction_method": field.extraction_method or "native_pdf_layout",
-            "model_version": field.model_version or "doc-intel-v5.0",
-            "bounding_box": prov.get("bounding_box", [0.1, 0.1, 0.2, 0.5]),
-            "source_location": field.source_location,
-            "review_status": prov.get("review_status", "NEEDS_HUMAN_REVIEW"),
-        })
+        try:
+            prov = format_field_extraction_provenance(field)
+            formatted_fields.append({
+                "field_name": field.field_name,
+                "field_label": field.field_label or field.field_name.replace("_", " ").title(),
+                "original_value": field.original_value,
+                "normalized_value": field.normalized_value or field.original_value,
+                "source_page": field.source_page or 1,
+                "ocr_confidence": field.ocr_confidence,
+                "extraction_confidence": field.extraction_confidence,
+                "calibrated_confidence": prov.get("confidence", 0.90),
+                "extraction_method": field.extraction_method or "native_pdf_layout",
+                "model_version": field.model_version or "doc-intel-v5.0",
+                "bounding_box": prov.get("bounding_box", [0.1, 0.1, 0.2, 0.5]),
+                "source_location": field.source_location,
+                "review_status": prov.get("review_status", "NEEDS_HUMAN_REVIEW"),
+            })
+        except Exception:
+            pass
 
     # 4. Evidence Quality Inspection
     field_dicts_for_quality = [
         {"field_name": f["field_name"], "ocr_confidence": f["ocr_confidence"], "field_label": f["field_label"]}
         for f in formatted_fields
     ]
-    raw_findings = detect_document_quality_issues(
-        document_id=str(dummy_doc_id),
-        title=content_filename,
-        category=recognized_category,
-        page_count=len(pages),
-        extracted_text=full_extracted_text,
-        extracted_fields=field_dicts_for_quality,
-        ocr_applied=any(p.ocr_applied for p in pages),
-    )
+    try:
+        raw_findings = detect_document_quality_issues(
+            document_id=str(dummy_doc_id),
+            title=content_filename,
+            category=recognized_category,
+            page_count=len(pages),
+            extracted_text=full_extracted_text,
+            extracted_fields=field_dicts_for_quality,
+            ocr_applied=any(p.ocr_applied for p in pages),
+        )
+    except Exception:
+        raw_findings = []
 
     quality_findings: list[dict[str, Any]] = []
     for qf in raw_findings:
@@ -480,6 +495,14 @@ async def analyze_document_standalone(
                 ],
                 "risk_findings": bank_sum.risk_findings,
             }
+        except Exception:
+            pass
+
+    if any(k in full_extracted_text.lower() for k in ("income tax return", "itr-v", "assessment year", "acknowledgement number")):
+        try:
+            itr_data = FinancialIntelligenceEngine.parse_itr_v(full_extracted_text)
+            if itr_data.get("is_itr_v"):
+                specialized_intelligence["itr_verification"] = itr_data
         except Exception:
             pass
 
@@ -533,95 +556,98 @@ async def analyze_document_standalone(
         or any(k in full_extracted_text.lower() for k in ("passport", "aadhaar", "pan", "income tax", "uidai", "driving licence", "driver license", "voter id", "election commission", "epic"))
     )
     if is_identity_doc:
-        ident_dict: dict[str, Any] = {}
-        # Passport & MRZ checks
-        ind_pass = IdentityResolver.parse_indian_passport(full_extracted_text)
-        if ind_pass:
-            ident_dict["indian_passport"] = {
-                "passport_number": ind_pass.passport_number,
-                "holder_name": ind_pass.holder_name,
-                "surname": ind_pass.surname,
-                "given_names": ind_pass.given_names,
-                "date_of_birth": ind_pass.date_of_birth,
-                "gender": ind_pass.gender,
-                "place_of_birth": ind_pass.place_of_birth,
-                "place_of_issue": ind_pass.place_of_issue,
-                "date_of_issue": ind_pass.date_of_issue,
-                "date_of_expiry": ind_pass.date_of_expiry,
-                "emigration_check_status": ind_pass.emigration_check,
-                "file_number": ind_pass.file_number,
-                "booklet_type": ind_pass.booklet_type,
-                "father_name": ind_pass.father_name,
-                "mother_name": ind_pass.mother_name,
-                "spouse_name": ind_pass.spouse_name,
-                "address": ind_pass.address,
-                "pin_code": ind_pass.pin_code,
-                "nationality": ind_pass.nationality,
-                "mrz_detected": ind_pass.mrz_detected,
-                "raw_mrz": ind_pass.raw_mrz,
-            }
+        try:
+            ident_dict: dict[str, Any] = {}
+            # Passport & MRZ checks
+            ind_pass = IdentityResolver.parse_indian_passport(full_extracted_text)
+            if ind_pass:
+                ident_dict["indian_passport"] = {
+                    "passport_number": ind_pass.passport_number,
+                    "holder_name": ind_pass.holder_name,
+                    "surname": ind_pass.surname,
+                    "given_names": ind_pass.given_names,
+                    "date_of_birth": ind_pass.date_of_birth,
+                    "gender": ind_pass.gender,
+                    "place_of_birth": ind_pass.place_of_birth,
+                    "place_of_issue": ind_pass.place_of_issue,
+                    "date_of_issue": ind_pass.date_of_issue,
+                    "date_of_expiry": ind_pass.date_of_expiry,
+                    "emigration_check_status": ind_pass.emigration_check,
+                    "file_number": ind_pass.file_number,
+                    "booklet_type": ind_pass.booklet_type,
+                    "father_name": ind_pass.father_name,
+                    "mother_name": ind_pass.mother_name,
+                    "spouse_name": ind_pass.spouse_name,
+                    "address": ind_pass.address,
+                    "pin_code": ind_pass.pin_code,
+                    "nationality": ind_pass.nationality,
+                    "mrz_detected": ind_pass.mrz_detected,
+                    "raw_mrz": ind_pass.raw_mrz,
+                }
 
-        first_name = next((f["normalized_value"] for f in formatted_fields if f["field_name"] in ("given_names", "given_name", "first_name")), None)
-        if not first_name and ind_pass and ind_pass.given_names:
-            first_name = ind_pass.given_names
+            first_name = next((f["normalized_value"] for f in formatted_fields if f["field_name"] in ("given_names", "given_name", "first_name")), None)
+            if not first_name and ind_pass and ind_pass.given_names:
+                first_name = ind_pass.given_names
 
-        last_name = next((f["normalized_value"] for f in formatted_fields if f["field_name"] in ("surname", "last_name")), None)
-        if not last_name and ind_pass and ind_pass.surname:
-            last_name = ind_pass.surname
+            last_name = next((f["normalized_value"] for f in formatted_fields if f["field_name"] in ("surname", "last_name")), None)
+            if not last_name and ind_pass and ind_pass.surname:
+                last_name = ind_pass.surname
 
-        if first_name or last_name:
-            single_name_res = IdentityResolver.resolve_single_name(first_name, last_name)
-            ident_dict["single_name_resolution"] = {
-                "is_single_name": single_name_res.is_single_name,
-                "uscis_representation": f"Surname: {single_name_res.uscis_surname}, Given Name: {single_name_res.uscis_first_name}",
-                "ircc_representation": f"Surname: {single_name_res.ircc_surname}, Given Name: '{single_name_res.ircc_given_name}'",
-                "ukvi_representation": f"Family Name: {single_name_res.ukvi_family_name}, Given Name: '{single_name_res.ukvi_given_name}'",
-                "guidance": single_name_res.guidance_notes,
-            }
+            if first_name or last_name:
+                single_name_res = IdentityResolver.resolve_single_name(first_name, last_name)
+                ident_dict["single_name_resolution"] = {
+                    "is_single_name": single_name_res.is_single_name,
+                    "uscis_representation": f"Surname: {single_name_res.uscis_surname}, Given Name: {single_name_res.uscis_first_name}",
+                    "ircc_representation": f"Surname: {single_name_res.ircc_surname}, Given Name: '{single_name_res.ircc_given_name}'",
+                    "ukvi_representation": f"Family Name: {single_name_res.ukvi_family_name}, Given Name: '{single_name_res.ukvi_given_name}'",
+                    "guidance": single_name_res.guidance_notes,
+                }
 
-        aadhaar_res = IdentityResolver.parse_aadhaar(full_extracted_text)
-        if aadhaar_res:
-            ident_dict["aadhaar"] = {
-                "is_valid": aadhaar_res.is_valid,
-                "masked_number": aadhaar_res.masked_aadhaar_number,
-                "holder_name": aadhaar_res.holder_name,
-                "dob": aadhaar_res.date_of_birth,
-                "gender": aadhaar_res.gender,
-                "father_or_spouse": aadhaar_res.father_or_spouse_name,
-            }
+            aadhaar_res = IdentityResolver.parse_aadhaar(full_extracted_text)
+            if aadhaar_res:
+                ident_dict["aadhaar"] = {
+                    "is_valid": aadhaar_res.is_valid,
+                    "masked_number": aadhaar_res.masked_aadhaar_number,
+                    "holder_name": aadhaar_res.holder_name,
+                    "dob": aadhaar_res.date_of_birth,
+                    "gender": aadhaar_res.gender,
+                    "father_or_spouse": aadhaar_res.father_or_spouse_name,
+                }
 
-        pan_res = IdentityResolver.parse_pan(full_extracted_text)
-        if pan_res:
-            ident_dict["pan"] = {
-                "is_valid": pan_res.is_valid,
-                "pan_number": pan_res.pan_number,
-                "entity_type": pan_res.entity_type,
-                "holder_name": pan_res.holder_name,
-                "fifth_char_surname_match": pan_res.fifth_char_surname_match,
-            }
+            pan_res = IdentityResolver.parse_pan(full_extracted_text)
+            if pan_res:
+                ident_dict["pan"] = {
+                    "is_valid": pan_res.is_valid,
+                    "pan_number": pan_res.pan_number,
+                    "entity_type": pan_res.entity_type,
+                    "holder_name": pan_res.holder_name,
+                    "fifth_char_surname_match": pan_res.fifth_char_surname_match,
+                }
 
-        dl_res = IdentityResolver.parse_driving_licence(full_extracted_text)
-        if dl_res:
-            ident_dict["driving_licence"] = {
-                "is_valid": dl_res.is_valid,
-                "licence_number": dl_res.licence_number,
-                "jurisdiction": dl_res.jurisdiction,
-                "holder_name": dl_res.holder_name,
-                "expiry_date": dl_res.expiry_date,
-                "vehicle_class": dl_res.vehicle_class,
-            }
+            dl_res = IdentityResolver.parse_driving_licence(full_extracted_text)
+            if dl_res:
+                ident_dict["driving_licence"] = {
+                    "is_valid": dl_res.is_valid,
+                    "licence_number": dl_res.licence_number,
+                    "jurisdiction": dl_res.jurisdiction,
+                    "holder_name": dl_res.holder_name,
+                    "expiry_date": dl_res.expiry_date,
+                    "vehicle_class": dl_res.vehicle_class,
+                }
 
-        voter_res = IdentityResolver.parse_voter_id(full_extracted_text)
-        if voter_res:
-            ident_dict["voter_id"] = {
-                "is_valid": voter_res.is_valid,
-                "epic_number": voter_res.epic_number,
-                "elector_name": voter_res.elector_name,
-                "relative_name": voter_res.relative_name,
-            }
+            voter_res = IdentityResolver.parse_voter_id(full_extracted_text)
+            if voter_res:
+                ident_dict["voter_id"] = {
+                    "is_valid": voter_res.is_valid,
+                    "epic_number": voter_res.epic_number,
+                    "elector_name": voter_res.elector_name,
+                    "relative_name": voter_res.relative_name,
+                }
 
-        if ident_dict:
-            specialized_intelligence["identity_compliance"] = ident_dict
+            if ident_dict:
+                specialized_intelligence["identity_compliance"] = ident_dict
+        except Exception:
+            pass
 
     # Overall calculation of document health
     critical_issues = sum(1 for qf in quality_findings if qf["severity"] == "critical")

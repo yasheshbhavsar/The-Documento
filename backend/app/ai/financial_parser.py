@@ -147,7 +147,7 @@ class FinancialIntelligenceEngine:
 
         # Find credit amounts in tabular rows
         credit_matches = re.findall(
-            r"([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4})\s+([A-Za-z0-9\s,\.-]{5,40}?)\s+([0-9,]+\.[0-9]{2})",
+            r"([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4})\s+([A-Za-z0-9\s,\.-]{5,80}?)\s+[₹\$£€]?\s*([0-9,]+\.[0-9]{2})",
             text,
         )
 

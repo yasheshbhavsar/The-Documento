@@ -23,14 +23,11 @@ export const JURISDICTION_OPTIONS = [
 
 export const JURISDICTION_PATHWAYS: Record<string, { label: string; value: string }[]> = {
   "United States (USCIS)": [
-    { label: "EB-1A Alien of Extraordinary Ability", value: "EB-1A Extraordinary Ability" },
-    { label: "US B-1/B-2 Visitor Visa (Business & Tourism)", value: "US B-1/B-2 Visitor Visa" },
-    { label: "US F-1 Academic Student Visa", value: "US F-1 Academic Student" },
-    { label: "H-1B Specialty Occupation", value: "H-1B Specialty Occupation" },
+    { label: "US F-1 Academic Student Visa (I-20 & SEVIS)", value: "US F-1 Academic Student" },
+    { label: "US B-1/B-2 Visitor Visa (INA § 214(b) Consular Prep)", value: "US B-1/B-2 Visitor Visa" },
+    { label: "H-1B Specialty Occupation & Consular Stamping", value: "H-1B Specialty Occupation" },
     { label: "US H-4 Dependent Visa & EAD", value: "US H-4 Dependent" },
-    { label: "O-1A Nonimmigrant Alien of Extraordinary Ability", value: "O-1A Extraordinary Ability" },
-    { label: "EB-2 National Interest Waiver (NIW)", value: "EB-2 NIW" },
-    { label: "L-1A Intracompany Transferee", value: "L-1A Intracompany Transferee" },
+    { label: "EB-1A Alien of Extraordinary Ability", value: "EB-1A Extraordinary Ability" },
   ],
   "Canada (IRCC)": [
     { label: "Canada Study Permit (SDS & PAL Stream)", value: "Canada Study Permit" },

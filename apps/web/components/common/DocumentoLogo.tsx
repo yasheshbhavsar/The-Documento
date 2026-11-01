@@ -9,6 +9,37 @@ interface DocumentoLogoProps {
   className?: string;
 }
 
+const SIZE_CONFIG = {
+  sm: {
+    iconSizeClass: "w-[26px] h-[26px]",
+    dimension: 26,
+    gapClass: "gap-2",
+    fontSizeClass: "text-base",
+    subtitleSizeClass: "text-[10px]",
+  },
+  md: {
+    iconSizeClass: "w-[34px] h-[34px]",
+    dimension: 34,
+    gapClass: "gap-2.5",
+    fontSizeClass: "text-xl",
+    subtitleSizeClass: "text-[11px]",
+  },
+  lg: {
+    iconSizeClass: "w-[44px] h-[44px]",
+    dimension: 44,
+    gapClass: "gap-3",
+    fontSizeClass: "text-[25px]",
+    subtitleSizeClass: "text-xs",
+  },
+  xl: {
+    iconSizeClass: "w-[56px] h-[56px]",
+    dimension: 56,
+    gapClass: "gap-3.5",
+    fontSizeClass: "text-[32px]",
+    subtitleSizeClass: "text-sm",
+  },
+};
+
 export function DocumentoLogo({
   size = "md",
   showWordmark = true,
@@ -17,60 +48,36 @@ export function DocumentoLogo({
   theme = "light",
   className = "",
 }: DocumentoLogoProps) {
-  const pixelDimensions = {
-    sm: { icon: 26, fontSize: "16px", subtitleSize: "10px", gap: "8px" },
-    md: { icon: 34, fontSize: "20px", subtitleSize: "11px", gap: "10px" },
-    lg: { icon: 44, fontSize: "25px", subtitleSize: "12px", gap: "12px" },
-    xl: { icon: 56, fontSize: "32px", subtitleSize: "14px", gap: "14px" },
-  }[size];
+  const config = SIZE_CONFIG[size] || SIZE_CONFIG.md;
 
   return (
     <div
-      className={`inline-flex items-center select-none ${className}`}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: pixelDimensions.gap,
-        textDecoration: "none",
-      }}
+      className={`inline-flex items-center select-none no-underline ${config.gapClass} ${className}`}
       aria-label="Documento - Immigration Case Intelligence"
     >
       {/* Emblem */}
       <div
-        style={{
-          width: pixelDimensions.icon,
-          height: pixelDimensions.icon,
-          position: "relative",
-          flexShrink: 0,
-          borderRadius: "8px",
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
+        className={`relative shrink-0 rounded-lg overflow-hidden flex items-center justify-center ${config.iconSizeClass}`}
+        suppressHydrationWarning
       >
         {useImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src="/documento-logo.png"
             alt="Documento emblem"
-            width={pixelDimensions.icon}
-            height={pixelDimensions.icon}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              display: "block",
-            }}
+            width={config.dimension}
+            height={config.dimension}
+            className="w-full h-full object-contain block"
           />
         ) : (
           // Scalable Vector Graphic representation of the folded D document
           <svg
             viewBox="0 0 100 100"
-            width={pixelDimensions.icon}
-            height={pixelDimensions.icon}
+            width={config.dimension}
+            height={config.dimension}
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
+            className="w-full h-full"
           >
             {/* Deep teal outer D-body */}
             <path
@@ -93,13 +100,12 @@ export function DocumentoLogo({
 
       {/* Wordmark */}
       {showWordmark && (
-        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+        <div className="flex flex-col leading-[1.1]">
           <div
+            className={`font-bold tracking-[-0.03em] ${
+              theme === "dark" ? "text-white" : "text-[#063C3D]"
+            } ${config.fontSizeClass}`}
             style={{
-              fontSize: pixelDimensions.fontSize,
-              fontWeight: 700,
-              letterSpacing: "-0.03em",
-              color: theme === "dark" ? "#FFFFFF" : "#063C3D",
               fontFamily: "var(--font-sans, Inter, system-ui, sans-serif)",
             }}
           >
@@ -107,13 +113,9 @@ export function DocumentoLogo({
           </div>
           {showDomain && (
             <span
-              style={{
-                fontSize: pixelDimensions.subtitleSize,
-                letterSpacing: "0.02em",
-                color: theme === "dark" ? "#99C5BC" : "#6E7F7C",
-                fontWeight: 500,
-                marginTop: "1px",
-              }}
+              className={`mt-[1px] font-medium tracking-[0.02em] ${
+                theme === "dark" ? "text-[#99C5BC]" : "text-[#6E7F7C]"
+              } ${config.subtitleSizeClass}`}
             >
               thedocumento.com
             </span>

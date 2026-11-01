@@ -4375,7 +4375,38 @@ export function ClientPortal({
                   <strong style={{ color: "#063C3D" }}>Export Case Evidence Archive</strong>
                   <p style={{ margin: "2px 0 0", color: "#6E7F7C" }}>Download a complete cryptographically verified ZIP of all uploaded files.</p>
                 </div>
-                <Button variant="outline" size="sm">Export Records</Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const archivePayload = {
+                      exported_at: new Date().toISOString(),
+                      case_number: myCase?.case_number || "UNASSIGNED",
+                      visa_category: myCase?.visa_category || "N/A",
+                      documents_count: documents.length,
+                      documents: documents.map((d) => ({
+                        id: d.id,
+                        title: d.title,
+                        category: d.category,
+                        status: d.status,
+                        sha256_hash: d.sha256_hash,
+                      })),
+                    };
+                    if (typeof window !== "undefined" && typeof Blob !== "undefined") {
+                      const blob = new Blob([JSON.stringify(archivePayload, null, 2)], {
+                        type: "application/json",
+                      });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `documento-evidence-archive-${myCase?.case_number || "export"}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }
+                  }}
+                >
+                  Export Records
+                </Button>
               </div>
             </div>
           </Card>

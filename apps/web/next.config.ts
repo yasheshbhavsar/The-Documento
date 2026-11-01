@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 const backendBaseUrl =
   process.env.INTERNAL_API_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:8000";
+"http://127.0.0.1:8000";
 
 const targetDestination = backendBaseUrl.includes("/api/v1")
   ? `${backendBaseUrl.replace(/\/+$/, "")}/:path*`
@@ -12,6 +12,9 @@ const targetDestination = backendBaseUrl.includes("/api/v1")
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  experimental: {
+    proxyTimeout: 120000,
+  },
   turbopack: {
     root: path.resolve(__dirname, "../../"),
   },

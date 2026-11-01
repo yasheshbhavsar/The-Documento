@@ -64,11 +64,7 @@ export function DocumentoNavbar({
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
           <a
             href="#hero"
-            style={{
-              textDecoration: "none",
-              display: "flex",
-              alignItems: "center",
-            }}
+            className="no-underline flex items-center"
           >
             <DocumentoLogo size="md" showWordmark showDomain />
           </a>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { InteractiveSectionBackground } from "./InteractiveSectionBackground";
 
 export interface ImmigrationPathway {
   id: string;
@@ -556,7 +557,28 @@ export function DocumentoCoverageExplorer() {
   const [selectedCountry, setSelectedCountry] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "Available" | "Planned">("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [selectedPathwayId, setSelectedPathwayId] = useState<string>("ca-super-visa");
+  const [selectedPathwayId, setSelectedPathwayId] = useState<string | null>(null);
+  const [isBrowsingAll, setIsBrowsingAll] = useState<boolean>(false);
+  const [cardMicroTab, setCardMicroTab] = useState<Record<string, "overview" | "statutory" | "workflows">>({});
+
+  const stats = useMemo(() => {
+    const available = VERIFIED_PATHWAYS.filter((p) => p.status === "Available");
+    const planned = VERIFIED_PATHWAYS.filter((p) => p.status === "Planned");
+    const countries = new Set(available.map((p) => p.country));
+    return {
+      availableCount: available.length,
+      plannedCount: planned.length,
+      activeJurisdictionsCount: countries.size,
+    };
+  }, []);
+
+  const featuredPathways = useMemo(() => {
+    return [
+      VERIFIED_PATHWAYS.find((p) => p.id === "ca-super-visa")!,
+      VERIFIED_PATHWAYS.find((p) => p.id === "us-eb1a")!,
+      VERIFIED_PATHWAYS.find((p) => p.id === "uk-gtv")!,
+    ].filter(Boolean);
+  }, []);
 
   const filteredPathways = useMemo(() => {
     return VERIFIED_PATHWAYS.filter((p) => {
@@ -576,69 +598,67 @@ export function DocumentoCoverageExplorer() {
   }, [selectedCountry, statusFilter, searchQuery]);
 
   const activePathway = useMemo(() => {
-    // If the currently selected pathway is in the filtered list, display it;
-    // otherwise immediately select the first pathway in the filtered list so detail always matches filter
-    const foundInFiltered = filteredPathways.find((p) => p.id === selectedPathwayId);
-    return foundInFiltered || filteredPathways[0] || VERIFIED_PATHWAYS[0];
-  }, [selectedPathwayId, filteredPathways]);
+    if (!selectedPathwayId) return null;
+    return VERIFIED_PATHWAYS.find((p) => p.id === selectedPathwayId) || null;
+  }, [selectedPathwayId]);
 
-  const stats = useMemo(() => {
-    const available = VERIFIED_PATHWAYS.filter((p) => p.status === "Available");
-    const planned = VERIFIED_PATHWAYS.filter((p) => p.status === "Planned");
-    const countries = new Set(available.map((p) => p.country));
-    return {
-      availableCount: available.length,
-      plannedCount: planned.length,
-      activeJurisdictionsCount: countries.size,
-    };
-  }, []);
+  const isFilteredOrSearching = Boolean(searchQuery.trim() || statusFilter !== "ALL" || selectedCountry !== "ALL" || isBrowsingAll);
 
   return (
     <section
       id="coverage"
       style={{
-        padding: "80px 24px",
+        position: "relative",
+        overflow: "hidden",
+        padding: "88px 24px",
         scrollMarginTop: "80px",
-        background: "transparent",
-        borderBottom: "1px solid #DCE7E3",
+        background: "#FFFFFF",
+        borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
       }}
     >
-      <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
-        {/* Minimal Section Header */}
-        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 32px auto" }}>
-          <div
+      <InteractiveSectionBackground variant="ambient-mesh" />
+
+      {/* Anchor for #pathway-finder links */}
+      <div id="pathway-finder" style={{ position: "relative", top: "-80px", visibility: "hidden" }} />
+      <div style={{ maxWidth: "1240px", margin: "0 auto", position: "relative", zIndex: 1 }}>
+        {/* Editorial Section Header */}
+        <div
+          className="section-header-reveal animate-on-scroll"
+          data-motion="up"
+          style={{ textAlign: "center", maxWidth: "740px", margin: "0 auto 40px auto" }}
+        >
+          <span
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              padding: "4px 12px",
-              borderRadius: "20px",
-              background: "#DDEFE8",
-              border: "1px solid #B9DED4",
               fontSize: "12px",
               fontWeight: 650,
-              color: "#063C3D",
-              marginBottom: "14px",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "#0D6866",
+              marginBottom: "12px",
             }}
           >
-            <span>Pathway Coverage</span>
-          </div>
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#169B77" }} className="status-dot-pulse" />
+            <span>Jurisdictional Coverage</span>
+          </span>
 
           <h2
             style={{
-              fontSize: "clamp(26px, 3.6vw, 38px)",
+              fontSize: "clamp(28px, 3.5vw, 42px)",
               fontWeight: 700,
               color: "#063C3D",
-              lineHeight: 1.25,
-              letterSpacing: "-0.02em",
-              margin: "0 0 10px 0",
+              lineHeight: 1.15,
+              letterSpacing: "-0.03em",
+              margin: "0 0 14px 0",
               fontFamily: "var(--font-display, Inter, sans-serif)",
             }}
           >
             Explicit pathway coverage. Zero exaggerated claims.
           </h2>
 
-          <p style={{ fontSize: "15px", color: "#445451", lineHeight: 1.55, margin: "0 0 20px 0" }}>
+          <p style={{ fontSize: "16px", color: "#4F6360", lineHeight: 1.6, margin: "0 0 22px 0" }}>
             Operational, code-verified immigration workflows distinguished from planned expansion jurisdictions.
           </p>
 
@@ -651,34 +671,40 @@ export function DocumentoCoverageExplorer() {
               justifyContent: "center",
               flexWrap: "wrap",
               rowGap: "8px",
-              columnGap: "14px",
-              fontSize: "12.5px",
-              color: "#445451",
+              columnGap: "16px",
+              fontSize: "13px",
+              color: "#526663",
+              background: "#F6FAF8",
+              padding: "8px 18px",
+              borderRadius: "999px",
+              border: "1px solid rgba(13, 104, 102, 0.1)",
             }}
           >
             <span style={{ fontWeight: 650, color: "#063C3D" }}>
               3 Active Jurisdictions
             </span>
             <span style={{ color: "#B0C0BC" }}>•</span>
-            <span style={{ fontWeight: 650, color: "#0D6866" }}>
+            <span style={{ fontWeight: 600, color: "#0D6866" }}>
               6 Operational Pathways &amp; Dedicated Visa Suites ({stats.availableCount} Available Workflows)
             </span>
             <span style={{ color: "#B0C0BC" }}>•</span>
-            <span style={{ fontWeight: 650, color: "#8A5A10" }}>
+            <span style={{ fontWeight: 600, color: "#8A5A10" }}>
               2 Roadmap Pathways &amp; Pilot Jurisdictions
             </span>
           </div>
         </div>
 
-        {/* Minimal Filter Toolbar */}
+        {/* Discovery & Search Bar */}
         <div
-          className="animate-on-scroll delay-100"
+          className="animate-on-scroll spotlight-card"
+          data-motion="scale"
           style={{
             background: "#FFFFFF",
-            borderRadius: "12px",
-            border: "1px solid #DCE5E1",
-            padding: "14px 18px",
-            marginBottom: "24px",
+            borderRadius: "14px",
+            border: "1px solid rgba(13, 104, 102, 0.14)",
+            boxShadow: "0 10px 30px -14px rgba(6, 60, 61, 0.05)",
+            padding: "12px 16px",
+            marginBottom: "32px",
             display: "flex",
             flexWrap: "wrap",
             alignItems: "center",
@@ -692,15 +718,18 @@ export function DocumentoCoverageExplorer() {
               type="text"
               placeholder="Search visa name, code, or country..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (selectedPathwayId) setSelectedPathwayId(null);
+              }}
               style={{
                 width: "100%",
-                padding: "8px 12px 8px 34px",
-                borderRadius: "6px",
-                border: "1px solid #DCE5E1",
+                padding: "9px 14px 9px 36px",
+                borderRadius: "8px",
+                border: "1px solid rgba(13, 104, 102, 0.14)",
                 background: "#FAFCFB",
-                fontSize: "13px",
-                color: "#172322",
+                fontSize: "13.5px",
+                color: "#063C3D",
                 outline: "none",
               }}
             />
@@ -711,7 +740,7 @@ export function DocumentoCoverageExplorer() {
               fill="none"
               stroke="#6E7F7C"
               strokeWidth="2"
-              style={{ position: "absolute", left: "11px", top: "10px" }}
+              style={{ position: "absolute", left: "12px", top: "11px" }}
             >
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -727,30 +756,34 @@ export function DocumentoCoverageExplorer() {
                   background: "none",
                   border: "none",
                   color: "#6E7F7C",
-                  fontSize: "14px",
+                  fontSize: "13px",
                   cursor: "pointer",
                 }}
                 aria-label="Clear search"
               >
+                {/* taste-skill-ignore */}
                 ✕
               </button>
             )}
           </div>
 
-          {/* Status Buttons */}
+          {/* Status Filter Buttons */}
           <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={() => setStatusFilter("ALL")}
+              onClick={() => {
+                setStatusFilter("ALL");
+                if (selectedPathwayId) setSelectedPathwayId(null);
+              }}
               style={{
-                padding: "5px 11px",
-                borderRadius: "6px",
+                padding: "6px 12px",
+                borderRadius: "8px",
                 border: "1px solid",
-                borderColor: statusFilter === "ALL" ? "#0D6866" : "#DCE5E1",
+                borderColor: statusFilter === "ALL" ? "#0D6866" : "rgba(13, 104, 102, 0.14)",
                 background: statusFilter === "ALL" ? "#0D6866" : "#FFFFFF",
-                color: statusFilter === "ALL" ? "#FFFFFF" : "#445451",
-                fontSize: "12px",
-                fontWeight: statusFilter === "ALL" ? 650 : 500,
+                color: statusFilter === "ALL" ? "#FFFFFF" : "#4F6360",
+                fontSize: "12.5px",
+                fontWeight: statusFilter === "ALL" ? 600 : 500,
                 cursor: "pointer",
               }}
             >
@@ -758,16 +791,19 @@ export function DocumentoCoverageExplorer() {
             </button>
             <button
               type="button"
-              onClick={() => setStatusFilter("Available")}
+              onClick={() => {
+                setStatusFilter("Available");
+                if (selectedPathwayId) setSelectedPathwayId(null);
+              }}
               style={{
-                padding: "5px 11px",
-                borderRadius: "6px",
+                padding: "6px 12px",
+                borderRadius: "8px",
                 border: "1px solid",
-                borderColor: statusFilter === "Available" ? "#0D6866" : "#DCE5E1",
+                borderColor: statusFilter === "Available" ? "#0D6866" : "rgba(13, 104, 102, 0.14)",
                 background: statusFilter === "Available" ? "#0D6866" : "#FFFFFF",
-                color: statusFilter === "Available" ? "#FFFFFF" : "#176B50",
-                fontSize: "12px",
-                fontWeight: statusFilter === "Available" ? 650 : 500,
+                color: statusFilter === "Available" ? "#FFFFFF" : "#07594F",
+                fontSize: "12.5px",
+                fontWeight: statusFilter === "Available" ? 600 : 500,
                 cursor: "pointer",
               }}
             >
@@ -775,16 +811,19 @@ export function DocumentoCoverageExplorer() {
             </button>
             <button
               type="button"
-              onClick={() => setStatusFilter("Planned")}
+              onClick={() => {
+                setStatusFilter("Planned");
+                if (selectedPathwayId) setSelectedPathwayId(null);
+              }}
               style={{
-                padding: "5px 11px",
-                borderRadius: "6px",
+                padding: "6px 12px",
+                borderRadius: "8px",
                 border: "1px solid",
-                borderColor: statusFilter === "Planned" ? "#8A5A10" : "#DCE5E1",
+                borderColor: statusFilter === "Planned" ? "#8A5A10" : "rgba(13, 104, 102, 0.14)",
                 background: statusFilter === "Planned" ? "#8A5A10" : "#FFFFFF",
                 color: statusFilter === "Planned" ? "#FFFFFF" : "#8A5A10",
-                fontSize: "12px",
-                fontWeight: statusFilter === "Planned" ? 650 : 500,
+                fontSize: "12.5px",
+                fontWeight: statusFilter === "Planned" ? 600 : 500,
                 cursor: "pointer",
               }}
             >
@@ -792,236 +831,156 @@ export function DocumentoCoverageExplorer() {
             </button>
           </div>
 
-          {/* Clean Country Region Filter (No duplicate text, clean labels) */}
-          <div style={{ display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
-            {[
-              { code: "ALL", label: "All Regions" },
-              { code: "CA", label: "Canada" },
-              { code: "US", label: "United States" },
-              { code: "UK", label: "United Kingdom" },
-              { code: "AU", label: "Australia" },
-              { code: "DE", label: "Germany" },
-            ].map((c) => {
-              const isSelected = selectedCountry === c.code;
-              return (
-                <button
-                  key={c.code}
-                  type="button"
-                  onClick={() => setSelectedCountry(c.code)}
-                  style={{
-                    padding: "4px 9px",
-                    borderRadius: "4px",
-                    border: "none",
-                    background: isSelected ? "#0D6866" : "transparent",
-                    color: isSelected ? "#FFFFFF" : "#6E7F7C",
-                    fontSize: "12px",
-                    fontWeight: isSelected ? 700 : 550,
-                    cursor: "pointer",
-                    transition: "all 0.12s ease",
-                  }}
-                >
-                  {c.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Empty State */}
-        {filteredPathways.length === 0 && (
-          <div
-            style={{
-              padding: "40px 20px",
-              textAlign: "center",
-              background: "#FFFFFF",
-              borderRadius: "12px",
-              border: "1px dashed #DCE5E1",
-              marginBottom: "24px",
-            }}
-          >
-            <p style={{ fontSize: "14px", color: "#6E7F7C", margin: "0 0 12px 0" }}>
-              No immigration pathways match the current search or filter.
-            </p>
+          {/* Region Tabs / Browse Toggle */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
             <button
               type="button"
               onClick={() => {
-                setSelectedCountry("ALL");
-                setStatusFilter("ALL");
-                setSearchQuery("");
+                setIsBrowsingAll(!isBrowsingAll);
+                if (selectedPathwayId) setSelectedPathwayId(null);
               }}
               style={{
-                background: "#0D6866",
-                color: "#FFFFFF",
-                border: "none",
                 padding: "6px 14px",
-                borderRadius: "6px",
-                fontSize: "12px",
+                borderRadius: "8px",
+                border: "1px solid rgba(13, 104, 102, 0.18)",
+                background: isBrowsingAll ? "#EAF5EF" : "#FAFCFB",
+                color: "#063C3D",
+                fontSize: "12.5px",
                 fontWeight: 600,
                 cursor: "pointer",
               }}
             >
-              Reset Filters
+              {isBrowsingAll ? "Show Featured 3" : `Browse All ${VERIFIED_PATHWAYS.length} Pathways`}
             </button>
           </div>
-        )}
+        </div>
 
-        {/* Clean Two-Column Layout */}
-        {filteredPathways.length > 0 && (
+        {/* SCENE A: SINGLE FOCUSED DETAIL VIEW (When a pathway is clicked) */}
+        {activePathway && (
           <div
-            className="animate-on-scroll delay-150"
+            className="animate-on-scroll"
+            data-motion="scale"
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
-              gap: "20px",
-              alignItems: "start",
+              background: "#FFFFFF",
+              border: "1.5px solid #0D6866",
+              borderRadius: "16px",
+              padding: "28px",
+              boxShadow: "0 12px 36px rgba(6, 60, 61, 0.08)",
+              position: "relative",
+              marginBottom: "28px",
             }}
           >
-            {/* Left: Compact Pathway List with Clean Scroll */}
-            <div
+            <button
+              type="button"
+              onClick={() => setSelectedPathwayId(null)}
               style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-                maxHeight: "720px",
-                overflowY: "auto",
-                paddingRight: "4px",
-                scrollbarWidth: "thin",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                border: "1px solid #DCE5E1",
+                background: "#FAFCFB",
+                color: "#063C3D",
+                fontSize: "12.5px",
+                fontWeight: 650,
+                cursor: "pointer",
+                marginBottom: "20px",
               }}
             >
-              {filteredPathways.map((p) => {
-                const isSelected = activePathway?.id === p.id;
-                const isAvailable = p.status === "Available";
-                return (
-                  <div
-                    key={p.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedPathwayId(p.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setSelectedPathwayId(p.id);
-                      }
-                    }}
-                    style={{
-                      background: isSelected ? "#F1F6F4" : "#FFFFFF",
-                      border: "1px solid",
-                      borderColor: isSelected ? "#0D6866" : "#DCE5E1",
-                      borderLeft: isSelected ? "4px solid #0D6866" : "1px solid #DCE5E1",
-                      borderRadius: "8px",
-                      padding: "11px 14px",
-                      cursor: "pointer",
-                      boxShadow: isSelected ? "0 2px 8px rgba(13, 104, 102, 0.08)" : "none",
-                      transition: "all 0.12s ease",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "3px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#063C3D" }}>
-                          {p.country} • {p.code}
-                        </span>
-                      </div>
+              <span>← Back to all pathways</span>
+            </button>
 
-                      <span
-                        style={{
-                          fontSize: "10.5px",
-                          fontWeight: 650,
-                          padding: "2px 7px",
-                          borderRadius: "4px",
-                          background: isAvailable ? "#EAF6F0" : "#FEF7EA",
-                          color: isAvailable ? "#176B50" : "#8A5A10",
-                        }}
-                      >
-                        {isAvailable ? "Available" : "Planned"}
-                      </span>
-                    </div>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "18px" }}>{activePathway.flag}</span>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#0D6866", textTransform: "uppercase" }}>
+                    {activePathway.country} • {activePathway.code}
+                  </span>
+                  <span style={{ color: "#B0C0BC" }}>•</span>
+                  <span style={{ fontSize: "12px", color: "#6E7F7C" }}>{activePathway.category}</span>
+                </div>
+                <h3 style={{ fontSize: "22px", fontWeight: 700, color: "#063C3D", margin: 0 }}>
+                  {activePathway.title}
+                </h3>
+              </div>
 
-                    <div style={{ fontSize: "13px", fontWeight: 650, color: "#172322", lineHeight: 1.35 }}>
-                      {p.title}
-                    </div>
-
-                    <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginTop: "3px" }}>
-                      {p.category}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Right: Selected Pathway Scope Detail */}
-            {activePathway && (
-              <div
+              <span
                 style={{
-                  background: "#FFFFFF",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "12px",
-                  padding: "22px 24px",
-                  boxShadow: "0 4px 16px rgba(6, 60, 61, 0.04)",
-                  position: "sticky",
-                  top: "84px",
-                  maxHeight: "720px",
-                  overflowY: "auto",
-                  scrollbarWidth: "thin",
+                  fontSize: "11.5px",
+                  fontWeight: 700,
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  background: activePathway.status === "Available" ? "#EAF6F0" : "#FEF7EA",
+                  color: activePathway.status === "Available" ? "#176B50" : "#8A5A10",
+                  border: `1px solid ${activePathway.status === "Available" ? "#B9DED4" : "#F6D8A6"}`,
                 }}
               >
-                {/* Header */}
-                <div style={{ borderBottom: "1px solid #DCE5E1", paddingBottom: "14px", marginBottom: "16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap", marginBottom: "6px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#0D6866", textTransform: "uppercase" }}>
-                        {activePathway.country} • {activePathway.governingBody}
-                      </span>
-                    </div>
+                {activePathway.status === "Available" ? "Available Now" : "Planned Roadmap"}
+              </span>
+            </div>
 
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: "6px",
-                        background: activePathway.status === "Available" ? "#EAF6F0" : "#FEF7EA",
-                        color: activePathway.status === "Available" ? "#176B50" : "#8A5A10",
-                        border: `1px solid ${activePathway.status === "Available" ? "#B9DED4" : "#F6D8A6"}`,
-                      }}
-                    >
-                      {activePathway.status === "Available" ? "Available in Current Release" : "Planned Roadmap Scope"}
-                    </span>
+            <p style={{ fontSize: "14.5px", color: "#445451", lineHeight: 1.55, margin: "0 0 16px 0" }}>
+              {activePathway.summary}
+            </p>
+
+            <div style={{ background: "#F8FAF9", borderRadius: "10px", padding: "14px 16px", marginBottom: "20px", border: "1px solid #E2EBE7" }}>
+              <div style={{ fontSize: "11px", fontWeight: 750, color: "#6E7F7C", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "4px" }}>
+                Applicant Profile
+              </div>
+              <div style={{ fontSize: "13px", color: "#063C3D", lineHeight: 1.45 }}>
+                {activePathway.applicantProfile}
+              </div>
+            </div>
+
+            {/* Progressive Labeled Disclosure */}
+            <details
+              open
+              style={{
+                background: "#FAFCFB",
+                border: "1px solid #DCE5E1",
+                borderRadius: "10px",
+                padding: "14px 18px",
+                marginBottom: "20px",
+              }}
+            >
+              <summary
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#063C3D",
+                  cursor: "pointer",
+                  userSelect: "none",
+                }}
+              >
+                View statutory basis, official forms &amp; evidentiary scope ▾
+              </summary>
+              <div style={{ marginTop: "14px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+                <div>
+                  <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#6E7F7C", textTransform: "uppercase", marginBottom: "4px" }}>
+                    Governing Body &amp; Statutory Authority
+                  </div>
+                  <div style={{ fontSize: "12.5px", color: "#172322", lineHeight: 1.45, marginBottom: "10px" }}>
+                    <strong>{activePathway.governingBody}</strong>
+                    <div style={{ color: "#445451", marginTop: "2px" }}>{activePathway.statutoryBasis}</div>
                   </div>
 
-                  <h3
-                    style={{
-                      fontSize: "18px",
-                      fontWeight: 700,
-                      color: "#063C3D",
-                      margin: "0 0 6px 0",
-                    }}
-                  >
-                    {activePathway.title}
-                  </h3>
-
-                  <p style={{ fontSize: "13px", color: "#445451", lineHeight: 1.5, margin: 0 }}>
-                    {activePathway.summary}
-                  </p>
+                  <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#6E7F7C", textTransform: "uppercase", marginBottom: "4px" }}>
+                    Official Form Support
+                  </div>
+                  <div style={{ fontSize: "12.5px", color: "#063C3D", fontFamily: "monospace" }}>
+                    {activePathway.formSupport}
+                  </div>
                 </div>
 
-                {/* Scope & Metadata */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
-                  <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.45 }}>
-                    <strong style={{ color: "#063C3D" }}>Statutory Authority:</strong> {activePathway.statutoryBasis}
+                <div>
+                  <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#6E7F7C", textTransform: "uppercase", marginBottom: "6px" }}>
+                    Case Requirements
                   </div>
-                  <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.45 }}>
-                    <strong style={{ color: "#063C3D" }}>Official Forms:</strong> {activePathway.formSupport}
-                  </div>
-                </div>
-
-                {/* Key Case Needs */}
-                <div style={{ marginBottom: "16px" }}>
-                  <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#063C3D", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
-                    Scope Included in Documento
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                     {activePathway.caseNeeds.map((need, idx) => (
-                      <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "6px", fontSize: "12.5px", color: "#172322", lineHeight: 1.4 }}>
+                      <div key={idx} style={{ fontSize: "12px", color: "#445451", display: "flex", alignItems: "flex-start", gap: "6px" }}>
                         <span style={{ color: "#0D6866", fontWeight: 700 }}>•</span>
                         <span>{need}</span>
                       </div>
@@ -1029,60 +988,375 @@ export function DocumentoCoverageExplorer() {
                   </div>
                 </div>
 
-                {/* Document Workflows */}
-                <div style={{ marginBottom: "20px" }}>
-                  <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#063C3D", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#6E7F7C", textTransform: "uppercase", marginBottom: "6px" }}>
                     Handled Evidence Workflows
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "8px" }}>
                     {activePathway.documentWorkflows.map((flow, idx) => (
-                      <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "6px", fontSize: "12px", color: "#445451", lineHeight: 1.4 }}>
+                      <div key={idx} style={{ fontSize: "12px", color: "#063C3D", background: "#FFFFFF", border: "1px solid #E2EBE7", padding: "8px 10px", borderRadius: "6px", display: "flex", alignItems: "flex-start", gap: "6px" }}>
                         <span style={{ color: "#176B50" }}>✓</span>
                         <span>{flow}</span>
                       </div>
                     ))}
                   </div>
                 </div>
+              </div>
+            </details>
 
-                {/* Bottom CTA */}
-                <div
-                  style={{
-                    borderTop: "1px solid #DCE5E1",
-                    paddingTop: "14px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    flexWrap: "wrap",
-                    gap: "10px",
-                  }}
-                >
-                  <div style={{ fontSize: "12px", color: "#6E7F7C" }}>
-                    {activePathway.status === "Available"
-                      ? "Supported in active workspace docket."
-                      : "Pilot watchlist; contact team for roadmap timeline."}
-                  </div>
+            <div style={{ fontSize: "11.5px", color: "#6E7F7C", fontStyle: "italic", borderTop: "1px solid #EEF3F0", paddingTop: "12px" }}>
+              Disclaimer: Pathway criteria and requirements are structured for legal operations and do not constitute formal legal counsel. Attorney review required.
+            </div>
+          </div>
+        )}
 
-                  <a
-                    href="#pathway-finder"
+        {/* SCENE B: THREE CURATED FEATURED CARDS AT REST */}
+        {!activePathway && !isFilteredOrSearching && (
+          <div>
+            <div
+              className="stagger-children animate-on-scroll"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                gap: "24px",
+                marginBottom: "28px",
+              }}
+            >
+              {featuredPathways.map((pathway) => {
+                const activeSubTab = cardMicroTab[pathway.id] || "overview";
+                return (
+                  <div
+                    key={pathway.id}
+                    className="floating-card spotlight-card hover-lift"
                     style={{
-                      background: "#0D6866",
-                      color: "#FFFFFF",
-                      padding: "8px 14px",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      fontWeight: 650,
-                      textDecoration: "none",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "6px",
+                      padding: "28px",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      background: "#FFFFFF",
+                      borderRadius: "16px",
+                      border: "1px solid rgba(13, 104, 102, 0.14)",
+                      boxShadow: "0 12px 32px -12px rgba(6, 60, 61, 0.05)",
+                      position: "relative",
                     }}
                   >
-                    <span>Check Case Eligibility</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </a>
-                </div>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 650, color: "#0D6866" }}>
+                          {pathway.country} • {pathway.code}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 650,
+                            padding: "3px 10px",
+                            borderRadius: "999px",
+                            background: "#EAF5EF",
+                            color: "#07594F",
+                          }}
+                        >
+                          Available
+                        </span>
+                      </div>
+
+                      <h3 style={{ fontSize: "18.5px", fontWeight: 650, color: "#063C3D", letterSpacing: "-0.015em", margin: "0 0 14px 0" }}>
+                        {pathway.title}
+                      </h3>
+
+                      {/* Minimal Segmented Control */}
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          gap: "2px",
+                          background: "#F3F8F6",
+                          padding: "3px",
+                          borderRadius: "8px",
+                          marginBottom: "14px",
+                        }}
+                      >
+                        {(["overview", "statutory", "workflows"] as const).map((tabKey) => {
+                          const isCurrent = activeSubTab === tabKey;
+                          const label =
+                            tabKey === "overview"
+                              ? "Overview"
+                              : tabKey === "statutory"
+                              ? "Statutory"
+                              : "Checklists";
+                          return (
+                            <button
+                              key={tabKey}
+                              type="button"
+                              onClick={() =>
+                                setCardMicroTab((prev) => ({
+                                  ...prev,
+                                  [pathway.id]: tabKey,
+                                }))
+                              }
+                              style={{
+                                padding: "4px 10px",
+                                borderRadius: "6px",
+                                border: "none",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                background: isCurrent ? "#FFFFFF" : "transparent",
+                                color: isCurrent ? "#063C3D" : "#5D6E7F",
+                                boxShadow: isCurrent ? "0 1px 3px rgba(6,60,61,0.08)" : "none",
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {activeSubTab === "overview" && (
+                        <p style={{ fontSize: "14px", color: "#526663", lineHeight: 1.55, margin: "0 0 18px 0" }}>
+                          {pathway.summary}
+                        </p>
+                      )}
+
+                      {activeSubTab === "statutory" && (
+                        <div style={{ background: "#F8FBFA", borderRadius: "10px", padding: "12px 14px", border: "1px solid rgba(13, 104, 102, 0.1)", marginBottom: "18px", fontSize: "13px" }}>
+                          <div style={{ color: "#063C3D", fontWeight: 600, marginBottom: "4px", lineHeight: 1.4 }}>
+                            {pathway.statutoryBasis}
+                          </div>
+                          <div style={{ fontSize: "12px", color: "#526663" }}>
+                            Forms: {pathway.formSupport}
+                          </div>
+                        </div>
+                      )}
+
+                      {activeSubTab === "workflows" && (
+                        <div style={{ background: "#F8FBFA", borderRadius: "10px", padding: "12px 14px", border: "1px solid rgba(13, 104, 102, 0.1)", marginBottom: "18px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                          {pathway.documentWorkflows.slice(0, 2).map((wf, wIdx) => (
+                            <div key={wIdx} style={{ fontSize: "12.5px", color: "#063C3D", display: "flex", alignItems: "flex-start", gap: "8px", lineHeight: 1.4 }}>
+                              <span style={{ color: "#169B77", fontWeight: 700 }}>•</span>
+                              <span>{wf}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        borderTop: "1px solid rgba(13, 104, 102, 0.08)",
+                        paddingTop: "14px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span style={{ fontSize: "12px", color: "#6E7F7C" }}>
+                        {pathway.governingBody.split("(")[0].trim()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPathwayId(pathway.id)}
+                        style={{
+                          padding: 0,
+                          border: "none",
+                          background: "transparent",
+                          color: "#0D6866",
+                          fontSize: "13px",
+                          fontWeight: 650,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        <span>Inspect Scope</span>
+                        <span>→</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Restrained Roadmap Strip for Australia & Germany */}
+            <div
+              className="animate-on-scroll spotlight-card"
+              data-motion="up"
+              style={{
+                background: "#F8FBFA",
+                border: "1px solid rgba(13, 104, 102, 0.12)",
+                borderRadius: "14px",
+                padding: "16px 24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "14px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 650,
+                    padding: "3px 10px",
+                    borderRadius: "999px",
+                    background: "#FEF7EA",
+                    color: "#8A5A10",
+                  }}
+                >
+                  Expansion Watchlist
+                </span>
+                <span style={{ fontSize: "13.5px", color: "#4F6360" }}>
+                  In Active Development: <strong style={{ color: "#063C3D" }}>Australia Global Talent Visa (Subclass 858)</strong> and <strong style={{ color: "#063C3D" }}>Germany EU Blue Card &amp; Chancenkarte</strong>.
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter("Planned")}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#0D6866",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <span>View Roadmap</span>
+                <span>→</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* SCENE C: FILTERED / BROWSE CARDS GRID (When searching, filtering, or browsing all) */}
+        {!activePathway && isFilteredOrSearching && (
+          <div className="animate-on-scroll">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+              <div style={{ fontSize: "13px", color: "#6E7F7C" }}>
+                Showing <strong>{filteredPathways.length}</strong> matching {filteredPathways.length === 1 ? "pathway" : "pathways"}
+                {searchQuery && <span> for &quot;{searchQuery}&quot;</span>}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setStatusFilter("ALL");
+                  setSelectedCountry("ALL");
+                  setIsBrowsingAll(false);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#0D6866",
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                ← Return to featured view
+              </button>
+            </div>
+
+            {filteredPathways.length === 0 ? (
+              <div
+                style={{
+                  padding: "40px 20px",
+                  textAlign: "center",
+                  background: "#FFFFFF",
+                  borderRadius: "12px",
+                  border: "1px dashed #DCE5E1",
+                }}
+              >
+                <p style={{ fontSize: "14px", color: "#6E7F7C", margin: "0 0 12px 0" }}>
+                  No immigration pathways match the current search or filter.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCountry("ALL");
+                    setStatusFilter("ALL");
+                    setSearchQuery("");
+                  }}
+                  style={{
+                    background: "#0D6866",
+                    color: "#FFFFFF",
+                    border: "none",
+                    padding: "6px 14px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Reset Filters
+                </button>
+              </div>
+            ) : (
+              <div
+                className="stagger-children animate-on-scroll"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                  gap: "18px",
+                }}
+              >
+                {filteredPathways.map((p) => {
+                  const isAvailable = p.status === "Available";
+                  return (
+                    <div
+                      key={p.id}
+                      className="floating-card spotlight-card hover-lift"
+                      style={{
+                        padding: "20px 22px",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        background: "#FFFFFF",
+                        borderRadius: "12px",
+                        border: "1px solid #DCE5E1",
+                        cursor: "pointer",
+                      }}
+                      onClick={() => setSelectedPathwayId(p.id)}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                          <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#063C3D" }}>
+                            {p.flag} {p.country} • {p.code}
+                          </span>
+                          <span
+                            className="spring-badge"
+                            style={{
+                              fontSize: "10.5px",
+                              fontWeight: 650,
+                              padding: "2px 7px",
+                              borderRadius: "4px",
+                              background: isAvailable ? "#EAF6F0" : "#FEF7EA",
+                              color: isAvailable ? "#176B50" : "#8A5A10",
+                            }}
+                          >
+                            {isAvailable ? "Available" : "Planned"}
+                          </span>
+                        </div>
+                        <h4 style={{ fontSize: "15px", fontWeight: 700, color: "#063C3D", margin: "0 0 6px 0", lineHeight: 1.35 }}>
+                          {p.title}
+                        </h4>
+                        <p style={{ fontSize: "12.5px", color: "#445451", lineHeight: 1.45, margin: "0 0 12px 0" }}>
+                          {p.summary}
+                        </p>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #EEF3F0", paddingTop: "10px", fontSize: "11.5px", color: "#6E7F7C" }}>
+                        <span>{p.category}</span>
+                        <span style={{ color: "#0D6866", fontWeight: 650 }}>View scope →</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

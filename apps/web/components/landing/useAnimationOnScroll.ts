@@ -1,123 +1,128 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
-/**
- * Custom React hook for triggering on-scroll element animations via IntersectionObserver.
- * Configured specifically for the public landing page with automatic mutation detection,
- * viewport pre-check, and trigger change re-scans to prevent blank pages upon re-mount/sign-out.
- *
- * @param selector CSS selector for animated elements (defaults to ".animate-on-scroll")
- * @param once Whether the animation should only run once upon entering the viewport (default: true)
- * @param trigger Optional dependency value (e.g. currentUser) that causes re-scanning when changed
- */
 export function useAnimationOnScroll(
-  selector: string = ".animate-on-scroll",
-  once: boolean = true,
-  trigger?: any
+  selector = ".animate-on-scroll",
+  once = true,
+  trigger?: unknown
 ) {
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Helper to reveal elements that are already in view or above the fold
-    const scanAndReveal = () => {
-      const elements = document.querySelectorAll<HTMLElement>(selector);
-      if (elements.length === 0) return;
+    const elements = new Set<HTMLElement>();
+    const reducedMotion =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        : false;
 
-      // Fallback if IntersectionObserver is not supported
-      if (!("IntersectionObserver" in window)) {
-        elements.forEach((el) => {
-          el.classList.add("animate");
-        });
-        return;
-      }
-
-      const windowHeight = window.innerHeight || document.documentElement.clientHeight;
-
-      elements.forEach((el) => {
-        if (el.classList.contains("animate")) return;
-
-        const rect = el.getBoundingClientRect();
-        // If element is already visible or above the viewport, reveal immediately
-        if ((rect.top <= windowHeight * 0.96 && rect.bottom >= 0) || (rect.bottom < 0 && rect.top < 0)) {
-          el.classList.add("animate");
-          if (once && observerRef.current) {
-            observerRef.current.unobserve(el);
-          }
-        } else if (observerRef.current) {
-          observerRef.current.observe(el);
-        }
+    if (reducedMotion) {
+      document.querySelectorAll<HTMLElement>(selector).forEach((el) => {
+        el.classList.add("animate");
       });
-    };
-
-    // Initialize IntersectionObserver if supported
-    if ("IntersectionObserver" in window) {
-      observerRef.current = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("animate");
-              if (once && observerRef.current) {
-                observerRef.current.unobserve(entry.target);
-              }
-            } else if (!once) {
-              entry.target.classList.remove("animate");
-            }
-          });
-        },
-        {
-          threshold: 0.05,
-          rootMargin: "0px 0px 50px 0px",
-        }
-      );
+      return;
     }
 
-    // Immediate initial scan
-    scanAndReveal();
+    if (!("IntersectionObserver" in window)) {
+      document.querySelectorAll<HTMLElement>(selector).forEach((el) => {
+        el.classList.add("animate");
+      });
+      return;
+    }
 
-    // Debounced scan for DOM mutations and layout changes
-    let debounceTimer: any = null;
-    const scheduleScan = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        scanAndReveal();
-      }, 40);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const el = entry.target as HTMLElement;
+
+          if (entry.isIntersecting) {
+            el.classList.add("animate");
+
+            if (once) observer.unobserve(el);
+          } else if (!once) {
+            el.classList.remove("animate");
+          }
+        });
+      },
+      {
+        threshold: 0.03,
+        rootMargin: "0px 0px -15px 0px",
+      }
+    );
+
+    const scan = () => {
+      document.querySelectorAll<HTMLElement>(selector).forEach((el) => {
+        if (elements.has(el)) return;
+
+        elements.add(el);
+
+        const rect = el.getBoundingClientRect();
+
+        if (rect.top < window.innerHeight * 0.96 && rect.bottom > 0) {
+          el.classList.add("animate");
+        } else {
+          observer.observe(el);
+        }
+      });
     };
 
-    // Watch for DOM mutations (e.g. landing page remounting upon sign-out)
+    scan();
+
+    (window as any).initInViewAnimations = scan;
+
     let mutationObserver: MutationObserver | null = null;
     if ("MutationObserver" in window) {
-      mutationObserver = new MutationObserver(() => {
-        scheduleScan();
-      });
+      mutationObserver = new MutationObserver(scan);
       mutationObserver.observe(document.body, {
         childList: true,
         subtree: true,
       });
     }
 
-    // Scroll and resize listener fallback
-    window.addEventListener("scroll", scheduleScan, { passive: true });
-    window.addEventListener("resize", scheduleScan, { passive: true });
+    // 60fps Cursor-Tracking Border & Surface Spotlight across Bento Grids (.spotlight-card)
+    let rafId: number | null = null;
+    let lastClientX = -9999;
+    let lastClientY = -9999;
 
-    // Expose init helper globally for immediate external triggers (e.g. handleLogout)
-    (window as any).initInViewAnimations = (customSelector: string = selector) => {
-      scanAndReveal();
+    const updateSpotlightCards = () => {
+      rafId = null;
+      const cards = document.querySelectorAll<HTMLElement>(".spotlight-card");
+      const vh = window.innerHeight || 900;
+      cards.forEach((card) => {
+        const rect = card.getBoundingClientRect();
+        // Only update cards near or inside the viewport for 60fps efficiency
+        if (rect.bottom < -120 || rect.top > vh + 120) return;
+        const x = lastClientX - rect.left;
+        const y = lastClientY - rect.top;
+        card.style.setProperty("--mouse-x", `${x.toFixed(1)}px`);
+        card.style.setProperty("--mouse-y", `${y.toFixed(1)}px`);
+      });
     };
 
+    const handlePointerMove = (e: PointerEvent) => {
+      lastClientX = e.clientX;
+      lastClientY = e.clientY;
+      if (rafId === null) {
+        rafId = requestAnimationFrame(updateSpotlightCards);
+      }
+    };
+
+    const handleScroll = () => {
+      if (lastClientX > -1000 && rafId === null) {
+        rafId = requestAnimationFrame(updateSpotlightCards);
+      }
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
     return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      window.removeEventListener("scroll", scheduleScan);
-      window.removeEventListener("resize", scheduleScan);
-      if (mutationObserver) {
-        mutationObserver.disconnect();
-      }
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-        observerRef.current = null;
-      }
+      observer.disconnect();
+      if (mutationObserver) mutationObserver.disconnect();
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("scroll", handleScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      elements.clear();
     };
   }, [selector, once, trigger]);
 }

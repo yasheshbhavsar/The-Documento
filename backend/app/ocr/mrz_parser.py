@@ -180,6 +180,49 @@ class MRZParser:
 
         return None
 
+    @staticmethod
+    def _fix_numeric_slot(s: str) -> str:
+        """Normalizes common OCR letter-for-digit confusions in strictly numeric MRZ slots."""
+        return (
+            s.replace("O", "0")
+            .replace("D", "0")
+            .replace("Q", "0")
+            .replace("I", "1")
+            .replace("B", "8")
+            .replace("S", "5")
+            .replace("Z", "2")
+        )
+
+    @staticmethod
+    def _fix_alpha_slot(s: str) -> str:
+        """Normalizes common OCR digit-for-letter confusions in strictly alphabetic MRZ slots."""
+        return (
+            s.replace("0", "O")
+            .replace("1", "I")
+            .replace("8", "B")
+            .replace("5", "S")
+            .replace("2", "Z")
+        )
+
+    @classmethod
+    def _normalize_td3_line2_candidate(cls, c: str) -> str:
+        """Applies ICAO Doc 9303 positional type constraints to repair OCR glyph confusions on TD3 Line 2."""
+        if len(c) < 38 or c.startswith("P<"):
+            return c
+        padded = c.ljust(44, "<")[:44]
+        # Pos 9 (doc check), Pos 10-12 (nat alpha), Pos 13-19 (DOB + check), Pos 21-27 (Exp + check), Pos 43 (comp check)
+        repaired = (
+            padded[0:9]
+            + cls._fix_numeric_slot(padded[9:10])
+            + cls._fix_alpha_slot(padded[10:13])
+            + cls._fix_numeric_slot(padded[13:20])
+            + padded[20:21]
+            + cls._fix_numeric_slot(padded[21:28])
+            + padded[28:43]
+            + cls._fix_numeric_slot(padded[43:44])
+        )
+        return repaired
+
     @classmethod
     def _try_parse_td3(cls, candidates: list[str]) -> Optional[MRZResult]:
         """TD3 Passports: Line 1 starts with P<, Line 2 has doc#, DOB, Expiry."""
@@ -188,11 +231,13 @@ class MRZParser:
 
         for c in candidates:
             # Line 1 in TD3 starts with P<, followed by 3-letter issuer
-            if re.match(r"^P[<A-Z][A-Z<]{3}", c) and len(c) >= 38:
-                line1_cand = c.ljust(44, "<")[:44]
-            # Line 2 in TD3: [0-9A-Z<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MF<][0-9]{6}
-            elif re.search(r"[A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MF<][0-9]{6}", c) and len(c) >= 38:
-                line2_cand = c.ljust(44, "<")[:44]
+            if re.match(r"^P[<A-Z0-9][A-Z0-9<]{3}", c) and len(c) >= 38:
+                raw_l1 = c.ljust(44, "<")[:44]
+                line1_cand = "P<" + cls._fix_alpha_slot(raw_l1[2:44])
+            else:
+                norm_l2 = cls._normalize_td3_line2_candidate(c)
+                if re.search(r"[A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MF<][0-9]{6}", norm_l2) and len(c) >= 38:
+                    line2_cand = norm_l2
 
         if not line1_cand or not line2_cand:
             return None

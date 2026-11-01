@@ -170,6 +170,11 @@ describe("Landing Page Enhanced Features & Quality Gate", () => {
       fireEvent.click(firmPersonaBtn);
       expect(screen.getByText(/Automated Evidence Cross-Examination/i)).toBeDefined();
       expect(screen.getByText(/Deterministic Exhibit Index & Assembly/i)).toBeDefined();
+
+      // Test interactive Exhibit Volume Simulator slider inside Case Matcher
+      const volumeSlider = screen.getByLabelText(/Simulate case exhibit volume/i);
+      fireEvent.change(volumeSlider, { target: { value: "60" } });
+      expect(screen.getByText(/Case Volume: 60 Exhibits/i)).toBeDefined();
     });
   });
 

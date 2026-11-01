@@ -24,6 +24,7 @@ from backend.app.ai.evaluator import AIQualityEvaluator
 from backend.app.ai.token_tracker import TokenBudgetManager
 from backend.app.ai.prompt_guard import PromptGuard
 from backend.app.ai.summarizer import generate_evidence_backed_case_summary
+from backend.app.ai.us_consular_readiness import USConsularReadinessEngine
 from backend.app.core.errors import NotFoundError
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -42,6 +43,14 @@ class RAGQueryRequest(BaseModel):
 
 class PromptGuardScanRequest(BaseModel):
     text: str = Field(..., max_length=10000)
+
+
+class USConsularAuditRequest(BaseModel):
+    visa_category: str = Field("US-F1-STUDENT", description="US pathway: US-F1-STUDENT, US-B1B2-VISITOR, or US-H1B-STAMPING")
+    applicant_first_name: Optional[str] = None
+    applicant_last_name: Optional[str] = None
+    i20_cost_usd: Optional[float] = None
+    documents: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 # ==============================================================================
@@ -288,3 +297,24 @@ def get_case_evidence_brief(
         "suggested_clarification_questions": summary.suggested_clarification_questions,
         "summary_markdown": summary.summary_markdown,
     }
+
+
+@router.post("/us-consular-audit")
+def run_us_consular_readiness_audit(
+    payload: USConsularAuditRequest,
+) -> Dict[str, Any]:
+    """
+    Executes the Indian-applicant US Consular & INA § 214(b) Readiness Audit
+    for F-1 Academic Student, B-1/B-2 Visitor, and H-1B/H-4 Consular Stamping pathways.
+    """
+    from dataclasses import asdict
+
+    report = USConsularReadinessEngine.evaluate_case(
+        visa_category=payload.visa_category,
+        documents=payload.documents,
+        applicant_first_name=payload.applicant_first_name,
+        applicant_last_name=payload.applicant_last_name,
+        i20_cost_usd=payload.i20_cost_usd,
+    )
+    return asdict(report)
+

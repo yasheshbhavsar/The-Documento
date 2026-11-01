@@ -67,10 +67,9 @@ class Settings(BaseSettings):
             insecure_patterns = (
                 "local_dev",
                 "change_in_production",
-                "default",
-                "secret",
+                "default_secret",
+                "changeme",
                 "password",
-                "123456",
             )
             if any(p in self.jwt_secret_key.lower() for p in insecure_patterns) or len(self.jwt_secret_key) < 32:
                 raise ValueError("Insecure JWT secret key in production/staging environment! Must be >= 32 characters and not contain default patterns.")

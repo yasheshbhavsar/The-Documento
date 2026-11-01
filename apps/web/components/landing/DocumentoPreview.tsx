@@ -1,11 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
+import { InteractiveSectionBackground } from "./InteractiveSectionBackground";
 
 type PreviewTab = "dashboard" | "checklist" | "timeline_tasks" | "ai_intelligence" | "collaboration";
 
 export function DocumentoPreview() {
   const [activeTab, setActiveTab] = useState<PreviewTab>("dashboard");
+  const [ocrConfidence, setOcrConfidence] = useState<number>(99.4);
+  const [bentoExhibitIdx, setBentoExhibitIdx] = useState<0 | 1>(0);
+  const [auditViewMode, setAuditViewMode] = useState<"timeline" | "entity">("timeline");
 
   // Interactive state for synthetic case
   const [selectedDocId, setSelectedDocId] = useState<string>("doc-e2");
@@ -197,60 +201,413 @@ export function DocumentoPreview() {
   return (
     <section
       id="preview"
+      className="preview-section"
       style={{
-        padding: "72px 24px",
-        background: "transparent",
-        borderBottom: "1px solid #DCE7E3",
+        position: "relative",
+        overflow: "hidden",
+        padding: "88px 24px",
+        background: "#FFFFFF",
+        borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
       }}
     >
-      <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
+      <InteractiveSectionBackground variant="dot-matrix" />
+
+      <div style={{ maxWidth: "1240px", margin: "0 auto", position: "relative", zIndex: 1 }}>
         {/* Section Header */}
-        <div className="animate-on-scroll" style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 36px auto" }}>
-          <div
+        <div
+          className="section-header-reveal animate-on-scroll"
+          data-motion="up"
+          style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto 44px auto" }}
+        >
+          <span
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              padding: "4px 12px",
-              borderRadius: "20px",
-              background: "#DDEFE8",
-              border: "1px solid #B9DED4",
               fontSize: "12px",
               fontWeight: 650,
-              color: "#063C3D",
-              marginBottom: "14px",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "#0D6866",
+              marginBottom: "12px",
             }}
           >
-            <span>Interactive Operational Preview</span>
-          </div>
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#169B77" }} className="status-dot-pulse" />
+            <span>Evidence Architecture</span>
+          </span>
 
           <h2
             style={{
-              fontSize: "clamp(26px, 3.6vw, 38px)",
+              fontSize: "clamp(28px, 3.5vw, 42px)",
               fontWeight: 700,
               color: "#063C3D",
-              lineHeight: 1.25,
-              letterSpacing: "-0.02em",
-              margin: "0 0 12px 0",
-              fontFamily: "var(--font-display, Inter, sans-serif)",
+              lineHeight: 1.15,
+              letterSpacing: "-0.03em",
+              margin: "0 0 14px 0",
+              fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
             }}
           >
-            Explore a representative case workspace.
+            From raw evidence to verified counsel judgment.
           </h2>
 
-          <p style={{ fontSize: "15px", color: "#445451", lineHeight: 1.55, margin: 0 }}>
-            See how Documento organizes documents, identifies potential issues, and shows the next steps — all in one place.
+          <p style={{ fontSize: "16px", color: "#4F6360", lineHeight: 1.6, margin: 0 }}>
+            Unstructured source records become an indexed, tamper-evident evidentiary record ready for attorney adjudication.
           </p>
+        </div>
+
+        {/* Minimal 3-Step Bento Architecture: Source -> Audit -> Adjudication */}
+        <div
+          className="stagger-children animate-on-scroll"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: "24px",
+            marginBottom: "40px",
+            alignItems: "stretch",
+          }}
+        >
+          {/* Card 1: Source Document */}
+          <div
+            className="floating-card spotlight-card hover-lift"
+            style={{
+              padding: "28px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              background: "#FFFFFF",
+              border: "1px solid rgba(13, 104, 102, 0.14)",
+              borderRadius: "16px",
+              boxShadow: "0 12px 32px -12px rgba(6, 60, 61, 0.05)",
+              position: "relative",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
+                <span
+                  style={{
+                    fontSize: "11.5px",
+                    fontWeight: 650,
+                    color: "#07594F",
+                    background: "#EAF5EF",
+                    padding: "4px 10px",
+                    borderRadius: "999px",
+                  }}
+                >
+                  Source Record
+                </span>
+                {/* Interactive Exhibit Micro-Tabs */}
+                <div style={{ display: "inline-flex", gap: "2px", background: "#F3F8F6", padding: "3px", borderRadius: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setBentoExhibitIdx(0)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      border: "none",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      background: bentoExhibitIdx === 0 ? "#FFFFFF" : "transparent",
+                      color: bentoExhibitIdx === 0 ? "#063C3D" : "#5D6E7F",
+                      boxShadow: bentoExhibitIdx === 0 ? "0 1px 3px rgba(6,60,61,0.08)" : "none",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    Exh. A-1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBentoExhibitIdx(1)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      border: "none",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      background: bentoExhibitIdx === 1 ? "#FFFFFF" : "transparent",
+                      color: bentoExhibitIdx === 1 ? "#063C3D" : "#5D6E7F",
+                      boxShadow: bentoExhibitIdx === 1 ? "0 1px 3px rgba(6,60,61,0.08)" : "none",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    Exh. C-1
+                  </button>
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: "18px", fontWeight: 650, color: "#063C3D", letterSpacing: "-0.015em", margin: "0 0 8px 0" }}>
+                Passport_Bio_Page_UK.pdf
+              </h3>
+              <p style={{ fontSize: "14px", color: "#526663", lineHeight: 1.55, margin: "0 0 20px 0" }}>
+                Biometric identity exhibit anchored by SHA-256 provenance and coordinate-linked extraction.
+              </p>
+
+              <div style={{ background: "#F8FBFA", borderRadius: "12px", padding: "14px 16px", border: "1px solid rgba(13, 104, 102, 0.1)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", fontSize: "12.5px" }}>
+                  <span style={{ color: "#526663", fontWeight: 500 }}>
+                    {bentoExhibitIdx === 0 ? "Exhibit A-1 • 2 pgs" : "Exhibit C-1 • 14 pgs"}
+                  </span>
+                  <span style={{ color: "#0D6866", fontWeight: 650 }}>
+                    {ocrConfidence.toFixed(1)}% OCR Confidence
+                  </span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 500, whiteSpace: "nowrap" }}>Threshold</span>
+                  <input
+                    type="range"
+                    min="92.0"
+                    max="99.9"
+                    step="0.1"
+                    aria-label="OCR Confidence Threshold"
+                    value={ocrConfidence}
+                    onChange={(e) => setOcrConfidence(parseFloat(e.target.value))}
+                    style={{
+                      width: "100%",
+                      accentColor: "#0D6866",
+                      height: "4px",
+                      cursor: "pointer",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: "18px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", color: "#6E7F7C" }}>
+              <span>Tamper-evident vault</span>
+              <code style={{ fontSize: "11px", color: "#0D6866" }}>
+                {bentoExhibitIdx === 0 ? "e3b0c442...a53b" : "8f4a2109...b76c"}
+              </code>
+            </div>
+          </div>
+
+          {/* Card 2: Extracted Fact & Audit Flag */}
+          <div
+            className="floating-card floating-card-focal spotlight-card hover-lift"
+            style={{
+              padding: "28px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              background: "#FFFFFF",
+              border: "1.5px solid #0D6866",
+              borderRadius: "16px",
+              boxShadow: "0 20px 44px -16px rgba(6, 60, 61, 0.1)",
+              position: "relative",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
+                <span
+                  style={{
+                    fontSize: "11.5px",
+                    fontWeight: 650,
+                    color: findingStatus === "resolved" ? "#07594F" : "#8A5A10",
+                    background: findingStatus === "resolved" ? "#EAF5EF" : "#FEF7EA",
+                    padding: "4px 10px",
+                    borderRadius: "999px",
+                  }}
+                >
+                  {findingStatus === "resolved" ? "Discrepancy Resolved" : "Cross-Exhibit Audit"}
+                </span>
+
+                {/* Interactive Audit View Switcher */}
+                <div style={{ display: "inline-flex", gap: "2px", background: "#F3F8F6", padding: "3px", borderRadius: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setAuditViewMode("timeline")}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      border: "none",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      background: auditViewMode === "timeline" ? "#FFFFFF" : "transparent",
+                      color: auditViewMode === "timeline" ? "#063C3D" : "#5D6E7F",
+                      boxShadow: auditViewMode === "timeline" ? "0 1px 3px rgba(6,60,61,0.08)" : "none",
+                    }}
+                  >
+                    Timeline
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuditViewMode("entity")}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      border: "none",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      background: auditViewMode === "entity" ? "#FFFFFF" : "transparent",
+                      color: auditViewMode === "entity" ? "#063C3D" : "#5D6E7F",
+                      boxShadow: auditViewMode === "entity" ? "0 1px 3px rgba(6,60,61,0.08)" : "none",
+                    }}
+                  >
+                    Entities
+                  </button>
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: "18px", fontWeight: 650, color: "#063C3D", letterSpacing: "-0.015em", margin: "0 0 8px 0" }}>
+                Dr. Aris Thorne (EB-1A)
+              </h3>
+              <p style={{ fontSize: "14px", color: "#526663", lineHeight: 1.55, margin: "0 0 20px 0" }}>
+                Cross-document verification flags date variances across exhibits before government submission.
+              </p>
+
+              <div
+                style={{
+                  background: findingStatus === "resolved" ? "#F4FAF7" : "#FFFBF2",
+                  borderRadius: "12px",
+                  padding: "14px 16px",
+                  border: `1px solid ${findingStatus === "resolved" ? "rgba(22, 155, 119, 0.2)" : "rgba(217, 119, 6, 0.22)"}`,
+                }}
+              >
+                {auditViewMode === "timeline" ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "13px" }}>
+                    <div>
+                      <div style={{ fontSize: "11px", color: "#6E7F7C" }}>Exhibit E-2</div>
+                      <div style={{ fontWeight: 650, color: "#063C3D" }}>Sept 1, 2021</div>
+                    </div>
+                    <span style={{ color: "#D97706", fontSize: "12px", fontWeight: 600 }}>vs</span>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "11px", color: "#6E7F7C" }}>Applicant CV</div>
+                      <div style={{ fontWeight: 650, color: "#063C3D" }}>Oct 1, 2021</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: "13px", color: "#063C3D", display: "flex", justifyContent: "space-between" }}>
+                    <span>MIT Quantum Lab</span>
+                    <span style={{ color: "#0D6866", fontWeight: 600 }}>3 Exhibits Linked</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: "18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#526663", marginBottom: "6px" }}>
+                <span>Evidentiary Readiness</span>
+                <span style={{ fontWeight: 650, color: "#063C3D" }}>{findingStatus === "resolved" ? "94%" : "68%"}</span>
+              </div>
+              <div style={{ width: "100%", height: "4px", background: "#EAF5EF", borderRadius: "999px", overflow: "hidden" }}>
+                <div
+                  style={{
+                    width: findingStatus === "resolved" ? "94%" : "68%",
+                    height: "100%",
+                    background: findingStatus === "resolved" ? "#169B77" : "#D97706",
+                    borderRadius: "999px",
+                    transition: "width 500ms cubic-bezier(0.22, 1, 0.36, 1)",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Counsel Review & Adjudication */}
+          <div
+            className="floating-card spotlight-card hover-lift"
+            style={{
+              padding: "28px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              background: "#FFFFFF",
+              border: "1px solid rgba(13, 104, 102, 0.14)",
+              borderRadius: "16px",
+              boxShadow: "0 12px 32px -12px rgba(6, 60, 61, 0.05)",
+              position: "relative",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
+                <span
+                  style={{
+                    fontSize: "11.5px",
+                    fontWeight: 650,
+                    color: "#063C3D",
+                    background: "#EAF5EF",
+                    padding: "4px 10px",
+                    borderRadius: "999px",
+                  }}
+                >
+                  Counsel Sign-Off
+                </span>
+                <span style={{ fontSize: "12px", color: "#0D6866", fontWeight: 600 }}>
+                  G-28 Verified
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: "18px", fontWeight: 650, color: "#063C3D", letterSpacing: "-0.015em", margin: "0 0 8px 0" }}>
+                Eleanor Vance, Esq.
+              </h3>
+              <p style={{ fontSize: "14px", color: "#526663", lineHeight: 1.55, margin: "0 0 20px 0" }}>
+                Supervising counsel retains non-delegable legal authority over every discrepancy resolution and filing package.
+              </p>
+
+              <div style={{ background: "#F8FBFA", borderRadius: "12px", padding: "14px 16px", border: "1px solid rgba(13, 104, 102, 0.1)" }}>
+                {findingStatus === "resolved" ? (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                    <span style={{ fontWeight: 650, color: "#07594F", fontSize: "13px" }}>
+                      Addendum Authorized
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFindingStatus("pending")}
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: "6px",
+                        border: "1px solid rgba(13, 104, 102, 0.18)",
+                        background: "#FFFFFF",
+                        color: "#063C3D",
+                        fontSize: "11.5px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setFindingStatus("resolved")}
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "#0D6866",
+                      color: "#FFFFFF",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "background 0.15s ease",
+                    }}
+                  >
+                    Authorize Clarification Addendum
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: "18px", fontSize: "12px", color: "#6E7F7C" }}>
+              Human-led legal judgment • Bar # NY-4921
+            </div>
+          </div>
         </div>
 
         {/* Clean & Restrained Interactive Workspace Container */}
         <div
-          className="animate-on-scroll delay-150"
+          className="animate-on-scroll spotlight-card"
+          data-ui="true"
+          data-motion="scale"
           style={{
             background: "#FFFFFF",
-            borderRadius: "14px",
-            border: "1px solid #DCE5E1",
-            boxShadow: "0 4px 20px rgba(6, 60, 61, 0.05)",
+            borderRadius: "18px",
+            border: "1px solid rgba(13, 104, 102, 0.14)",
+            boxShadow: "0 24px 60px -16px rgba(6, 60, 61, 0.07)",
             overflow: "hidden",
           }}
         >
@@ -258,8 +615,8 @@ export function DocumentoPreview() {
           <div
             style={{
               background: "#FAFCFB",
-              borderBottom: "1px solid #DCE5E1",
-              padding: "12px 20px",
+              borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+              padding: "14px 24px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -269,11 +626,11 @@ export function DocumentoPreview() {
           >
             <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>
+                <span style={{ fontSize: "13.5px", fontWeight: 650, color: "#063C3D" }}>
                   CASE-US-8841: Dr. Aris Thorne
                 </span>
                 <span style={{ fontSize: "12px", color: "#A0B0AC" }}>•</span>
-                <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#0D6866" }}>
+                <span style={{ fontSize: "13px", fontWeight: 500, color: "#0D6866" }}>
                   EB-1A Extraordinary Ability (Form I-140)
                 </span>
               </div>
@@ -282,31 +639,24 @@ export function DocumentoPreview() {
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <span
                 style={{
-                  background: "#DDEFE8",
+                  background: "#EAF5EF",
                   color: "#063C3D",
                   fontSize: "11.5px",
-                  fontWeight: 650,
-                  padding: "3px 9px",
-                  borderRadius: "6px",
+                  fontWeight: 600,
+                  padding: "4px 10px",
+                  borderRadius: "999px",
                 }}
               >
                 Readiness: 68%
               </span>
               <span
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "3px 9px",
-                  borderRadius: "6px",
-                  background: "#FEF7EA",
-                  border: "1px solid #F6D8A6",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  color: "#8A5A10",
+                  fontSize: "11.5px",
+                  fontWeight: 500,
+                  color: "#6E7F7C",
                 }}
               >
-                <span>Illustrative Workspace • Synthetic Case Data</span>
+                Interactive Casework Studio
               </span>
             </div>
           </div>

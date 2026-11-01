@@ -146,6 +146,15 @@ export function DocumentExtractorLab() {
       clearTimeout(timer4);
 
       setAnalysisResult(result);
+      const usedOfflineFallback = result.quality_findings?.some(
+        (qf) => qf.finding_type === "backend_ocr_offline"
+      );
+      if (!usedOfflineFallback) {
+        setBackendStatus({
+          online: true,
+          message: "OCR Engine Online (FastAPI + RapidOCR + ICAO Doc 9303)",
+        });
+      }
       if (result.extracted_fields && result.extracted_fields.length > 0) {
         setSelectedFieldForBbox(result.extracted_fields[0].field_name);
       }
@@ -2027,9 +2036,64 @@ export function DocumentExtractorLab() {
                     </div>
                   )}
 
+                  {/* 4. Indian Income Tax Return (ITR-V) Statutory Verification */}
+                  {analysisResult.specialized_intelligence.itr_verification && (
+                    <div
+                      style={{
+                        marginTop: "20px",
+                        background: "rgba(245, 158, 11, 0.08)",
+                        border: "1px solid rgba(245, 158, 11, 0.28)",
+                        borderRadius: "10px",
+                        padding: "18px",
+                      }}
+                    >
+                      <div style={{ fontSize: "11px", color: "#FBBF24", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        Indian Income Tax Department (CBDT) Forensics
+                      </div>
+                      <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#FFFFFF", margin: "4px 0 12px" }}>
+                        ITR-V Income Tax Return Acknowledgement
+                      </h3>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", fontSize: "12px", color: "#CBD5E1" }}>
+                        {analysisResult.specialized_intelligence.itr_verification.assessment_year && (
+                          <div style={{ background: "rgba(0,0,0,0.3)", padding: "10px", borderRadius: "6px" }}>
+                            <div style={{ fontSize: "11px", color: "#94A3B8" }}>Assessment Year</div>
+                            <div style={{ fontSize: "14px", fontWeight: 700, color: "#FCD34D", marginTop: "2px" }}>
+                              {analysisResult.specialized_intelligence.itr_verification.assessment_year}
+                            </div>
+                          </div>
+                        )}
+                        {analysisResult.specialized_intelligence.itr_verification.pan_number && (
+                          <div style={{ background: "rgba(0,0,0,0.3)", padding: "10px", borderRadius: "6px" }}>
+                            <div style={{ fontSize: "11px", color: "#94A3B8" }}>PAN Number</div>
+                            <div style={{ fontSize: "14px", fontWeight: 700, color: "#34D399", fontFamily: "monospace", marginTop: "2px" }}>
+                              {analysisResult.specialized_intelligence.itr_verification.pan_number}
+                            </div>
+                          </div>
+                        )}
+                        {analysisResult.specialized_intelligence.itr_verification.acknowledgement_number && (
+                          <div style={{ background: "rgba(0,0,0,0.3)", padding: "10px", borderRadius: "6px" }}>
+                            <div style={{ fontSize: "11px", color: "#94A3B8" }}>15-Digit Ack No.</div>
+                            <div style={{ fontSize: "14px", fontWeight: 700, color: "#38BDF8", fontFamily: "monospace", marginTop: "2px" }}>
+                              {analysisResult.specialized_intelligence.itr_verification.acknowledgement_number}
+                            </div>
+                          </div>
+                        )}
+                        {analysisResult.specialized_intelligence.itr_verification.gross_total_income !== undefined && (
+                          <div style={{ background: "rgba(0,0,0,0.3)", padding: "10px", borderRadius: "6px" }}>
+                            <div style={{ fontSize: "11px", color: "#94A3B8" }}>Gross Total Income</div>
+                            <div style={{ fontSize: "14px", fontWeight: 700, color: "#FFFFFF", marginTop: "2px" }}>
+                              ₹{Number(analysisResult.specialized_intelligence.itr_verification.gross_total_income).toLocaleString()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {!analysisResult.specialized_intelligence.resume_intelligence &&
                     !analysisResult.specialized_intelligence.identity_compliance &&
-                    !analysisResult.specialized_intelligence.financial_forensics && (
+                    !analysisResult.specialized_intelligence.financial_forensics &&
+                    !analysisResult.specialized_intelligence.itr_verification && (
                       <div style={{ padding: "24px", color: "#94A3B8", fontSize: "13px" }}>
                         No specialized banking, resume, or statutory identity anomalies detected for this document category.
                       </div>

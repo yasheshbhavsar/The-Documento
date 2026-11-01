@@ -161,18 +161,18 @@ export function DocumentoProblemSolution() {
     <section
       id="comparison"
       style={{
-        padding: "88px 24px",
+        padding: "56px 24px",
         scrollMarginTop: "80px",
         borderBottom: "1px solid #DCE7E3",
       }}
     >
       <div
         style={{
-          maxWidth: "1280px",
+          maxWidth: "1240px",
           margin: "0 auto",
           display: "grid",
           gridTemplateColumns: "repeat(12, 1fr)",
-          gap: "48px 56px",
+          gap: "28px",
           alignItems: "start",
         }}
       >

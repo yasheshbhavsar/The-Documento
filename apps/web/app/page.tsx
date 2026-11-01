@@ -16,17 +16,15 @@ import { GuidedQuestionnaireModal } from "../components/modals/GuidedQuestionnai
 import { AlertBanner } from "../components/common/NotificationToast";
 import { DocumentoNavbar } from "../components/landing/DocumentoNavbar";
 import { DocumentoHero } from "../components/landing/DocumentoHero";
+import { DocumentoSignalStrip } from "../components/landing/DocumentoSignalStrip";
 import { DocumentoPreview } from "../components/landing/DocumentoPreview";
-import { DocumentoCoverageExplorer } from "../components/landing/DocumentoCoverageExplorer";
-import { DocumentoProblemSolution } from "../components/landing/DocumentoProblemSolution";
 import { DocumentoWorkflow } from "../components/landing/DocumentoWorkflow";
+import { DocumentoCoverageExplorer } from "../components/landing/DocumentoCoverageExplorer";
 import { DocumentoInteractiveTools } from "../components/landing/DocumentoInteractiveTools";
-import { DocumentoCapabilities } from "../components/landing/DocumentoCapabilities";
 import { DocumentoTrust } from "../components/landing/DocumentoTrust";
 import { DocumentoFAQ } from "../components/landing/DocumentoFAQ";
 import { DocumentoFooter } from "../components/landing/DocumentoFooter";
 import { WaveBackground } from "../components/landing/WaveBackground";
-import { SectionWaveBackground } from "../components/landing/SectionWaveBackground";
 import { DocumentoLoginModal } from "../components/auth/DocumentoLoginModal";
 import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
 import { useAnimationOnScroll } from "../components/landing/useAnimationOnScroll";
@@ -236,7 +234,7 @@ export default function Home() {
       try {
         const auditRes = await api.getAuditEvents(currentRole);
         setAuditEvents(auditRes.data);
-      } catch {}
+      } catch { }
     } catch (err: any) {
       setBannerAlert({
         type: "critical",
@@ -270,39 +268,55 @@ export default function Home() {
   };
 
   const handleResolveFinding = async (findingId: string, note: string) => {
-    const caseId = cases[0]?.id || "case-01";
+    const finding = aiFindings.find((f) => f.id === findingId);
+    const caseId = finding?.case_id || cases[0]?.id || "case-01";
     await api.resolveFinding(caseId, findingId, note || "Resolved by reviewer");
     setAiFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status: "resolved" } : f)));
     setBannerAlert({ type: "success", message: "Discrepancy marked as resolved." });
   };
 
   const handleDismissFinding = async (findingId: string, reason: string, note: string) => {
-    const caseId = cases[0]?.id || "case-01";
+    const finding = aiFindings.find((f) => f.id === findingId);
+    const caseId = finding?.case_id || cases[0]?.id || "case-01";
     await api.dismissFinding(caseId, findingId, reason || "false_positive", note || "Dismissed by reviewer");
     setAiFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status: "dismissed" } : f)));
     setBannerAlert({ type: "info", message: "Finding dismissed." });
   };
 
   const handleEscalateFinding = async (findingId: string, note: string) => {
-    const caseId = cases[0]?.id || "case-01";
+    const finding = aiFindings.find((f) => f.id === findingId);
+    const caseId = finding?.case_id || cases[0]?.id || "case-01";
     await api.escalateFinding(caseId, findingId, note || "Escalated for senior review");
     setAiFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status: "needs_review" } : f)));
     setBannerAlert({ type: "warning", message: "Finding escalated to supervising attorney." });
   };
 
   const handleSendMessage = async (content: string) => {
-    await api.sendMessage(content, "client");
+    const senderRole = activeExp === "client_applicant" ? "client" : "attorney";
+    const newMsg = await api.sendMessage(content, senderRole);
+    if (newMsg) {
+      setMessages((prev) => [...prev, newMsg.data]);
+    }
     setBannerAlert({ type: "success", message: "Message sent securely to firm legal team." });
   };
 
   const handleMarkNotificationRead = async (id: string) => {
     await api.markNotificationRead(id);
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, status: "read", isRead: true } : n)));
   };
 
   const handleToggleTask = (taskId: string) => {
+    void api.toggleTask(taskId);
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: t.status === "completed" ? "pending" : "completed" } : t))
+      prev.map((t) => {
+        if (t.id !== taskId) return t;
+        const nextCompleted = !t.is_completed;
+        return {
+          ...t,
+          is_completed: nextCompleted,
+          status: nextCompleted ? "completed" : "pending",
+        };
+      })
     );
   };
 
@@ -423,32 +437,24 @@ export default function Home() {
           <DocumentoHero
             onOpenLogin={handleOpenLogin}
           />
-          <SectionWaveBackground>
-            <DocumentoPreview />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
-            <DocumentoCoverageExplorer />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
-            <DocumentoProblemSolution />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
-            <DocumentoWorkflow />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
-            <DocumentoInteractiveTools
-              onOpenLogin={handleOpenLogin}
-            />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
-            <DocumentoCapabilities />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
-            <DocumentoTrust />
-          </SectionWaveBackground>
-          <SectionWaveBackground>
-            <DocumentoFAQ />
-          </SectionWaveBackground>
+          <DocumentoSignalStrip />
+
+          {/* Beat 1: Evidence becomes clear */}
+          <DocumentoPreview />
+
+          {/* Beat 2: A case moves forward */}
+          <DocumentoWorkflow />
+
+          {/* Beat 3: Choose a route */}
+          <DocumentoCoverageExplorer />
+
+          {/* Beat 4: Fit and safeguards */}
+          <DocumentoInteractiveTools onOpenLogin={handleOpenLogin} />
+          <DocumentoTrust />
+
+          {/* Beat 5: Questions and action */}
+          <DocumentoFAQ onOpenLogin={handleOpenLogin} />
+
           <DocumentoFooter
             onOpenLogin={handleOpenLogin}
           />
@@ -492,7 +498,7 @@ export default function Home() {
               />
             )}
 
-            {activeExp === "case_manager" && (
+            {(activeExp === "case_manager" || activeExp === "paralegal") && (
               <EmployeeWorkspace
                 cases={cases}
                 clients={clients}
@@ -534,10 +540,10 @@ export default function Home() {
                 : [];
               const clientInvoices = clientCase
                 ? invoices.filter(
-                    (inv) =>
-                      inv.case_number === clientCase.case_number ||
-                      (inv.case_id && inv.case_id === clientCase.id)
-                  )
+                  (inv) =>
+                    inv.case_number === clientCase.case_number ||
+                    (inv.case_id && inv.case_id === clientCase.id)
+                )
                 : [];
 
               return (

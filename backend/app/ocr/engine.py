@@ -111,6 +111,12 @@ def clean_ocr_text(text: str) -> str:
 
     # Step 3: Fix CamelCase missing space: 'ofBirth' -> 'of Birth', 'PlaceofBirth' -> 'Place of Birth'
     text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
+    text = re.sub(
+        r'\b(Place|Date|Name|Country|Port|Republic|Government|State|Ministry|Department|Certificate|Master|Bachelor|Doctor|Statement|Proof|Letter|Notice|Form|Summary|Schedule|Account|Bank)(of|to|in|for|by|on)\s*(India|Birth|Issue|Expiry|Marriage|Registration|Science|Arts|Commerce|Engineering|Technology|Philosophy|Laws|Account)?\b',
+        lambda m: f"{m.group(1)} {m.group(2)}" + (f" {m.group(3)}" if m.group(3) else ""),
+        text,
+        flags=re.IGNORECASE,
+    )
 
     # Step 4: Fix common OCR glyph confusions in standard document labels BEFORE label stripping
     text = re.sub(r'\bNa[rn]{2}e\b', 'Name', text, flags=re.IGNORECASE)
@@ -126,9 +132,9 @@ def clean_ocr_text(text: str) -> str:
     text = re.sub(r'Name\(s\)\)', 'Name(s)', text, flags=re.IGNORECASE)
 
     # Step 5: Strip spurious noise prefix before slash and document labels
-    # e.g. 'f/Given', 'e/Place', 'feaTo/Given', 'f / Surname', 'at / Given'
+    # e.g. 'f/Given', 'e/Place', 'feaTo/Given', 'f / Surname', 'wr f / Given'
     text = re.sub(
-        r'(?i)(^|[\r\n \t])[a-z0-9\+\-_~|]{1,6}[ \t]*[/\\|][ \t]*(?=(?:Given|Surname|Place|Date|Sex|Nationality|Father|Mother|Spouse|Address|File|Old|Passport)\b)',
+        r'(?i)(^|[\r\n \t])(?:[a-z0-9\+\-_~|]{1,8}[ \t]*){1,3}[/\\|][ \t]*(?=(?:Given|Surname|Place|Date|Sex|Nationality|Father|Mother|Spouse|Address|File|Old|Passport)\b)',
         r'\1',
         text
     )

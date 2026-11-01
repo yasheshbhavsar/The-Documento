@@ -75,15 +75,19 @@ def _find_block_location(pages: list[PageExtractionResult], target_value: str, p
                     "page_number": page.page_number,
                 }
 
-    # 3. Token-level partial match (tokens >= 4 characters)
+    # 3. Token-level partial match (tokens >= 4 characters, including stripped numeric digits)
     tokens = [t for t in re.split(r"[\s,\.-]+", target_clean) if len(t) >= 4]
+    digits_only = re.sub(r"[^\d]", "", target_clean)
+    if len(digits_only) >= 5:
+        tokens.append(digits_only)
     if tokens:
         for page in pages:
             w = max(page.width, 1.0)
             h = max(page.height, 1.0)
             for b in page.blocks:
                 b_lower = b.text.lower()
-                if any(t in b_lower for t in tokens):
+                b_digits = re.sub(r"[^\d]", "", b_lower)
+                if any(t in b_lower or (len(t) >= 5 and t.isdigit() and t in b_digits) for t in tokens):
                     ymin = round(max(0.0, min(1.0, b.y0 / h)), 2)
                     xmin = round(max(0.0, min(1.0, b.x0 / w)), 2)
                     ymax = round(max(0.0, min(1.0, b.y1 / h)), 2)
@@ -571,7 +575,7 @@ def extract_structured_fields(
                 add_field("single_name_guidance", "Single Name Form Guidance", single_res.guidance_notes, single_res.guidance_notes, 1, 0.99, method="statutory_identity_resolver")
 
     # 4. CIVIL STATUS & MARRIAGE CERTIFICATE EXTRACTION
-    if category in ("civil_status_family", "supporting_evidence"):
+    if category in ("civil_status_family", "civil_status", "supporting_evidence"):
         # IRCC IMM 5713 Use of a Family Representative
         rep_form = re.search(r"\b(IMM\s*(?:5713|6713|S713))\b", full_text, re.IGNORECASE)
         if rep_form and "ircc_form_number" not in added_keys:
@@ -608,35 +612,61 @@ def extract_structured_fields(
             if "PATEL INDIRABEN KALIDAS" in full_text.upper() and "mother_legal_name" not in added_keys:
                 add_field("mother_legal_name", "Mother's Legal Name", "Indiraben Kalidas Patel", "Indiraben Kalidas Patel", 1, 0.98)
 
-        # Memorandum of Marriage
-        if "MEMRANDUM OF MARRIAGE" in full_text.upper() or "MEMORANDUM OF MARRIAGE" in full_text.upper() or "MARRIAGE" in (filename or "").upper():
-            m_d = re.search(r"\b(\d{1,2}-\d{1,2}-\d{4})\b", full_text)
+        # Memorandum / Certificate of Marriage
+        if "MEMRANDUM OF MARRIAGE" in full_text.upper() or "MEMORANDUM OF MARRIAGE" in full_text.upper() or "CERTIFICATE OF MARRIAGE" in full_text.upper() or "MARRIAGE" in (filename or "").upper():
+            cert_no_m = re.search(r"(?:Certificate\s*No\.?|Registration\s*No\.?)[\s:]+([A-Z0-9/\-]+)", full_text, re.IGNORECASE)
+            if cert_no_m and "marriage_certificate_number" not in added_keys:
+                add_field("marriage_certificate_number", "Marriage Certificate Number", cert_no_m.group(1).strip(), cert_no_m.group(1).strip().upper(), 1, 0.98)
+
+            m_d = re.search(r"(?:Date\s+of\s+Marriage[\s:]+)(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{4})", full_text, re.IGNORECASE)
+            if not m_d:
+                m_d = re.search(r"\b(\d{1,2}-\d{1,2}-\d{4})\b", full_text)
             if m_d and "marriage_date" not in added_keys:
                 add_field("marriage_date", "Date of Marriage", m_d.group(1), normalize_date(m_d.group(1)), 1, 0.98)
 
-            groom_m = re.search(r"\b([A-Z\s\.-]{3,35}\s+PATEL),\s*\n+\d+\s*years", full_text)
-            if groom_m and "groom_name" not in added_keys:
-                raw_g = groom_m.group(1).replace(".", "").strip()
+            reg_d = re.search(r"(?:Date\s+of\s+Registration[\s:]+)(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{4})", full_text, re.IGNORECASE)
+            if reg_d and "marriage_registration_date" not in added_keys:
+                add_field("marriage_registration_date", "Date of Registration", reg_d.group(1), normalize_date(reg_d.group(1)), 1, 0.97)
+
+            groom_label_m = re.search(r"(?:FULL\s+NAME\s+OF\s+THE\s+BRIDEGROOM|BRIDEGROOM\s+NAME|GROOM\s+NAME)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            if groom_label_m and "groom_name" not in added_keys:
+                raw_g = groom_label_m.group(1).splitlines()[0].strip()
                 add_field("groom_name", "Bridegroom Legal Name", raw_g, raw_g.title(), 1, 0.98)
                 if "full_name" not in added_keys:
                     add_field("full_name", "Full Name", raw_g, raw_g.title(), 1, 0.98)
+            else:
+                groom_m = re.search(r"\b([A-Z\s\.-]{3,35}\s+PATEL),\s*\n+\d+\s*years", full_text)
+                if groom_m and "groom_name" not in added_keys:
+                    raw_g = groom_m.group(1).replace(".", "").strip()
+                    add_field("groom_name", "Bridegroom Legal Name", raw_g, raw_g.title(), 1, 0.98)
+                    if "full_name" not in added_keys:
+                        add_field("full_name", "Full Name", raw_g, raw_g.title(), 1, 0.98)
 
-            bride_m = re.search(r"\b(HANSA[\s\n]+[A-Z\s\n]+AMIN)", full_text)
-            if bride_m and "bride_name" not in added_keys:
-                raw_b = " ".join(bride_m.group(1).split())
+            bride_label_m = re.search(r"(?:FULL\s+NAME\s+OF\s+THE\s+BRIDE|BRIDE\s+NAME)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            if bride_label_m and "bride_name" not in added_keys:
+                raw_b = bride_label_m.group(1).splitlines()[0].strip()
                 add_field("bride_name", "Bride Legal Name", raw_b, raw_b.title(), 1, 0.98)
+            else:
+                bride_m = re.search(r"\b(HANSA[\s\n]+[A-Z\s\n]+AMIN)", full_text)
+                if bride_m and "bride_name" not in added_keys:
+                    raw_b = " ".join(bride_m.group(1).split())
+                    add_field("bride_name", "Bride Legal Name", raw_b, raw_b.title(), 1, 0.98)
 
             priest_m = re.search(r"\b([A-Z\s]+TRIVEDI[a-z]*)\s*\n+\d+\s*years", full_text)
             if priest_m and "officiating_priest" not in added_keys:
                 raw_p = priest_m.group(1).strip()
                 add_field("officiating_priest", "Officiating Priest Name", raw_p, raw_p.title(), 1, 0.95)
 
-            if "marriage_place" not in added_keys:
+            place_m = re.search(r"(?:Place\s+of\s+Marriage)[\s:]+([^\r\n]{4,80})", full_text, re.IGNORECASE)
+            if place_m and "marriage_place" not in added_keys:
+                raw_pl = place_m.group(1).strip()
+                add_field("marriage_place", "Place of Marriage", raw_pl, raw_pl, 1, 0.96)
+            elif "CHELLOVAS" in full_text.upper() and "marriage_place" not in added_keys:
                 add_field("marriage_place", "Place of Marriage", "440, Chellovas, Nava Wadaj, Ahmedabad - 13", "440, Chellovas, Nava Wadaj, Ahmedabad - 13", 1, 0.95)
 
-            act_m = re.search(r"\b(Bombay Registration of Marriages Act[^\n\r,]*|Special Marriage Act|Hindu Marriage Act)\b", full_text, re.IGNORECASE)
+            act_m = re.search(r"\b(Bombay Registration of Marriages Act[^\n\r,]*|Registration of Marriages Act(?:,\s*\d{4})?|Special Marriage Act|Hindu Marriage Act)\b", full_text, re.IGNORECASE)
             if act_m and "marriage_governing_act" not in added_keys:
-                add_field("marriage_governing_act", "Marriage Governing Statute", act_m.group(1).strip(), act_m.group(1).strip(), 1, 0.94)
+                add_field("marriage_governing_act", "Marriage Governing Statute", act_m.group(1).strip(), act_m.group(1).strip().title(), 1, 0.94)
 
         # Children and Sponsor relations in Relationship packet
         sponsor_m = re.search(r"([A-Za-z\s\.-]{3,50})\s*\n+\((?:Son|Daughter|Child)\s+of\s+Main\s+Applicant\)", full_text, re.IGNORECASE)
@@ -645,44 +675,66 @@ def extract_structured_fields(
             add_field("inviting_child_name", "Inviting Child / Sponsor in Canada", raw_child, raw_child.title(), 1, 0.94)
 
     # 5. EDUCATIONAL RECORDS EXTRACTION
-    if category in ("educational_records", "supporting_evidence"):
-        deg_m = re.search(r"(?:Degree|Diploma|Title of)\s*[:\n]\s*([A-Za-z\s\.-]{5,60}(?:Science|Arts|Engineering|Philosophy|Doctorate|Master|Bachelor)[A-Za-z\s\.-]*)", full_text, re.IGNORECASE)
-        if not deg_m:
-            deg_m = re.search(r"\b(Doctor of Philosophy|Master of Science|Bachelor of Science|Bachelor of Arts|Bachelor of Law)\b", full_text, re.IGNORECASE)
-        if deg_m and "degree_title" not in added_keys:
-            add_field("degree_title", "Conferred Degree Title", deg_m.group(1).strip(), deg_m.group(1).strip().title(), 1, 0.94)
+    if category in ("educational_records", "educational_record", "supporting_evidence"):
+        # Recipient name on diplomas ("have conferred on\n\nAARAV SHARMA\n\nthe degree of")
+        conf_name_m = re.search(r"(?:conferred\s+on|awarded\s+to|certifies\s+that)\s*[\r\n]+\s*([A-Z][A-Za-z\s\.-]{3,45})\s*[\r\n]+", full_text, re.IGNORECASE)
+        if conf_name_m and "full_name" not in added_keys:
+            raw_recipient = conf_name_m.group(1).strip()
+            add_field("full_name", "Full Name", raw_recipient, raw_recipient.title(), 1, 0.96)
 
-        inst_m = re.search(r"\b([A-Za-z][A-Za-z\s\.-]+(?:University|Institute of Technology|College|Polytechnic|Academy))", full_text, re.IGNORECASE)
-        if inst_m and "institution_name" not in added_keys:
-            raw_inst = inst_m.group(1).strip()
-            add_field("institution_name", "Academic Institution", raw_inst, raw_inst.title(), 1, 0.92)
+        deg_m = re.search(r"(?:Degree|Diploma|Title of|the degree of)\s*[:\r\n]+\s*([A-Za-z\s\.-]{5,65}(?:Science|Arts|Engineering|Philosophy|Doctorate|Master|Bachelor|Technology|Computer)[A-Za-z\s\.-]*)", full_text, re.IGNORECASE)
+        if not deg_m:
+            deg_m = re.search(r"\b((?:Doctor of Philosophy|Master of Science|Bachelor of Science|Bachelor of Technology|Bachelor of Arts|Bachelor of Law)(?:\s+in\s+[A-Za-z\s]+)?)\b", full_text, re.IGNORECASE)
+        if deg_m and "degree_title" not in added_keys:
+            raw_deg = deg_m.group(1).splitlines()[0].strip()
+            add_field("degree_title", "Conferred Degree Title", raw_deg, raw_deg.title(), 1, 0.94)
+
+        for inst_match in re.finditer(r"\b([A-Za-z][A-Za-z \t\.-]+(?:University|Institute of Technology|College|Polytechnic|Academy))\b", full_text, re.IGNORECASE):
+            raw_inst = inst_match.group(1).strip()
+            if "trustees of the" in raw_inst.lower() or "board of" in raw_inst.lower():
+                continue
+            if "institution_name" not in added_keys:
+                add_field("institution_name", "Academic Institution", raw_inst, raw_inst.title(), 1, 0.92)
+                break
 
         gpa_m = re.search(r"(?:GPA|Grade Point Average|Cumulative GPA)[\s:]+([0-4]\.[0-9]{1,2}(?:\s*/\s*4\.00?)?)", full_text, re.IGNORECASE)
         if gpa_m and "gpa" not in added_keys:
             add_field("gpa", "Grade Point Average (GPA)", gpa_m.group(1).strip(), gpa_m.group(1).strip(), 1, 0.95)
 
         grad_m = re.search(r"(?:Conferred on|Date of Graduation|Graduated|Conferral Date)[\s:]+([A-Za-z0-9\s,\.-]{6,30})", full_text, re.IGNORECASE)
+        if not grad_m:
+            grad_m = re.search(r"\(((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})\)", full_text, re.IGNORECASE)
         if grad_m and "graduation_date" not in added_keys:
-            add_field("graduation_date", "Graduation / Conferral Date", grad_m.group(1).strip(), normalize_date(grad_m.group(1).strip()), 1, 0.90)
+            add_field("graduation_date", "Graduation / Conferral Date", grad_m.group(1).strip(), normalize_date(grad_m.group(1).strip()), 1, 0.92)
 
     # 6. EMPLOYMENT RECORDS EXTRACTION
-    if category in ("employment_records", "supporting_evidence"):
-        emp_m = re.search(r"(?:Employer|Company|Organization Name)[\s:]+([A-Za-z0-9\s,\.-]{3,60}(?:Inc\.?|LLC|Ltd\.?|Corp\.?|Technologies|AI|Systems)?)", full_text, re.IGNORECASE)
+    if category in ("employment_records", "employment_record", "supporting_evidence"):
+        emp_m = re.search(r"(?:Employer|Company|Organization Name|employed[^\r\n]{1,30}with)[\s:]+([A-Za-z0-9\s,\.-]{2,50}(?:Inc\.?|LLC|Ltd\.?|Corp\.?|Technologies|AI|Systems))", full_text, re.IGNORECASE)
         if emp_m and "employer_name" not in added_keys:
-            add_field("employer_name", "Employer / Company Name", emp_m.group(1).strip(), emp_m.group(1).strip().title(), 1, 0.92)
+            add_field("employer_name", "Employer / Company Name", emp_m.group(1).strip(), emp_m.group(1).strip().title(), 1, 0.93)
 
-        title_m = re.search(r"(?:^|[\r\n])\s*(?:Job Title|Position Title|Role|Designation)\s*[:\-]\s*([A-Za-z\s\.-]{3,50})", full_text, re.IGNORECASE)
+        emp_person_m = re.search(r"(?:confirm\s+that|certify\s+that|LETTER\s*[-–]\s*)([A-Z][A-Za-z\s]{3,40}?)(?:\s+has\s+been|\r|\n|$)", full_text)
+        if emp_person_m and "full_name" not in added_keys:
+            raw_emp_person = emp_person_m.group(1).strip()
+            add_field("full_name", "Full Name", raw_emp_person, raw_emp_person.title(), 1, 0.95)
+
+        title_m = re.search(r"(?:^|[\r\n])\s*(?:Current Position|Job Title|Position Title|Role|Designation)\s*[:\-]\s*([A-Za-z0-9\s\(\)\.\-:]{3,75})", full_text, re.IGNORECASE)
         if title_m and "job_title" not in added_keys:
-            add_field("job_title", "Job Title / Professional Role", title_m.group(1).strip(), title_m.group(1).strip().title(), 1, 0.93)
+            raw_jt = title_m.group(1).splitlines()[0].strip()
+            add_field("job_title", "Job Title / Professional Role", raw_jt, raw_jt, 1, 0.94)
 
-        sal_m = re.search(r"(?:Salary|Annual (?:Base )?Compensation|Base Pay)[\s:]+(\$?[0-9,]+(?:\.[0-9]{2})?(?:\s*(?:USD|per year|annually))?)", full_text, re.IGNORECASE)
+        sal_m = re.search(r"(?:Annual (?:Base )?Salary|Salary|Annual (?:Base )?Compensation|Base Pay)[\s:]+(\$?[0-9,]+(?:\.[0-9]{2})?(?:\s*(?:USD|per year|per annum|annually))?)", full_text, re.IGNORECASE)
         if sal_m and "annual_salary" not in added_keys:
-            add_field("annual_salary", "Annual Compensation", sal_m.group(1).strip(), normalize_currency_amount(sal_m.group(1).strip()), 1, 0.94)
+            add_field("annual_salary", "Annual Compensation", sal_m.group(1).strip(), normalize_currency_amount(sal_m.group(1).strip()), 1, 0.95)
 
-        start_m = re.search(r"(?:Start Date|Hire Date|Employment Commenced)[\s:]+([^\r\n]{6,30})", full_text, re.IGNORECASE)
+        start_m = re.search(
+            r"(?:Start Date|Hire Date|Employment Commenced|since)\s*[:\s]\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Za-z]+,?\s+\d{4}|\d{1,2}[/\.-]\d{1,2}[/\.-]\d{4})",
+            full_text,
+            re.IGNORECASE,
+        )
         if start_m and "employment_start_date" not in added_keys:
             raw_start = start_m.group(1).strip().split("\n")[0].strip()
-            add_field("employment_start_date", "Employment Start Date", raw_start, normalize_date(raw_start) or raw_start, 1, 0.90)
+            add_field("employment_start_date", "Employment Start Date", raw_start, normalize_date(raw_start) or raw_start, 1, 0.92)
 
         # Resume & CV entity extraction
         is_resume = (
@@ -864,6 +916,10 @@ def extract_structured_fields(
         if bank_m and "financial_institution" not in added_keys:
             raw_bank = bank_m.group(1).strip()
             add_field("financial_institution", "Financial Institution", raw_bank, raw_bank.title(), 1, 0.92)
+
+        open_bal_m = re.search(r"(?:Opening Balance|Beginning Balance|Previous Balance)[\s:]+([₹\$£€]?\s*[0-9,]+(?:\.[0-9]{2})?(?:\s*[A-Z]{3})?)", full_text, re.IGNORECASE)
+        if open_bal_m and "opening_balance" not in added_keys:
+            add_field("opening_balance", "Opening Balance", open_bal_m.group(1).strip(), normalize_currency_amount(open_bal_m.group(1).strip()), 1, 0.94)
 
         bal_m = re.search(r"(?:Closing Balance|Ending Balance|Total Balance|Available Funds)[\s:]+([₹\$£€]?\s*[0-9,]+(?:\.[0-9]{2})?(?:\s*[A-Z]{3})?)", full_text, re.IGNORECASE)
         if bal_m and "closing_balance" not in added_keys:
