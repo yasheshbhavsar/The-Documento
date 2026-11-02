@@ -68,6 +68,7 @@ def filter_supported_scripts(text: str) -> str:
     """
     if not text:
         return ""
+    text = re.sub(r"[\u2010-\u2015\u2212]", "-", text)
     return re.sub(r"[^\x20-\x7E\r\n\t\u0900-\u097F\u0A80-\u0AFF₹£€]", "", text)
 
 
@@ -153,10 +154,11 @@ def evaluate_language_compliance(
     lower_body = inspection_body.lower()
     has_english_document_anchors = bool(
         re.search(
-            r"\b(?:republic of india|government of|passport|surname|given name|date of birth|place of birth|"
+            r"\b(?:republic of india|government of|passport|surname|given name|family name|first name|date of birth|place of birth|"
             r"birth certificate|marriage certificate|income tax|aadhaar|unique identification|account statement|"
-            r"opening balance|closing balance|employment|university|bachelor|master|application for|"
-            r"visitor visa|temporary resident|emedical|father|mother|spouse|address)\b",
+            r"opening balance|closing balance|employment|university|college|bachelor|master|application for|"
+            r"visitor visa|temporary resident|permanent resident|pr since|provincial attestation|emedical|"
+            r"father|mother|spouse|address|canada|ontario|student|tuition|assessment|remuneration|insurable|benefit|certificate)\b",
             lower_body,
         )
     )
@@ -689,64 +691,199 @@ class OCREngine:
     def _extract_xfa_form_data(cls, doc: pymupdf.Document) -> tuple[str, list[PageBlock]] | None:
         """
         Parses Adobe LiveCycle dynamic XFA XML forms embedded within AcroForm catalogs.
-        Official Canadian IRCC forms (IMM 5257, IMM 5645, etc.) store all user entries
-        in an internal XFA 'datasets' stream, which standard text extractors miss.
+        Official Canadian IRCC forms (IMM 1295, IMM 5257, IMM 5708, IMM 5710, IMM 5645, etc.)
+        store all user entries in an internal XFA 'datasets' stream, which standard text extractors miss.
+        Excludes static <LOVFile> lookup tables while using them to resolve numeric country codes.
         """
         try:
-            cat = doc.pdf_catalog()
-            acro = doc.xref_get_key(cat, "AcroForm")
-            if not acro or acro[0] == "null":
-                return None
-            acro_xref = int(acro[1].split()[0])
-            xfa_key = doc.xref_get_key(acro_xref, "XFA")
-            if not xfa_key or xfa_key[0] == "null":
-                return None
-
-            m = re.search(r"\(datasets\)\s*(\d+)\s+0\s+R", str(xfa_key))
-            if not m:
-                return None
-            ds_xref = int(m.group(1))
-            stream = doc.xref_stream(ds_xref).decode("utf-8", errors="ignore")
-
-            m_data = re.search(r"<xfa:data\b[^>]*>(.*?)</xfa:data\s*>", stream, re.DOTALL)
-            if not m_data:
-                return None
-
             import xml.etree.ElementTree as ET
 
-            raw = m_data.group(1)
+            cat = doc.pdf_catalog()
+            acro = doc.xref_get_key(cat, "AcroForm")
+            xfa_str = ""
+            if acro and acro[0] != "null":
+                acro_xref = int(acro[1].split()[0])
+                xfa_key = doc.xref_get_key(acro_xref, "XFA")
+                if xfa_key and xfa_key[0] != "null":
+                    xfa_str = str(xfa_key)
+
+            # 1. Detect exact IRCC Form Identifier from <template> stream if present
+            form_code = "IMM 5257"
+            form_desc = "Application for Visitor Visa / Temporary Resident Visa"
+            m_tmpl = re.search(r"\(template\)\s*(\d+)\s+0\s+R", xfa_str)
+            if m_tmpl:
+                try:
+                    t_stream = doc.xref_stream(int(m_tmpl.group(1))).decode("utf-8", errors="ignore")
+                    m_imm = re.search(r"\bIMM\s*(1295|5257|5708|5709|5710|5645|5713|5476)\b", t_stream, re.IGNORECASE)
+                    if m_imm:
+                        num = m_imm.group(1)
+                        form_code = f"IMM {num}"
+                        desc_map = {
+                            "1295": "Application for Work Permit Made Outside of Canada",
+                            "5257": "Application for Visitor Visa / Temporary Resident Visa",
+                            "5708": "Application to Change Conditions, Extend Stay or Remain in Canada as a Visitor",
+                            "5709": "Application to Change Conditions, Extend Stay or Remain in Canada as a Student",
+                            "5710": "Application to Change Conditions, Extend Stay or Remain in Canada as a Worker",
+                            "5645": "Family Information",
+                            "5713": "Use of a Family Member Representative",
+                            "5476": "Use of a Representative",
+                        }
+                        form_desc = desc_map.get(num, form_desc)
+                except Exception:
+                    pass
+
+            # 2. Locate the most populated <xfa:data> stream (handles incremental PDF saves)
+            candidate_streams: list[str] = []
+            m_ds = re.search(r"\(datasets\)\s*(\d+)\s+0\s+R", xfa_str)
+            if m_ds:
+                try:
+                    s_ds = doc.xref_stream(int(m_ds.group(1))).decode("utf-8", errors="ignore")
+                    if "<xfa:data" in s_ds:
+                        candidate_streams.append(s_ds)
+                except Exception:
+                    pass
+
+            if not candidate_streams:
+                for xref in range(1, doc.xref_length()):
+                    try:
+                        if doc.xref_is_stream(xref):
+                            s_cand = doc.xref_stream(xref).decode("utf-8", errors="ignore")
+                            if "<xfa:data" in s_cand and "<form1" in s_cand:
+                                candidate_streams.append(s_cand)
+                    except Exception:
+                        pass
+
+            if not candidate_streams:
+                return None
+
+            # Pick the stream with the longest <form1> payload
+            best_raw_data = ""
+            for s_cand in candidate_streams:
+                for m_d in re.finditer(r"<xfa:data\b[^>]*>(.*?)</xfa:data\s*>", s_cand, re.DOTALL):
+                    chunk = m_d.group(1)
+                    if len(chunk) > len(best_raw_data):
+                        best_raw_data = chunk
+
+            if not best_raw_data:
+                return None
+
             # Remove namespace prefixes from attributes to avoid unbound prefix errors
-            clean = re.sub(r"\s+[a-zA-Z0-9_\-:]*:[a-zA-Z0-9_\-]+=\"[^\"]*\"", "", raw)
+            clean = re.sub(r"\s+[a-zA-Z0-9_\-:]*:[a-zA-Z0-9_\-]+=\"[^\"]*\"", "", best_raw_data)
             root = ET.fromstring(f"<root>{clean}</root>")
+
+            # 3. Build country code lookup from <LOVFile> (if present) and exclude <LOVFile> from form body
+            country_map: dict[str, str] = {"205": "India", "511": "Canada", "461": "United States of America"}
+            for lov_elem in root.iter():
+                l_tag = lov_elem.tag.split("}")[-1] if "}" in lov_elem.tag else lov_elem.tag
+                if l_tag == "LOVFile":
+                    for child in lov_elem:
+                        c_code = None
+                        c_name = None
+                        for sub in child:
+                            s_tag = sub.tag.split("}")[-1] if "}" in sub.tag else sub.tag
+                            if s_tag == "CountryCode" and sub.text:
+                                c_code = sub.text.strip()
+                            elif s_tag == "T" and sub.text:
+                                c_name = sub.text.strip()
+                        if c_code and c_name:
+                            country_map[c_code] = c_name
+
+            form_root = None
+            for child in root:
+                c_tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                if c_tag != "LOVFile":
+                    form_root = child
+                    break
+            if form_root is None:
+                form_root = root
 
             lines: list[str] = []
             blocks: list[PageBlock] = []
             block_idx = 0
 
-            # Add formal IRCC header line if detected
-            form_type = "IMM 5257 (Application for Visitor Visa / TRV)"
-            lines.append(f"DOCUMENT_TYPE: {form_type}")
-
-            for elem in root.iter():
-                val = (elem.text or "").strip()
-                tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-                if val and len(elem) == 0:
-                    line = f"{tag}: {val}"
-                    lines.append(line)
-                    blocks.append(
-                        PageBlock(
-                            x0=50.0,
-                            y0=float(40 + block_idx * 15),
-                            x1=550.0,
-                            y1=float(55 + block_idx * 15),
-                            text=line,
-                            confidence=0.99,
-                            block_idx=block_idx,
-                        )
+            def _append_line(line_str: str) -> None:
+                nonlocal block_idx
+                lines.append(line_str)
+                blocks.append(
+                    PageBlock(
+                        x0=50.0,
+                        y0=float(40 + block_idx * 15),
+                        x1=550.0,
+                        y1=float(55 + block_idx * 15),
+                        text=line_str,
+                        confidence=0.99,
+                        block_idx=block_idx,
                     )
-                    block_idx += 1
+                )
+                block_idx += 1
 
-            if lines:
+            _append_line(f"DOCUMENT_TYPE: {form_code} ({form_desc})")
+
+            # Track section path so Spouse/PreviousSpouse names don't collide with main Applicant name
+            seen_applicant_family = False
+            seen_applicant_given = False
+            passport_from_parts: dict[str, str] = {}
+            passport_to_parts: dict[str, str] = {}
+
+            def _walk_form(node: ET.Element, path_tags: list[str]) -> None:
+                nonlocal seen_applicant_family, seen_applicant_given
+                tag = node.tag.split("}")[-1] if "}" in node.tag else node.tag
+                if tag == "LOVFile":
+                    return
+                curr_path = path_tags + [tag]
+                path_str = "/".join(curr_path)
+                val = (node.text or "").strip()
+
+                if val and len(node) == 0:
+                    # Disambiguate FamilyName / GivenName based on XFA path context
+                    if tag == "FamilyName":
+                        if "PersonalDetails/Name" in path_str and not seen_applicant_family:
+                            seen_applicant_family = True
+                            _append_line(f"FamilyName: {val}")
+                        elif "MaritalStatus" in path_str and "PreviouslyMarried" not in path_str:
+                            _append_line(f"SpouseFamilyName: {val}")
+                        elif "AliasName" in path_str:
+                            _append_line(f"AliasFamilyName: {val}")
+                        else:
+                            _append_line(f"OtherFamilyName: {val}")
+                        return
+                    if tag == "GivenName":
+                        if "PersonalDetails/Name" in path_str and not seen_applicant_given:
+                            seen_applicant_given = True
+                            _append_line(f"GivenName: {val}")
+                        elif "MaritalStatus" in path_str and "PreviouslyMarried" not in path_str:
+                            _append_line(f"SpouseGivenName: {val}")
+                        elif "AliasName" in path_str:
+                            _append_line(f"AliasGivenName: {val}")
+                        else:
+                            _append_line(f"OtherGivenName: {val}")
+                        return
+
+                    # Collect split Passport IssueDate/ExpiryDate components (IMM 5257 style)
+                    if "Passport/IssueDate" in path_str and tag in ("FromYr", "FromMM", "FromDD"):
+                        passport_from_parts[tag] = val
+                    elif "Passport/ExpiryDate" in path_str and tag in ("ToYr", "ToMM", "ToDD"):
+                        passport_to_parts[tag] = val
+
+                    _append_line(f"{tag}: {val}")
+
+                    # Resolve numeric country code if applicable
+                    if tag in ("PlaceBirthCountry", "Citizenship", "CountryOfIssue", "CurrentCountry") and val in country_map:
+                        _append_line(f"{tag}Name: {country_map[val]}")
+
+                for child in node:
+                    _walk_form(child, curr_path)
+
+            _walk_form(form_root, [])
+
+            if {"FromYr", "FromMM", "FromDD"}.issubset(passport_from_parts.keys()):
+                iso_from = f"{passport_from_parts['FromYr']}-{int(passport_from_parts['FromMM']):02d}-{int(passport_from_parts['FromDD']):02d}"
+                _append_line(f"IssueDate: {iso_from}")
+            if {"ToYr", "ToMM", "ToDD"}.issubset(passport_to_parts.keys()):
+                iso_to = f"{passport_to_parts['ToYr']}-{int(passport_to_parts['ToMM']):02d}-{int(passport_to_parts['ToDD']):02d}"
+                _append_line(f"ExpiryDate: {iso_to}")
+
+            if len(lines) > 1:
                 return "\n".join(lines), blocks
         except Exception:
             pass

@@ -15,6 +15,9 @@ CATEGORY_RULES: list[dict] = [
             r"\bDRIV(?:ER|ING)[_\s-]?LICEN[CS]E\b",
             r"\bVOTER[_\s-]?ID\b",
             r"\bEPIC[_\s-]?CARD\b",
+            r"\bPROOF[_\s-]?OF[_\s-]?STATUS\b",
+            r"\bCOPR\b",
+            r"\bPR[_\s-]?CARD\b",
         ],
         "patterns": [
             r"\bPASSPORT\b",
@@ -30,7 +33,10 @@ CATEGORY_RULES: list[dict] = [
             r"\bPASSPORT NO\b",
             r"\bTRAVEL DOCUMENT\b",
             r"\bNATIONAL IDENTIT(?:Y| CARD)\b",
-            r"\bUNIQUE IDENTIFICATION AUTHORITY OF INDIA\b",
+            r"UNIQUE\s*IDENTIFICATION\s*AUTHORITY\s*OF\s*INDIA",
+            r"\bCONFIRMATION\s*OF\s*PERMANENT\s*RESIDENCE\b",
+            r"\bPERMANENT\s*RESIDENT\s*CARD\b",
+            r"\bCACANPD[0-9<]+\b",
             r"\bINCOME TAX DEPARTMENT.*GOVT\. OF INDIA\b",
             r"\bPERMANENT ACCOUNT NUMBER\b",
             r"\bDRIV(?:ING|ER)\s*LICEN[CS]E\b",
@@ -101,7 +107,8 @@ CATEGORY_RULES: list[dict] = [
             r"\bDIVORCE DECREE\b",
             r"\bREGISTRATION OF (?:BIRTH|MARRIAGE)\b",
             r"\bIMM\s*5645\b",
-            r"\bFAMILY INFORMATION\b",
+            r"\bFAMILY\s*INFORMATION\b",
+            r"SECTION\s*C\s*[-–]?\s*BROTHERS\s*AND\s*SISTERS",
             r"\bIMM\s*5713\b",
             r"\bUSE OF A FAMILY REPRESENTATIVE\b",
             r"\bPROOF OF RELATIONSHIP\b",
@@ -121,6 +128,8 @@ CATEGORY_RULES: list[dict] = [
             r"\bVISA[_\s-]?FOIL\b",
             r"\bRESIDENCE[_\s-]?PERMIT\b",
             r"\bBRP\b",
+            r"\bWORK[_\s-]?PERMIT\b",
+            r"\bSTUDY[_\s-]?PERMIT\b",
         ],
         "patterns": [
             r"\bVISA\b",
@@ -137,12 +146,20 @@ CATEGORY_RULES: list[dict] = [
     {
         "category": "educational_records",
         "label": "Educational Records",
-        "weight": 1.8,
+        "weight": 2.0,
         "filename_patterns": [
             r"\bDEGREE\b",
             r"\bDIPLOMA\b",
             r"\bTRANSCRIPT\b",
             r"\bGRADUATION\b",
+            r"\bOFFER[_\s-]?LETTER\b",
+            r"\bLETTER[_\s-]?OF[_\s-]?ACCEPTANCE\b",
+            r"\bLOA\b",
+            r"\bIELTS\b",
+            r"\bBONAFIDE\b",
+            r"\bMARKSHEET\b",
+            r"\bEDUCATION\b",
+            r"\bWORK[_\s-]?REQUIREMENT[_\s-]?IN[_\s-]?STUDY\b",
         ],
         "patterns": [
             r"\bDEGREE\b",
@@ -157,12 +174,27 @@ CATEGORY_RULES: list[dict] = [
             r"\bFACULTY OF\b",
             r"\bCUMULATIVE GPA\b",
             r"\bCONFERRED ON\b",
+            r"\bLETTER OF ACCEPTANCE\b",
+            r"\bOFFER OF ADMISSION\b",
+            r"\bDESIGNATED LEARNING INSTITUTION\b",
+            r"\bDLI\s*(?:NUMBER|#)\b",
+            r"\bESTIMATED TUITION\b",
+            r"\bPROGRAM OF STUDY\b",
+            r"\bACADEMIC STATUS\b",
+            r"\bTEST REPORT FORM\b",
+            r"\bIELTS\b",
+            r"\bINTERNATIONAL ENGLISH LANGUAGE TESTING SYSTEM\b",
+            r"\bOVERALL BAND SCORE\b",
+            r"\bCEFR LEVEL\b",
+            r"\bBONAFIDE\s*CERTIFICATE\b",
+            r"\bSCHOOL\s*LEAVING\s*CERTIFICATE\b",
+            r"\bSTATEMENT OF MARKS\b",
         ],
     },
     {
         "category": "employment_records",
         "label": "Employment Records",
-        "weight": 1.8,
+        "weight": 2.0,
         "filename_patterns": [
             r"\bEMPLOYMENT\b",
             r"\bJOB[_\s-]?OFFER\b",
@@ -172,6 +204,12 @@ CATEGORY_RULES: list[dict] = [
             r"\bRESUME\b",
             r"\bCV\b",
             r"\bCURRICULUM[_\s-]?VITAE\b",
+            r"\bLMIA\b",
+            r"\bCONTRACT\b",
+            r"\bAPPOINTMENT\b",
+            r"\bEXPERIENCE\b",
+            r"\bSALARY\b",
+            r"\bROE\b",
         ],
         "patterns": [
             r"\bEMPLOYMENT VERIFICATION\b",
@@ -183,6 +221,19 @@ CATEGORY_RULES: list[dict] = [
             r"\bOFFER OF EMPLOYMENT\b",
             r"\bEMPLOYER NAME\b",
             r"\bDUTIES AND RESPONSIBILITIES\b",
+            r"\bLABOUR MARKET IMPACT ASSESSMENT\b",
+            r"\bEMPLOYMENT AND SOCIAL DEVELOPMENT CANADA\b",
+            r"\bGLOBAL TALENT STREAM\b",
+            r"\bLMIA\s*#?\s*[0-9]{6,9}\b",
+            r"\bFOREIGN WORKER NAMES\b",
+            r"\bEMPLOYMENT CONTRACT\b",
+            r"\bEI/IPLOYi/lENT CONTRACT\b",
+            r"\bAPPOINTMENT\s*LETTER\b",
+            r"\bEXPERIENCE\s*CERTIFICATE\b",
+            r"\bRECORD OF EMPLOYMENT\b",
+            r"\bSERIAL NO\. OF ROE\b",
+            r"\bINSURABLE EARNINGS\b",
+            r"\bSTATEMENT OF REMUNERATION PAID\b",
             r"\bFORM W-2\b",
             r"\bPAYSTUB\b",
             r"\bPAYSLIP\b",
@@ -212,6 +263,10 @@ CATEGORY_RULES: list[dict] = [
             r"\bVALUATION\b",
             r"\bITR\b",
             r"\bTAX\b",
+            r"\bGIC\b",
+            r"\bFEES?[_\s-]?RECEIPT\b",
+            r"\bTUITION\b",
+            r"\bASSESSMENT\b",
         ],
         "patterns": [
             r"\bBANK STATEMENT\b",
@@ -234,6 +289,18 @@ CATEGORY_RULES: list[dict] = [
             r"\bMUTUAL FUND INVESTMENT\b",
             r"\bCANADIAN DOLLAR VALUE IS CAD\b",
             r"\bINDIAN INCOME TAX RETURN ACKNOWLEDGEMENT\b",
+            r"\bSTUDENT GIC PROGRAM\b",
+            r"\bGUARANTEED INVESTMENT CERTIFICATE\b",
+            r"\bINVESTMENT BALANCE CONFIRMATION\b",
+            r"\bSCOTIA INVESTMENT ACCOUNT\b",
+            r"\bINVESTMENT DIRECTIONS\b",
+            r"\bSTUDENT PAYMENT RECEIPT\b",
+            r"\bPAYMENT RECEIPT\b",
+            r"\bPAYMENT ID\b",
+            r"\bEFT FEE PAYMENT\b",
+            r"\bACCOUNT SUMMARY BY TERM\b",
+            r"\bNOTICE OF ASSESSMENT\b",
+            r"\bCANADA REVENUE AGENCY\b",
         ],
     },
     {
@@ -249,8 +316,8 @@ CATEGORY_RULES: list[dict] = [
         ],
         "patterns": [
             r"\bIMM\s*5562\b",
-            r"\bYOUR TRAVELS\b",
-            r"\bSUPPLEMENTARY INFORMATION\s*[-–]\s*YOUR TRAVELS\b",
+            r"\bYOUR\s*TRAVELS\b",
+            r"\bSUPPLEMENTARY\s*INFORMATION\s*[-–]?\s*YOUR\s*TRAVELS\b",
             r"\bTRAVEL INFORMATION\b",
             r"\bPURPOSE OF TRAVEL\b",
             r"\bPURPOSE OF VISIT\b",
@@ -305,6 +372,7 @@ CATEGORY_RULES: list[dict] = [
             r"\bEMEDICAL\b",
             r"\bPOLICE\b",
             r"\bCLEARANCE\b",
+            r"\bPCC\b",
         ],
         "patterns": [
             r"\bEMEDICAL\b",
@@ -315,6 +383,7 @@ CATEGORY_RULES: list[dict] = [
             r"\bVACCINATION WORKSHEET\b",
             r"\bINFORMATION SHEET.*MEDICAL\b",
             r"\bPOLICE CLEARANCE\b",
+            r"\bPOLICE\s*CLEARANCE\s*CERTIF[I1T]CATE\b",
             r"\bPOLICE CERTIFICATE\b",
             r"\bCRIMINAL RECORD CHECK\b",
             r"\bNO CRIMINAL RECORD\b",
@@ -323,6 +392,8 @@ CATEGORY_RULES: list[dict] = [
             r"\bVACCINATION RECORD\b",
             r"\bCIVIL SURGEON\b",
             r"\bREPORT OF MEDICAL EXAMINATION\b",
+            r"\bDISCHARGE SUMMARY REPORT\b",
+            r"\bOBGYN DISCHARGE SUMMARY\b",
             r"\bFORM I-693\b",
         ],
     },
@@ -331,8 +402,15 @@ CATEGORY_RULES: list[dict] = [
         "label": "Government Forms and Correspondence",
         "weight": 2.0,
         "filename_patterns": [
-            r"\bIMM5257\b",
-            r"\bIMM5713\b",
+            r"\bIMM\s*5257\b",
+            r"\bIMM\s*5713\b",
+            r"\bIMM\s*1295\b",
+            r"\bIMM\s*5710\b",
+            r"\bIMM\s*5708\b",
+            r"\bIMM\s*5476\b",
+            r"\bPROVINCIAL[_\s-]?ATTESTATION\b",
+            r"\bPAL\b",
+            r"\bREPRESENTATIVE\b",
             r"\bINVITATION\b",
             r"\bNOTICE[_\s-]?OF[_\s-]?ACTION\b",
             r"\bI-797\b",
@@ -340,8 +418,18 @@ CATEGORY_RULES: list[dict] = [
         ],
         "patterns": [
             r"\bIMM\s*5257\b",
+            r"\bIMM\s*1295\b",
+            r"\bIMM\s*5710\b",
+            r"\bIMM\s*5708\b",
+            r"\bIMM\s*5709\b",
+            r"\bIMM\s*5476\b",
             r"\bAPPLICATION FOR VISITOR VISA\b",
             r"\bTEMPORARY RESIDENT VISA\b",
+            r"\bAPPLICATION FOR WORK PERMIT MADE OUTSIDE OF CANADA\b",
+            r"\bAPPLICATION TO CHANGE CONDITIONS\b",
+            r"\bPROVINCIAL ATTESTATION LETTER\b",
+            r"\bLETTRES D'ATTESTATION PROVINCIALE\b",
+            r"\bUSE OF A REPRESENTATIVE\b",
             r"\bIMMIGRATION,\s*REFUGEES\s*AND\s*CITIZENSHIP\s*CANADA\b",
             r"\bIMM\s*5713\b",
             r"\bUSE OF A FAMILY REPRESENTATIVE\b",
@@ -376,6 +464,8 @@ CATEGORY_RULES: list[dict] = [
             r"\bTRUE AND ACCURATE TRANSLATION\b",
             r"\bCOMPETENT TO TRANSLATE\b",
             r"\bAFFIDAVIT OF TRANSLATION\b",
+            r"\bINDIA NON JUDICIAL\b",
+            r"\bCERTIFICATE OF STAMP DUTY\b",
         ],
     },
 ]
@@ -420,8 +510,59 @@ def classify_document(
             if "CONFIRMATION OF COVERAGE" in combined or "INSURED" in combined or "DEDUCTIBLE" in combined:
                 filename_boost = 0.45
 
-        # IRCC Form IMM5257 boost
-        if category == "government_correspondence" and ("IMM5257" in upper_fname or "IMM 5257" in combined):
+        # IRCC Form boost (IMM 5257, IMM 1295, IMM 5710, IMM 5708, IMM 5476, PAL)
+        if category == "government_correspondence" and (
+            re.search(r"\bIMM\s*(?:5257|1295|5710|5708|5709|5476)\b", combined)
+            or "PROVINCIAL ATTESTATION LETTER" in combined
+        ):
+            filename_boost = max(filename_boost, 0.45)
+
+        # Educational primary document header boost (prevents LOA / IELTS from losing to identity_passport due to DOB/Nationality labels)
+        if (
+            category == "educational_records"
+            and "PROVINCIAL ATTESTATION LETTER" not in combined
+            and (
+                "TEST REPORT FORM" in combined
+                or "OVERALL BAND SCORE" in combined
+                or "LETTER OF ACCEPTANCE" in combined
+                or "OFFER OF ADMISSION" in combined
+                or "DESIGNATED LEARNING INSTITUTION" in combined
+                or "BONAFIDE CERTIFICATE" in combined
+                or "BONAFIDECERTIFICATE" in combined
+            )
+        ):
+            filename_boost = max(filename_boost, 0.45)
+
+        # Employment primary document header boost (prevents LMIA / Employment Contract from losing to CRA/Identity)
+        if category == "employment_records" and (
+            "LABOUR MARKET IMPACT ASSESSMENT" in combined
+            or "EMPLOYMENT CONTRACT" in combined
+            or "EMPLOYMENTCONTRACT" in combined
+            or "EI/IPLOYI/LENT CONTRACT" in combined
+            or "RECORD OF EMPLOYMENT" in combined
+            or "APPOINTMENT LETTER" in combined
+            or "APPOINTMENTLETTER" in combined
+        ):
+            filename_boost = max(filename_boost, 0.45)
+
+        # Financial GIC / Tuition Receipt primary header boost
+        if category == "financial_evidence" and (
+            "STUDENT GIC PROGRAM" in combined
+            or "GUARANTEED INVESTMENT CERTIFICATE" in combined
+            or "INVESTMENT BALANCE CONFIRMATION" in combined
+            or "SCOTIA INVESTMENT ACCOUNT" in combined
+            or "STUDENT PAYMENT RECEIPT" in combined
+            or "PAYMENT RECEIPT" in combined
+            or "PAYMENT ID" in combined
+            or "ACCOUNT SUMMARY BY TERM" in combined
+        ):
+            filename_boost = max(filename_boost, 0.45)
+
+        # Police Clearance Certificate primary header boost
+        if category == "police_medical" and (
+            "POLICE CLEARANCE CERTIFICATE" in combined
+            or "POLICE CLEARANCE CERTIFTCATE" in combined
+        ):
             filename_boost = max(filename_boost, 0.45)
 
         if hits > 0 or filename_boost > 0:

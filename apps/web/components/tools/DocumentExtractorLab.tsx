@@ -5,21 +5,16 @@ import Link from "next/link";
 import { DocumentoLogo } from "../common/DocumentoLogo";
 import {
   ExtractorAnalysisResult,
-  ExtractorSampleItem,
   PacketSortResult,
   PacketPersonFolder,
   PacketSortedDocument,
-  fetchExtractorSamples,
   analyzeDocumentStandalone,
   sortDocumentPacket,
   checkExtractorBackendHealth,
-  FALLBACK_SAMPLES,
 } from "../../lib/api/extractor";
 
 export function DocumentExtractorLab() {
-  const [samples, setSamples] = useState<ExtractorSampleItem[]>(FALLBACK_SAMPLES);
-  const [selectedSampleId, setSelectedSampleId] = useState<string>("sample-indian-passport");
-  const [inputMode, setInputMode] = useState<"presets" | "upload" | "packet_sorter" | "text">("presets");
+  const [inputMode, setInputMode] = useState<"upload" | "packet_sorter">("upload");
 
   // Multi-Person Packet Sorter State
   const [isSortingPacket, setIsSortingPacket] = useState<boolean>(false);
@@ -27,9 +22,8 @@ export function DocumentExtractorLab() {
   const [selectedPersonFolderId, setSelectedPersonFolderId] = useState<string | null>(null);
 
   // Inputs
-  const [pastedText, setPastedText] = useState<string>(FALLBACK_SAMPLES[0].text_content);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [customFilename, setCustomFilename] = useState<string>(FALLBACK_SAMPLES[0].filename);
+  const [customFilename, setCustomFilename] = useState<string>("");
   const [dragActive, setDragActive] = useState<boolean>(false);
 
   // Execution & Progress State
@@ -69,31 +63,14 @@ export function DocumentExtractorLab() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isCanvasMaximized]);
 
-  // Load samples on mount
+  // Verify backend health on mount
   useEffect(() => {
-    async function loadSamples() {
+    async function checkHealth() {
       const health = await checkExtractorBackendHealth();
       setBackendStatus(health);
-      const data = await fetchExtractorSamples();
-      if (data && data.length > 0) {
-        setSamples(data);
-        const initial = data.find((s) => s.id === "sample-indian-passport") || data[0];
-        setSelectedSampleId(initial.id);
-        setPastedText(initial.text_content);
-        setCustomFilename(initial.filename);
-      }
     }
-    loadSamples();
+    checkHealth();
   }, []);
-
-  // When selected sample changes in preset mode
-  const handleSelectSample = (sample: ExtractorSampleItem) => {
-    setSelectedSampleId(sample.id);
-    setPastedText(sample.text_content);
-    setCustomFilename(sample.filename);
-    setUploadedFile(null);
-    setErrorMessage(null);
-  };
 
   // Drag and drop handlers
   const handleDrag = (e: React.DragEvent) => {
@@ -114,7 +91,9 @@ export function DocumentExtractorLab() {
       const file = e.dataTransfer.files[0];
       setUploadedFile(file);
       setCustomFilename(file.name);
-      setInputMode("upload");
+      if (inputMode !== "packet_sorter") {
+        setInputMode("upload");
+      }
     }
   };
 
@@ -123,12 +102,19 @@ export function DocumentExtractorLab() {
       const file = e.target.files[0];
       setUploadedFile(file);
       setCustomFilename(file.name);
-      setInputMode("upload");
+      if (inputMode !== "packet_sorter") {
+        setInputMode("upload");
+      }
     }
   };
 
   // Run Extraction
   const handleRunAnalysis = async () => {
+    if (!uploadedFile) {
+      setErrorMessage("Please upload a document file (PDF or Image) to run AI recognition & extraction.");
+      return;
+    }
+
     setIsAnalyzing(true);
     setErrorMessage(null);
     setAnalysisStep("Ingesting document payload & calculating SHA-256 hash...");
@@ -148,23 +134,10 @@ export function DocumentExtractorLab() {
         setAnalysisStep("Auditing evidence quality, statutory validity & financial forensics...");
       }, 1400);
 
-      let result: ExtractorAnalysisResult;
-
-      if (inputMode === "upload" && uploadedFile) {
-        result = await analyzeDocumentStandalone({
-          file: uploadedFile,
-          filename: customFilename || uploadedFile.name,
-        });
-      } else {
-        const textToUse = pastedText.trim();
-        if (!textToUse) {
-          throw new Error("Please enter or paste document text, or upload a document file.");
-        }
-        result = await analyzeDocumentStandalone({
-          rawText: textToUse,
-          filename: customFilename || "sample_document.txt",
-        });
-      }
+      const result = await analyzeDocumentStandalone({
+        file: uploadedFile,
+        filename: customFilename || uploadedFile.name,
+      });
 
       clearTimeout(timer1);
       clearTimeout(timer2);
@@ -600,29 +573,6 @@ export function DocumentExtractorLab() {
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
                   type="button"
-                  onClick={() => setInputMode("presets")}
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    border: "none",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    background:
-                      inputMode === "presets"
-                        ? "linear-gradient(135deg, #0D5254 0%, #176B50 100%)"
-                        : "rgba(255, 255, 255, 0.05)",
-                    color: inputMode === "presets" ? "#FFFFFF" : "#94A3B8",
-                    boxShadow:
-                      inputMode === "presets" ? "0 4px 12px rgba(16, 185, 129, 0.2)" : "none",
-                  }}
-                >
-                  ⭐ 1-Click Realistic Presets ({samples.length})
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => setInputMode("upload")}
                   style={{
                     padding: "8px 18px",
@@ -669,29 +619,6 @@ export function DocumentExtractorLab() {
                 >
                   🗂️ Multi-Person Packet Sorter & Splitter
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => setInputMode("text")}
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    border: "none",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    background:
-                      inputMode === "text"
-                        ? "linear-gradient(135deg, #0D5254 0%, #176B50 100%)"
-                        : "rgba(255, 255, 255, 0.05)",
-                    color: inputMode === "text" ? "#FFFFFF" : "#94A3B8",
-                    boxShadow:
-                      inputMode === "text" ? "0 4px 12px rgba(16, 185, 129, 0.2)" : "none",
-                  }}
-                >
-                  ✍️ Paste Raw Text / OCR Stream
-                </button>
               </div>
 
               {/* Filename Tag */}
@@ -714,111 +641,6 @@ export function DocumentExtractorLab() {
                 />
               </div>
             </div>
-
-            {/* Preset Buttons Grid */}
-            {inputMode === "presets" && (
-              <div style={{ marginBottom: "20px" }}>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    color: "#94A3B8",
-                    marginBottom: "10px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Select a Verified Immigration Document Preset:
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-                    gap: "12px",
-                  }}
-                >
-                  {samples.map((sample) => {
-                    const isSelected = selectedSampleId === sample.id;
-                    return (
-                      <div
-                        key={sample.id}
-                        onClick={() => handleSelectSample(sample)}
-                        style={{
-                          padding: "14px 16px",
-                          borderRadius: "10px",
-                          background: isSelected
-                            ? "rgba(16, 185, 129, 0.15)"
-                            : "rgba(255, 255, 255, 0.03)",
-                          border: isSelected
-                            ? "1px solid #10B981"
-                            : "1px solid rgba(255, 255, 255, 0.08)",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isSelected) {
-                            e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
-                            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isSelected) {
-                            e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)";
-                            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.08)";
-                          }
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "6px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "13px",
-                              fontWeight: 700,
-                              color: isSelected ? "#34D399" : "#FFFFFF",
-                            }}
-                          >
-                            {sample.title}
-                          </span>
-                          {isSelected && (
-                            <span
-                              style={{
-                                fontSize: "11px",
-                                color: "#10B981",
-                                fontWeight: 700,
-                                background: "rgba(16, 185, 129, 0.2)",
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                              }}
-                            >
-                              ACTIVE
-                            </span>
-                          )}
-                        </div>
-                        <p
-                          style={{
-                            fontSize: "12px",
-                            color: "#94A3B8",
-                            margin: "0 0 6px",
-                            lineHeight: "1.4",
-                          }}
-                        >
-                          {sample.description}
-                        </p>
-                        <div style={{ fontSize: "11px", color: "#64748B", fontFamily: "monospace" }}>
-                          📄 {sample.filename}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* Upload Dropzone */}
             {(inputMode === "upload" || inputMode === "packet_sorter") && (
@@ -892,46 +714,6 @@ export function DocumentExtractorLab() {
                     </div>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* Text Area Preview / Editor */}
-            {(inputMode === "text" || inputMode === "presets") && (
-              <div style={{ marginBottom: "20px" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "8px",
-                  }}
-                >
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#94A3B8" }}>
-                    Document Content (Raw Text / OCR Stream):
-                  </label>
-                  <div style={{ fontSize: "11px", color: "#64748B" }}>
-                    {pastedText.length} characters &bull; {pastedText.split("\n").length} lines
-                  </div>
-                </div>
-                <textarea
-                  value={pastedText}
-                  onChange={(e) => setPastedText(e.target.value)}
-                  placeholder="Paste passport MRZ, bank statement transactions, marriage certificate text..."
-                  rows={9}
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    background: "rgba(0, 0, 0, 0.4)",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
-                    borderRadius: "8px",
-                    color: "#E2E8F0",
-                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                    fontSize: "12px",
-                    lineHeight: "1.5",
-                    padding: "12px",
-                    resize: "vertical",
-                  }}
-                />
               </div>
             )}
 
@@ -2062,7 +1844,7 @@ export function DocumentExtractorLab() {
                             const pageFields = uniqueExtractedFields.filter(
                               (f) => (f.source_page || 1) === activePageNum
                             );
-                            const docLines = (analysisResult.raw_text_preview || pastedText || "")
+                            const docLines = (analysisResult.raw_text_preview || "")
                               .split(/\r?\n/)
                               .map((l) => l.trim())
                               .filter(Boolean)
@@ -3260,7 +3042,7 @@ export function DocumentExtractorLab() {
               const fieldsOnPage = uniqueExtractedFields.filter(
                 (f) => (f.source_page || 1) === maximizedPageNum
               );
-              const docLines = (analysisResult.raw_text_preview || pastedText || "")
+              const docLines = (analysisResult.raw_text_preview || "")
                 .split(/\r?\n/)
                 .map((l) => l.trim())
                 .filter(Boolean);

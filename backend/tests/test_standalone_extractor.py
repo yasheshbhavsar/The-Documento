@@ -605,6 +605,213 @@ def test_multi_person_packet_sorter_and_splitter(client: TestClient):
     assert kavita_docs[1]["is_joint_document"] is True
 
 
+def test_analyze_study_permit_documents_ielts_loa_pal_gic_tuition(client: TestClient):
+    """
+    Verify classification and structured field extraction across Canadian Study Permit
+    document types: IELTS e-TRF, DLI Offer Letter (LOA), Provincial Attestation Letter (PAL),
+    Student GIC Certificate, and Tuition Fee Payment Receipt.
+    """
+    # 1. IELTS Academic e-TRF
+    ielts_text = (
+        "INTERNATIONAL ENGLISH LANGUAGE TESTING SYSTEM\n"
+        "Test Report Form\n"
+        "ACADEMIC\n"
+        "23IA519900SHAA001A\n"
+        "14/OCT/2023\n"
+        "IN855\n"
+        "15/08/1999\n"
+        "019283\n"
+        "SHARMA\n"
+        "AARAV RAJESH\n"
+        "Z9988776\n"
+        "M\n"
+        "International Passport\n"
+        "IND\n"
+        "GUJARATI\n"
+        "7.5\n"
+        "7.0\n"
+        "6.5\n"
+        "7.5\n"
+        "8.5\n"
+        "C1\n"
+    )
+    r_ielts = client.post("/api/v1/extractor/analyze", data={"raw_text": ielts_text, "filename": "IELTS_TRF.pdf"}).json()
+    assert r_ielts["recognition"]["category"] == "educational_records"
+    f_ielts = {f["field_name"]: f["normalized_value"] for f in r_ielts["extracted_fields"]}
+    assert f_ielts.get("trf_number") == "23IA519900SHAA001A"
+    assert f_ielts.get("full_name") == "Aarav Rajesh Sharma"
+    assert f_ielts.get("passport_number") == "Z9988776"
+    assert f_ielts.get("overall_band_score") == "7.5"
+    assert f_ielts.get("listening_score") == "8.5"
+    assert f_ielts.get("reading_score") == "7.0"
+    assert f_ielts.get("writing_score") == "6.5"
+    assert f_ielts.get("speaking_score") == "7.5"
+    assert f_ielts.get("cefr_level") == "C1"
+
+    # 2. Canadian DLI Letter of Acceptance (LOA)
+    loa_text = (
+        "LETTER OF ACCEPTANCE\n"
+        "Algoma University\n"
+        "Designated Learning Institution (DLI) Number: O19395422197\n"
+        "Student ID Number: 249001122\n"
+        "Family Name: Sharma\n"
+        "Given Name: Aarav Rajesh\n"
+        "Date of Birth: 1999/08/15\n"
+        "Field/Program of Study: Graduate Certificate in Project Management\n"
+        "Estimated Tuition Fee for 1st Academic Year: $18,450.00 CAD\n"
+    )
+    r_loa = client.post("/api/v1/extractor/analyze", data={"raw_text": loa_text, "filename": "OFFER_LETTER.pdf"}).json()
+    assert r_loa["recognition"]["category"] == "educational_records"
+    f_loa = {f["field_name"]: f["normalized_value"] for f in r_loa["extracted_fields"]}
+    assert f_loa.get("dli_number") == "O19395422197"
+    assert f_loa.get("student_id_number") == "249001122"
+    assert f_loa.get("full_name") == "Aarav Rajesh Sharma"
+    assert "Project Management" in f_loa.get("program_of_study", "")
+    assert "18450.00" in f_loa.get("estimated_tuition_fee", "")
+
+    # 3. Provincial Attestation Letter (Ontario PAL)
+    pal_text = (
+        "Ministry of Colleges and Universities\n"
+        "PROVINCIAL ATTESTATION LETTER\n"
+        "249001122\n"
+        "May 10, 2024\n"
+        "Algoma University\n"
+        "ON24-02-ABCDEF123456\n"
+        "12 Sunrise Park, Ahmedabad, Gujarat, India\n"
+        "August 15, 1999\n"
+        "Aarav Rajesh Sharma\n"
+    )
+    r_pal = client.post("/api/v1/extractor/analyze", data={"raw_text": pal_text, "filename": "PAL_LETTER.pdf"}).json()
+    assert r_pal["recognition"]["category"] == "government_correspondence"
+    f_pal = {f["field_name"]: f["normalized_value"] for f in r_pal["extracted_fields"]}
+    assert f_pal.get("pal_attestation_number") == "ON24-02-ABCDEF123456"
+    assert f_pal.get("student_id_number") == "249001122"
+    assert f_pal.get("full_name") == "Aarav Rajesh Sharma"
+    assert f_pal.get("date_of_birth") == "1999-08-15"
+
+
+def test_analyze_work_permit_and_pr_documents_lmia_roe_pcc_copr(client: TestClient):
+    """
+    Verify classification and extraction on Positive LMIA, Record of Employment (ROE),
+    Police Clearance Certificate (PCC), and Confirmation of Permanent Residence (COPR).
+    """
+    # 1. Positive LMIA
+    lmia_text = (
+        "Employment and Social Development Canada\n"
+        "LABOUR MARKET IMPACT ASSESSMENT - GLOBAL TALENT STREAM\n"
+        "System File Number: 9188776\n"
+        "Legal Business Name: Horizon Cloud Technologies Inc\n"
+        "Job Title: 2174 - Interactive media developers\n"
+        "Wage: $38.50 / hour\n"
+        "LMIA Validity Period:\n"
+        "2025-06-30\n"
+        "FOREIGN WORKER NAMES\n"
+        "First Name\n"
+        "Last Name\n"
+        "Karan\n"
+        "Mehta\n"
+    )
+    r_lmia = client.post("/api/v1/extractor/analyze", data={"raw_text": lmia_text, "filename": "POSITIVE_LMIA.pdf"}).json()
+    assert r_lmia["recognition"]["category"] == "employment_records"
+    f_lmia = {f["field_name"]: f["normalized_value"] for f in r_lmia["extracted_fields"]}
+    assert f_lmia.get("lmia_number") == "9188776"
+    assert f_lmia.get("lmia_expiry_date") == "2025-06-30"
+    assert f_lmia.get("full_name") == "Karan Mehta"
+    assert f_lmia.get("hourly_wage") == "38.50"
+
+    # 2. Police Clearance Certificate (PCC)
+    pcc_text = (
+        "GOVERNMENT OF INDIA\n"
+        "MINISTRY OF EXTERNAL AFFAIRS\n"
+        "REGIONAL PASSPORT OFFICE AHMEDABAD\n"
+        "POLICE CLEARANCE CERTIFICATE\n"
+        "File Number: AH2080011223344\n"
+        "There is no adverse information against Mr. KARAN RAMESHBHAI MEHTA S/o RAMESHBHAI MEHTA, "
+        "holder of Indian Passport No. W8877665 issued at Ahmedabad on 10/05/2021.\n"
+    )
+    r_pcc = client.post("/api/v1/extractor/analyze", data={"raw_text": pcc_text, "filename": "PCC_CERT.pdf"}).json()
+    assert r_pcc["recognition"]["category"] == "police_medical"
+    f_pcc = {f["field_name"]: f["normalized_value"] for f in r_pcc["extracted_fields"]}
+    assert f_pcc.get("pcc_file_number") == "AH2080011223344"
+    assert f_pcc.get("passport_number") == "W8877665"
+    assert f_pcc.get("full_name") == "Karan Rameshbhai Mehta"
+
+    # 3. Confirmation of Permanent Residence (COPR)
+    copr_text = (
+        "Government of Canada\n"
+        "CONFIRMATION OF PERMANENT RESIDENCE\n"
+        "Document No: T554433221\n"
+        "UCI: 1122334455\n"
+        "Family name: MEHTA\n"
+        "Given name(s): KARAN RAMESHBHAI\n"
+        "Became P.R. on: 2022/09/14\n"
+    )
+    r_copr = client.post("/api/v1/extractor/analyze", data={"raw_text": copr_text, "filename": "COPR.pdf"}).json()
+    assert r_copr["recognition"]["category"] == "identity_passport"
+    f_copr = {f["field_name"]: f["normalized_value"] for f in r_copr["extracted_fields"]}
+    assert f_copr.get("copr_document_number") == "T554433221"
+    assert f_copr.get("uci_number") == "1122334455"
+    assert f_copr.get("full_name") == "Karan Rameshbhai Mehta"
+    assert f_copr.get("became_pr_date") == "2022-09-14"
+
+
+def test_multi_person_sorter_roe_t4e_pr_card_continuity(client: TestClient):
+    """
+    Verify that a combined packet with 2-page ROEs, 3-page T4E slips (front + instruction backs),
+    and 2-page Canada PR Cards (front + MRZ back) keeps multi-page continuations intact per person.
+    """
+    import fitz
+
+    doc = fitz.open()
+
+    # Page 1: Person 1 ROE Page 1
+    p1 = doc.new_page()
+    p1.insert_text(
+        (50, 70),
+        "Service Canada delivers Employment and Social Development Canada programs\n"
+        "RECORD OF EMPLOYMENT (ROE)\nSERIAL NO.\nW12345678\nREASON FOR ISSUING THIS ROE\n"
+        "10 Maple Crt\nRohan Arvindbhai Shah\nTOTAL INSURABLE HOURS\n1620\nTOTAL INSURABLE EARNINGS\n52,400.00",
+    )
+    # Page 2: Person 1 ROE Page 2 (Continuation)
+    p2 = doc.new_page()
+    p2.insert_text(
+        (50, 70),
+        "RECORD OF EMPLOYMENT (ROE)\n18 COMMENTS\nI AM AWARE THAT IT IS AN OFFENSE TO KNOWINGLY MAKE FALSE ENTRIES",
+    )
+    # Page 3: Person 2 Canada PR Card Front
+    p3 = doc.new_page()
+    p3.insert_text(
+        (50, 70),
+        "Government of Canada\nPERMANENT RESIDENT CARD / CARTE DE RESIDENT PERMANENT\n"
+        "Name / Nom\nSHAH\nPRIYA ROHAN\nID No / No ID\n66-7788-9900",
+    )
+    # Page 4: Person 2 Canada PR Card Back (MRZ)
+    p4 = doc.new_page()
+    p4.insert_text(
+        (50, 70),
+        "PR Since / RP depuis 2022/05/10\n"
+        "CACAN6677889900<01234567<<<<<<\n9001014F2705108IND<220510<<<8\nSHAH<<PRIYA<ROHAN<<<<<<<<<<<<<",
+    )
+
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    resp = client.post(
+        "/api/v1/extractor/sort-packet",
+        files={"file": ("sponsors_packet.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert resp.status_code == 200
+    res = resp.json()
+    assert res["total_pages_analyzed"] == 4
+    assert res["total_persons_detected"] == 2
+    folders = {f["canonical_name"]: f for f in res["person_folders"]}
+    assert "Rohan Arvindbhai Shah" in folders
+    assert "Priya Rohan Shah" in folders
+    assert folders["Rohan Arvindbhai Shah"]["documents"][0]["page_numbers"] == [1, 2]
+    assert folders["Priya Rohan Shah"]["documents"][0]["page_numbers"] == [3, 4]
+
+
+
 
 
 

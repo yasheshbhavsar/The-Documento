@@ -231,6 +231,13 @@ def extract_structured_fields(
                 "of assets",
                 "of employer",
                 "of assessee",
+                "of institution",
+                "of study",
+                "of admission",
+                "of acceptance",
+                "of employment",
+                "of work",
+                "of citizenship",
                 "in full",
                 "ifirm",
                 "firm",
@@ -245,6 +252,15 @@ def extract_structured_fields(
                 "nom de",
                 "prnom",
                 "andaddress",
+                "and initial",
+                "middle name",
+                "first name",
+                "family name",
+                "given name",
+                "student id",
+                "dli number",
+                "program of",
+                "academic status",
                 "inv. since",
                 "declaration",
                 "ontario",
@@ -269,6 +285,16 @@ def extract_structured_fields(
                 "date of sale",
                 "sales price",
                 "tds amount",
+                "band score",
+                "tuition fee",
+                "designated learning",
+                "foreign worker",
+                "labour market",
+                "business name",
+                "givenatbirth",
+                "given at birth",
+                "contact center",
+                "hospital course",
             )
             if (
                 any(clean_lower.startswith(p) or clean_lower == p for p in bad_name_prefixes)
@@ -427,8 +453,8 @@ def extract_structured_fields(
         vis_given = None
         text_lines = [l.strip() for l in full_text.splitlines() if l.strip()]
         for i, line in enumerate(text_lines):
-            if not vis_surname and re.search(r'\b(?:Surname|Nom|Apellidos)\b', line, re.IGNORECASE):
-                same_m = re.search(r'\b(?:Surname|Nom|Apellidos)[\s:]+([A-Za-z\s\.-]{2,40})$', line, re.IGNORECASE)
+            if not vis_surname and re.search(r'\b(?:Surname|Family\s*Name|Nom|Apellidos)\b', line, re.IGNORECASE):
+                same_m = re.search(r'\b(?:Surname|Family\s*Name|Nom|Apellidos)[\s:]+([A-Za-z\s\.-]{2,40})$', line, re.IGNORECASE)
                 if same_m and same_m.group(1).strip():
                     cand = same_m.group(1).strip()
                     if not any(k in cand.lower() for k in ("given", "name", "date", "birth", "sex", "place")):
@@ -599,10 +625,18 @@ def extract_structured_fields(
                 fmt = "JPEG Image" if "jpeg" in mime_type or "jpg" in (filename or "").lower() else "Digital Image"
                 add_field("photo_file_format", "Photo File Format", fmt, fmt, 1, 0.98)
 
-    # 2B. XFA DATASETS / IRCC FORM STRUCTURED EXTRACTION (IMM 5257, IMM 5645, Work Permits)
+    # 2B. XFA DATASETS / IRCC FORM STRUCTURED EXTRACTION (IMM 1295, IMM 5257, IMM 5708, IMM 5710, IMM 5645)
     if re.search(r"Family\s*Name:|Passport\s*Num:|DOCUMENT_TYPE:\s*IMM", full_text):
-        fam_m = re.search(r"\bFamily\s*Name:\s*([A-Za-z\s\.-]+)", full_text)
-        giv_m = re.search(r"\bGiven\s*Name:\s*([A-Za-z\s\.-]+)", full_text)
+        doc_type_m = re.search(r"DOCUMENT_TYPE:\s*(IMM\s*[0-9]{4})", full_text, re.IGNORECASE)
+        if doc_type_m and "ircc_form_number" not in added_keys:
+            add_field("ircc_form_number", "IRCC Form Identifier", doc_type_m.group(1).upper(), doc_type_m.group(1).upper(), 1, 0.99)
+
+        uci_xfa = re.search(r"\b(?:UCIClient\s*ID|UCI\s*Client\s*ID):\s*([0-9]{8,11})\b", full_text, re.IGNORECASE)
+        if uci_xfa and "uci_number" not in added_keys:
+            add_field("uci_number", "Unique Client Identifier (UCI)", uci_xfa.group(1).strip(), uci_xfa.group(1).strip(), 1, 0.99)
+
+        fam_m = re.search(r"(?<![A-Za-z])Family\s*Name:\s*([A-Za-z\s\.-]+)", full_text)
+        giv_m = re.search(r"(?<![A-Za-z])Given\s*Name:\s*([A-Za-z\s\.-]+)", full_text)
         if fam_m and giv_m:
             raw_sur = fam_m.group(1).splitlines()[0].strip()
             raw_giv = giv_m.group(1).splitlines()[0].strip()
@@ -613,6 +647,23 @@ def extract_structured_fields(
                 add_field("surname", "Surname / Family Name", raw_sur, raw_sur.upper(), 1, 0.98)
             if "given_names" not in added_keys:
                 add_field("given_names", "Given Names", raw_giv, raw_giv.title(), 1, 0.98)
+
+        sp_fam_m = re.search(r"\bSpouse\s*Family\s*Name:\s*([A-Za-z\s\.-]+)", full_text)
+        sp_giv_m = re.search(r"\bSpouse\s*Given\s*Name:\s*([A-Za-z\s\.-]+)", full_text)
+        if sp_fam_m and sp_giv_m and "spouse_legal_name" not in added_keys:
+            sp_comb = f"{sp_giv_m.group(1).splitlines()[0].strip()} {sp_fam_m.group(1).splitlines()[0].strip()}"
+            add_field("spouse_legal_name", "Spouse's Legal Name", sp_comb, sp_comb.title(), 1, 0.97)
+
+        if "gender" not in added_keys:
+            sex_xfa = re.search(r"\bSex:\s*(Female|Male)\b", full_text, re.IGNORECASE)
+            if sex_xfa:
+                add_field("gender", "Sex / Gender", sex_xfa.group(1).title(), sex_xfa.group(1).title(), 1, 0.98)
+
+        if "nationality" not in added_keys:
+            nat_xfa = re.search(r"\b(?:Citizenship\s*Name|Place\s*Birth\s*Country\s*Name):\s*([A-Za-z\s]+)", full_text)
+            if nat_xfa:
+                raw_nx = nat_xfa.group(1).splitlines()[0].strip()
+                add_field("nationality", "Citizenship / Nationality", raw_nx, normalize_country(raw_nx), 1, 0.98)
 
         if "passport_number" not in added_keys:
             p_xfa = re.search(r"\bPassport\s*Num:\s*([A-Z0-9]{7,10})\b", full_text)
@@ -670,6 +721,48 @@ def extract_structured_fields(
             ph_xfa = re.search(r"\bActual\s*Number:\s*([0-9+\-\s]{7,20})", full_text)
             if ph_xfa:
                 add_field("phone_number", "Contact Phone Number", ph_xfa.group(1).strip(), ph_xfa.group(1).strip(), 1, 0.96)
+
+        if "employer_name" not in added_keys:
+            emp_xfa = re.search(r"\b(?:Original\s*Employer\s*Name|Employer\s*Name):\s*([^\r\n]+)", full_text)
+            if emp_xfa:
+                raw_ex = emp_xfa.group(1).strip()
+                add_field("employer_name", "Intended / Current Employer", raw_ex, raw_ex.title(), 1, 0.96)
+
+        if "job_title" not in added_keys:
+            jt_xfa = re.search(r"\b(?:Job\s*Title|Job\s*Desc|My\s*Occupation):\s*([^\r\n]+)", full_text)
+            if jt_xfa:
+                raw_jx = jt_xfa.group(1).strip()
+                add_field("job_title", "Occupation / Job Title", raw_jx, raw_jx.title(), 1, 0.95)
+
+        if "lmia_number" not in added_keys:
+            lm_xfa = re.search(r"\bLMIA\s*Num:\s*([0-9]{6,9})\b", full_text)
+            if lm_xfa:
+                add_field("lmia_number", "LMIA / Exemption Number", lm_xfa.group(1).strip(), lm_xfa.group(1).strip(), 1, 0.98)
+
+    # 2C. CONFIRMATION OF PERMANENT RESIDENCE (COPR) & CANADA PR CARD
+    if "CONFIRMATION OF PERMANENT RESIDENCE" in full_text.upper() or "CONFIRMATIONOFPERMANENTRESIDENCE" in full_text.upper() or "CACANPD" in full_text.upper():
+        copr_doc_m = re.search(r"Document\s*No\.?[\s:]*([T][0-9]{8,10})\b", full_text, re.IGNORECASE)
+        if copr_doc_m and "copr_document_number" not in added_keys:
+            add_field("copr_document_number", "COPR Document Number", copr_doc_m.group(1).upper(), copr_doc_m.group(1).upper(), 1, 0.98)
+
+        copr_uci_m = re.search(r"\b(?:UCI|Client\s*ID)[\s:]*([0-9]{8,11})\b", full_text, re.IGNORECASE)
+        if copr_uci_m and "uci_number" not in added_keys:
+            add_field("uci_number", "Unique Client Identifier (UCI)", copr_uci_m.group(1), copr_uci_m.group(1), 1, 0.98)
+
+        copr_pr_dt = re.search(r"Became\s*P\.?R\.?\s*on[\s:]*([0-9]{4}[/\-][0-9]{2}[/\-][0-9]{2})", full_text, re.IGNORECASE)
+        if copr_pr_dt and "became_pr_date" not in added_keys:
+            add_field("became_pr_date", "Became Permanent Resident On", copr_pr_dt.group(1), normalize_date(copr_pr_dt.group(1)) or copr_pr_dt.group(1), 1, 0.97)
+
+        copr_fam = re.search(r"Family\s*Name[\s:]+([A-Z]{3,25})\s*[\r\n]+\s*Given\s*Name(?:\(s\))?[\s:]+([A-Z][A-Z\s]{2,35})", full_text, re.IGNORECASE)
+        if copr_fam and "full_name" not in added_keys:
+            c_sur = copr_fam.group(1).strip()
+            c_giv = copr_fam.group(2).splitlines()[0].strip()
+            c_full = f"{c_giv} {c_sur}"
+            add_field("full_name", "Full Name", c_full, c_full.title(), 1, 0.97)
+            if "surname" not in added_keys:
+                add_field("surname", "Surname / Family Name", c_sur, c_sur.upper(), 1, 0.97)
+            if "given_names" not in added_keys:
+                add_field("given_names", "Given Names", c_giv, c_giv.title(), 1, 0.97)
 
     # 3. SPECIALIZED IDENTITY RESOLUTION (Aadhaar, PAN, Indian Passport, Single-Name/FNU)
     # Aadhaar Card detection & mandatory 8-digit masking
@@ -1280,6 +1373,47 @@ def extract_structured_fields(
                     muni_loc = _find_block_location([p], parts_muni[-1], p_num)
                     _add_bc_field("registration_municipality", "birth_registration_district", "Registration Municipality & District", muni_str, muni_str, p_num, 0.94, muni_loc)
 
+            # US / International Certificate of Birth labels (e.g., 'NAME OF CHILD (First) (Middle) (Last) (Suffix)', 'STATE FILE NUMBER')
+            us_child_m = re.search(
+                r"NAME\s*OF\s*CHILD(?:\s*\(\s*(?:First|Middle|Last|Suffix)\s*\))*\s*[\r\n:]+\s*([A-Z][A-Z\s]{3,45}?)(?=\s+PLACE\s*OF\s*BIRTH|\s+SEX|\s+DATE|\r\n[0-9]|$)",
+                p_text,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if us_child_m and "full_name" not in added_keys:
+                raw_usc = " ".join(us_child_m.group(1).split()).strip()
+                _add_bc_field("full_name", "child_legal_name", "Full Name (Birth Certificate)", raw_usc, raw_usc.title(), p_num, 0.98)
+
+            us_dob_m = re.search(
+                r"DATE\s*OF\s*BIRTH(?:\s*OF\s*CHILD)?\s*[\r\n:]+\s*((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+[0-9]{1,2},?\s+[0-9]{4})",
+                p_text,
+                re.IGNORECASE,
+            )
+            if us_dob_m and "date_of_birth" not in added_keys:
+                raw_usdob = us_dob_m.group(1).strip()
+                _add_bc_field("date_of_birth", "child_date_of_birth", "Date of Birth", raw_usdob, normalize_date(raw_usdob) or raw_usdob, p_num, 0.98)
+
+            us_reg_m = re.search(r"STATE\s*FILE\s*NUMBER\s*[\r\n:]*\s*([0-9]{4}[A-Z]{2}[0-9]{7,10})\b", p_text, re.IGNORECASE)
+            if us_reg_m and "birth_registration_number" not in added_keys:
+                _add_bc_field("birth_registration_number", "birth_registration_number", "Birth Registration Number", us_reg_m.group(1).upper(), us_reg_m.group(1).upper(), p_num, 0.98)
+
+            us_mot_m = re.search(
+                r"MOTHER\s*/\s*PARENT\s*NAME[^\r\n]*[\r\n:]+\s*([A-Z][A-Z\s]{4,45}?)(?=\r|\n|[0-9])",
+                p_text,
+                re.IGNORECASE,
+            )
+            if us_mot_m and "mother_legal_name" not in added_keys:
+                raw_usm = us_mot_m.group(1).strip()
+                _add_bc_field("mother_legal_name", "birth_cert_mother_name", "Mother's Legal Name", raw_usm, raw_usm.title(), p_num, 0.97)
+
+            us_fat_m = re.search(
+                r"FATHER\s*/\s*PARENT\s*NAME[^\r\n]*[\r\n:]+\s*([A-Z][A-Z\s]{4,45}?)(?=\r|\n|[0-9])",
+                p_text,
+                re.IGNORECASE,
+            )
+            if us_fat_m and "father_legal_name" not in added_keys:
+                raw_usf = us_fat_m.group(1).strip()
+                _add_bc_field("father_legal_name", "birth_cert_father_name", "Father's Legal Name", raw_usf, raw_usf.title(), p_num, 0.97)
+
         # IRCC IMM 5713 Use of a Family Representative
         rep_form = re.search(r"\b(IMM\s*(?:5713|6713|S713))\b", full_text, re.IGNORECASE)
         if rep_form and "ircc_form_number" not in added_keys:
@@ -1467,8 +1601,160 @@ def extract_structured_fields(
             raw_child = sponsor_m.group(1).strip()
             add_field("inviting_child_name", "Inviting Child / Sponsor in Canada", raw_child, raw_child.title(), 1, 0.94)
 
-    # 5. EDUCATIONAL RECORDS EXTRACTION
+    # 5. EDUCATIONAL RECORDS EXTRACTION (Degrees, Marksheets, Offer Letters / LOA, IELTS Test Report Forms, Bonafide Certificates)
     if category in ("educational_records", "educational_record", "supporting_evidence"):
+        # 5A. IELTS Test Report Form (TRF)
+        if "TEST REPORT FORM" in full_text.upper() or "OVERALL BAND SCORE" in full_text.upper() or "IELTS" in full_text.upper():
+            trf_m = re.search(r"\b([0-9]{2}[A-Z]{2}[0-9]{6}[A-Z]{4}[0-9]{3}[A-Z])\b", full_text)
+            if trf_m and "trf_number" not in added_keys:
+                add_field("trf_number", "IELTS Test Report Form Number", trf_m.group(1), trf_m.group(1), 1, 0.99)
+
+            cand_id_m = re.search(r"Candidate\s*ID\s*[\r\n:]*\s*([A-Z][0-9]{7,8})\b", full_text, re.IGNORECASE)
+            if cand_id_m and "passport_number" not in added_keys:
+                add_field("passport_number", "Candidate ID (Passport Number)", cand_id_m.group(1).upper(), cand_id_m.group(1).upper(), 1, 0.98)
+
+            ielts_fam = re.search(r"Family\s*Name\s*[\r\n:]+\s*([A-Z]{2,25})\b", full_text)
+            ielts_fst = re.search(r"First\s*Name\s*[\r\n:]+\s*([A-Z][A-Z\s]{2,35}?)(?=\r|\n|Date)", full_text)
+            if ielts_fam and ielts_fst and ielts_fam.group(1).upper() not in ("FIRST", "CANDIDATE"):
+                i_sur = ielts_fam.group(1).strip()
+                i_giv = ielts_fst.group(1).strip()
+                i_full = f"{i_giv} {i_sur}"
+                if "full_name" not in added_keys:
+                    add_field("full_name", "Full Name", i_full, i_full.title(), 1, 0.98)
+                if "surname" not in added_keys:
+                    add_field("surname", "Surname / Family Name", i_sur, i_sur.upper(), 1, 0.98)
+                if "given_names" not in added_keys:
+                    add_field("given_names", "Given Names", i_giv, i_giv.title(), 1, 0.98)
+
+            # 2023+ e-TRF Tabular Block Layout (ACADEMIC -> TRF -> TestDate -> Centre -> DOB -> CandNo -> FamilyName -> FirstName -> Passport -> Sex -> ... -> 5 Scores -> CEFR)
+            etrf_m = re.search(
+                r"\b(?:ACADEMIC|GENERAL\s*TRAINING)\s*[\r\n]+\s*([0-9]{2}[A-Z]{2}[0-9]{6}[A-Z0-9]{8})\s*[\r\n]+\s*([0-9]{2}/[A-Z]{3}/20[0-9]{2})\s*[\r\n]+\s*[A-Z0-9]{5}\s*[\r\n]+\s*([0-9]{2}/[0-9]{2}/[12][09][0-9]{2})\s*[\r\n]+\s*[0-9]{5,6}\s*[\r\n]+\s*([A-Z]{2,25})\s*[\r\n]+\s*([A-Z][A-Z\s]{2,35}?)\s*[\r\n]+\s*([A-Z][0-9]{6,8})\s*[\r\n]+\s*([MF])\s*[\r\n]+.*?\s*([0-9]\.[05])\s*[\r\n]+\s*([0-9]\.[05])\s*[\r\n]+\s*([0-9]\.[05])\s*[\r\n]+\s*([0-9]\.[05])\s*[\r\n]+\s*([0-9]\.[05])\s*[\r\n]+\s*(A1|A2|B1|B2|C1|C2)\b",
+                full_text,
+                re.DOTALL,
+            )
+            if etrf_m:
+                e_dob = etrf_m.group(3).strip()
+                e_sur = etrf_m.group(4).strip()
+                e_giv = etrf_m.group(5).strip()
+                e_pp = etrf_m.group(6).strip()
+                e_full = f"{e_giv} {e_sur}"
+                if "full_name" not in added_keys:
+                    add_field("full_name", "Full Name", e_full, e_full.title(), 1, 0.99)
+                if "surname" not in added_keys:
+                    add_field("surname", "Surname / Family Name", e_sur, e_sur.upper(), 1, 0.99)
+                if "given_names" not in added_keys:
+                    add_field("given_names", "Given Names", e_giv, e_giv.title(), 1, 0.99)
+                if "passport_number" not in added_keys:
+                    add_field("passport_number", "Candidate ID (Passport Number)", e_pp.upper(), e_pp.upper(), 1, 0.99)
+                if "date_of_birth" not in added_keys:
+                    add_field("date_of_birth", "Date of Birth", e_dob, normalize_date(e_dob) or e_dob, 1, 0.98)
+                if "overall_band_score" not in added_keys:
+                    add_field("overall_band_score", "IELTS Overall Band Score", etrf_m.group(8), etrf_m.group(8), 1, 0.99)
+                if "reading_score" not in added_keys:
+                    add_field("reading_score", "IELTS Reading Band Score", etrf_m.group(9), etrf_m.group(9), 1, 0.98)
+                if "writing_score" not in added_keys:
+                    add_field("writing_score", "IELTS Writing Band Score", etrf_m.group(10), etrf_m.group(10), 1, 0.98)
+                if "speaking_score" not in added_keys:
+                    add_field("speaking_score", "IELTS Speaking Band Score", etrf_m.group(11), etrf_m.group(11), 1, 0.98)
+                if "listening_score" not in added_keys:
+                    add_field("listening_score", "IELTS Listening Band Score", etrf_m.group(12), etrf_m.group(12), 1, 0.98)
+                if "cefr_level" not in added_keys:
+                    add_field("cefr_level", "CEFR Proficiency Level", etrf_m.group(13).upper(), etrf_m.group(13).upper(), 1, 0.99)
+
+            obs_m = re.search(r"Overall\s*Band\s*Score\s*[\r\n:]*\s*([0-9]\.[05])\b", full_text, re.IGNORECASE)
+            if obs_m and "overall_band_score" not in added_keys:
+                add_field("overall_band_score", "IELTS Overall Band Score", obs_m.group(1), obs_m.group(1), 1, 0.99)
+
+            cefr_m = re.search(r"CEFR\s*Level\s*[\r\n:]*\s*([A-C][12])\b", full_text, re.IGNORECASE)
+            if cefr_m and "cefr_level" not in added_keys:
+                add_field("cefr_level", "CEFR Proficiency Level", cefr_m.group(1).upper(), cefr_m.group(1).upper(), 1, 0.98)
+
+            for mod_key, mod_lbl in (
+                ("Listening", "listening_score"),
+                ("Reading", "reading_score"),
+                ("Writing", "writing_score"),
+                ("Speaking", "speaking_score"),
+            ):
+                mod_m = re.search(rf"\b{mod_key}\s*[\r\n:]*\s*([0-9]\.[05])\b", full_text, re.IGNORECASE)
+                if mod_m and mod_lbl not in added_keys:
+                    add_field(mod_lbl, f"IELTS {mod_key} Band Score", mod_m.group(1), mod_m.group(1), 1, 0.97)
+
+        # 5B. Offer Letter / Letter of Acceptance (LOA) & DLI Metadata
+        dli_m = re.search(r"\b([O0]19[0-9]{9,10})\b", full_text)
+        if dli_m and "dli_number" not in added_keys:
+            dli_norm = "O" + dli_m.group(1)[1:]
+            add_field("dli_number", "Designated Learning Institution (DLI) Number", dli_m.group(1), dli_norm, 1, 0.99)
+
+        stud_id_m = re.search(
+            r"(?:Student\s*ID\s*Number|Student\s*Number|School\s*Student\s*ID|College\s*Student\s*(?:ID|No\.?)|Student\s*#|Student\s*ID)[\s:#\r\n]*([0-9]{7,10})\b",
+            full_text,
+            re.IGNORECASE,
+        )
+        if stud_id_m and "student_id_number" not in added_keys:
+            add_field("student_id_number", "Student ID Number", stud_id_m.group(1), stud_id_m.group(1), 1, 0.98)
+
+        for loa_name_pat in (
+            r"\bName\s*:\s*([A-Z][A-Za-z\s]{5,45}?)(?=;|\s+Student|\r|\n)",
+            r"Letter\s+of\s+Acceptance\s*[\r\n]+\s*([A-Z][A-Za-z\s]{5,45}?)(?=\r|\n)",
+            r"\bRe\s*:\s*([A-Z][A-Za-z\s]{5,45}?)(?=\s+Student|\r|\n)",
+        ):
+            ln_m = re.search(loa_name_pat, full_text)
+            if ln_m and "full_name" not in added_keys:
+                raw_ln = " ".join(ln_m.group(1).split()).strip()
+                if not any(b in raw_ln.lower() for b in ("institution", "contact", "alternate", "school", "college", "university", "form")):
+                    add_field("full_name", "Student Full Name", raw_ln, raw_ln.title(), 1, 0.98)
+                    break
+
+        if "full_name" not in added_keys:
+            loa_box = re.search(
+                r"\[?1\]?\s*Family\s*Name\s*[\r\n]+(?:\s*\[?2\]?\s*Given\s*Name\s*[\r\n]+)?\s*([A-Za-z\-]{2,25})\s*[\r\n]+(?:\s*\[?2\]?\s*Given\s*Name\s*[\r\n]+)?\s*([A-Za-z\s\-]{2,35}?)(?=\r|\n|[0-9\[])",
+                full_text,
+                re.IGNORECASE,
+            )
+            if loa_box:
+                l_sur = loa_box.group(1).strip()
+                l_giv = loa_box.group(2).splitlines()[0].strip()
+                l_full = f"{l_giv} {l_sur}"
+                add_field("full_name", "Student Full Name", l_full, l_full.title(), 1, 0.98)
+
+        if "full_name" not in added_keys:
+            dear_m = re.search(r"\bDear\s+([A-Z][A-Za-z\s]{4,40}?)(?=[,:\r\n]|Congratulations)", full_text)
+            if dear_m:
+                raw_dear = dear_m.group(1).strip()
+                if not any(b in raw_dear.lower() for b in ("student", "applicant", "sir", "madam", "officer", "client")):
+                    add_field("full_name", "Student Full Name", raw_dear, raw_dear.title(), 1, 0.95)
+
+        for prog_pat in (
+            r"Field/Program\s*of\s*Study\s*[\r\n]+(?:\s*[^\r\n]*?(?:Full-?time|Part-?time)\s*[\r\n]+)*\s*([A-Za-z0-9\s,\(\)\-&/]{5,75}?)(?=\r|\n|[0-9]{2}\s+Level)",
+            r"Program\s*&\s*Location\s*:\s*[\r\n]*\s*([A-Za-z0-9\s,\(\)\-&/]{5,75}?)(?=\r|\n|Start)",
+            r"(?:Field/Program\s*of\s*Study|Program\s*of\s*Study|Academic\s*Program|Program\s*Name|\bProgram)\s*:\s*([A-Za-z0-9\s,\(\)\-&/]{5,75}?)(?=\r|\n|Delivery|Length|Level|$)",
+        ):
+            prog_m = re.search(prog_pat, full_text, re.IGNORECASE)
+            if prog_m and "program_of_study" not in added_keys:
+                raw_prog = prog_m.group(1).strip(" :-")
+                if not any(b in raw_prog.lower() for b in ("academic status", "fulltime", "full time", "part time", "level of", "fee details")):
+                    add_field("program_of_study", "Program of Study", raw_prog, raw_prog.title(), 1, 0.96)
+                    break
+
+        tuit_m = re.search(
+            r"(?:Estimated\s*tuition\s*fee[^\r\n]*|Total\s*Academic\s*Fees\s*Required[^\r\n]*|Tuition\s*Fees?|Sub\s*Total\s*[-–]\s*School\s*Fees)[\s:\r\n]*(?:[\r\n]+[^\r\n]*?)*?((?:C\$|\$)\s*[0-9]{1,2},?[0-9]{3}(?:\.[0-9]{2})?)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if tuit_m and "estimated_tuition_fee" not in added_keys:
+            raw_tuit = tuit_m.group(1).strip()
+            add_field("estimated_tuition_fee", "Estimated Tuition Fee", raw_tuit, normalize_currency_amount(raw_tuit), 1, 0.96)
+
+        # 5C. Bonafide Certificate ('This is to Certify that Mr./Miss. <NAME> is/was a student...')
+        bona_m = re.search(
+            r"Certify\s+that\s+(?:Mr\.?\s*/\s*Miss\.?|Master|Miss|Mr\.?|Ms\.?|Kumar|Kumari)?\s*([A-Z][A-Za-z\s]{4,45}?)(?=\s+is/?was\s+a|\s+is\s+a\s+bonafide|\s+was\s+a\s+bonafide|\r|\n)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if bona_m and "full_name" not in added_keys:
+            raw_bona = bona_m.group(1).strip()
+            add_field("full_name", "Student Full Name", raw_bona, raw_bona.title(), 1, 0.97)
+
         # Recipient name on diplomas ("have conferred on\n\nAARAV SHARMA\n\nthe degree of")
         conf_name_m = re.search(r"(?:conferred\s+on|awarded\s+to|certifies\s+that)\s*[\r\n]+\s*([A-Z][A-Za-z\s\.-]{3,45})\s*[\r\n]+", full_text, re.IGNORECASE)
         if conf_name_m and "full_name" not in added_keys:
@@ -1500,8 +1786,91 @@ def extract_structured_fields(
         if grad_m and "graduation_date" not in added_keys:
             add_field("graduation_date", "Graduation / Conferral Date", grad_m.group(1).strip(), normalize_date(grad_m.group(1).strip()), 1, 0.92)
 
-    # 6. EMPLOYMENT RECORDS EXTRACTION
+    # 6. EMPLOYMENT RECORDS EXTRACTION (Positive LMIA, Employment Contracts, ROE, Paystubs, Resumes)
     if category in ("employment_records", "employment_record", "supporting_evidence"):
+        # 6A. Positive LMIA (Labour Market Impact Assessment)
+        lmia_no_m = re.search(r"(?:LMIA\s*#?\s*:?\s*|System\s*File\s*Number\s*:\s*)([0-9]{7,8})\b", full_text, re.IGNORECASE)
+        if lmia_no_m and "lmia_number" not in added_keys:
+            add_field("lmia_number", "LMIA System File Number", lmia_no_m.group(1), lmia_no_m.group(1), 1, 0.99)
+
+        lmia_exp_m = re.search(
+            r"(?:LMIA\s*Expiry\s*Date|LMIA\s*Validity\s*Period\*?|positive\s*LMIA\s*expires\s*on)\s*[:\r\n]*\s*([0-9]{4}-[0-9]{2}-[0-9]{2}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+[0-9]{1,2},\s+20[0-9]{2})",
+            full_text,
+            re.IGNORECASE,
+        )
+        if lmia_exp_m and "lmia_expiry_date" not in added_keys:
+            raw_lexp = lmia_exp_m.group(1).strip()
+            add_field("lmia_expiry_date", "LMIA Expiry Date", raw_lexp, normalize_date(raw_lexp) or raw_lexp, 1, 0.98)
+
+        noc_m = re.search(r"NOC\s*Code\s*and\s*Title\s*:\s*[\r\n]*\s*([0-9]{4,5}\s*-\s*[^\r\n]+)", full_text, re.IGNORECASE)
+        if noc_m and "job_title" not in added_keys:
+            raw_noc = noc_m.group(1).strip()
+            add_field("job_title", "NOC Code and Job Title", raw_noc, raw_noc, 1, 0.98)
+
+        lmia_emp_m = re.search(r"(?:Legal\s*Business\s*Name|Employer\s*Name\s*(?:/\s*Business\s*Name)?)\s*:\s*[\r\n]*\s*([A-Za-z0-9\s,\.\-&]{3,65}?)(?=\s+CRA|\s+Employer|\r|\n)", full_text, re.IGNORECASE)
+        if lmia_emp_m and "employer_name" not in added_keys:
+            raw_lemp = lmia_emp_m.group(1).strip()
+            add_field("employer_name", "Employer / Business Name", raw_lemp, raw_lemp.title(), 1, 0.98)
+
+        fw_tab_m = re.search(
+            r"First\s+Name\s*[\r\n]+\s*Last\s+Name\s*[\r\n]+\s*([A-Za-z\s\-]{2,35}?)\s*[\r\n]+\s*([A-Za-z\s\-]{2,25}?)(?=\r|\n|$)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if fw_tab_m and "full_name" not in added_keys:
+            fw_comb = f"{fw_tab_m.group(1).strip()} {fw_tab_m.group(2).strip()}"
+            add_field("full_name", "Foreign Worker Name", fw_comb, fw_comb.title(), 1, 0.99)
+        elif "full_name" not in added_keys:
+            fw_m = re.search(r"Foreign\s*Worker\s*Names?\s*(?:\([0-9]+\))?\s*[\r\n:]+\s*([A-Za-z]+,\s*[A-Za-z\s]+)(?=\r|\n|$)", full_text, re.IGNORECASE)
+            if fw_m:
+                fw_parts = [p.strip() for p in fw_m.group(1).split(",") if p.strip()]
+                fw_name = f"{fw_parts[1]} {fw_parts[0]}" if len(fw_parts) == 2 else fw_m.group(1).strip()
+                add_field("full_name", "Foreign Worker Name", fw_name, fw_name.title(), 1, 0.98)
+
+        # 6B. Employment Contract ('Between: <Employer> ("Employer") ...' or 'The Employer: <Employer> ... The Employee: <Employee>')
+        for ec_emp_pat in (
+            r"Between\s*:\s*([A-Za-z0-9\s,\.\-&]{3,65}?)\s*\(\s*[\"']?Employer",
+            r"The\s+En?[rm]ployer\s*:\s*([A-Za-z0-9\s,\.\-&]{3,65}?)(?=\s+located\s+at|\r|\n)",
+        ):
+            ec_emp_m = re.search(ec_emp_pat, full_text, re.IGNORECASE)
+            if ec_emp_m and "employer_name" not in added_keys:
+                raw_ece = " ".join(ec_emp_m.group(1).split()).strip(" ,.-")
+                add_field("employer_name", "Employer / Company Name", raw_ece, raw_ece.title(), 1, 0.97)
+                break
+
+        for ec_wk_pat in (
+            r"\bAnd\s*:\s*([A-Za-z][A-Za-z\s\.]{3,45}?)\s*(?:\(\s*DOB|\(\s*[\"']?Employee)",
+            r"The\s+Employee\s*:\s*(?:Mr\.?|Mrs\.?|Ms\.?|Miss|1\\?,1rs\.?)?\s*([A-Z][A-Za-z\s]{4,40}?)(?=\s+The\s+PARTIES|\r|\n)",
+        ):
+            ec_worker_m = re.search(ec_wk_pat, full_text, re.IGNORECASE)
+            if ec_worker_m and "full_name" not in added_keys:
+                raw_ecw = " ".join(ec_worker_m.group(1).split()).strip(" ,.-")
+                add_field("full_name", "Employee Full Name", raw_ecw, raw_ecw.title(), 1, 0.98)
+                break
+
+        ec_dob_m = re.search(r"\(\s*DOB\s*[-:]?\s*([A-Za-z0-9\s,\-/]{6,20})\s*\)", full_text, re.IGNORECASE)
+        if ec_dob_m and "date_of_birth" not in added_keys:
+            raw_ecdob = ec_dob_m.group(1).strip()
+            add_field("date_of_birth", "Date of Birth", raw_ecdob, normalize_date(raw_ecdob) or raw_ecdob, 1, 0.96)
+
+        if "job_title" not in added_keys:
+            ec_jt_m = re.search(r"tasks\s+of\s+an?\s+([A-Z][A-Za-z\s\-]{3,40}?)\s*:", full_text)
+            if ec_jt_m:
+                add_field("job_title", "Job Title / Role", ec_jt_m.group(1).strip(), ec_jt_m.group(1).strip().title(), 1, 0.96)
+
+        wage_m = re.search(r"(?:Wage\s*:\s*\$|wages\s+of\s+\$)\s*([0-9]{2}(?:\.[0-9]{2})?)\s*(?:per\s*hour|/\s*hour|hourly)", full_text, re.IGNORECASE)
+        if not wage_m:
+            wage_m = re.search(r"(?<!Overtime\srate\swill\sbe\s)\$([0-9]{2}\.[0-9]{2})\s*(?:per\s*hour|/\s*hour|hourly)", full_text, re.IGNORECASE)
+        if wage_m and "hourly_wage" not in added_keys:
+            add_field("hourly_wage", "Hourly Wage Rate (CAD)", f"${wage_m.group(1)}/hr", wage_m.group(1), 1, 0.96)
+
+        # 6C. Canadian Record of Employment (ROE)
+        if "RECORD OF EMPLOYMENT" in full_text.upper() or "SERIAL NO. OF ROE" in full_text.upper():
+            roe_no_m = re.search(r"SERIAL\s*NO\.?\s*[\r\n:]+\s*([A-Z][0-9]{8})\b|\b([WM][0-9]{8})\b", full_text, re.IGNORECASE)
+            if roe_no_m and "roe_serial_number" not in added_keys:
+                roe_val = (roe_no_m.group(1) or roe_no_m.group(2)).upper()
+                add_field("roe_serial_number", "Record of Employment (ROE) Serial No.", roe_val, roe_val, 1, 0.98)
+
         emp_m = re.search(r"(?:Employer|Company|Organization Name|employed[^\r\n]{1,30}with)[\s:]+([A-Za-z0-9\s,\.-]{2,50}(?:Inc\.?|LLC|Ltd\.?|Corp\.?|Technologies|AI|Systems))", full_text, re.IGNORECASE)
         if emp_m and "employer_name" not in added_keys:
             add_field("employer_name", "Employer / Company Name", emp_m.group(1).strip(), emp_m.group(1).strip().title(), 1, 0.93)
@@ -1770,6 +2139,89 @@ def extract_structured_fields(
             if itr_summary.total_tax_payable > 0 and "itr_total_tax_payable" not in added_keys:
                 add_field("itr_total_tax_payable", "Total Tax Paid / Payable", f"INR {itr_summary.total_tax_payable:,.2f}", str(itr_summary.total_tax_payable), 1, 0.95, method="financial_forensics_engine")
 
+        # 7B. GIC (Guaranteed Investment Certificate) & Student Tuition Fee Receipts
+        if (
+            "STUDENT GIC PROGRAM" in full_text.upper()
+            or "GUARANTEED INVESTMENT CERTIFICATE" in full_text.upper()
+            or "INVESTMENT BALANCE CONFIRMATION" in full_text.upper()
+            or "SCOTIA INVESTMENT ACCOUNT" in full_text.upper()
+            or "INVESTMENT DIRECTIONS" in full_text.upper()
+        ):
+            gic_amt = re.search(
+                r"(?:Total\s*Balance\s*\(\s*CAD\s*\)|Amount\s*of\s*Investment|Investment\s*Amount|Total\s*Amount\s*Received|Total\s*Investments?|Principal\s*Amount|Total\s*wire\s*amount|Balance)[\s\r\n:\$]*((?:CAD\s*)?\$?\s*[0-9]{2},[0-9]{3}(?:\.[0-9]{2})?)",
+                full_text,
+                re.IGNORECASE,
+            )
+            if gic_amt and "gic_investment_amount" not in added_keys:
+                raw_gamt = gic_amt.group(1).strip()
+                add_field("gic_investment_amount", "GIC Investment Amount (CAD)", raw_gamt, normalize_currency_amount(raw_gamt), 1, 0.98)
+
+            gic_cust = re.search(
+                r"(?:Customer\s*Name|Client\s*Name|Student\s*Name|Account\s*Holder(?:\s*Name)?|Signing\s*authority)\s*[\r\n:]*\s*(?:MR\.?|MRS\.?|MS\.?|MISS)?\s*([A-Z][A-Za-z\s\-\u2212]{4,45}?)(?=\r|\n|Customer|Account|Passport|Date|Number)",
+                full_text,
+                re.IGNORECASE,
+            )
+            if gic_cust and "full_name" not in added_keys:
+                raw_gc = re.sub(r"[\-\u2212]+", " ", gic_cust.group(1)).strip()
+                add_field("full_name", "GIC Account Holder Name", raw_gc, raw_gc.title(), 1, 0.97)
+            elif "full_name" not in added_keys:
+                dear_gic = re.search(r"\bDear\s+(?:MR\.?|MRS\.?|MS\.?|MISS)?\s*([A-Z][A-Za-z\s]{4,40}?)(?=[:,\r\n])", full_text)
+                if dear_gic:
+                    raw_dg = dear_gic.group(1).strip()
+                    add_field("full_name", "GIC Account Holder Name", raw_dg, raw_dg.title(), 1, 0.95)
+
+            gic_pp = re.search(r"Passport\s*Number\s*[\r\n:]*\s*([A-Z][0-9]{7,8})\b", full_text, re.IGNORECASE)
+            if gic_pp and "passport_number" not in added_keys:
+                add_field("passport_number", "Passport Number", gic_pp.group(1).upper(), gic_pp.group(1).upper(), 1, 0.98)
+
+        if (
+            "PAYMENT RECEIPT" in full_text.upper()
+            or "ACCOUNT SUMMARY BY TERM" in full_text.upper()
+            or "EFT FEE PAYMENT" in full_text.upper()
+            or "PAYMENT ID" in full_text.upper()
+            or "CIBC INTERNATIONAL STUDENT PAY" in full_text.upper()
+        ):
+            fee_amt = re.search(
+                r"(?:Amount\s*Paid|Payment\s*Amount|Payment\s*Total|Term\s*Credits\s*and\s*Payments|EFT\s*Fee\s*Payment|Amount\s*Received|Total\s*Paid|Total)[\s\r\n:\$]*((?:CAD\s*)?\$?\s*[0-9]{1,2},[0-9]{3}(?:\.[0-9]{2})?(?:\s*CAD)?)",
+                full_text,
+                re.IGNORECASE,
+            )
+            if not fee_amt:
+                fee_amt = re.search(r"\b([0-9]{1,2},[0-9]{3}\.[0-9]{2}\s*CAD)\b", full_text)
+            if fee_amt and "tuition_amount_paid" not in added_keys:
+                raw_famt = fee_amt.group(1).strip()
+                add_field("tuition_amount_paid", "Tuition Fee Amount Paid", raw_famt, normalize_currency_amount(raw_famt), 1, 0.97)
+
+            rec_id_m = re.search(
+                r"(?:Payment\s*ID|Receipt\s*(?:Number|No\.?|#)|Student\s*(?:ID|Number|#))[\s\r\n:#]*([A-Z0-9\-]{6,15})\b",
+                full_text,
+                re.IGNORECASE,
+            )
+            if rec_id_m and "tuition_receipt_number" not in added_keys:
+                add_field("tuition_receipt_number", "Tuition Receipt / Student ID", rec_id_m.group(1), rec_id_m.group(1), 1, 0.96)
+
+            for tf_pat in (
+                r"FULL\s*NAME\s*[\r\n:]+\s*([A-Z][A-Za-z\s]{4,40}?)(?=\r|\n|PAYMENT|STUDENT)",
+                r"Name\s*:\s*[\r\n]*\s*([A-Za-z]+,\s*[A-Za-z\s]{3,35}?)(?=\r|\n|Address|Student|Account)",
+                r"Receipt\s*#\s*:\s*[0-9]+\s*[\r\n]+\s*(?:Mr\.?|Mrs\.?|Ms\.?|Miss)?\s*([A-Z][A-Za-z\s]{4,40}?)(?=\r|\n)",
+                r"Account\s*Summary\s*by\s*Term\s*[\r\n]+\s*([0-9]{7,10})\s*([A-Z][A-Za-z\s]{4,40}?)(?=\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*[0-9]|\r|\n)",
+            ):
+                tf_nm = re.search(tf_pat, full_text, re.IGNORECASE)
+                if tf_nm:
+                    if tf_nm.lastindex == 2:
+                        if "tuition_receipt_number" not in added_keys:
+                            add_field("tuition_receipt_number", "Student ID Number", tf_nm.group(1).strip(), tf_nm.group(1).strip(), 1, 0.97)
+                        raw_tnm = re.sub(r"([a-z])([A-Z])", r"\1 \2", tf_nm.group(2).strip())
+                    else:
+                        raw_tnm = tf_nm.group(1).strip()
+                        if "," in raw_tnm:
+                            t_parts = [p.strip() for p in raw_tnm.split(",") if p.strip()]
+                            if len(t_parts) == 2:
+                                raw_tnm = f"{t_parts[1]} {t_parts[0]}"
+                    if "full_name" not in added_keys:
+                        add_field("full_name", "Student Full Name", raw_tnm, raw_tnm.title(), 1, 0.97)
+                    break
+
     # 8. VISAS & RESIDENCE PERMITS
     if category in ("visas_residence_permits", "supporting_evidence"):
         visa_num_m = re.search(r"(?:Visa Number|Control Number|Control No\.?)[\s:]+([A-Z0-9]{8,12})", full_text, re.IGNORECASE)
@@ -1782,13 +2234,55 @@ def extract_structured_fields(
 
     # 9. GOVERNMENT CORRESPONDENCE EXTRACTION & IRCC APPLICATIONS
     if category in ("government_correspondence", "supporting_evidence"):
-        uci_m = re.search(r"\b(?:UCIClientID|UCI|Client ID)[\s:]*([0-9]{8,11})\b", full_text, re.IGNORECASE)
+        uci_m = re.search(r"\b(?:UCIClient\s*ID|UCIClientID|UCI|Client\s*ID)[\s:]*([0-9]{8,11})\b", full_text, re.IGNORECASE)
         if uci_m and "uci_number" not in added_keys:
             add_field("uci_number", "Unique Client Identifier (UCI)", uci_m.group(1).strip(), uci_m.group(1).strip(), 1, 0.99)
 
-        ircc_form_m = re.search(r"\b(IMM\s*5257[A-Za-z]?|IMM\s*5713)\b", full_text, re.IGNORECASE)
+        ircc_form_m = re.search(r"\b(IMM\s*(?:5257|5713|1295|5710|5708|5709|5476|5645)[A-Za-z]?)\b", full_text, re.IGNORECASE)
         if ircc_form_m and "ircc_form_number" not in added_keys:
             add_field("ircc_form_number", "IRCC Form Identifier", ircc_form_m.group(1).upper(), ircc_form_m.group(1).upper(), 1, 0.98)
+
+        # Provincial Attestation Letter (PAL)
+        if "PROVINCIAL ATTESTATION LETTER" in full_text.upper() or "LETTRES D'ATTESTATION PROVINCIALE" in full_text.upper():
+            pal_no_m = re.search(
+                r"(?:(?:Provincial\s*)?Attestation\s*Number[\s:]*([A-Z0-9\-]{8,25})|\b([A-Z]{2}[0-9]{2}-[0-9]{2}-[A-Z0-9]{8,16}))\b",
+                full_text,
+                re.IGNORECASE,
+            )
+            if pal_no_m and "pal_attestation_number" not in added_keys:
+                raw_pal_no = (pal_no_m.group(1) or pal_no_m.group(2)).strip()
+                add_field("pal_attestation_number", "Provincial Attestation Number (PAL)", raw_pal_no, raw_pal_no, 1, 0.99)
+
+            pal_dli_m = re.search(r"\b(O[0-9]{11,12})\b", full_text)
+            if pal_dli_m and "dli_number" not in added_keys:
+                add_field("dli_number", "Designated Learning Institution (DLI) Number", pal_dli_m.group(1), pal_dli_m.group(1), 1, 0.98)
+
+            pal_fn = re.search(r"First\s*Name\s*:\s*([A-Za-z\s]+?)\s*[\r\n]+\s*Last\s*Name\s*:\s*([A-Za-z\s]+?)(?=\r|\n|Date|Student)", full_text, re.IGNORECASE)
+            if pal_fn and "full_name" not in added_keys:
+                p_comb = f"{pal_fn.group(1).strip()} {pal_fn.group(2).strip()}"
+                add_field("full_name", "Student Full Name (PAL)", p_comb, p_comb.title(), 1, 0.98)
+
+            # Ontario PAL stamped bottom block: Student ID -> Issue Date -> Institution -> PAL No -> Address -> DOB -> Student Name
+            ont_pal_blk = re.search(
+                r"\b([0-9]{7,10})\s*[\r\n]+\s*([A-Za-z]+\s+[0-9]{1,2},\s+20[0-9]{2})\s*[\r\n]+\s*([^\r\n]+)\s*[\r\n]+\s*([A-Z]{2}[0-9]{2}-[0-9]{2}-[A-Z0-9]{8,16})\s*[\r\n]+\s*([^\r\n]+)\s*[\r\n]+\s*([A-Za-z]+\s+[0-9]{1,2},\s+[12][09][0-9]{2})\s*[\r\n]+\s*([A-Z][A-Za-z\s]{4,45}?)(?=\r|\n|$)",
+                full_text,
+            )
+            if ont_pal_blk:
+                if "student_id_number" not in added_keys:
+                    add_field("student_id_number", "Student ID Number", ont_pal_blk.group(1).strip(), ont_pal_blk.group(1).strip(), 1, 0.98)
+                if "issue_date" not in added_keys:
+                    raw_pi = ont_pal_blk.group(2).strip()
+                    add_field("issue_date", "PAL Issue Date", raw_pi, normalize_date(raw_pi) or raw_pi, 1, 0.98)
+                if "institution_name" not in added_keys:
+                    add_field("institution_name", "Designated Learning Institution", ont_pal_blk.group(3).strip(), ont_pal_blk.group(3).strip(), 1, 0.98)
+                if "pal_attestation_number" not in added_keys:
+                    add_field("pal_attestation_number", "Provincial Attestation Number (PAL)", ont_pal_blk.group(4).strip(), ont_pal_blk.group(4).strip(), 1, 0.99)
+                if "date_of_birth" not in added_keys:
+                    raw_pdob = ont_pal_blk.group(6).strip()
+                    add_field("date_of_birth", "Date of Birth", raw_pdob, normalize_date(raw_pdob) or raw_pdob, 1, 0.98)
+                if "full_name" not in added_keys:
+                    raw_pnm = ont_pal_blk.group(7).strip()
+                    add_field("full_name", "Student Full Name (PAL)", raw_pnm, raw_pnm.title(), 1, 0.99)
 
         funds_m = re.search(r"\bFunds:\s*([0-9]+)\b", full_text)
         if funds_m and "available_funds_cad" not in added_keys:
@@ -1874,8 +2368,50 @@ def extract_structured_fields(
             raw_ins = insured_m.group(1).splitlines()[0].strip()
             add_field("insured_person_name", "Insured Person Name", raw_ins, raw_ins.title(), 1, 0.96)
 
-    # 12. POLICE & UPFRONT MEDICAL EXTRACTION (eMedical / IME / UMI)
-    if category in ("police_medical", "supporting_evidence") or "eMedical" in full_text or "501MedicalExamination" in full_text:
+    # 12. POLICE & UPFRONT MEDICAL EXTRACTION (eMedical / IME / UMI / Police Clearance Certificate PCC / Hospital Records)
+    if (
+        category in ("police_medical", "supporting_evidence")
+        or "eMedical" in full_text
+        or "501MedicalExamination" in full_text
+        or re.search(r"POLICE\s*CLEARANCE\s*CERTIF[I1T]CATE", full_text, re.IGNORECASE)
+        or "DISCHARGE SUMMARY REPORT" in full_text.upper()
+    ):
+        # 12A. Police Clearance Certificate (PCC)
+        pcc_no_m = re.search(
+            r"(?:Police\s*Clearance\s*Certif[i1t]cate\s*\(\s*PCC\s*\)\s*No\.?|PCC\s*No\.?)[\s:]*([A-Z0-9]{8,15})\b",
+            full_text,
+            re.IGNORECASE,
+        )
+        if pcc_no_m and "pcc_certificate_number" not in added_keys:
+            add_field("pcc_certificate_number", "Police Clearance Certificate (PCC) No.", pcc_no_m.group(1).upper(), pcc_no_m.group(1).upper(), 1, 0.99)
+
+        pcc_file_m = re.search(r"File\s*Number\s*[\r\n:]*\s*([A-Z]{2}[0-9]{10,13})\b", full_text, re.IGNORECASE)
+        if pcc_file_m and "pcc_file_number" not in added_keys:
+            add_field("pcc_file_number", "Passport Office File Number", pcc_file_m.group(1).upper(), pcc_file_m.group(1).upper(), 1, 0.98)
+
+        pcc_name_m = re.search(
+            r"(?:certify\s+that|against)\s+(?:Mr\.?|Mrs\.?|Ms\.?|Miss)?\s*([A-Z][A-Za-z\s]{4,45}?)(?=\s+(?:W/?o|S/?o|D/?o|Son|Daughter|Wife)\b|,\s*holder)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if pcc_name_m and "full_name" not in added_keys:
+            raw_pcc_n = pcc_name_m.group(1).strip()
+            add_field("full_name", "Applicant Legal Name (PCC)", raw_pcc_n, raw_pcc_n.title(), 1, 0.98)
+
+        pcc_pp_m = re.search(r"(?:Passport\s+Number|Indian\s+Passport\s+No\.?)\s*[:\s]*([A-Z][0-9]{7,8})\b", full_text, re.IGNORECASE)
+        if pcc_pp_m and "passport_number" not in added_keys:
+            add_field("passport_number", "Passport Number", pcc_pp_m.group(1).upper(), pcc_pp_m.group(1).upper(), 1, 0.99)
+
+        # 12B. Hospital Discharge Summary / Clinical Records
+        hosp_pat_m = re.search(
+            r"PATIENT(?:\s*NAME)?\s*[\r\n:]+\s*([A-Z]{2,},\s*[A-Z][A-Z\s]{2,35}?)(?=\r|\n|\s+Age:|\s+MRN:|DOB|DATE|MRN)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if hosp_pat_m and "full_name" not in added_keys:
+            hp_parts = [p.strip() for p in hosp_pat_m.group(1).split(",") if p.strip()]
+            hp_full = f"{hp_parts[1]} {hp_parts[0]}" if len(hp_parts) == 2 else hosp_pat_m.group(1).strip()
+            add_field("full_name", "Patient Full Name", hp_full, hp_full.title(), 1, 0.97)
         umi_m = re.search(r"\b(?:UMI#?|UMI\s*#?|UMI\s*No\.?)[\s:]*([A-Z0-9]{8,15})\b", full_text, re.IGNORECASE)
         if umi_m and "umi_number" not in added_keys:
             add_field("umi_number", "Upfront Medical Identifier (UMI)", umi_m.group(1).strip(), umi_m.group(1).strip().upper(), 1, 0.98)
@@ -1915,7 +2451,7 @@ def extract_structured_fields(
         if not med_clinic:
             for cm in re.finditer(r"\b([A-Z][A-Za-z\s\-]{3,35}(?:Clinic|Hospital))\b", full_text):
                 cand_cl = cm.group(1).strip()
-                if not any(bad in cand_cl.lower() for bad in ("emedical", "e medical", "medicalclinic", "medical clinic", "this clinic", "panel clinic")):
+                if not any(bad in cand_cl.lower() for bad in ("emedical", "e medical", "medicalclinic", "medical clinic", "this clinic", "panel clinic", "hospital course", "admission", "discharge")):
                     med_clinic = cm
                     break
         if med_clinic and "medical_exam_clinic" not in added_keys:
