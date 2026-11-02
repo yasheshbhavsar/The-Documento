@@ -373,4 +373,239 @@ def test_english_gujarati_hindi_character_filtering_and_birth_certificate(client
     assert field_map.get("birth_registration_date") == "2005-02-10"
 
 
+def test_trilingual_indian_document_gujarati_hindi_english_compliance(client: TestClient):
+    """
+    Verify that a trilingual Indian document containing English, Gujarati (ગુજરાતી), and Hindi (हिन्दी)
+    labels and Indic numerals (૦-૯ / ०-९) is fully compliant, does NOT escalate to the Case Worker,
+    and normalizes Indic numerals into ISO dates.
+    """
+    trilingual_doc = (
+        "ભારત સરકાર / भारत सरकार / GOVERNMENT OF INDIA\n"
+        "जन्म प्रमाण पत्र / જન્મ પ્રમાણપત્ર / BIRTH CERTIFICATE\n"
+        "નામ / नाम / Name: KAVYA DEVANG MEHTA\n"
+        "જાતિ / लिंग: સ્ત્રી / महिला\n"
+        "જન્મ તારીખ / जन्म तिथि: ૧૮/૦૪/૨૦૦૬\n"
+        "જન્મ સ્થળ / जन्म स्थान: Suryam Hospital Kalol\n"
+        "માતાનું નામ / माता का नाम: NEHABEN DEVANG MEHTA\n"
+        "પિતાનું નામ / पिता का नाम: DEVANGKUMAR RAMESHBHAI MEHTA\n"
+        "કાયમી સરનામું / स्थायी पता: 24, Shantiniketan Society, Kalol, Gandhinagar - 382721\n"
+        "નોંધણી ક્રમાંક / पंजीकरण संख्या: ૮૧૪\n"
+        "નોંધણીની તારીખ / पंजीकरण तिथि: ૨૨/૦૪/૨૦૦૬\n"
+    )
+
+    resp = client.post(
+        "/api/v1/extractor/analyze",
+        data={"raw_text": trilingual_doc, "filename": "TRILINGUAL_GUJARAT_CERT.pdf"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert data["metadata"]["is_language_compliant"] is True
+    assert data["metadata"]["requires_caseworker_escalation"] is False
+    assert data["metadata"]["escalation_status"] == "COMPLIANT"
+    assert data["metadata"]["detected_language"] in ("gu", "hi")
+
+    field_map = {f["field_name"]: f["normalized_value"] for f in data["extracted_fields"]}
+    assert field_map.get("full_name") == "Kavya Devang Mehta"
+    assert field_map.get("gender") == "Female"
+    assert field_map.get("date_of_birth") == "2006-04-18"
+    assert field_map.get("mother_legal_name") == "Nehaben Devang Mehta"
+    assert field_map.get("father_legal_name") == "Devangkumar Rameshbhai Mehta"
+    assert field_map.get("birth_registration_number") == "814"
+    assert field_map.get("birth_registration_date") == "2006-04-22"
+
+
+def test_unknown_language_escalates_to_caseworker(client: TestClient):
+    """
+    Verify that any document in an unknown or unsupported language (outside English, Gujarati, and Hindi)
+    is automatically flagged and raised to the Case Worker so the Case Worker can contact the client
+    or work on the document manually.
+    """
+    spanish_doc = (
+        "REPÚBLICA DE COLOMBIA - REGISTRADURÍA NACIONAL DEL ESTADO CIVIL\n"
+        "CERTIFICADO DE NACIMIENTO Y REGISTRO CIVIL\n"
+        "Nombre Completo: CARLOS ANDRÉS MENDOZA LÓPEZ\n"
+        "Apellidos: MENDOZA LÓPEZ\n"
+        "Fecha de Nacimiento: 19/07/1991\n"
+        "Lugar de Nacimiento: Bogotá, Distrito Capital\n"
+        "Nacionalidad: Colombiana\n"
+        "Estado Civil: Casado\n"
+        "Domicilio Actual: Calle 72 No. 10-34, Bogotá\n"
+    )
+
+    resp = client.post(
+        "/api/v1/extractor/analyze",
+        data={"raw_text": spanish_doc, "filename": "FOREIGN_BIRTH_CERT_ES.pdf"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert data["metadata"]["detected_language"] == "unknown"
+    assert data["metadata"]["is_language_compliant"] is False
+    assert data["metadata"]["requires_caseworker_escalation"] is True
+    assert data["metadata"]["escalation_status"] == "ESCALATED_TO_CASEWORKER"
+    assert "Case Worker" in (data["metadata"]["caseworker_action"] or "")
+    assert data["metadata"]["client_outreach_template"] is not None
+
+    # Must also emit a critical quality finding raising the document to the Case Worker
+    escalation_findings = [
+        qf for qf in data["quality_findings"] if qf["finding_type"] == "unsupported_language_escalation"
+    ]
+    assert len(escalation_findings) == 1
+    assert escalation_findings[0]["severity"] == "critical"
+    assert "Case Worker" in escalation_findings[0]["title"]
+    assert "Case Worker" in escalation_findings[0]["recommended_action"]
+
+
+def test_handwritten_ocr_artifact_normalization_and_marriage_certificate(client: TestClient):
+    """
+    Verify that handwritten Indian certificate OCR artifacts (such as '-BHAT' for '-BHAI',
+    'SHTLP' for 'SHILP', 'sonof'/'daughterof', 'tsiding at'/'n siding a', handwritten slashes
+    read as '1' before 4-digit years like '14/0512008', spaced dates like '29- 7-2008',
+    underscored serial numbers like '_8 2_', and interline surname placement) are
+    deterministically normalized and extracted accurately.
+    """
+    handwritten_marriage_cert = (
+        "Form II (See Rule 5)\n"
+        "GOVERNMENT OF GUJARAT\n"
+        "CERTIFICATE OF MARRIAGE\n"
+        "This is to Certify that Shri ....DEVANSH..................................................\n"
+        "sonof Shri ....RAMESHBHAT SHAH..................... tsiding at ...12, SHANTIVAN\n"
+        "SOCIETY, KALOL............................................................................\n"
+        "and ....SHTLPABEN................... daughterof Shri ..KARANBHAT......................\n"
+        "n siding a ...VADODARA.............\n"
+        "SHAH\n"
+        "have furnished the particulars in Memorandum\n"
+        "declaring that their marriage has been solemnized on 14/0512008ar KALOL\n"
+        "and that the same has been registered on 29- 7-2008 at serial No _8 2_ of volume\n"
+        "of register of marriages maintained under the Gujarat Registration of Marriages Act, 2006.\n"
+        "Date : 29- 7-2008\n"
+        "Place : Kalol\n"
+    )
+
+    resp = client.post(
+        "/api/v1/extractor/analyze",
+        data={"raw_text": handwritten_marriage_cert, "filename": "MARRIAGE_CERTIFICATE_HANDWRITTEN.pdf"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert data["recognition"]["category"] == "civil_status_family"
+
+    field_map = {f["field_name"]: f["normalized_value"] for f in data["extracted_fields"]}
+    assert field_map.get("groom_name") == "Devansh"
+    assert field_map.get("father_legal_name") == "Rameshbhai Shah"
+    assert field_map.get("bride_name") == "Shilpaben"
+    assert field_map.get("bride_father_name") == "Karanbhai Shah"
+    assert field_map.get("marriage_date") == "2008-05-14"
+    assert field_map.get("marriage_registration_date") == "2008-07-29"
+    assert field_map.get("marriage_certificate_number") == "82"
+    assert "handwriting_recognition" in data["specialized_intelligence"]
+
+
+def test_multi_person_packet_sorter_and_splitter(client: TestClient):
+    """
+    Verify that a combined multi-person PDF packet containing:
+    - Person 1's Passport + 2-page Bank Statement (with concatenated/initial name variations)
+    - Person 2's ITR Acknowledgement + Schedule continuation page (with Father's Name as metadata)
+    - A Joint Marriage Certificate naming both Person 1 and Person 2
+    is accurately separated into individual Person Folders, groups multi-page continuations,
+    places the joint Marriage Certificate in both folders, and keeps Father's Name out of folder creation.
+    """
+    import fitz
+
+    doc = fitz.open()
+
+    # Page 1: Person 1 Passport (Vikram Arvindbhai Mehta)
+    p1 = doc.new_page()
+    p1.insert_text(
+        (50, 70),
+        "REPUBLIC OF INDIA\nPASSPORT\nSurname\nMEHTA\nGiven Name(s)\nVIKRAM ARVINDBHAI\n"
+        "Passport No: K8877665\nDate of Birth: 12/04/1988\n"
+        "P<INDMEHTA<<VIKRAM<ARVINDBHAI<<<<<<<<<<<<<<<\n"
+        "K8877665<4IND8804126M3004112<<<<<<<<<<<<<<04",
+    )
+
+    # Page 2: Person 1 Bank Statement Page 1
+    p2 = doc.new_page()
+    p2.insert_text(
+        (50, 70),
+        "The Mehsana Urban Co-Operative Bank Ltd.\nStatement of Account\n"
+        "Name VIKRAMARVINDBHAIMEHTA\nIFSC Code MSNU0000047\n"
+        "Account Number 00471001009999\nStatement Period 01/01/2025 To 31/03/2025\n"
+        "SNo. Date Description Debit Credit Balance\n1 2025-01-10 SALARY CREDIT 0.00 85,000.00 285,000.00",
+    )
+
+    # Page 3: Person 1 Bank Statement Page 2 (Continuation page without header name)
+    p3 = doc.new_page()
+    p3.insert_text(
+        (50, 70),
+        "Statement of Account\nSNo. Date Description Debit Credit Cheque No Balance\n"
+        "Opening Balance 200,000.00\nTotal Credit 85,000.00\nClosing Balance 285,000.00\n"
+        "-End of Statement-\nPage 2 of 2",
+    )
+
+    # Page 4: Person 2 ITR Acknowledgement (Kavita Vikram Mehta, with Father's Name as metadata)
+    p4 = doc.new_page()
+    p4.insert_text(
+        (50, 70),
+        "INDIAN INCOME TAX RETURN ACKNOWLEDGEMENT\nAssessment Year 2024-25\n"
+        "PAN ABCDE1234F\nName KAVITA VIKRAM MEHTA\nAddress 10, Shanti Park, Ahmedabad\nStatus Individual",
+    )
+
+    # Page 5: Person 2 ITR Computation Continuation Page (includes Father's Name 'Mohanlal Joshi')
+    p5 = doc.new_page()
+    p5.insert_text(
+        (50, 70),
+        "Name of Assessee KAVITA VIKRAM MEHTA Father's Name MOHANLAL JOSHI\n"
+        "PAN : ABCDE1234F AY. 2024-2025\nComputation of Total Income\nGross Total Income 6,40,000",
+    )
+
+    # Page 6: Joint Marriage Certificate (Vikram Arvindbhai Mehta & Kavita Vikram Mehta)
+    p6 = doc.new_page()
+    p6.insert_text(
+        (50, 70),
+        "GOVERNMENT OF GUJARAT\nCertificate of Registration of Marriage\n"
+        "This is to Certify that Shri VIKRAM Son of Shri ARVINDBHAI MEHTA residing at AHMEDABAD\n"
+        "and KAVITA daughter of Shri MOHANLAL JOSHI residing at AHMEDABAD\n"
+        "have furnished the particulars in Memorandum declaring that their marriage has been solemnized on 15/02/2015",
+    )
+
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    resp = client.post(
+        "/api/v1/extractor/sort-packet",
+        files={"file": ("family_visa_packet.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert resp.status_code == 200
+    res = resp.json()
+    assert res["status"] == "success"
+    assert res["total_pages_analyzed"] == 6
+    assert res["total_persons_detected"] == 2
+    assert res["zip_archive_base64"]
+
+    folders_by_name = {f["canonical_name"]: f for f in res["person_folders"]}
+    assert "Vikram Arvindbhai Mehta" in folders_by_name
+    assert "Kavita Vikram Mehta" in folders_by_name
+    # Father's Name ('Mohanlal Joshi') must NEVER be created as a Person Folder
+    assert not any("Mohanlal" in k for k in folders_by_name)
+
+    vikram_docs = folders_by_name["Vikram Arvindbhai Mehta"]["documents"]
+    kavita_docs = folders_by_name["Kavita Vikram Mehta"]["documents"]
+
+    # Vikram has Passport (P1), 2-page Bank Statement (P2-P3), and Joint Marriage Certificate (P6)
+    assert len(vikram_docs) == 3
+    assert vikram_docs[1]["page_numbers"] == [2, 3]
+    assert vikram_docs[2]["is_joint_document"] is True
+
+    # Kavita has 2-page ITR (P4-P5) and Joint Marriage Certificate (P6)
+    assert len(kavita_docs) == 2
+    assert kavita_docs[0]["page_numbers"] == [4, 5]
+    assert kavita_docs[1]["is_joint_document"] is True
+
+
+
+
+
 

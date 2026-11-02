@@ -207,7 +207,7 @@ class MRZParser:
     @classmethod
     def _normalize_td3_line2_candidate(cls, c: str) -> str:
         """Applies ICAO Doc 9303 positional type constraints to repair OCR glyph confusions on TD3 Line 2."""
-        if len(c) < 38 or c.startswith("P<"):
+        if len(c) < 28 or c.startswith("P<"):
             return c
         padded = c.ljust(44, "<")[:44]
         # Pos 9 (doc check), Pos 10-12 (nat alpha), Pos 13-19 (DOB + check), Pos 21-27 (Exp + check), Pos 43 (comp check)
@@ -231,12 +231,12 @@ class MRZParser:
 
         for c in candidates:
             # Line 1 in TD3 starts with P<, followed by 3-letter issuer
-            if re.match(r"^P[<A-Z0-9][A-Z0-9<]{3}", c) and len(c) >= 38:
+            if re.match(r"^P[<A-Z0-9][A-Z0-9<]{3}", c) and len(c) >= 28:
                 raw_l1 = c.ljust(44, "<")[:44]
                 line1_cand = "P<" + cls._fix_alpha_slot(raw_l1[2:44])
             else:
                 norm_l2 = cls._normalize_td3_line2_candidate(c)
-                if re.search(r"[A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MF<][0-9]{6}", norm_l2) and len(c) >= 38:
+                if re.search(r"[A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MF<][0-9]{6}", norm_l2) and len(c) >= 28:
                     line2_cand = norm_l2
 
         if not line1_cand or not line2_cand:
@@ -250,16 +250,14 @@ class MRZParser:
         issuing_country = ICAO_COUNTRY_CODES.get(issuing_code, issuing_code)
 
         name_part = line1_cand[5:44]
-        # Strip trailing '<' filler first so we don't accidentally split on trailing '<<<<'
-        # when the separator '<<' between surname and given names had an OCR 'K<' or '<K' glitch
+        # Strip trailing '<' filler and OCR filler noise like '<K<<<' or 'K<KKKK' at the end
         name_trimmed = re.sub(r"<+$", "", name_part)
-        # Also strip trailing OCR filler noise like '<K<' at the very end
-        name_trimmed = re.sub(r"(?:<+[KL0-9])+$", "", name_trimmed)
+        name_trimmed = re.sub(r"(?:<+[KL0-9<]+|[KL]<[KL0-9<]+)+$", "", name_trimmed)
+        name_trimmed = re.sub(r"<+$", "", name_trimmed)
 
         if "<<" not in name_trimmed:
-            # Repair common OCR misread of '<<' separator as 'K<', '<K', or 'L<'
-            name_trimmed = re.sub(r"^([A-Z]{2,20}?)[KL]<([A-Z])", r"\1<<\2", name_trimmed)
-            name_trimmed = re.sub(r"^([A-Z]{2,20}?)<[KL]([A-Z])", r"\1<<\2", name_trimmed)
+            # Repair common OCR misread of '<<' separator as 'K<', '<K', 'L<', '<L', or 'KK'
+            name_trimmed = re.sub(r"^([A-Z]{2,20}?)(?:[KL]<|<[KL]|KK)([A-Z])", r"\1<<\2", name_trimmed)
 
         surname = ""
         given_names = ""
@@ -269,6 +267,10 @@ class MRZParser:
             given_names = parts[1].replace("<", " ").strip()
         else:
             surname = name_trimmed.replace("<", " ").strip()
+
+        # If OCR missed a single '<' space between compound Indian given names (e.g., HIMANSHUDAHYABHAI), split cleanly
+        if given_names and " " not in given_names and len(given_names) >= 12:
+            given_names = re.sub(r"^([A-Z]{3,12}?(?:BEN|BHAI|KUMAR|SHU))([A-Z]{4,}(?:BHAI|BEN|KUMAR|LAL))$", r"\1 \2", given_names)
 
         full_name = f"{given_names} {surname}".strip() if given_names and surname else surname or given_names
 

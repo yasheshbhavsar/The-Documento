@@ -27,6 +27,8 @@ from backend.app.ocr.engine import (
     PageExtractionResult,
     clean_ocr_text,
     detect_language,
+    evaluate_handwriting_profile,
+    evaluate_language_compliance,
     has_meaningful_script_chars,
 )
 
@@ -264,6 +266,48 @@ SAMPLE_DOCUMENTS: list[dict[str, str]] = [
             "Taxpayer Status: Individual / Person\n"
         ),
     },
+    {
+        "id": "sample-trilingual-indian-birth-cert",
+        "title": "Indian Trilingual Civil Certificate (English • ગુજરાતી • हिन्दी)",
+        "category": "civil_status_family",
+        "filename": "GUJARAT_BIRTH_CERTIFICATE_TRILINGUAL.pdf",
+        "description": "Official Gujarat & Government of India Birth Certificate with English, Gujarati, and Hindi script labels and numerals.",
+        "text_content": (
+            "ભારત સરકાર / भारत सरकार / GOVERNMENT OF INDIA\n"
+            "ગુજરાત સરકાર - જન્મ અને મરણ નોંધણી અધિનિયમ, ૧૯૬૯\n"
+            "जन्म प्रमाण पत्र / જન્મ પ્રમાણપત્ર / BIRTH CERTIFICATE\n"
+            "(Issued under Section 12/17 of the Registration of Births and Deaths Act, 1969)\n\n"
+            "for village/City: KALOL of Taluka: KALOL of District: GANDHINAGAR Gujarat State\n"
+            "1. નામ / नाम / Name: KAVYA DEVANG MEHTA\n"
+            "2. જાતિ / लिंग / Sex (M/F): સ્ત્રી / महिला / Female\n"
+            "3. જન્મ તારીખ / जन्म तिथि / Date of Birth: ૧૮/૦૪/૨૦૦૬\n"
+            "4. જન્મ સ્થળ / जन्म स्थान / Place of Birth: Suryam Hospital Kalol\n"
+            "5. માતાનું નામ / माता का नाम / Name of Mother: NEHABEN DEVANG MEHTA\n"
+            "6. પિતાનું નામ / पिता का नाम / Name of Father: DEVANGKUMAR RAMESHBHAI MEHTA\n"
+            "7. કાયમી સરનામું / स्थायी पता / Permanent Address of Parents: 24, Shantiniketan Society, Kalol, Gandhinagar - 382721\n"
+            "9. નોંધણી ક્રમાંક / पंजीकरण संख्या / Registration No: 814\n"
+            "10. નોંધણીની તારીખ / पंजीकरण तिथि / Date of Registration: ૨૨/૦૪/૨૦૦૬\n"
+            "Date of Issue: 12/01/2024\n"
+        ),
+    },
+    {
+        "id": "sample-unknown-language-escalation",
+        "title": "Foreign / Unknown Language Document (Case Worker Escalation)",
+        "category": "civil_status_family",
+        "filename": "FOREIGN_CIVIL_RECORD_UNKNOWN_LANG.pdf",
+        "description": "Demonstrates automatic Case Worker escalation when a document is outside English, Gujarati, and Hindi.",
+        "text_content": (
+            "REPÚBLICA DE COLOMBIA - REGISTRADURÍA NACIONAL DEL ESTADO CIVIL\n"
+            "CERTIFICADO DE NACIMIENTO Y REGISTRO CIVIL\n\n"
+            "Nombre Completo: CARLOS ANDRÉS MENDOZA LÓPEZ\n"
+            "Apellidos: MENDOZA LÓPEZ\n"
+            "Fecha de Nacimiento: 19/07/1991\n"
+            "Lugar de Nacimiento: Bogotá, Distrito Capital\n"
+            "Nacionalidad: Colombiana\n"
+            "Estado Civil: Casado\n"
+            "Domicilio Actual: Calle 72 No. 10-34, Bogotá\n"
+        ),
+    },
 ]
 
 
@@ -346,6 +390,7 @@ async def analyze_document_standalone(
                 height=max(792.0, 60.0 + (len(blocks) * 22.0)),
                 detected_rotation=0,
                 is_rotation_corrected=False,
+                raw_unfiltered_text=raw_text_str,
             )
         ]
     else:
@@ -366,11 +411,18 @@ async def analyze_document_standalone(
                     height=792.0,
                     detected_rotation=0,
                     is_rotation_corrected=False,
+                    raw_unfiltered_text=text_str,
                 )
             ]
 
     full_extracted_text = "\n\n".join([f"--- PAGE {p.page_number} ---\n{p.text}" for p in pages]).strip()
-    detected_lang = detect_language(full_extracted_text)
+    full_raw_unfiltered_text = "\n\n".join([p.raw_unfiltered_text or p.text for p in pages]).strip()
+    lang_compliance = evaluate_language_compliance(
+        text=full_extracted_text,
+        raw_unfiltered_text=full_raw_unfiltered_text,
+        filename=content_filename,
+    )
+    detected_lang = lang_compliance["detected_language"]
 
     # 2. Document Classification
     try:
@@ -456,6 +508,8 @@ async def analyze_document_standalone(
             extracted_text=full_extracted_text,
             extracted_fields=field_dicts_for_quality,
             ocr_applied=any(p.ocr_applied for p in pages),
+            raw_unfiltered_text=full_raw_unfiltered_text,
+            language_compliance=lang_compliance,
         )
     except Exception:
         raw_findings = []
@@ -475,41 +529,72 @@ async def analyze_document_standalone(
         })
 
     # 5. Specialized AI & Forensics
-    specialized_intelligence: dict[str, Any] = {}
+    handwriting_profile = evaluate_handwriting_profile(pages, formatted_fields)
+    specialized_intelligence: dict[str, Any] = {
+        "language_compliance": lang_compliance,
+        "handwriting_recognition": handwriting_profile,
+    }
 
     # Financial analysis
-    if recognized_category == "financial_evidence" or "statement" in content_filename.lower() or "bank" in full_extracted_text.lower():
+    if (
+        recognized_category == "financial_evidence"
+        or "statement" in content_filename.lower()
+        or (
+            "bank" in full_extracted_text.lower()
+            and "personal information bank" not in full_extracted_text.lower()
+            and recognized_category not in ("civil_status_family", "government_correspondence", "identity_passport", "police_medical")
+        )
+    ):
         try:
             bank_sum = FinancialIntelligenceEngine.parse_bank_statement_text(full_extracted_text)
-            specialized_intelligence["financial_forensics"] = {
-                "institution": bank_sum.financial_institution,
-                "account_number_masked": bank_sum.account_number_masked,
-                "statement_period": f"{bank_sum.statement_period_start or 'N/A'} - {bank_sum.statement_period_end or 'N/A'}",
-                "opening_balance": bank_sum.opening_balance,
-                "closing_balance": bank_sum.closing_balance,
-                "minimum_balance_observed": bank_sum.minimum_balance_observed,
-                "average_monthly_credits": bank_sum.average_monthly_credits,
-                "currency": bank_sum.currency,
-                "suspicious_lump_sums": [
-                    {
-                        "date": t.transaction_date,
-                        "description": t.description,
-                        "amount": t.amount,
-                        "type": t.transaction_type,
-                        "is_suspicious": t.is_suspicious_lump_sum,
-                    }
-                    for t in bank_sum.suspicious_lump_sums
-                ],
-                "risk_findings": bank_sum.risk_findings,
-            }
+            if (
+                recognized_category == "financial_evidence"
+                or bank_sum.opening_balance > 0
+                or bank_sum.closing_balance > 0
+                or bank_sum.suspicious_lump_sums
+            ):
+                specialized_intelligence["financial_forensics"] = {
+                    "institution": bank_sum.financial_institution,
+                    "account_number_masked": bank_sum.account_number_masked,
+                    "statement_period": f"{bank_sum.statement_period_start or 'N/A'} - {bank_sum.statement_period_end or 'N/A'}",
+                    "opening_balance": bank_sum.opening_balance,
+                    "closing_balance": bank_sum.closing_balance,
+                    "minimum_balance_observed": bank_sum.minimum_balance_observed,
+                    "average_monthly_credits": bank_sum.average_monthly_credits,
+                    "currency": bank_sum.currency,
+                    "suspicious_lump_sums": [
+                        {
+                            "date": t.transaction_date,
+                            "description": t.description,
+                            "amount": t.amount,
+                            "type": t.transaction_type,
+                            "is_suspicious": t.is_suspicious_lump_sum,
+                        }
+                        for t in bank_sum.suspicious_lump_sums
+                    ],
+                    "risk_findings": bank_sum.risk_findings,
+                }
         except Exception:
             pass
 
     if any(k in full_extracted_text.lower() for k in ("income tax return", "itr-v", "assessment year", "acknowledgement number")):
         try:
             itr_data = FinancialIntelligenceEngine.parse_itr_v(full_extracted_text)
-            if itr_data.get("is_itr_v"):
-                specialized_intelligence["itr_verification"] = itr_data
+            if itr_data:
+                if isinstance(itr_data, dict):
+                    if itr_data.get("is_itr_v"):
+                        specialized_intelligence["itr_verification"] = itr_data
+                else:
+                    specialized_intelligence["itr_verification"] = {
+                        "is_itr_v": True,
+                        "assessment_year": getattr(itr_data, "assessment_year", None),
+                        "acknowledgement_number": getattr(itr_data, "acknowledgement_number", None),
+                        "pan_number": getattr(itr_data, "pan_number", None),
+                        "taxpayer_name": getattr(itr_data, "taxpayer_name", None),
+                        "gross_total_income": getattr(itr_data, "gross_total_income", 0.0),
+                        "total_tax_payable": getattr(itr_data, "total_tax_payable", 0.0),
+                        "verification_status": getattr(itr_data, "verification_status", None),
+                    }
         except Exception:
             pass
 
@@ -691,6 +776,14 @@ async def analyze_document_standalone(
             "sha256_hash": sha256_hash,
             "page_count": len(pages),
             "detected_language": detected_lang,
+            "detected_language_label": lang_compliance.get("detected_language_label", detected_lang.upper()),
+            "is_language_compliant": lang_compliance.get("is_compliant", True),
+            "requires_caseworker_escalation": lang_compliance.get("requires_caseworker_escalation", False),
+            "escalation_status": lang_compliance.get("escalation_status", "COMPLIANT"),
+            "caseworker_action": lang_compliance.get("caseworker_action"),
+            "client_outreach_template": lang_compliance.get("client_outreach_template"),
+            "has_handwritten_content": handwriting_profile.get("has_handwritten_content", False),
+            "handwriting_density": handwriting_profile.get("handwriting_density", "NONE"),
             "total_blocks_detected": total_blocks,
             "overall_health_score": overall_health_score,
         },
@@ -934,4 +1027,48 @@ async def compare_same_person_document_set(payload: CompareDocumentSetRequest) -
         ],
         "discrepancies": discrepancies,
     }
+
+
+@router.post("/sort-packet")
+async def sort_and_split_packet_endpoint(
+    file: Optional[UploadFile] = File(None),
+) -> dict[str, Any]:
+    """
+    Multi-Person Document Packet Sorter & Splitter.
+    Accepts a merged PDF containing mixed documents (IDs, Passports, Bank Statements,
+    ITRs, Marksheets, Marriage/Birth Certificates, Employment records) across multiple
+    people, understands every page using the existing OCR & AI pipeline, clusters name
+    variations per person, stitches multi-page continuations, places joint documents
+    into each named holder's folder, and returns an interactive Person Folder Tree +
+    a 1-click downloadable ZIP archive of separated PDFs.
+    """
+    if file is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please upload a PDF file to sort and split by person.",
+        )
+
+    pdf_bytes = await file.read()
+    if not pdf_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty.",
+        )
+
+    from backend.app.extraction.sorter import sort_and_split_document_packet
+
+    try:
+        result = sort_and_split_document_packet(
+            pdf_bytes=pdf_bytes,
+            filename=file.filename or "combined_packet.pdf",
+            write_to_disk_dir=None,
+            include_split_pdf_bytes=True,
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Could not sort PDF packet: {exc}",
+        )
+
 

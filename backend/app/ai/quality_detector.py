@@ -1,7 +1,8 @@
 """Document quality and integrity detector.
 
 Detects missing pages, unreadable scans, apparent expiration dates,
-incomplete date ranges, and truncated/unclear evidentiary information.
+incomplete date ranges, unsupported/unknown languages (raising to Case Worker),
+and truncated/unclear evidentiary information.
 """
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
@@ -11,7 +12,7 @@ import re
 
 @dataclass
 class QualityFinding:
-    finding_type: str  # document_quality, unclear_information, apparent_expiration
+    finding_type: str  # document_quality, unclear_information, apparent_expiration, unsupported_language_escalation
     severity: str  # critical, major, minor, informational
     title: str
     description: str
@@ -32,11 +33,58 @@ def detect_document_quality_issues(
     ocr_applied: bool,
     now: Optional[datetime] = None,
     image_dpi: Optional[int] = None,
+    raw_unfiltered_text: Optional[str] = None,
+    language_compliance: Optional[Dict[str, Any]] = None,
 ) -> List[QualityFinding]:
-    """Inspects an uploaded document for quality, completeness, and validity period issues."""
+    """Inspects an uploaded document for quality, completeness, language compliance, and validity period issues."""
     findings: List[QualityFinding] = []
     current_time = now or datetime.now(timezone.utc)
     text = extracted_text or ""
+
+    # 0. Indian Document Language Compliance Check (English, Gujarati, Hindi ONLY)
+    # Any other unknown/unsupported language is immediately raised to the Case Worker.
+    lang_info = language_compliance
+    if lang_info is None and (text or raw_unfiltered_text):
+        try:
+            from backend.app.ocr.engine import evaluate_language_compliance
+            lang_info = evaluate_language_compliance(
+                text=text,
+                raw_unfiltered_text=raw_unfiltered_text,
+                filename=title,
+            )
+        except Exception:
+            lang_info = None
+
+    if lang_info and lang_info.get("requires_caseworker_escalation"):
+        detected_lbl = lang_info.get("detected_language_label", "Unknown / Unsupported Language")
+        reason_str = lang_info.get("escalation_reason") or (
+            f"Document '{title}' contains text in {detected_lbl}, which is outside the supported Indian document "
+            "languages (English, Gujarati / ગુજરાતી, and Hindi / हिन्दी)."
+        )
+        findings.append(
+            QualityFinding(
+                finding_type="unsupported_language_escalation",
+                severity="critical",
+                title=f"Escalated to Case Worker: Unsupported / Unknown Language ({detected_lbl})",
+                description=(
+                    f"{reason_str} Automated AI extraction has flagged and raised this document to the Case Worker queue "
+                    "so the Case Worker can contact the client or work on this document manually."
+                ),
+                evidence_text=f"Detected Language/Script: {detected_lbl} | Supported: English, Gujarati (ગુજરાતી), Hindi (हिन्दी)",
+                page_number=1,
+                recommended_action=(
+                    "Case Worker Action Required: (1) Contact the client to request an official English, Gujarati, or Hindi "
+                    "document or a certified English translation, OR (2) Process and verify this document manually."
+                ),
+                uncertainty_limitations=(
+                    "Automated script and language compliance gate. Only English, Gujarati, and Hindi are approved for automated extraction."
+                ),
+                suggested_clarification=lang_info.get("client_outreach_template") or (
+                    f"We noticed that '{title}' is in {detected_lbl}. Our automated system supports English, Gujarati, and Hindi documents. "
+                    "A Case Worker has been assigned to review your document manually—please also upload a certified English translation if available."
+                ),
+            )
+        )
 
     # 1. Detect Missing Pages from Text Indicators
     # Checks for "Page X of Y", "Sheet X of Y", "Continued on page X"

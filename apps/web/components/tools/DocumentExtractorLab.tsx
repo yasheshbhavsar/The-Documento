@@ -6,8 +6,12 @@ import { DocumentoLogo } from "../common/DocumentoLogo";
 import {
   ExtractorAnalysisResult,
   ExtractorSampleItem,
+  PacketSortResult,
+  PacketPersonFolder,
+  PacketSortedDocument,
   fetchExtractorSamples,
   analyzeDocumentStandalone,
+  sortDocumentPacket,
   checkExtractorBackendHealth,
   FALLBACK_SAMPLES,
 } from "../../lib/api/extractor";
@@ -15,7 +19,12 @@ import {
 export function DocumentExtractorLab() {
   const [samples, setSamples] = useState<ExtractorSampleItem[]>(FALLBACK_SAMPLES);
   const [selectedSampleId, setSelectedSampleId] = useState<string>("sample-indian-passport");
-  const [inputMode, setInputMode] = useState<"presets" | "upload" | "text">("presets");
+  const [inputMode, setInputMode] = useState<"presets" | "upload" | "packet_sorter" | "text">("presets");
+
+  // Multi-Person Packet Sorter State
+  const [isSortingPacket, setIsSortingPacket] = useState<boolean>(false);
+  const [packetSortResult, setPacketSortResult] = useState<PacketSortResult | null>(null);
+  const [selectedPersonFolderId, setSelectedPersonFolderId] = useState<string | null>(null);
 
   // Inputs
   const [pastedText, setPastedText] = useState<string>(FALLBACK_SAMPLES[0].text_content);
@@ -205,6 +214,74 @@ export function DocumentExtractorLab() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // Run Multi-Person Packet Sorter & Splitter
+  const handleRunPacketSorter = async () => {
+    if (!uploadedFile) {
+      setErrorMessage("Please upload a multi-page PDF packet first to sort & split by person.");
+      setInputMode("packet_sorter");
+      return;
+    }
+    setIsSortingPacket(true);
+    setErrorMessage(null);
+    setAnalysisStep("Scanning all pages, resolving person identities & splitting PDF packet...");
+    try {
+      const sortRes = await sortDocumentPacket(uploadedFile);
+      setPacketSortResult(sortRes);
+      if (sortRes.person_folders && sortRes.person_folders.length > 0) {
+        setSelectedPersonFolderId(sortRes.person_folders[0].person_id);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to sort multi-person PDF packet.");
+    } finally {
+      setIsSortingPacket(false);
+      setAnalysisStep("");
+    }
+  };
+
+  // Download full sorted ZIP archive (<Person_Folder>/<Doc_Type>.pdf)
+  const handleDownloadSortedZip = () => {
+    if (!packetSortResult?.zip_archive_base64) return;
+    const byteCharacters = atob(packetSortResult.zip_archive_base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = packetSortResult.zip_archive_filename || "Sorted_By_Person.zip";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Download or preview an individual separated PDF
+  const handleDownloadOrPreviewSplitPdf = (doc: PacketSortedDocument, previewOnly: boolean = false) => {
+    if (!doc.pdf_base64) return;
+    const byteCharacters = atob(doc.pdf_base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    if (previewOnly) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    }
   };
 
   // Deduplicate extracted fields by field_name to prevent duplicate rows/keys
@@ -471,10 +548,10 @@ export function DocumentExtractorLab() {
                 >
                   {[
                     { label: "RapidOCR + PDF Vector", color: "#10B981" },
+                    { label: "Indian Languages (English • ગુજરાતી • हिन्दी)", color: "#34D399" },
+                    { label: "Unknown Language -> Case Worker Escalation", color: "#F59E0B" },
                     { label: "Taxonomy Classification", color: "#38BDF8" },
                     { label: "ISO Field Normalization", color: "#A78BFA" },
-                    { label: "Quality & Missing Pages", color: "#F59E0B" },
-                    { label: "Unseasoned Fund Detection", color: "#EC4899" },
                     { label: "Single-Name / FNU Resolver", color: "#6EE7B7" },
                   ].map((badge) => (
                     <span
@@ -565,6 +642,32 @@ export function DocumentExtractorLab() {
                   }}
                 >
                   📁 Upload Document (PDF / Images)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setInputMode("packet_sorter")}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    border:
+                      inputMode === "packet_sorter"
+                        ? "1px solid rgba(56, 189, 248, 0.6)"
+                        : "1px solid rgba(56, 189, 248, 0.25)",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    background:
+                      inputMode === "packet_sorter"
+                        ? "linear-gradient(135deg, #0369A1 0%, #0D9488 100%)"
+                        : "rgba(56, 189, 248, 0.08)",
+                    color: inputMode === "packet_sorter" ? "#FFFFFF" : "#7DD3FC",
+                    boxShadow:
+                      inputMode === "packet_sorter" ? "0 4px 14px rgba(56, 189, 248, 0.3)" : "none",
+                  }}
+                >
+                  🗂️ Multi-Person Packet Sorter & Splitter
                 </button>
 
                 <button
@@ -718,7 +821,7 @@ export function DocumentExtractorLab() {
             )}
 
             {/* Upload Dropzone */}
-            {inputMode === "upload" && (
+            {(inputMode === "upload" || inputMode === "packet_sorter") && (
               <div
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
@@ -753,7 +856,7 @@ export function DocumentExtractorLab() {
                 />
 
                 <div style={{ fontSize: "36px", marginBottom: "12px" }}>
-                  {uploadedFile ? "📄" : "📥"}
+                  {uploadedFile ? "📄" : inputMode === "packet_sorter" ? "🗂️" : "📥"}
                 </div>
 
                 {uploadedFile ? (
@@ -778,10 +881,14 @@ export function DocumentExtractorLab() {
                 ) : (
                   <div>
                     <div style={{ fontSize: "16px", fontWeight: 700, color: "#FFFFFF" }}>
-                      Drop document file here or click to browse
+                      {inputMode === "packet_sorter"
+                        ? "Drop a combined multi-person PDF packet here or click to browse"
+                        : "Drop document file here or click to browse"}
                     </div>
                     <div style={{ fontSize: "13px", color: "#94A3B8", marginTop: "6px" }}>
-                      Supports PDF, PNG, JPG, JPEG, WEBP, TIFF, or TXT
+                      {inputMode === "packet_sorter"
+                        ? "Automatically inspects every page, separates documents by person name, groups multi-page continuations & generates Person Folders (.ZIP)"
+                        : "Supports PDF, PNG, JPG, JPEG, WEBP, TIFF, or TXT"}
                     </div>
                   </div>
                 )}
@@ -838,54 +945,105 @@ export function DocumentExtractorLab() {
                 gap: "16px",
               }}
             >
-              <button
-                type="button"
-                onClick={handleRunAnalysis}
-                disabled={isAnalyzing}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  padding: "14px 28px",
-                  borderRadius: "10px",
-                  fontSize: "15px",
-                  fontWeight: 700,
-                  color: "#FFFFFF",
-                  border: "none",
-                  background: isAnalyzing
-                    ? "rgba(16, 185, 129, 0.5)"
-                    : "linear-gradient(135deg, #10B981 0%, #059669 100%)",
-                  boxShadow: isAnalyzing
-                    ? "none"
-                    : "0 10px 25px -5px rgba(16, 185, 129, 0.4)",
-                  cursor: isAnalyzing ? "not-allowed" : "pointer",
-                  transition: "all 0.2s",
-                }}
-              >
-                {isAnalyzing ? (
-                  <>
-                    <span
-                      style={{
-                        width: "16px",
-                        height: "16px",
-                        border: "2px solid #FFFFFF",
-                        borderTopColor: "transparent",
-                        borderRadius: "50%",
-                        display: "inline-block",
-                        animation: "spin 1s linear infinite",
-                      }}
-                    />
-                    Processing Document...
-                  </>
-                ) : (
-                  <>
-                    <span>⚡</span> Run AI Recognition & Extraction
-                  </>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={handleRunAnalysis}
+                  disabled={isAnalyzing || isSortingPacket}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "14px 28px",
+                    borderRadius: "10px",
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    color: "#FFFFFF",
+                    border: "none",
+                    background: isAnalyzing
+                      ? "rgba(16, 185, 129, 0.5)"
+                      : "linear-gradient(135deg, #10B981 0%, #059669 100%)",
+                    boxShadow: isAnalyzing
+                      ? "none"
+                      : "0 10px 25px -5px rgba(16, 185, 129, 0.4)",
+                    cursor: isAnalyzing || isSortingPacket ? "not-allowed" : "pointer",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <span
+                        style={{
+                          width: "16px",
+                          height: "16px",
+                          border: "2px solid #FFFFFF",
+                          borderTopColor: "transparent",
+                          borderRadius: "50%",
+                          display: "inline-block",
+                          animation: "spin 1s linear infinite",
+                        }}
+                      />
+                      Processing Document...
+                    </>
+                  ) : (
+                    <>
+                      <span>⚡</span> Run AI Recognition & Extraction
+                    </>
+                  )}
+                </button>
+
+                {(inputMode === "packet_sorter" || (inputMode === "upload" && uploadedFile)) && (
+                  <button
+                    type="button"
+                    onClick={handleRunPacketSorter}
+                    disabled={isSortingPacket || isAnalyzing || !uploadedFile}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "14px 26px",
+                      borderRadius: "10px",
+                      fontSize: "15px",
+                      fontWeight: 700,
+                      color: "#FFFFFF",
+                      border: "1px solid rgba(56, 189, 248, 0.45)",
+                      background: isSortingPacket
+                        ? "rgba(3, 105, 161, 0.5)"
+                        : "linear-gradient(135deg, #0284C7 0%, #0D9488 100%)",
+                      boxShadow: isSortingPacket
+                        ? "none"
+                        : "0 10px 25px -5px rgba(2, 132, 199, 0.4)",
+                      cursor: isSortingPacket || isAnalyzing || !uploadedFile ? "not-allowed" : "pointer",
+                      opacity: !uploadedFile ? 0.65 : 1,
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    {isSortingPacket ? (
+                      <>
+                        <span
+                          style={{
+                            width: "16px",
+                            height: "16px",
+                            border: "2px solid #FFFFFF",
+                            borderTopColor: "transparent",
+                            borderRadius: "50%",
+                            display: "inline-block",
+                            animation: "spin 1s linear infinite",
+                          }}
+                        />
+                        Sorting & Splitting Packet by Person...
+                      </>
+                    ) : (
+                      <>
+                        <span>🗂️</span> Sort & Split Multi-Person PDF Packet
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
+              </div>
 
               {/* Stepper info during analysis */}
-              {isAnalyzing && (
+              {(isAnalyzing || isSortingPacket) && (
                 <div
                   style={{
                     display: "flex",
@@ -926,9 +1084,561 @@ export function DocumentExtractorLab() {
             </div>
           </section>
 
+          {/* Multi-Person Packet Sorter & Splitter Results Section */}
+          {packetSortResult && (
+            <section
+              style={{
+                background: "rgba(6, 35, 38, 0.85)",
+                border: "1px solid rgba(56, 189, 248, 0.35)",
+                borderRadius: "16px",
+                padding: "24px",
+                marginBottom: "32px",
+                boxShadow: "0 20px 45px -15px rgba(0, 0, 0, 0.5)",
+              }}
+            >
+              {/* Header & 1-Click ZIP Download */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "16px",
+                  paddingBottom: "20px",
+                  marginBottom: "20px",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      color: "#38BDF8",
+                      background: "rgba(56, 189, 248, 0.12)",
+                      border: "1px solid rgba(56, 189, 248, 0.3)",
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    🗂️ Multi-Person Document Packet Sorter & Splitter
+                  </div>
+                  <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#FFFFFF", margin: "0 0 4px" }}>
+                    Sorted Person Folders: {packetSortResult.source_filename}
+                  </h2>
+                  <p style={{ fontSize: "13px", color: "#94A3B8", margin: 0 }}>
+                    Analyzed {packetSortResult.total_pages_analyzed} pages &bull; Detected{" "}
+                    {packetSortResult.total_persons_detected} distinct person(s) &bull; Generated{" "}
+                    {packetSortResult.total_split_documents} separated multi-page PDF documents
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                  {packetSortResult.zip_archive_base64 && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadSortedZip}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "12px 20px",
+                        borderRadius: "10px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#FFFFFF",
+                        background: "linear-gradient(135deg, #10B981 0%, #0284C7 100%)",
+                        border: "1px solid rgba(16, 185, 129, 0.5)",
+                        cursor: "pointer",
+                        boxShadow: "0 8px 20px -4px rgba(16, 185, 129, 0.35)",
+                      }}
+                    >
+                      📦 Download All Person Folders (.ZIP)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Two-Column Folder Explorer: Person Folders Tree (Left) + Documents in Folder (Right) */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(290px, 360px) 1fr",
+                  gap: "20px",
+                  alignItems: "start",
+                }}
+              >
+                {/* Left Column: Person Folders List */}
+                <div
+                  style={{
+                    background: "rgba(0, 0, 0, 0.25)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: "12px",
+                    padding: "14px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      color: "#94A3B8",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    Person Folders ({packetSortResult.person_folders.length})
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {packetSortResult.person_folders.map((pf) => {
+                      const isSelected = selectedPersonFolderId === pf.person_id;
+                      const isReview = pf.is_caseworker_review_folder;
+                      return (
+                        <div
+                          key={pf.person_id}
+                          onClick={() => setSelectedPersonFolderId(pf.person_id)}
+                          style={{
+                            padding: "14px",
+                            borderRadius: "10px",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                            background: isSelected
+                              ? isReview
+                                ? "rgba(245, 158, 11, 0.18)"
+                                : "rgba(56, 189, 248, 0.16)"
+                              : "rgba(255, 255, 255, 0.03)",
+                            border: isSelected
+                              ? isReview
+                                ? "1px solid #F59E0B"
+                                : "1px solid #38BDF8"
+                              : "1px solid rgba(255, 255, 255, 0.08)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "8px",
+                              marginBottom: "6px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: "14px",
+                                fontWeight: 700,
+                                color: isReview ? "#FCD34D" : isSelected ? "#7DD3FC" : "#FFFFFF",
+                              }}
+                            >
+                              {isReview ? "⚠️ " : "📁 "}
+                              {pf.canonical_name}
+                            </div>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                padding: "2px 8px",
+                                borderRadius: "12px",
+                                background: isReview
+                                  ? "rgba(245, 158, 11, 0.2)"
+                                  : "rgba(16, 185, 129, 0.2)",
+                                color: isReview ? "#FCD34D" : "#34D399",
+                              }}
+                            >
+                              {pf.total_documents} docs ({pf.total_pages}p)
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              fontFamily: "monospace",
+                              color: "#64748B",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            /{pf.folder_name}/
+                          </div>
+
+                          {/* Consolidated Name Variations */}
+                          {pf.name_variations && pf.name_variations.length > 1 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "6px" }}>
+                              {pf.name_variations.map((nv) => (
+                                <span
+                                  key={nv}
+                                  style={{
+                                    fontSize: "10px",
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    background: "rgba(255, 255, 255, 0.06)",
+                                    color: "#CBD5E1",
+                                  }}
+                                >
+                                  {nv}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Identity Anchors (PAN, Passport, SIN) */}
+                          {pf.id_anchors && Object.keys(pf.id_anchors).length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                              {Object.entries(pf.id_anchors).map(([k, vals]) =>
+                                vals.map((v) => (
+                                  <span
+                                    key={`${k}-${v}`}
+                                    style={{
+                                      fontSize: "10px",
+                                      fontFamily: "monospace",
+                                      padding: "2px 6px",
+                                      borderRadius: "4px",
+                                      background: "rgba(16, 185, 129, 0.12)",
+                                      border: "1px solid rgba(16, 185, 129, 0.25)",
+                                      color: "#6EE7B7",
+                                    }}
+                                  >
+                                    {k.toUpperCase()}: {v}
+                                  </span>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Right Column: Separated Documents inside Selected Person's Folder */}
+                <div
+                  style={{
+                    background: "rgba(0, 0, 0, 0.25)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: "12px",
+                    padding: "18px",
+                  }}
+                >
+                  {(() => {
+                    const activeFolder =
+                      packetSortResult.person_folders.find((f) => f.person_id === selectedPersonFolderId) ||
+                      packetSortResult.person_folders[0];
+                    if (!activeFolder) return null;
+
+                    return (
+                      <div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            flexWrap: "wrap",
+                            gap: "12px",
+                            marginBottom: "16px",
+                            paddingBottom: "12px",
+                            borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: "16px", fontWeight: 800, color: "#FFFFFF" }}>
+                              📂 {activeFolder.canonical_name} — Separated Documents ({activeFolder.total_documents})
+                            </div>
+                            <div style={{ fontSize: "12px", color: "#94A3B8", marginTop: "2px" }}>
+                              Folder Path: <code>{activeFolder.folder_name}/</code> &bull; {activeFolder.total_pages}{" "}
+                              total pages
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                          {activeFolder.documents.map((doc) => (
+                            <div
+                              key={doc.relative_path}
+                              style={{
+                                padding: "14px 16px",
+                                borderRadius: "10px",
+                                background: "rgba(255, 255, 255, 0.03)",
+                                border: doc.is_joint_document
+                                  ? "1px solid rgba(167, 139, 250, 0.4)"
+                                  : "1px solid rgba(255, 255, 255, 0.08)",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "flex-start",
+                                flexWrap: "wrap",
+                                gap: "14px",
+                              }}
+                            >
+                              <div style={{ flex: "1 1 420px" }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    flexWrap: "wrap",
+                                    gap: "8px",
+                                    marginBottom: "6px",
+                                  }}
+                                >
+                                  <span style={{ fontSize: "14px", fontWeight: 700, color: "#34D399" }}>
+                                    📄 {doc.filename}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: "11px",
+                                      fontWeight: 700,
+                                      padding: "2px 8px",
+                                      borderRadius: "6px",
+                                      background: "rgba(56, 189, 248, 0.15)",
+                                      color: "#7DD3FC",
+                                    }}
+                                  >
+                                    {doc.document_subtype}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: "11px",
+                                      fontWeight: 600,
+                                      padding: "2px 8px",
+                                      borderRadius: "6px",
+                                      background: "rgba(255, 255, 255, 0.07)",
+                                      color: "#CBD5E1",
+                                    }}
+                                  >
+                                    {doc.page_range} ({doc.page_count}p)
+                                  </span>
+                                  {doc.is_joint_document && (
+                                    <span
+                                      style={{
+                                        fontSize: "11px",
+                                        fontWeight: 700,
+                                        padding: "2px 8px",
+                                        borderRadius: "6px",
+                                        background: "rgba(167, 139, 250, 0.18)",
+                                        border: "1px solid rgba(167, 139, 250, 0.4)",
+                                        color: "#C4B5FD",
+                                      }}
+                                    >
+                                      🤝 JOINT DOCUMENT
+                                      {doc.shared_with && doc.shared_with.length > 0
+                                        ? ` (Shared with: ${doc.shared_with.join(", ")})`
+                                        : ""}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {doc.text_preview && (
+                                  <div
+                                    style={{
+                                      fontSize: "11px",
+                                      color: "#94A3B8",
+                                      fontFamily: "monospace",
+                                      background: "rgba(0, 0, 0, 0.25)",
+                                      padding: "6px 10px",
+                                      borderRadius: "6px",
+                                      marginTop: "6px",
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      maxWidth: "680px",
+                                    }}
+                                  >
+                                    {doc.text_preview}
+                                  </div>
+                                )}
+                              </div>
+
+                              {doc.pdf_base64 && (
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadOrPreviewSplitPdf(doc, true)}
+                                    style={{
+                                      padding: "7px 12px",
+                                      borderRadius: "8px",
+                                      fontSize: "12px",
+                                      fontWeight: 600,
+                                      background: "rgba(255, 255, 255, 0.06)",
+                                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                                      color: "#E2E8F0",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    👁️ Preview PDF
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadOrPreviewSplitPdf(doc, false)}
+                                    style={{
+                                      padding: "7px 12px",
+                                      borderRadius: "8px",
+                                      fontSize: "12px",
+                                      fontWeight: 700,
+                                      background: "rgba(16, 185, 129, 0.15)",
+                                      border: "1px solid rgba(16, 185, 129, 0.35)",
+                                      color: "#34D399",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    ⬇️ Download PDF
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Results Section */}
           {analysisResult && (
             <section>
+              {/* Case Worker Escalation Banner for Unknown / Unsupported Languages */}
+              {(analysisResult.metadata.requires_caseworker_escalation ||
+                analysisResult.specialized_intelligence?.language_compliance?.requires_caseworker_escalation ||
+                analysisResult.quality_findings?.some((qf) => qf.finding_type === "unsupported_language_escalation")) && (
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, rgba(127, 29, 29, 0.78) 0%, rgba(153, 27, 27, 0.55) 100%)",
+                    border: "1px solid rgba(248, 113, 113, 0.55)",
+                    borderRadius: "14px",
+                    padding: "20px 24px",
+                    marginBottom: "24px",
+                    boxShadow: "0 16px 32px -10px rgba(239, 68, 68, 0.35)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      flexWrap: "wrap",
+                      gap: "16px",
+                    }}
+                  >
+                    <div style={{ flex: "1 1 520px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            background: "#EF4444",
+                            color: "#FFFFFF",
+                            padding: "4px 10px",
+                            borderRadius: "6px",
+                          }}
+                        >
+                          🚨 Escalated to Case Worker Queue
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: "#FCA5A5",
+                            background: "rgba(0, 0, 0, 0.3)",
+                            padding: "4px 10px",
+                            borderRadius: "6px",
+                            border: "1px solid rgba(248, 113, 113, 0.3)",
+                          }}
+                        >
+                          Detected: {analysisResult.metadata.detected_language_label || analysisResult.specialized_intelligence?.language_compliance?.detected_language_label || "Unknown / Unsupported Language"}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            color: "#E2E8F0",
+                            background: "rgba(255, 255, 255, 0.08)",
+                            padding: "4px 10px",
+                            borderRadius: "6px",
+                          }}
+                        >
+                          Supported AI/OCR Languages: English • Gujarati (ગુજરાતી) • Hindi (हिन्दी)
+                        </span>
+                      </div>
+
+                      <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#FFFFFF", margin: "0 0 6px" }}>
+                        Unknown / Non-Compliant Document Language — Case Worker Action Required
+                      </h3>
+                      <p style={{ fontSize: "13px", color: "#FECACA", margin: "0 0 12px", lineHeight: "1.55" }}>
+                        {analysisResult.specialized_intelligence?.language_compliance?.escalation_reason ||
+                          "This document is written in a language or script outside our approved Indian & Immigration language set (English, Gujarati, and Hindi). It has been raised to the Case Worker so the Case Worker can contact the client for a certified translation or process the document manually."}
+                      </p>
+
+                      {analysisResult.metadata.client_outreach_template && (
+                        <div
+                          style={{
+                            background: "rgba(0, 0, 0, 0.35)",
+                            border: "1px solid rgba(255, 255, 255, 0.14)",
+                            borderRadius: "8px",
+                            padding: "10px 14px",
+                            fontSize: "12px",
+                            color: "#F1F5F9",
+                          }}
+                        >
+                          <strong style={{ color: "#FCD34D" }}>Suggested Client Outreach Message: </strong>
+                          {analysisResult.metadata.client_outreach_template}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: "240px" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const msg =
+                            analysisResult.metadata.client_outreach_template ||
+                            analysisResult.specialized_intelligence?.language_compliance?.client_outreach_template ||
+                            `Hello, regarding '${analysisResult.metadata.filename}': our automated system supports English, Gujarati, and Hindi documents. A Case Worker has been assigned to review your document manually. Please also provide a certified English translation if available.`;
+                          navigator.clipboard.writeText(msg);
+                        }}
+                        style={{
+                          padding: "10px 16px",
+                          borderRadius: "8px",
+                          border: "1px solid rgba(252, 211, 77, 0.45)",
+                          background: "rgba(245, 158, 11, 0.22)",
+                          color: "#FDE68A",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          textAlign: "center",
+                        }}
+                      >
+                        📋 Copy Client Outreach Message
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("quality")}
+                        style={{
+                          padding: "10px 16px",
+                          borderRadius: "8px",
+                          border: "1px solid rgba(255, 255, 255, 0.2)",
+                          background: "rgba(255, 255, 255, 0.1)",
+                          color: "#FFFFFF",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          textAlign: "center",
+                        }}
+                      >
+                        🛠️ Open Case Worker Escalation Ticket
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Top Metrics Ribbon */}
               <div
                 style={{
@@ -1012,23 +1722,38 @@ export function DocumentExtractorLab() {
                   </div>
                 </div>
 
-                {/* Card 4: OCR Geometries */}
+                {/* Card 4: OCR Geometries & Indian Language Compliance */}
                 <div
                   style={{
                     background: "rgba(10, 48, 51, 0.5)",
-                    border: "1px solid rgba(167, 139, 250, 0.3)",
+                    border: `1px solid ${
+                      analysisResult.metadata.requires_caseworker_escalation
+                        ? "rgba(239, 68, 68, 0.55)"
+                        : "rgba(167, 139, 250, 0.3)"
+                    }`,
                     borderRadius: "12px",
                     padding: "18px",
                   }}
                 >
-                  <div style={{ fontSize: "11px", color: "#A78BFA", fontWeight: 700, textTransform: "uppercase" }}>
-                    OCR Geometries
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: analysisResult.metadata.requires_caseworker_escalation ? "#F87171" : "#A78BFA",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Language & OCR Compliance
                   </div>
-                  <div style={{ fontSize: "20px", fontWeight: 800, color: "#FFFFFF", marginTop: "4px" }}>
-                    {analysisResult.metadata.total_blocks_detected} Text Blocks
+                  <div style={{ fontSize: "16px", fontWeight: 800, color: "#FFFFFF", marginTop: "4px" }}>
+                    {analysisResult.metadata.detected_language_label || analysisResult.metadata.detected_language.toUpperCase()}
                   </div>
-                  <div style={{ fontSize: "12px", color: "#94A3B8", marginTop: "2px" }}>
-                    Language: <strong>{analysisResult.metadata.detected_language.toUpperCase()}</strong> &bull; {analysisResult.metadata.page_count} Page(s)
+                  <div style={{ fontSize: "12px", color: "#94A3B8", marginTop: "4px" }}>
+                    {analysisResult.metadata.requires_caseworker_escalation ? (
+                      <span style={{ color: "#FCA5A5", fontWeight: 700 }}>🚨 Escalated to Case Worker</span>
+                    ) : (
+                      <span style={{ color: "#34D399", fontWeight: 600 }}>✓ EN / GU / HI Compliant &bull; {analysisResult.metadata.total_blocks_detected} Blocks</span>
+                    )}
                   </div>
                 </div>
               </div>

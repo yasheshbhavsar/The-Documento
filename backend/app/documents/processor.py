@@ -14,7 +14,7 @@ from backend.app.domain.models import (
 )
 from backend.app.extraction.classifier import classify_document
 from backend.app.extraction.service import extract_structured_fields
-from backend.app.ocr.engine import OCREngine, detect_language
+from backend.app.ocr.engine import OCREngine, detect_language, evaluate_language_compliance
 
 logger = logging.getLogger("ai_immigration.documents.processor")
 
@@ -86,15 +86,71 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
 
         pages = OCREngine.extract_document(content=content, mime_type=doc.mime_type)
         page_texts = [p.text for p in pages if p.text]
+        raw_page_texts = [p.raw_unfiltered_text or p.text for p in pages if (p.raw_unfiltered_text or p.text)]
         full_extracted_text = "\n\n".join(page_texts)
+        full_raw_unfiltered_text = "\n\n".join(raw_page_texts)
 
         doc.page_count = len(pages)
         doc.ocr_applied = any(p.ocr_applied for p in pages)
         doc.extracted_text = full_extracted_text
 
-        # 2. Language Detection
-        detected_lang = detect_language(full_extracted_text)
+        # 2. Language Detection & Indian Language Compliance Gate (English, Gujarati, Hindi)
+        lang_compliance = evaluate_language_compliance(
+            text=full_extracted_text,
+            raw_unfiltered_text=full_raw_unfiltered_text,
+            filename=doc.filename,
+        )
+        detected_lang = lang_compliance["detected_language"]
         doc.detected_language = detected_lang
+
+        if lang_compliance.get("requires_caseworker_escalation"):
+            doc.has_unresolved_anomaly = True
+            doc.structured_reason_code = "UNSUPPORTED_LANGUAGE_ESCALATION"
+            doc.anomaly_notes = (
+                f"ESCALATED TO CASE WORKER: Document contains unsupported/unknown language "
+                f"({lang_compliance.get('detected_language_label', 'Unknown')}). "
+                f"{lang_compliance.get('caseworker_action', '')}"
+            )
+            doc.client_explanation = lang_compliance.get("client_outreach_template")
+
+            if doc.case_id:
+                from backend.app.domain.models import CaseAIFinding, CaseTask
+                existing_lang_finding = (
+                    db.query(CaseAIFinding)
+                    .filter(
+                        CaseAIFinding.document_id == doc.id,
+                        CaseAIFinding.finding_type == "unsupported_language_escalation",
+                    )
+                    .first()
+                )
+                if not existing_lang_finding:
+                    finding = CaseAIFinding(
+                        id=uuid.uuid4(),
+                        organization_id=doc.organization_id,
+                        case_id=doc.case_id,
+                        document_id=doc.id,
+                        finding_type="unsupported_language_escalation",
+                        severity="critical",
+                        status="needs_review",
+                        title=f"Escalated to Case Worker: Unsupported Language in '{doc.filename}' ({lang_compliance.get('detected_language_label')})",
+                        description=lang_compliance.get("escalation_reason") or "Unsupported document language requires manual Case Worker action or client contact.",
+                        recommended_action=lang_compliance.get("caseworker_action"),
+                        client_facing_template=lang_compliance.get("client_outreach_template"),
+                        internal_risk_notes="Automated AI/OCR supports English, Gujarati, and Hindi. Route to Case Worker for manual handling or client translation request.",
+                        is_confirmed_contradiction=False,
+                        confidence_score=0.98,
+                    )
+                    db.add(finding)
+                    task = CaseTask(
+                        id=uuid.uuid4(),
+                        organization_id=doc.organization_id,
+                        case_id=doc.case_id,
+                        title=f"Manual Review / Client Contact: Unsupported Language in '{doc.filename}'",
+                        description=lang_compliance.get("caseworker_action") or "Contact client or process document manually.",
+                        status="todo",
+                        priority="high",
+                    )
+                    db.add(task)
 
         # 3. Document Classification
         run.stage = "classification"
@@ -156,6 +212,7 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
         doc.layout_metadata = {
             "page_count": len(pages),
             "detected_language": detected_lang,
+            "language_compliance": lang_compliance,
             "classification_confidence": class_confidence,
             "suggested_boundaries": suggested_boundaries,
             "pages": layout_pages,

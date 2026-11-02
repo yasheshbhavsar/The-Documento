@@ -169,8 +169,25 @@ class IdentityResolver:
         if not text:
             return None
 
+        has_aadhaar_context = bool(
+            re.search(
+                r"(?:aadhaar|uidai|unique\s*identification|enrol+ment\s*no|mera\s*aadhaar|આધાર|आधार|your\s*aadhaar)",
+                text,
+                re.IGNORECASE,
+            )
+        )
+
         # Look for 12 digits (with optional spaces or hyphens)
-        match = re.search(r"\b([2-9]{1}[0-9]{3})[\s-]?([0-9]{4})[\s-]?([0-9]{4})\b", text)
+        # If there is no Aadhaar keyword context, only accept 4-4-4 spaced Aadhaar format when not in an utility/IRCC form
+        if has_aadhaar_context:
+            match = re.search(r"\b([2-9]{1}[0-9]{3})[\s-]?([0-9]{4})[\s-]?([0-9]{4})\b", text)
+        elif not re.search(r"(?:DOCUMENT_TYPE:\s*IMM|ACCOUNT\s*NUMBER|SASKPOWER|ITINERARY|FLIGHT|BOOKING)", text, re.IGNORECASE):
+            match = re.search(r"\b([2-9]{1}[0-9]{3})\s+([0-9]{4})\s+([0-9]{4})\b", text)
+            if not match or not re.search(r"(?:Government\s*of\s*India|DOB|D0B|S/O|D/O|W/O)", text, re.IGNORECASE):
+                match = None
+        else:
+            match = None
+
         if not match:
             # Check for already-masked pattern: XXXX-XXXX-1234
             masked_match = re.search(r"\b(X{4}[\s-]?X{4}[\s-]?([0-9]{4}))\b", text, re.IGNORECASE)
@@ -186,14 +203,14 @@ class IdentityResolver:
         last_four = match.group(3)
         masked = f"XXXX-XXXX-{last_four}"
 
-        # Extract DOB or YOB
+        # Extract DOB or YOB (supporting OCR 'D0B' with zero as well as 'DOB')
         dob = None
         yob = None
-        dob_m = re.search(r"(?:DOB|Date of Birth|जन्म तिथि|જન્મ તારીખ)[\s:]+([0-9]{2}/[0-9]{2}/[0-9]{4})", text)
+        dob_m = re.search(r"(?:D[O0]B|Date\s*of\s*Birth|जन्म\s*तिथि|જન્મ\s*તારીખ)[\s:]+([0-9]{2}/[0-9]{2}/[0-9]{4})", text, re.IGNORECASE)
         if dob_m:
             dob = dob_m.group(1)
         else:
-            yob_m = re.search(r"(?:Year of Birth|जन्म वर्ष|જન્મ વર્ષ)[\s:]+([12][0-9]{3})", text)
+            yob_m = re.search(r"(?:Year\s*of\s*Birth|जन्म\s*वर्ष|જન્મ\s*વર્ષ)[\s:]+([12][0-9]{3})", text, re.IGNORECASE)
             if yob_m:
                 yob = int(yob_m.group(1))
 
@@ -204,6 +221,46 @@ class IdentityResolver:
         elif re.search(r"\b(FEMALE|महिला|સ્ત્રી)\b", text, re.IGNORECASE):
             gender = "Female"
 
+        # Holder Name on Aadhaar:
+        # 1. Explicit 'Name:' label
+        # 2. Line immediately preceding 'DOB :' / 'D0B :'
+        # 3. Line immediately following 'To' / 'To.'
+        holder_name = None
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        name_m = re.search(
+            r"(?:^|\n)\s*(?:Name(?!\s+of\s+(?:Mother|Father|Parents|Child|Firm|Bank))|Holder\s*Name|नाम|નામ)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
+            text,
+            re.IGNORECASE,
+        )
+        if name_m:
+            cand = name_m.group(1).split("\n")[0].strip(" .:-_")
+            if len(re.findall(r"[A-Za-z]", cand)) >= 3 and not any(k in cand.lower() for k in ("government", "india", "authority", "aadhaar", "enrollment", "enrolment", "father", "mother")):
+                holder_name = cand.title()
+
+        if not holder_name:
+            for idx, ln in enumerate(lines):
+                if re.search(r"(?:D[O0]B|Date\s*of\s*Birth|Year\s*of\s*Birth)\s*:", ln, re.IGNORECASE) and idx > 0:
+                    prev_ln = lines[idx - 1].strip(" .:-_")
+                    if (
+                        re.match(r"^[A-Za-z][A-Za-z\s\.-]{3,45}$", prev_ln)
+                        and 1 <= len(prev_ln.split()) <= 5
+                        and not any(k in prev_ln.lower() for k in ("government", "india", "unique", "identification", "authority", "aadhaar", "enrollment", "enrolment", "address", "male", "female"))
+                    ):
+                        holder_name = prev_ln.title()
+                        break
+
+        if not holder_name:
+            for idx, ln in enumerate(lines):
+                if re.match(r"^To\.?$", ln, re.IGNORECASE) and idx + 1 < len(lines):
+                    next_ln = lines[idx + 1].strip(" .:-_")
+                    if (
+                        re.match(r"^[A-Za-z][A-Za-z\s\.-]{3,45}$", next_ln)
+                        and 1 <= len(next_ln.split()) <= 5
+                        and not any(k in next_ln.lower() for k in ("government", "india", "unique", "identification", "authority", "aadhaar"))
+                    ):
+                        holder_name = next_ln.title()
+                        break
+
         # Father or husband name
         father = None
         rel_m = re.search(
@@ -212,7 +269,7 @@ class IdentityResolver:
             re.IGNORECASE,
         )
         if rel_m:
-            father = rel_m.group(1).split("\n")[0].split(",")[0].strip(" .:-_")
+            father = rel_m.group(1).split("\n")[0].split(",")[0].strip(" .:-_").title()
 
         # Address on Aadhaar
         addr = None
@@ -226,10 +283,33 @@ class IdentityResolver:
             if filtered_lines:
                 addr = ", ".join(filtered_lines)
 
+        if not addr:
+            # Extract from Aadhaar top letter block between 'To\n<Name>' and '<State> <6-digit PIN>'
+            for idx, ln in enumerate(lines):
+                if re.match(r"^To\.?$", ln, re.IGNORECASE) and idx + 2 < len(lines):
+                    addr_parts: list[str] = []
+                    for sub_ln in lines[idx + 2 : min(idx + 9, len(lines))]:
+                        if re.match(r"^(?:S/O|D/O|W/O|C/O)\b", sub_ln, re.IGNORECASE):
+                            continue
+                        if re.search(r"(?:Your\s*Aadhaar|Government\s*of\s*India|^\d{4}\s+\d{4}\s+\d{4}$)", sub_ln, re.IGNORECASE):
+                            break
+                        # Strip leading print date like '03/12/2014 ' or 'Q8/01/2014 ' and 9-10 digit mobile/ref numbers
+                        cleaned_sub = re.sub(r"^[0-9OQ]{2}/[0-9]{2}/[0-9]{4}\s*", "", sub_ln).strip()
+                        cleaned_sub = re.sub(r"\b\d{9,12}\b", "", cleaned_sub).strip(" ,.-")
+                        if not cleaned_sub or re.match(r"^(?:Ref:|[\d/A-Z-]{8,})$", cleaned_sub, re.IGNORECASE):
+                            continue
+                        addr_parts.append(cleaned_sub)
+                        if re.search(r"\b[1-9][0-9]{5}\b", cleaned_sub):
+                            break
+                    if addr_parts:
+                        addr = ", ".join(addr_parts)
+                    break
+
         return AadhaarExtraction(
             is_valid=True,
             masked_aadhaar_number=masked,
             raw_detected=True,
+            holder_name=holder_name,
             gender=gender,
             date_of_birth=dob,
             year_of_birth=yob,
@@ -269,9 +349,37 @@ class IdentityResolver:
 
         # Name extraction attempt
         name = None
-        name_m = re.search(r"(?:^|\n)\s*(?:Name(?!\s+of\s+(?:Mother|Father|Parents|Child))|Holder\s*Name|नाम|નામ)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})", text, re.IGNORECASE)
+        name_m = re.search(
+            r"(?:^|\n)\s*(?:Name\s*of\s*Assessee|NAMEOFASSESSEE|Holder\s*Name|Name(?!\s+of\s+(?:Mother|Father|Parents|Child|Firm|Bank|Company|Employer|Applicant|Deductor|Govt|Registered|the))|नाम|નામ)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
+            text,
+            re.IGNORECASE,
+        )
         if name_m:
-            name = name_m.group(1).split("\n")[0].strip(" .:-_").title()
+            cand = name_m.group(1).split("\n")[0].strip(" .:-_")
+            cand = re.sub(r"^of\s+assessee[\s:]*", "", cand, flags=re.IGNORECASE).strip(" .:-_")
+            bad_pan_substrings = (
+                "of firm", "of the", "of mother", "of father", "of parents", "of child",
+                "of company", "of applicant", "of deductor", "of govt", "tan section",
+                "head of", "current free", "pledge", "statement", "inv. since", "declaration"
+            )
+            if (
+                cand
+                and not cand.lower().startswith("of ")
+                and not any(b in cand.lower() for b in bad_pan_substrings)
+            ):
+                name = cand.title()
+
+        if not name:
+            # Check ITR header layout where '<FULL NAME>\n1\nPAN: <PAN_NUM>' or 'Name of Assessee\n<FULL NAME>' appears
+            itr_name_m = re.search(
+                r"(?:Name\s*of\s*Assessee\s*[\r\n:]+|^\s*)([A-Z][A-Z\s\.]{4,45}?)(?:\s+AY\.|\s*[\r\n]+\s*(?:\d+\s*[\r\n]+\s*)?PAN\s*:|\s*[\r\n]+\s*Father's\s*Name)",
+                text,
+                re.IGNORECASE | re.MULTILINE,
+            )
+            if itr_name_m:
+                cand_itr = " ".join(itr_name_m.group(1).split()).strip(" .:-_")
+                if cand_itr and not any(b in cand_itr.lower() for b in ("acknowledgement", "income tax", "assessee", "computation", "total", "tan section")):
+                    name = cand_itr.title()
 
         father_name = None
         father_m = re.search(r"(?:Father(?:'s)?\s*Name|पिता\s*का\s*नाम|પિતાનું\s*નામ)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})", text, re.IGNORECASE)
@@ -315,6 +423,25 @@ class IdentityResolver:
         # 1. First attempt MRZ detection for standard ICAO TD3 passport data
         mrz = MRZParser.parse_text(clean_text) if MRZParser else None
 
+        # Guard: Do not treat standalone eMedical sheets, XFA IMM forms, or cover letters as passports unless MRZ or Republic of India passport header is present
+        has_strong_passport_header = bool(
+            mrz
+            or re.search(
+                r"(?:REPUBLIC\s*OF\s*INDIA|RFPUBLTC\s*OF\s*INDIA|PASSEPORT|P<IND|Emigration\s*Check|Old\s*Pass?port\s*No|Name\s*of\s*Father\s*/\s*Legal\s*Guardian)",
+                clean_text,
+                re.IGNORECASE,
+            )
+        )
+        is_non_passport_form = bool(
+            re.search(
+                r"(?:DOCUMENT_TYPE:\s*IMM|e\s*Medical\s+Information\s*Sheet|Vaccination\s*Worksheet|FAMILY\s*INFORMATION|USE\s*OF\s*A\s*FAMILY\s*MEMBER\s*REPRESENTATIVE|Purpose\s*of\s*Visit:|SASKPOWER\s*ACCOUNT)",
+                clean_text,
+                re.IGNORECASE,
+            )
+        )
+        if is_non_passport_form and not has_strong_passport_header:
+            return None
+
         passport_num = ""
         holder_name = None
         surname = None
@@ -338,20 +465,30 @@ class IdentityResolver:
             mrz_detected = True
             raw_mrz = mrz.raw_mrz
 
-        # 2. Visual text regex fallbacks for Passport Number
+        # 2. Visual text regex fallbacks for Passport Number (must contain at least 5 digits)
         if not passport_num:
             p_match = re.search(r"\b([A-Z]{1}[0-9]{7,8})\b", clean_text)
             if not p_match:
-                p_match = re.search(r"(?:Passport\s*(?:No\.?|Number)|Doc\s*No\.?)[\s:]+([A-Z0-9]{7,10})", clean_text, re.IGNORECASE)
+                p_match = re.search(r"(?:Passport\s*(?:No\.?|Number)|Doc\s*No\.?)[\s:]+([A-Z][0-9]{6,8})\b", clean_text, re.IGNORECASE)
             if not p_match:
-                mrz_m = re.search(r"P<IND[^\n]*\r?\n\s*([A-Z0-9]{8,9})", clean_text)
+                mrz_m = re.search(r"P<IND[^\n]*\r?\n\s*([A-Z][0-9]{7,8})", clean_text)
                 if mrz_m:
                     p_match = mrz_m
             if p_match:
-                passport_num = p_match.group(1).replace("<", "")
+                cand_pnum = p_match.group(1).replace("<", "").strip()
+                if sum(c.isdigit() for c in cand_pnum) >= 5:
+                    passport_num = cand_pnum
 
-        has_markers = bool(re.search(r"\b(ECR|ECNR|Emigration Check|File No|Republic of India|IND|INDIAN|Passport|Given Name|Surname|Place of Birth|Date of Birth)\b", clean_text, re.IGNORECASE))
+        has_markers = bool(
+            re.search(
+                r"\b(ECR|ECNR|Emigration Check|File No|Republic of India|PASSEPORT|Given Name|Surname)\b",
+                clean_text,
+                re.IGNORECASE,
+            )
+        )
         if not passport_num and not has_markers:
+            return None
+        if not has_strong_passport_header and not (passport_num and has_markers):
             return None
 
         # 3. Check ECR vs ECNR
@@ -364,41 +501,69 @@ class IdentityResolver:
         if re.search(r"\b(60\s*Pages?|Jumbo)\b", clean_text, re.IGNORECASE):
             booklet = "60-page Jumbo"
 
-        # 5. Visual Name Extraction (Surname, Given Names, Full Name if MRZ absent)
+        # 5. Visual Name Extraction (Surname, Given Names, Full Name if MRZ absent or to refine MRZ spacing)
         lines = [l.strip() for l in clean_text.splitlines() if l.strip()]
-        if not surname or not given_names or not holder_name:
-            for i, line in enumerate(lines):
-                # Surname
-                if not surname and re.search(r'\b(?:Surname|उपनाम|અટક)\b', line, re.IGNORECASE):
-                    same_m = re.search(r'\b(?:Surname|उपनाम|અટક)[\s:]+([A-Za-z][A-Za-z\s\.-]{1,40})$', line, re.IGNORECASE)
-                    if same_m and same_m.group(1).strip(" .:-_"):
-                        cand = same_m.group(1).strip(" .:-_")
-                        if not any(k in cand.lower() for k in ("given", "name", "date", "birth", "sex", "place", "mother", "father")):
-                            surname = cand.upper()
-                    elif i + 1 < len(lines):
-                        cand = lines[i + 1].strip(" .:-_")
-                        if len(re.findall(r"[A-Za-z]", cand)) >= 2 and not any(k in cand.lower() for k in ("given", "name", "date", "birth", "sex", "place", "nationality", "passport", "mother", "father")):
-                            surname = cand.upper()
+        vis_surname = None
+        vis_given = None
+        invalid_name_tokens = (
+            "given", "name", "date", "birth", "sex", "place", "nationality",
+            "passport", "mother", "father", "gender", "female", "male",
+            "identity", "document", "number", "country", "issue", "expiry",
+            "schooi", "school", "occupation", "spouse", "address",
+        )
+        for i, line in enumerate(lines):
+            # Surname
+            if not vis_surname and re.search(r'\b(?:Surname|उपनाम|અટક)\b', line, re.IGNORECASE):
+                same_m = re.search(r'\b(?:Surname|उपनाम|અટક)[\s:]+([A-Za-z][A-Za-z\s\.-]{1,40})$', line, re.IGNORECASE)
+                if same_m and same_m.group(1).strip(" .:-_"):
+                    cand = re.sub(r"\b[A-Z][0-9]{6,8}\b", "", same_m.group(1)).strip(" .:-_")
+                    if len(re.findall(r"[A-Za-z]", cand)) >= 2 and not any(k in cand.lower() for k in invalid_name_tokens):
+                        vis_surname = cand.upper()
+                else:
+                    for j in range(i + 1, min(i + 3, len(lines))):
+                        cand = re.sub(r"\b[A-Z][0-9]{6,8}\b", "", lines[j]).strip(" .:-_")
+                        if not cand:
+                            continue
+                        if (
+                            re.match(r"^[A-Za-z][A-Za-z\s\.-]{1,40}$", cand)
+                            and len(re.findall(r"[A-Za-z]", cand)) >= 2
+                            and not any(k in cand.lower() for k in invalid_name_tokens)
+                        ):
+                            vis_surname = cand.upper()
+                            break
 
-                # Given Names
-                if not given_names and re.search(r'\b(?:Given\s*Names?|नाम|નામ)\b', line, re.IGNORECASE):
-                    same_m = re.search(r'\b(?:Given\s*Names?(?:\(s\))?|नाम|નામ)[\s:]+([A-Za-z][A-Za-z\s\.-]{1,50})$', line, re.IGNORECASE)
-                    if same_m and same_m.group(1).strip(" .:-_"):
-                        cand = same_m.group(1).strip(" .:-_")
-                        if not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality", "mother", "father")):
-                            given_names = cand.upper()
-                    elif i + 1 < len(lines):
-                        cand = lines[i + 1].strip(" .:-_")
-                        if len(re.findall(r"[A-Za-z]", cand)) >= 2 and not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality", "passport", "mother", "father")):
-                            given_names = cand.upper()
+            # Given Names
+            if not vis_given and re.search(r'\b(?:Given\s*Names?|Giten\s*Name|Ghen\s*Name|नाम|નામ)\b', line, re.IGNORECASE):
+                same_m = re.search(r'\b(?:Given\s*Names?(?:\(s\))?|Giten\s*Name(?:\(s\))?|Ghen\s*Name[is\)]*|नाम|નામ)[\s:]+([A-Za-z][A-Za-z\s\.-]{1,50})', line, re.IGNORECASE)
+                if same_m and same_m.group(1).strip(" .:-_"):
+                    cand = re.sub(r"\b(?:Identity|Document|Passport).*$", "", same_m.group(1), flags=re.IGNORECASE)
+                    cand = re.sub(r"\b[A-Z][0-9]{6,8}\b", "", cand).strip(" .:-_")
+                    if len(re.findall(r"[A-Za-z]", cand)) >= 2 and not any(k in cand.lower() for k in invalid_name_tokens):
+                        vis_given = cand.upper()
+                elif i + 1 < len(lines):
+                    cand = re.sub(r"\b[A-Z][0-9]{6,8}\b", "", lines[i + 1]).strip(" .:-_")
+                    if (
+                        re.match(r"^[A-Za-z][A-Za-z\s\.-]{1,50}$", cand)
+                        and len(re.findall(r"[A-Za-z]", cand)) >= 2
+                        and not any(k in cand.lower() for k in invalid_name_tokens)
+                    ):
+                        vis_given = cand.upper()
 
-            if not holder_name:
-                if given_names and surname:
-                    holder_name = f"{given_names} {surname}".title()
-                elif given_names:
-                    holder_name = given_names.title()
-                elif surname:
-                    holder_name = surname.title()
+        if not surname and vis_surname:
+            surname = vis_surname.title()
+        if not given_names and vis_given:
+            given_names = vis_given.title()
+        elif given_names and vis_given and " " not in given_names and " " in vis_given:
+            if given_names.replace(" ", "").upper() == vis_given.replace(" ", "").upper():
+                given_names = vis_given.title()
+
+        if surname and given_names:
+            holder_name = f"{given_names} {surname}".title()
+        elif not holder_name:
+            if given_names:
+                holder_name = given_names.title()
+            elif surname:
+                holder_name = surname.title()
 
         # 6. Visual Date Extraction (Issue date, DOB, Expiry if not found from MRZ)
         issue_date = None
@@ -408,36 +573,39 @@ class IdentityResolver:
         date_matches = re.findall(r"\b([0-9]{2}/[0-9]{2}/[0-9]{4})\b", clean_text)
         for dm in date_matches:
             d_parts = dm.split("/")
-            yr = int(d_parts[2])
+            day_i, mon_i, yr = int(d_parts[0]), int(d_parts[1]), int(d_parts[2])
+            if not (1 <= mon_i <= 12 and 1 <= day_i <= 31):
+                continue
             if yr < 2010 and not dob:
-                # DOB candidate
-                dob = f"{d_parts[2]}-{d_parts[1]}-{d_parts[0]}"
+                dob = f"{yr:04d}-{mon_i:02d}-{day_i:02d}"
             elif 2010 <= yr <= 2026 and not issue_date:
-                # Issue date candidate
-                issue_date = f"{d_parts[2]}-{d_parts[1]}-{d_parts[0]}"
+                issue_date = f"{yr:04d}-{mon_i:02d}-{day_i:02d}"
             elif yr > 2026 and not exp_date:
-                # Expiry candidate
-                exp_date = f"{d_parts[2]}-{d_parts[1]}-{d_parts[0]}"
+                exp_date = f"{yr:04d}-{mon_i:02d}-{day_i:02d}"
 
-        # Place of Birth / Issue (supports same-line and next-line)
+        # Place of Birth / Issue (supports same-line and next-line, rejecting OCR label echoes)
         for i, line in enumerate(lines):
-            if not place_of_birth and re.search(r'\b(?:Place\s*of\s*Birth|Place\s*of\s*Issue|जन्म स्थान|જન્મ સ્થળ)\b', line, re.IGNORECASE):
-                same_m = re.search(r'\b(?:Place\s*of\s*Birth|Place\s*of\s*Issue|जन्म स्थान|જન્મ સ્થળ)[\s:]+([A-Za-z][A-Za-z\s,]+)$', line, re.IGNORECASE)
+            if not place_of_birth and re.search(r'\b(?:Place\s*of\s*Birth|Piace\s*of\s*Birth|Placecf\s*Birth|जन्म स्थान|જન્મ સ્થળ)\b', line, re.IGNORECASE):
+                same_m = re.search(r'\b(?:Place\s*of\s*Birth|Piace\s*of\s*Birth|Placecf\s*Birth|जन्म स्थान|જન્મ સ્થળ)[\s:]+([A-Za-z][A-Za-z\s,.-]+)$', line, re.IGNORECASE)
                 if same_m and same_m.group(1).strip(" .:-_"):
                     cand = same_m.group(1).strip(" .:-_")
-                    if not any(k in cand.lower() for k in ("date", "birth", "sex", "passport", "country", "mother", "father")):
+                    if not any(k in cand.lower() for k in ("date", "birth", "place", "piace", "sex", "passport", "country", "mother", "father", "schooi", "school", "non ede")):
                         place_of_birth = cand.title()
                 elif i + 1 < len(lines):
                     cand = lines[i + 1].strip(" .:-_")
-                    if len(re.findall(r"[A-Za-z]", cand)) >= 3 and not any(k in cand.lower() for k in ("date", "birth", "sex", "nationality", "passport", "country", "mother", "father")):
+                    if (
+                        len(re.findall(r"[A-Za-z]", cand)) >= 3
+                        and not any(k in cand.lower() for k in ("date", "birth", "place", "piace", "sex", "nationality", "passport", "country", "mother", "father", "schooi", "school", "non ede"))
+                    ):
                         place_of_birth = cand.title()
 
-        if not place_of_birth:
-            city_m = re.search(r"\b([A-Za-z\s]+(?:Ahmedabad|Gandhinagar|Kalol|Mumbai|Delhi|Bengaluru|Bangalore|Chennai|Kolkata|Hyderabad|Pune|Surat|Vadodara|Rajkot|Chandigarh|Jaipur|Lucknow)[A-Za-z\s,]*)", clean_text, re.IGNORECASE)
-            if city_m:
-                place_of_birth = city_m.group(1).split("\n")[0].strip(" .:-_").title()
+            if not place_of_issue and re.search(r'\b(?:Place\s*of\s*Issue)\b', line, re.IGNORECASE):
+                if i + 1 < len(lines):
+                    cand = re.sub(r"\b[0-9]{6,12}\b", "", lines[i + 1]).strip(" .:-_")
+                    if len(re.findall(r"[A-Za-z]", cand)) >= 3 and not any(k in cand.lower() for k in ("date", "issue", "expiry", "birth")):
+                        place_of_issue = cand.title()
 
-        # 6. Endorsements from final page (line-aware & multiline parser)
+        # 7. Endorsements from final page (line-aware & multiline parser)
         father = None
         mother = None
         spouse = None
@@ -445,90 +613,127 @@ class IdentityResolver:
         address = None
         pincode = None
 
+        def _split_concatenated_indian_name(raw_n: str) -> str:
+            if " " not in raw_n and len(raw_n) >= 12:
+                s = re.sub(r"^PATEL([A-Z]{4,})", r"PATEL \1", raw_n.upper())
+                s = re.sub(r"([A-Z]{3,12}?(?:BEN|BHAI|KUMAR))([A-Z]{4,}(?:BHAI|BEN|KUMAR|LAL))", r"\1 \2", s)
+                return s.title()
+            return raw_n.title()
+
         in_addr = False
-        addr_lines = []
+        addr_lines: list[str] = []
 
         for i, line in enumerate(lines):
             # Father / Guardian
-            if re.search(r"(?:Father|Guardian|पिता|પિતાનું\s*નામ)", line, re.IGNORECASE) and not father:
-                # Check same line
+            if re.search(r"(?:Father|Falfer|Guardian|Guaraian|Guprckan|पिता|પિતાનું\s*નામ)", line, re.IGNORECASE) and not father:
                 fat_same = re.search(r"(?:Father(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Father|पिता\s*का\s*नाम|પિતાનું\s*નામ)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})", line, re.IGNORECASE)
                 if fat_same:
-                    cand = fat_same.group(1).strip(" .:-_")
-                    if len(re.findall(r"[A-Za-z]", cand)) >= 3 and not any(k in cand.lower() for k in ("mother", "spouse", "address", "date", "birth", "sex", "place")):
-                        father = cand.title()
+                    cand = re.sub(r"\b(?:[A-Z][0-9]{6,8}|[0-9]{6,9})\b", "", fat_same.group(1)).strip(" .:-_")
+                    if len(re.findall(r"[A-Za-z]", cand)) >= 3 and not any(k in cand.lower() for k in ("mother", "spouse", "address", "date", "birth", "sex", "place", "guardian", "guprckan")):
+                        father = _split_concatenated_indian_name(cand)
                 else:
-                    # Look ahead 1-2 lines
                     for j in range(i + 1, min(i + 3, len(lines))):
-                        cand = lines[j].strip(" .:-_")
+                        cand = re.sub(r"\b(?:[A-Z][0-9]{6,8}|[0-9]{6,9})\b", "", lines[j]).strip(" .:-_")
                         if (
                             len(re.findall(r"[A-Za-z]", cand)) >= 3
                             and re.match(r"^[A-Za-z][A-Za-z\s\.-]{2,50}$", cand)
-                            and not any(k in cand.lower() for k in ("mother", "father", "spouse", "address", "file", "passport", "pin", "name", "/", "birth", "date", "sex", "permanent", "child", "parents"))
+                            and not any(k in cand.lower() for k in ("mother", "father", "spouse", "address", "file", "passport", "pin", "name", "/", "birth", "date", "sex", "permanent", "child", "parents", "occupation"))
                         ):
-                            father = cand.title()
+                            father = _split_concatenated_indian_name(cand)
                             break
 
             # Mother
-            if re.search(r"(?:Mother|माता|માતાનું\s*નામ)", line, re.IGNORECASE) and not mother:
+            if re.search(r"(?:Mother|Metner|wlothet|माता|માતાનું\s*નામ)", line, re.IGNORECASE) and not mother:
                 mot_same = re.search(r"(?:Mother(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Mother|माता\s*का\s*नाम|માતાનું\s*નામ)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})", line, re.IGNORECASE)
                 if mot_same:
                     cand = mot_same.group(1).strip(" .:-_")
-                    if len(re.findall(r"[A-Za-z]", cand)) >= 3 and not any(k in cand.lower() for k in ("father", "spouse", "address", "date", "birth", "sex", "place")):
-                        mother = cand.title()
+                    if len(re.findall(r"[A-Za-z]", cand)) >= 3 and not any(k in cand.lower() for k in ("father", "spouse", "address", "date", "birth", "sex", "place", "occupation")):
+                        mother = _split_concatenated_indian_name(cand)
                 else:
                     for j in range(i + 1, min(i + 3, len(lines))):
                         cand = lines[j].strip(" .:-_")
                         if (
                             len(re.findall(r"[A-Za-z]", cand)) >= 3
                             and re.match(r"^[A-Za-z][A-Za-z\s\.-]{2,50}$", cand)
-                            and not any(k in cand.lower() for k in ("father", "mother", "spouse", "address", "file", "passport", "pin", "name", "/", "birth", "date", "sex", "permanent", "child", "parents"))
+                            and not any(k in cand.lower() for k in ("father", "mother", "spouse", "address", "file", "passport", "pin", "name", "/", "birth", "date", "sex", "permanent", "child", "parents", "occupation"))
                         ):
-                            mother = cand.title()
+                            mother = _split_concatenated_indian_name(cand)
                             break
 
-            # Spouse
-            if re.search(r"(?:Spouse|पति|पत्नी|પતિ|પત્ની)", line, re.IGNORECASE) and not spouse:
-                sp_same = re.search(r"(?:Spouse(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Spouse)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})", line, re.IGNORECASE)
+            # Spouse (including OCR 'Name of Souse' / 'ame of spouse')
+            if re.search(r"(?:Sp?ouse|पति|पत्नी|પતિ|પત્ની)", line, re.IGNORECASE) and not spouse:
+                sp_same = re.search(r"(?:Sp?ouse(?:'s)?(?:\s*Legal)?\s*Name|(?:N?ame\s*of\s*)?Sp?ouse)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})$", line, re.IGNORECASE)
                 if sp_same:
                     cand = sp_same.group(1).strip(" .:-_")
-                    if len(re.findall(r"[A-Za-z]", cand)) >= 3:
-                        spouse = cand.title()
+                    if len(re.findall(r"[A-Za-z]", cand)) >= 3 and not any(k in cand.lower() for k in ("address", "father", "mother", "passport", "file")):
+                        spouse = _split_concatenated_indian_name(cand)
+                else:
+                    for j in range(i + 1, min(i + 3, len(lines))):
+                        cand = lines[j].strip(" .:-_")
+                        if (
+                            len(re.findall(r"[A-Za-z]", cand)) >= 3
+                            and re.match(r"^[A-Za-z][A-Za-z\s\.-]{2,50}$", cand)
+                            and not any(k in cand.lower() for k in ("father", "mother", "spouse", "souse", "address", "addhest", "file", "passport", "pin", "name", "/", "birth", "date"))
+                        ):
+                            spouse = _split_concatenated_indian_name(cand)
+                            break
 
             # File Number
-            if re.search(r"(?:File\s*No|फाइल)", line, re.IGNORECASE) and not file_num:
-                f_same = re.search(r"(?:File No\.?|File Number)[\s:]+([A-Z0-9]{10,16})", line, re.IGNORECASE)
+            if re.search(r"(?:File\s*No|Fie\s*No|IFMNO|फाइल)", line, re.IGNORECASE) and not file_num:
+                f_same = re.search(r"(?:File\s*No\.?|Fie\s*No\.?|File\s*Number|IFMNO)[\s:]+([A-Z]{2}[A-Z0-9]{10,14})\b", line, re.IGNORECASE)
                 if f_same:
                     file_num = f_same.group(1).strip().upper()
                 else:
-                    for j in range(i + 1, min(i + 3, len(lines))):
+                    for j in range(i + 1, min(i + 4, len(lines))):
                         cand = lines[j]
-                        m = re.search(r"\b([A-Z]{2}[0-9]{10,14}|[A-Z0-9]{10,16})\b", cand)
-                        if m:
+                        m = re.search(r"\b([A-Z]{2}[A-Z0-9]{10,14})\b", cand)
+                        if m and sum(c.isdigit() for c in m.group(1)) >= 7:
                             file_num = m.group(1)
                             break
 
-            # Address block
-            if re.search(r"(?:Address|पता|સરનામું)", line, re.IGNORECASE):
+            # Address block (capture at most one 1-3 line passport address block, never crossing pages or past PIN/INDIA)
+            if re.search(r"\b(?:Address|Addhest|पता|સરનામું)\b", line, re.IGNORECASE) and not addr_lines:
                 same_addr_m = re.search(r"(?:Permanent\s*Address(?:\s*of\s*Parents)?|Residential\s*Address|Present\s*Address|Address(?:\s*of\s*parents[^\r\n:]*)?|पता|સરનામું)[\s:]+(.+)$", line, re.IGNORECASE)
                 if same_addr_m and same_addr_m.group(1).strip(" .:-_"):
                     cand_a = same_addr_m.group(1).strip(" .:-_")
-                    if not any(k in cand_a.lower() for k in ("time of birth", "permanent address", "of parents")):
+                    if not any(k in cand_a.lower() for k in ("time of birth", "permanent address", "of parents", "you to canada", "status of the", "issuing authority")):
                         addr_lines.append(cand_a)
+                        if re.search(r"(?:(?<!\d)[1-9][0-9]{5}(?!\d)|INDIA)", cand_a, re.IGNORECASE):
+                            continue
                 in_addr = True
                 continue
             if in_addr:
-                if any(k in line.lower() for k in ("fileno", "oldpassport", "observation", "file no", "passport", "father", "mother", "spouse", "registration no", "date of registration", "નોંધણી")):
+                low_ln = line.lower()
+                if (
+                    len(addr_lines) >= 3
+                    or line.startswith("--- PAGE")
+                    or any(
+                        k in low_ln
+                        for k in (
+                            "fileno", "file no", "fie no", "ifmno", "oldpassport", "old pass", "old pat",
+                            "ola pas", "observation", "passport", "father", "mother", "spouse",
+                            "registration", "date", "signature", "નોંધણી", "you to canada",
+                            "status of", "respected", "dear ", "purpose of", "sincerely",
+                        )
+                    )
+                ):
                     in_addr = False
                 else:
                     addr_lines.append(line)
+                    if re.search(r"(?:(?<!\d)[1-9][0-9]{5}(?!\d)|INDIA)", line, re.IGNORECASE):
+                        in_addr = False
+
+        if not file_num:
+            fn_m = re.search(r"\b(AH[0-9A-Z]{10,14})\b", clean_text)
+            if fn_m and sum(c.isdigit() for c in fn_m.group(1)) >= 7:
+                file_num = fn_m.group(1)
 
         if addr_lines:
             address = ", ".join(addr_lines)
 
-        pin_m = re.search(r"\bPIN[\s:]*([1-9][0-9]{5})\b|\b([1-9][0-9]{5})\b", text, re.IGNORECASE)
+        pin_m = re.search(r"(?:PIN[\s:]*|(?<!\d))([1-9][0-9]{5})(?!\d)", address or clean_text, re.IGNORECASE)
         if pin_m:
-            pincode = pin_m.group(1) or pin_m.group(2)
+            pincode = pin_m.group(1)
 
         return IndianPassportExtraction(
             passport_number=passport_num,

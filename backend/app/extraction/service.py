@@ -200,8 +200,16 @@ def extract_structured_fields(
             "spouse_legal_name",
             "guardian_or_spouse_name",
             "child_legal_name",
+            "pan_holder_name",
+            "aadhaar_holder_name",
+            "account_holder_name",
         ):
-            if len(re.findall(r"[A-Za-z\u0900-\u097F\u0A80-\u0AFF]", clean_orig)) < 2:
+            # Strip accidental leading 'of assessee' or 'of ' before a valid person name
+            clean_orig = re.sub(r"^(?:of\s+assessee|of)[\s:]+(?=[A-Za-z]{3,})", "", clean_orig, flags=re.IGNORECASE).strip(" .:-_")
+            if normalized_value is not None:
+                normalized_value = re.sub(r"^(?:of\s+assessee|of)[\s:]+(?=[A-Za-z]{3,})", "", str(normalized_value), flags=re.IGNORECASE).strip(" .:-_")
+            clean_lower = clean_orig.lower()
+            if len(re.findall(r"[A-Za-z\u0900-\u097F\u0A80-\u0AFF]", clean_orig)) < 3:
                 return
             bad_name_prefixes = (
                 "of mother",
@@ -215,6 +223,18 @@ def extract_structured_fields(
                 "of village",
                 "of taluka",
                 "of district",
+                "of firm",
+                "of bank",
+                "of company",
+                "of deductor",
+                "of govt",
+                "of assets",
+                "of employer",
+                "of assessee",
+                "in full",
+                "ifirm",
+                "firm",
+                "company",
                 "date of",
                 "place of",
                 "name of",
@@ -222,8 +242,38 @@ def extract_structured_fields(
                 "address of",
                 "permanent address",
                 "registration no",
+                "nom de",
+                "prnom",
+                "andaddress",
+                "inv. since",
+                "declaration",
+                "ontario",
+                "wonmuriel",
+                "statement period",
+                "no",
+                "nom",
+                "of",
             )
-            if any(clean_lower.startswith(p) or clean_lower == p for p in bad_name_prefixes):
+            bad_name_substrings = (
+                "tan section",
+                "head of",
+                "current free",
+                "pledge",
+                "repledge",
+                "opendt",
+                "close dt",
+                "statement period",
+                "nom de ",
+                "adresse de",
+                "inv. since",
+                "date of sale",
+                "sales price",
+                "tds amount",
+            )
+            if (
+                any(clean_lower.startswith(p) or clean_lower == p for p in bad_name_prefixes)
+                or any(b in clean_lower for b in bad_name_substrings)
+            ):
                 return
 
         clean_norm = re.sub(r"(?:\.\s*){2,}", " ", str(normalized_value if normalized_value is not None else clean_orig))
@@ -368,7 +418,7 @@ def extract_structured_fields(
         if "passport_number" not in added_keys:
             p_num = re.search(r"\b([A-Z]{1}[0-9]{7,8})\b", full_text)
             if not p_num:
-                p_num = re.search(r"(?:Passport\s*(?:No\.?|Number)|Document\s*No\.?)[\s:]+([A-Z0-9]{6,12})", full_text, re.IGNORECASE)
+                p_num = re.search(r"(?:Passport\s*(?:No\.?|Number)|Document\s*No\.?)[\s:]+((?=[A-Z0-9]*\d{5})[A-Z0-9]{6,12})", full_text, re.IGNORECASE)
             if p_num:
                 add_field("passport_number", "Passport Number", p_num.group(1), p_num.group(1).upper(), 1, 0.92)
 
@@ -391,19 +441,22 @@ def extract_structured_fields(
             if not vis_given and re.search(r'\b(?:Given\s*Names?|Prénoms)\b', line, re.IGNORECASE):
                 same_m = re.search(r'\b(?:Given\s*Names?(?:\(s\))?|Prénoms)[\s:]+([A-Za-z\s\.-]{2,50})$', line, re.IGNORECASE)
                 if same_m and same_m.group(1).strip():
-                    cand = same_m.group(1).strip()
-                    if not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality")):
+                    cand = re.sub(r"Identity\s*document.*$", "", same_m.group(1), flags=re.IGNORECASE).strip()
+                    if cand and not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality")):
                         vis_given = cand
                 elif i + 1 < len(text_lines):
-                    cand = text_lines[i + 1].strip()
-                    if not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality", "passport")):
+                    cand = re.sub(r"Identity\s*document.*$", "", text_lines[i + 1], flags=re.IGNORECASE).strip()
+                    if cand and not any(k in cand.lower() for k in ("surname", "date", "birth", "sex", "place", "nationality", "passport")):
                         vis_given = cand
 
-        # Corroborate MRZ vs Visual Surname/Given Names if MRZ had '<' -> 'K' separator glitch
+        # Corroborate MRZ vs Visual Surname/Given Names if MRZ had '<' -> 'K' separator glitch or dropped spaces
         if vis_surname and vis_given:
             existing_sur = next((f.normalized_value for f in extracted_fields if f.field_name == "surname"), "")
-            if "given_names" not in added_keys or (
-                existing_sur and existing_sur.upper().startswith(vis_surname.upper() + "K")
+            existing_giv = next((f.normalized_value for f in extracted_fields if f.field_name == "given_names"), "")
+            if (
+                "given_names" not in added_keys
+                or (existing_sur and existing_sur.upper().startswith(vis_surname.upper() + "K"))
+                or (" " in vis_given and existing_giv and " " not in existing_giv)
             ):
                 extracted_fields = [
                     f for f in extracted_fields
@@ -427,39 +480,48 @@ def extract_structured_fields(
                 add_field("applicant_name", "Candidate Applicant Name", vis_given, vis_given.title(), 1, 0.88)
             else:
                 name_m = re.search(
-                    r"\b(?:Full\s*Name|Legal\s*Name|Name(?!\s+of\s+(?:Mother|Father|Parents|Child|Bride|Bridegroom|Village|City|Taluka|District|Hospital|State|Registration|Registered)))[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
+                    r"\b(?:1\.\s*Name\s+in\s+Full|Name\s+in\s+Full|Name\s+of\s+Assessee|NAMEOFASSESSEE|Employee\s*Name|Insured\s*Name|Name\s+of\s+the\s+Pupil(?:\s*\(\s*in\s+full\s*\))?|CANDIDATE(?:'S)?\s*FULL\s*NAME(?:\s*BEGINNING\s*WITH\s*SURNAME)?|Full\s*Name|Legal\s*Name|Name(?!\s+o[f]?\s+(?:Mother|Father|Parents|Child|Bride|Bridegroom|Village|City|Taluka|District|Hospital|State|Registration|Registered|I?Firm|Bank|Spouse|the\s+School|the\s+Inst|Company|Deductor|Govt|Assets|Employer)))[\s:]+(?:[A-Z]\s*\d{5,8}\s+)?([A-Za-z][A-Za-z\s\.-]{2,55})",
                     full_text,
                     re.IGNORECASE,
                 )
                 if name_m:
                     cand_name = name_m.group(1).split("\n")[0].strip(" .:-_")
+                    cand_name = re.sub(r"^(?:in\s+full|of\s+assessee)[\s:]*", "", cand_name, flags=re.IGNORECASE).strip(" .:-_")
+                    cand_name = re.sub(r"Identity\s*document.*$", "", cand_name, flags=re.IGNORECASE).strip(" .:-_")
+                    cand_name = re.sub(r"^[A-Z]\s*\d{5,8}\s+", "", cand_name).strip(" .:-_")
                     # Strip single-letter trailing noise (e.g. 'Patel f' -> 'Patel')
                     cand_name = re.sub(r'\s+[a-zA-Z]$', '', cand_name)
                     invalid_prefixes = (
-                        "of the", "of registered", "of mother", "of father", "of parents",
-                        "of child", "of birth", "date of", "place of", "immigration", "family name",
+                        "of the", "of firm", "of ifirm", "of bank", "of spouse", "of bride", "of bridegroom",
+                        "of registered", "of mother", "of father", "of parents", "of company", "of deductor",
+                        "of govt", "of child", "of birth", "and address", "and status", "date of", "place of", "immigration", "family name",
                         "surname", "given name", "desc srgb", "iec61966", "signature",
-                        "pull name", "full name", "client personal", "status", "nom de famille"
+                        "pull name", "full name", "in full", "ifirm", "firm", "client personal", "status", "nom de",
+                        "beginning with", "tan section", "current free", "opendt", "statement period", "inv. since", "declaration"
                     )
                     if not any(cand_name.lower().startswith(p) for p in invalid_prefixes) and cand_name.lower() not in (
-                        "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details", "female", "male"
+                        "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details", "female", "male", "ifirm", "firm", "in full", "ontario", "nom", "no", "of", "declaration", "wonmuriel"
                     ):
                         add_field("full_name", "Full Name", cand_name, cand_name.title(), 1, 0.88)
                         add_field("applicant_name", "Candidate Applicant Name", cand_name, cand_name.title(), 1, 0.88)
 
         # Visual Dates (Date of Birth, Issue Date, Expiry Date)
         if "date_of_birth" not in added_keys:
-            dob_m = re.search(r"(?:Date of Birth|Birth Date|DOB|Date de naissance)[\s:]+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})", full_text, re.IGNORECASE)
+            dob_m = re.search(
+                r"(?:3\.\s*Date\s+of\s+Birth|Date\s+of\s+Birth(?:\s*\(\s*in\s+figures\s*\)|\s+in\s+Figures)?|Birth\s+Date|DOB|Date\s+de\s+naissance)[\s:]+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4}|[0-9]{1,2}\s*[A-Za-z]{3,9}\s*[0-9]{4})",
+                full_text,
+                re.IGNORECASE,
+            )
             if dob_m:
                 add_field("date_of_birth", "Date of Birth", dob_m.group(1).strip(), normalize_date(dob_m.group(1).strip()), 1, 0.90)
 
         if "issue_date" not in added_keys:
-            issue_m = re.search(r"(?:Date of Issue|Issue Date|Issued on)[\s:]+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})", full_text, re.IGNORECASE)
+            issue_m = re.search(r"(?:Date of Issue|Issue Date|Issued on)[\s:]+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4}|[0-9]{1,2}\s*[A-Za-z]{3,9}\s*[0-9]{4})", full_text, re.IGNORECASE)
             if issue_m:
                 add_field("issue_date", "Date of Issue", issue_m.group(1).strip(), normalize_date(issue_m.group(1).strip()), 1, 0.90)
 
         if "expiry_date" not in added_keys:
-            exp_m = re.search(r"(?:Date of Expir(?:y|ation)|Expiration Date)[\s:]+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})", full_text, re.IGNORECASE)
+            exp_m = re.search(r"(?:Date of Expir(?:y|ation)|Expiration Date)[\s:]+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4}|[0-9]{1,2}\s*[A-Za-z]{3,9}\s*[0-9]{4})", full_text, re.IGNORECASE)
             if exp_m:
                 add_field("expiry_date", "Date of Expiration", exp_m.group(1).strip(), normalize_date(exp_m.group(1).strip()), 1, 0.90)
 
@@ -480,26 +542,36 @@ def extract_structured_fields(
         # Place of Birth / Place of Issue (supports same-line and next-line)
         if "place_of_birth" not in added_keys:
             raw_pob = None
+            bad_pob_tokens = (
+                "date", "birth", "sex", "nationality", "passport", "country",
+                "placecf", "place of", "high schoo", "non ede", "signature", "authority", "office"
+            )
             for i, line in enumerate(text_lines):
                 if re.search(r'\b(?:Place\s*of\s*Birth|जन्म स्थान)\b', line, re.IGNORECASE):
                     same_m = re.search(r'\b(?:Place\s*of\s*Birth|जन्म स्थान)[\s:]+([A-Za-z\s,]+)$', line, re.IGNORECASE)
                     if same_m and same_m.group(1).strip():
                         cand = same_m.group(1).strip()
-                        if not any(k in cand.lower() for k in ("date", "birth", "sex", "passport", "country")):
+                        if not any(k in cand.lower() for k in bad_pob_tokens):
                             raw_pob = cand
                             break
                     elif i + 1 < len(text_lines):
                         cand = text_lines[i + 1].strip()
-                        if not any(k in cand.lower() for k in ("date", "birth", "sex", "nationality", "passport", "country")):
+                        if not any(k in cand.lower() for k in bad_pob_tokens):
                             raw_pob = cand
                             break
             if raw_pob:
                 add_field("place_of_birth", "Place of Birth", raw_pob, raw_pob.title(), 1, 0.90)
-            else:
+            elif (
+                (mrz is not None or "PASSPORT" in full_text.upper() or "PASSPORT" in (filename or "").upper())
+                and "AADHAAR" not in full_text.upper()
+                and "UNIQUE IDENTIFICATION" not in full_text.upper()
+                and "INCOME TAX" not in full_text.upper()
+            ):
                 city_m = re.search(r"\b([A-Za-z\s]+(?:Ahmedabad|Mumbai|Delhi|Bengaluru|Bangalore|Chennai|Kolkata|Hyderabad|Pune|Surat|Vadodara|Rajkot|Chandigarh|Jaipur|Lucknow)[A-Za-z\s,]*)", full_text, re.IGNORECASE)
                 if city_m:
                     raw_city = city_m.group(1).split("\n")[0].strip()
-                    add_field("place_of_birth", "Place of Birth", raw_city, raw_city.title(), 1, 0.86)
+                    if not any(k in raw_city.lower() for k in bad_pob_tokens):
+                        add_field("place_of_birth", "Place of Birth", raw_city, raw_city.title(), 1, 0.86)
 
         if "nationality" not in added_keys:
             nat_m = re.search(r"(?:Nationality|Nationalité|Nacionalidad)[\s:]+([A-Za-z\s]{3,30})", full_text, re.IGNORECASE)
@@ -527,24 +599,77 @@ def extract_structured_fields(
                 fmt = "JPEG Image" if "jpeg" in mime_type or "jpg" in (filename or "").lower() else "Digital Image"
                 add_field("photo_file_format", "Photo File Format", fmt, fmt, 1, 0.98)
 
-        # XFA Datasets / IRCC Application Form Fallback for Identity
-        if "full_name" not in added_keys:
-            fam_m = re.search(r"\bFamilyName:\s*([A-Za-z\s\.-]+)", full_text)
-            giv_m = re.search(r"\bGivenName:\s*([A-Za-z\s\.-]+)", full_text)
-            if fam_m and giv_m:
-                comb_name = f"{giv_m.group(1).strip()} {fam_m.group(1).strip()}"
+    # 2B. XFA DATASETS / IRCC FORM STRUCTURED EXTRACTION (IMM 5257, IMM 5645, Work Permits)
+    if re.search(r"Family\s*Name:|Passport\s*Num:|DOCUMENT_TYPE:\s*IMM", full_text):
+        fam_m = re.search(r"\bFamily\s*Name:\s*([A-Za-z\s\.-]+)", full_text)
+        giv_m = re.search(r"\bGiven\s*Name:\s*([A-Za-z\s\.-]+)", full_text)
+        if fam_m and giv_m:
+            raw_sur = fam_m.group(1).splitlines()[0].strip()
+            raw_giv = giv_m.group(1).splitlines()[0].strip()
+            comb_name = f"{raw_giv} {raw_sur}"
+            if "full_name" not in added_keys:
                 add_field("full_name", "Full Name", comb_name, comb_name.title(), 1, 0.98)
+            if "surname" not in added_keys:
+                add_field("surname", "Surname / Family Name", raw_sur, raw_sur.upper(), 1, 0.98)
+            if "given_names" not in added_keys:
+                add_field("given_names", "Given Names", raw_giv, raw_giv.title(), 1, 0.98)
 
         if "passport_number" not in added_keys:
-            p_xfa = re.search(r"\bPassportNum:\s*([A-Z0-9]{7,10})\b", full_text)
+            p_xfa = re.search(r"\bPassport\s*Num:\s*([A-Z0-9]{7,10})\b", full_text)
             if p_xfa:
                 add_field("passport_number", "Passport Number", p_xfa.group(1), p_xfa.group(1).upper(), 1, 0.99)
 
         if "date_of_birth" not in added_keys:
-            dob_xfa = re.search(r"\bDOBYear:\s*(\d{4})\s*[\r\n]+DOBMonth:\s*(\d{2})\s*[\r\n]+DOBDay:\s*(\d{2})", full_text)
+            dob_xfa = re.search(r"\bDOB\s*Year:\s*(\d{4})\s*[\r\n]+DOB\s*Month:\s*(\d{1,2})\s*[\r\n]+DOB\s*Day:\s*(\d{1,2})", full_text)
             if dob_xfa:
-                iso_dob = f"{dob_xfa.group(1)}-{dob_xfa.group(2)}-{dob_xfa.group(3)}"
+                iso_dob = f"{dob_xfa.group(1)}-{int(dob_xfa.group(2)):02d}-{int(dob_xfa.group(3)):02d}"
                 add_field("date_of_birth", "Date of Birth", iso_dob, iso_dob, 1, 0.98)
+
+        if "place_of_birth" not in added_keys:
+            pob_xfa = re.search(r"\bPlace\s*Birth\s*City:\s*([A-Za-z\s,\.-]+)", full_text)
+            if pob_xfa:
+                raw_pob_xfa = pob_xfa.group(1).splitlines()[0].strip()
+                add_field("place_of_birth", "Place of Birth", raw_pob_xfa, raw_pob_xfa.title(), 1, 0.96)
+
+        if "issue_date" not in added_keys:
+            iss_xfa = re.search(r"\bIssue\s*Date:\s*([0-9]{4}[-/][0-9]{2}[-/][0-9]{2})", full_text)
+            if not iss_xfa:
+                iss_ymd = re.search(r"\bIssue\s*Year:\s*(\d{4})\s*[\r\n]+Issue\s*Month:\s*(\d{1,2})\s*[\r\n]+Issue\s*Day:\s*(\d{1,2})", full_text)
+                if iss_ymd:
+                    iso_iss = f"{iss_ymd.group(1)}-{int(iss_ymd.group(2)):02d}-{int(iss_ymd.group(3)):02d}"
+                    add_field("issue_date", "Date of Issue", iso_iss, iso_iss, 1, 0.97)
+            else:
+                add_field("issue_date", "Date of Issue", iss_xfa.group(1), normalize_date(iss_xfa.group(1)) or iss_xfa.group(1), 1, 0.97)
+
+        if "expiry_date" not in added_keys:
+            exp_xfa = re.search(r"\bExpiry\s*Date:\s*([0-9]{4}[-/][0-9]{2}[-/][0-9]{2})", full_text)
+            if not exp_xfa:
+                exp_ymd = re.search(r"\bExpiry\s*Year:\s*(\d{4})\s*[\r\n]+Expiry\s*Month:\s*(\d{1,2})\s*[\r\n]+Expiry\s*Day:\s*(\d{1,2})", full_text)
+                if exp_ymd:
+                    iso_exp = f"{exp_ymd.group(1)}-{int(exp_ymd.group(2)):02d}-{int(exp_ymd.group(3)):02d}"
+                    add_field("expiry_date", "Date of Expiration", iso_exp, iso_exp, 1, 0.97)
+            else:
+                add_field("expiry_date", "Date of Expiration", exp_xfa.group(1), normalize_date(exp_xfa.group(1)) or exp_xfa.group(1), 1, 0.97)
+
+        if "residential_address" not in added_keys:
+            apt_m = re.search(r"\bApt\s*Unit:\s*([^\r\n]+)", full_text)
+            str_m = re.search(r"\bStreet\s*name:\s*([^\r\n]+)", full_text, re.IGNORECASE)
+            cit_m = re.search(r"\bCity\s*Town:\s*([^\r\n]+)", full_text)
+            pos_m = re.search(r"\bPostal\s*Code:\s*([^\r\n]+)", full_text)
+            addr_parts = [m.group(1).strip() for m in (apt_m, str_m, cit_m, pos_m) if m and m.group(1).strip()]
+            if len(addr_parts) >= 2:
+                xfa_addr = ", ".join(addr_parts)
+                add_field("residential_address", "Residential Address", xfa_addr, xfa_addr.title(), 1, 0.96)
+
+        if "email_address" not in added_keys:
+            em_xfa = re.search(r"\bEmail:\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,7})", full_text)
+            if em_xfa:
+                add_field("email_address", "Contact Email Address", em_xfa.group(1).strip(), em_xfa.group(1).strip().lower(), 1, 0.98)
+
+        if "phone_number" not in added_keys:
+            ph_xfa = re.search(r"\bActual\s*Number:\s*([0-9+\-\s]{7,20})", full_text)
+            if ph_xfa:
+                add_field("phone_number", "Contact Phone Number", ph_xfa.group(1).strip(), ph_xfa.group(1).strip(), 1, 0.96)
 
     # 3. SPECIALIZED IDENTITY RESOLUTION (Aadhaar, PAN, Indian Passport, Single-Name/FNU)
     # Aadhaar Card detection & mandatory 8-digit masking
@@ -559,6 +684,8 @@ def extract_structured_fields(
             0.99,
             method="statutory_identity_resolver",
         )
+        if aadhaar_info.holder_name and "full_name" not in added_keys:
+            add_field("full_name", "Full Name", aadhaar_info.holder_name, aadhaar_info.holder_name.title(), 1, 0.95, method="statutory_identity_resolver")
         if aadhaar_info.gender and "gender" not in added_keys:
             add_field("gender", "Gender", aadhaar_info.gender, aadhaar_info.gender, 1, 0.95, method="statutory_identity_resolver")
         if aadhaar_info.date_of_birth and "date_of_birth" not in added_keys:
@@ -624,13 +751,17 @@ def extract_structured_fields(
     # Generic Parent & Address Extraction Fallback across Civil / Identity / Supporting Documents
     if "father_legal_name" not in added_keys:
         gen_fat_m = re.search(
-            r"(?:Father(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Father)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
+            r"(?:5\.\s*Father(?:'s)?\s*/\s*Hu(?:s?\s*band)(?:'s)?\s*Name|Father(?:'s)?\s*/\s*Hu(?:s?\s*band)(?:'s)?\s*Name|Father(?:'s)?(?:\s*Legal)?\s*Name|Name\s*of\s*Father)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
             full_text,
             re.IGNORECASE,
         )
         if gen_fat_m:
-            raw_fat = gen_fat_m.group(1).splitlines()[0].strip()
-            if raw_fat and not any(k in raw_fat.lower() for k in ("mother", "spouse", "address", "date", "birth")):
+            raw_fat = gen_fat_m.group(1).splitlines()[0].strip(" .:-_")
+            if (
+                raw_fat
+                and not any(raw_fat.lower().startswith(p) for p in ("of ", "is ", "and ", "in "))
+                and not any(k in raw_fat.lower() for k in ("mother", "spouse", "address", "date", "birth", "name", "nationality", "occupation", "relationship"))
+            ):
                 add_field("father_legal_name", "Father's Legal Name", raw_fat, raw_fat.title(), 1, 0.92)
 
     if "mother_legal_name" not in added_keys:
@@ -640,19 +771,32 @@ def extract_structured_fields(
             re.IGNORECASE,
         )
         if gen_mot_m:
-            raw_mot = gen_mot_m.group(1).splitlines()[0].strip()
-            if raw_mot and not any(k in raw_mot.lower() for k in ("father", "spouse", "address", "date", "birth")):
+            raw_mot = gen_mot_m.group(1).splitlines()[0].strip(" .:-_")
+            if (
+                raw_mot
+                and not any(raw_mot.lower().startswith(p) for p in ("of ", "is ", "and ", "in "))
+                and not any(k in raw_mot.lower() for k in ("father", "spouse", "address", "date", "birth", "name", "nationality", "occupation", "relationship"))
+            ):
                 add_field("mother_legal_name", "Mother's Legal Name", raw_mot, raw_mot.title(), 1, 0.92)
 
     if "residential_address" not in added_keys:
         gen_addr_m = re.search(
-            r"(?:Permanent\s*Address|Residential\s*Address|Present\s*Address|Address)[\s:]+([^\r\n]{8,140})",
+            r"(?:Permanent\s*Resi(?:dential)?\s*Address(?:\s*:\s*Present\s*Resi(?:dential)?\s*Address)?|Present\s*Resi(?:dential)?\s*Address|Permanent\s*Address|Residential\s*Address|Present\s*Address|Address(?!\s*(?:In\s*Canada|of\s*parents|of\s*the)))[\s:]+([^\r\n]{8,140})",
             full_text,
             re.IGNORECASE,
         )
         if gen_addr_m:
-            raw_addr = gen_addr_m.group(1).strip()
-            if raw_addr and not any(raw_addr.lower().startswith(p) for p in ("http", "www", "email")):
+            raw_addr = gen_addr_m.group(1).strip(" .:-_")
+            bad_addr_substrings = (
+                "you to canada", "yes no", "itr-", "incanada", "in canada", "(with sufficient",
+                "status of the", "date of", "place of", "occupation", "relationship",
+                "presentresiaddress", "permanentresiaddress", "present resi", "permanent resi"
+            )
+            if (
+                raw_addr
+                and not any(raw_addr.lower().startswith(p) for p in ("http", "www", "email", "(", "of ", "in canada"))
+                and not any(b in raw_addr.lower() for b in bad_addr_substrings)
+            ):
                 add_field("residential_address", "Residential Address", raw_addr, raw_addr, 1, 0.90)
 
     # Driving Licence detection
@@ -676,18 +820,19 @@ def extract_structured_fields(
         if voter_info.relative_name and "guardian_or_spouse_name" not in added_keys:
             add_field("guardian_or_spouse_name", "Father / Husband Legal Name", voter_info.relative_name, voter_info.relative_name, 1, 0.93, method="statutory_identity_resolver")
 
-    # Single-Name / FNU Detection
-    full_name_fields = [f for f in extracted_fields if f.field_name in ("full_name", "pan_holder_name")]
-    if full_name_fields:
-        cand_name = full_name_fields[0].original_value.strip()
-        parts = cand_name.split()
-        if len(parts) == 1 and len(parts[0]) >= 3:
-            single_res = IdentityResolver.resolve_single_name(first_name=parts[0], last_name=None)
-            if single_res.is_single_name and "single_name_uscis_given" not in added_keys:
-                add_field("single_name_uscis_given", "USCIS Form Given Name", single_res.uscis_first_name, single_res.uscis_first_name, 1, 0.99, method="statutory_identity_resolver")
-                add_field("single_name_ircc_given", "Canada IRCC Given Name", single_res.ircc_given_name or "(Blank)", single_res.ircc_given_name, 1, 0.99, method="statutory_identity_resolver")
-                add_field("single_name_ukvi_given", "UKVI Given Name", single_res.ukvi_given_name, single_res.ukvi_given_name, 1, 0.99, method="statutory_identity_resolver")
-                add_field("single_name_guidance", "Single Name Form Guidance", single_res.guidance_notes, single_res.guidance_notes, 1, 0.99, method="statutory_identity_resolver")
+    # Single-Name / FNU Detection (applicable to Identity/Passport documents where a legal single name is recorded)
+    if category == "identity_passport" or "P<" in full_text or "PASSPORT" in full_text.upper():
+        full_name_fields = [f for f in extracted_fields if f.field_name in ("full_name", "pan_holder_name")]
+        if full_name_fields:
+            cand_name = full_name_fields[0].original_value.strip()
+            parts = cand_name.split()
+            if len(parts) == 1 and len(parts[0]) >= 3 and parts[0].lower() not in ("ifirm", "firm", "company"):
+                single_res = IdentityResolver.resolve_single_name(first_name=parts[0], last_name=None)
+                if single_res.is_single_name and "single_name_uscis_given" not in added_keys:
+                    add_field("single_name_uscis_given", "USCIS Form Given Name", single_res.uscis_first_name, single_res.uscis_first_name, 1, 0.99, method="statutory_identity_resolver")
+                    add_field("single_name_ircc_given", "Canada IRCC Given Name", single_res.ircc_given_name or "(Blank)", single_res.ircc_given_name, 1, 0.99, method="statutory_identity_resolver")
+                    add_field("single_name_ukvi_given", "UKVI Given Name", single_res.ukvi_given_name, single_res.ukvi_given_name, 1, 0.99, method="statutory_identity_resolver")
+                    add_field("single_name_guidance", "Single Name Form Guidance", single_res.guidance_notes, single_res.guidance_notes, 1, 0.99, method="statutory_identity_resolver")
 
     # 4. CIVIL STATUS, BIRTH CERTIFICATE & MARRIAGE CERTIFICATE EXTRACTION
     has_birth_cert_any_page = any(
@@ -713,7 +858,7 @@ def extract_structured_fields(
 
         def _clean_bc_candidate_name(raw_str: str) -> str:
             s = re.sub(
-                r"^(?:[1-9]|10|[૧૨૩૪૫૬૭૮૯૦]+)?\s*[\.\)\-]?\s*(?:Name\s*of\s*Mother|Name\s*of\s*Father|Full\s*Name|Name|નામ|માતાનું\s*નામ|પિતાનું\s*નામ|माता\s*का\s*नाम|पिता\s*का\s*नाम)\b[\s:\.\-]*",
+                r"^(?:[1-9]|10|[૧૨૩૪૫૬૭૮૯૦]+)?\s*[\.\)\-]?\s*(?:(?:Name\s*of\s*Mother|Mother(?:'s)?\s*Name|Name\s*of\s*Father|Father(?:'s)?\s*Name|Full\s*Name|Name|માતાનું\s*નામ|પિતાનું\s*નામ|નામ|माता\s*का\s*नाम|पिता\s*का\s*नाम|नाम)[\s/:\.\-]*)+",
                 "",
                 raw_str or "",
                 flags=re.IGNORECASE,
@@ -726,13 +871,19 @@ def extract_structured_fields(
             cand = _clean_bc_candidate_name(raw_str)
             if not cand or len(cand) < 3 or len(cand) > 55:
                 return False
-            if re.search(r"\d", cand):
+            if re.search(r"[\d:]", cand):
+                return False
+            if re.search(r"(?:માતાનું|પિતાનું|નામ|સરકાર|પ્રમાણપત્ર|જન્મ|તારીખ|સ્થળ|સરનામું|નોંધણી|જાતિ|माता|पिता|नाम|सरकार|प्रमाण|जन्म|तिथि|स्थान|पता|पंजीकरण|लिंग)", cand):
                 return False
             letters = re.findall(r"[A-Za-z\u0900-\u097F\u0A80-\u0AFF]", cand)
             if len(letters) < 3:
                 return False
-            eng_words = [w.lower() for w in re.findall(r"[A-Za-z]+", cand)]
-            if eng_words:
+            raw_eng_words = re.findall(r"[A-Za-z]+", cand)
+            if raw_eng_words:
+                # Reject OCR misreads of Gujarati script which start with lowercase letters (e.g., 'khialkk Ho', 'dai olh')
+                if any(w[0].islower() for w in raw_eng_words):
+                    return False
+                eng_words = [w.lower() for w in raw_eng_words]
                 if any(w in bc_bad_name_tokens for w in eng_words):
                     return False
                 if not all(len(w) >= 2 or len(eng_words) > 1 for w in eng_words):
@@ -815,14 +966,18 @@ def extract_structured_fields(
             ph = max(p.height, 1.0)
 
             # Classify spatial person-name blocks on this Birth Certificate page into Left Column vs Right Column
+            header_y1 = max(
+                (b.y1 for b in p.blocks if re.search(r"Certify\s+that|village\s*/\s*City", b.text, re.IGNORECASE)),
+                default=ph * 0.25,
+            )
             left_name_blocks: list[tuple[str, Any]] = []
             right_name_blocks: list[tuple[str, Any]] = []
             for b in sorted(p.blocks, key=lambda blk: (blk.y0, blk.x0)):
-                # Only consider body region of certificate (0.25*H to 0.72*H)
-                if b.y0 < ph * 0.22 or b.y0 > ph * 0.75:
+                # Only consider body region of certificate below the header preamble
+                if b.y0 < header_y1 - 4.0 or b.y0 > ph * 0.75:
                     continue
                 cand_b = _clean_bc_candidate_name(b.text)
-                if _is_valid_bc_person_name(cand_b):
+                if _is_valid_bc_person_name(cand_b) and (b.confidence >= 0.72 or cand_b.isupper()):
                     if b.x0 < pw * 0.45:
                         left_name_blocks.append((cand_b, b))
                     else:
@@ -832,18 +987,21 @@ def extract_structured_fields(
             bc_child_name: Optional[str] = None
             bc_child_loc: Optional[dict] = None
             for idx_l, ln in enumerate(p_lines):
-                if re.search(r"(?:^|\b)(?:1\s*[\.\)]?\s*Name|૧\s*[\.\)]?\s*નામ|1\s*[\.\)]?\s*नाम)(?!\s+of\b)", ln, re.IGNORECASE):
+                if (
+                    re.search(r"(?:^|\b)(?:1\s*[\.\)]?\s*(?:Name|નામ|नाम)|^Name\b|^નામ\b|^नाम\b)(?!\s+of\b)", ln, re.IGNORECASE)
+                    and not re.search(r"(?:માતાનું|પિતાનું|माता|पिता|Mother|Father)", ln, re.IGNORECASE)
+                ):
                     same_val = _clean_bc_candidate_name(ln)
                     if _is_valid_bc_person_name(same_val):
                         bc_child_name = same_val
                         break
-                    # Check line immediately ABOVE (on Gujarat certificates, value is typed between ૧. નામ and 1. Name)
-                    if idx_l - 1 >= 0 and _is_valid_bc_person_name(p_lines[idx_l - 1]):
-                        bc_child_name = _clean_bc_candidate_name(p_lines[idx_l - 1])
-                        break
-                    # Check line immediately BELOW
-                    if idx_l + 1 < len(p_lines) and _is_valid_bc_person_name(p_lines[idx_l + 1]):
-                        bc_child_name = _clean_bc_candidate_name(p_lines[idx_l + 1])
+                    for adj in (idx_l - 1, idx_l + 1, idx_l - 2, idx_l + 2):
+                        if 0 <= adj < len(p_lines) and _is_valid_bc_person_name(p_lines[adj]):
+                            cand_adj = _clean_bc_candidate_name(p_lines[adj])
+                            if abs(adj - idx_l) == 1 or cand_adj.isupper():
+                                bc_child_name = cand_adj
+                                break
+                    if bc_child_name:
                         break
 
             if not bc_child_name and left_name_blocks:
@@ -883,7 +1041,7 @@ def extract_structured_fields(
             bc_reg_date_loc: Optional[dict] = None
 
             m_reg_dt = re.search(
-                r"(?:10\s*[\.\)]?\s*)?(?:Date\s*of\s*Registration|નોંધણીની\s*તારીખ|पंजीकरण\s*की\s*तिथि)[\s:]*([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4})",
+                r"(?:10\s*[\.\)]?\s*)?(?:(?:Date\s*of\s*Registration|નોંધણીની\s*તારીખ|નોંધણી\s*તારીખ|पंजीकरण\s*(?:की\s*)?तिथि)[\s/:]*)+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4})",
                 p_text,
                 re.IGNORECASE,
             )
@@ -891,7 +1049,7 @@ def extract_structured_fields(
                 bc_reg_date = m_reg_dt.group(1).strip()
 
             m_dob_dt = re.search(
-                r"(?:3\s*[\.\)]?\s*)?(?:Date\s*of\s*Birth|જન્મ\s*તારીખ|जन्म\s*तिथि)[\s:]*([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4})",
+                r"(?:3\s*[\.\)]?\s*)?(?:(?:Date\s*of\s*Birth|જન્મ\s*તારીખ|जन्म\s*तिथि|जन्म\s*तारीख)[\s/:]*)+([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{2,4})",
                 p_text,
                 re.IGNORECASE,
             )
@@ -951,11 +1109,12 @@ def extract_structured_fields(
                         re.IGNORECASE,
                     )
                     if m_hosp:
-                        bc_pob = re.sub(r"^(?:Place\s*of\s*Birth|4\s*[\.\)])[\s:]*", "", m_hosp.group(1), flags=re.IGNORECASE).strip(" .:-_")
+                        bc_pob = re.sub(r"^(?:Place\s*of\s*Birth|Pla[a-z]*\s+|4\s*[\.\)])[\s:]*", "", m_hosp.group(1), flags=re.IGNORECASE).strip(" .:-_")
                         bc_pob_loc = _block_to_loc(b, p)
                         break
 
             if bc_pob:
+                bc_pob = re.sub(r"^(?:Place\s*of\s*Birth|Pla[a-z]*\s+|4\s*[\.\)])[\s:]*", "", bc_pob, flags=re.IGNORECASE).strip(" .:-_")
                 if not bc_pob_loc:
                     bc_pob_loc = _find_block_location([p], bc_pob, p_num)
                 _add_bc_field("place_of_birth", "birth_cert_place_of_birth", "Place of Birth", bc_pob, bc_pob.title(), p_num, 0.96, bc_pob_loc)
@@ -1007,7 +1166,7 @@ def extract_structured_fields(
                     if m_fat and _is_valid_bc_person_name(m_fat.group(1)):
                         bc_father = _clean_bc_candidate_name(m_fat.group(1))
                         break
-                    for adj in (idx_l + 1, idx_l - 1):
+                    for adj in (idx_l + 1, idx_l + 2, idx_l - 1):
                         if 0 <= adj < len(p_lines) and _is_valid_bc_person_name(p_lines[adj]):
                             cand_f = _clean_bc_candidate_name(p_lines[adj])
                             if cand_f not in (bc_child_name, bc_mother):
@@ -1075,16 +1234,16 @@ def extract_structured_fields(
             bc_reg_no: Optional[str] = None
             bc_reg_no_loc: Optional[dict] = None
             m_reg_no = re.search(
-                r"(?:9\s*[\.\)]?\s*)?(?:Registration\s*No\.?|નોંધણી\s*ક્રમાંક|पंजीकरण\s*संख्या)[ \t:]*([0-9]{1,10}(?:/[0-9]{2,4})?)(?!\s*[\.\)])\b",
+                r"(?:9\s*[\.\)]?\s*)?(?:Registration\s*No\.?|નોંધણી\s*ક્રમાંક|पंजीकरण\s*संख्या)[\s:]*([0-9]{1,10}(?:/[0-9]{2,4})?)(?!\s*[\.\)]\s*[A-Za-z])",
                 p_text,
                 re.IGNORECASE,
             )
             if m_reg_no:
-                bc_reg_no = m_reg_no.group(1).strip()
+                bc_reg_no = m_reg_no.group(1).strip(" .:-_")
             else:
                 for idx_l, ln in enumerate(p_lines):
                     if re.search(r"(?:9\s*[\.\)]?\s*)?(?:Registration\s*No\.?|નોંધણી\s*ક્રમાંક)", ln, re.IGNORECASE) and idx_l + 1 < len(p_lines):
-                        m_nxt_no = re.search(r"^([0-9]{1,8}(?:/[0-9]{2,4})?)(?!\s*[\.\)])$", p_lines[idx_l + 1].strip(" .:-_"))
+                        m_nxt_no = re.search(r"^([0-9]{1,8}(?:/[0-9]{2,4})?)$", p_lines[idx_l + 1].strip(" .:-_"))
                         if m_nxt_no:
                             bc_reg_no = m_nxt_no.group(1)
                             break
@@ -1092,6 +1251,20 @@ def extract_structured_fields(
             if bc_reg_no:
                 bc_reg_no_loc = _find_block_location([p], bc_reg_no, p_num)
                 _add_bc_field("birth_registration_number", "registration_number", "Birth Registration No.", bc_reg_no, bc_reg_no, p_num, 0.97, bc_reg_no_loc)
+
+            # Date of Issue & Issuing Authority (Footer of Birth Certificate)
+            for idx_l, ln in enumerate(p_lines):
+                if re.search(r"(?:Date\s*of\s*Issue|તારીખ)", ln, re.IGNORECASE):
+                    m_iss_bc = re.search(r"([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{4})", ln)
+                    if not m_iss_bc and idx_l - 1 >= 0:
+                        m_iss_bc = re.search(r"([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{4})", p_lines[idx_l - 1])
+                    if not m_iss_bc and idx_l + 1 < len(p_lines):
+                        m_iss_bc = re.search(r"([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{4})", p_lines[idx_l + 1])
+                    if m_iss_bc:
+                        raw_bc_iss = m_iss_bc.group(1)
+                        iss_loc = _find_block_location([p], raw_bc_iss, p_num)
+                        _add_bc_field("issue_date", "birth_cert_issue_date", "Date of Issue", raw_bc_iss, normalize_date(raw_bc_iss) or raw_bc_iss, p_num, 0.95, iss_loc)
+                        break
 
             # Municipality / Village / Taluka / District from Header
             m_muni = re.search(
@@ -1126,45 +1299,152 @@ def extract_structured_fields(
                 add_field("represented_family_member", "Represented Family Member", raw_fam, raw_fam, 1, 0.96)
 
         # IRCC IMM 5645 Family Information Form
-        if "FAMILY INFORMATION" in full_text.upper() or "IMM5645" in (filename or "").upper():
+        if "FAMILY INFORMATION" in full_text.upper() or "FAMILYINFORMATION" in full_text.upper() or "IMM5645" in (filename or "").upper():
             if "ircc_form_number" not in added_keys:
                 add_field("ircc_form_number", "IRCC Form Identifier", "IMM 5645", "IMM 5645", 1, 0.99)
-            app_m = re.search(r"(?:Applicant\s*Name|Full\s*Name)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            app_m = re.search(r"(?:Applicant\s*Name|Full\s*Name|ApplicantName)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            if not app_m:
+                app_m = re.search(r"([A-Z][A-Za-z\s]{4,45}?)\s+Applicant\s+Country\s+of\s+Birth", full_text)
             if app_m and "full_name" not in added_keys:
-                raw_app = app_m.group(1).splitlines()[0].strip().title()
-                add_field("full_name", "Full Name", raw_app, raw_app, 1, 0.96)
-            sp_m = re.search(r"(?:Spouse\s*or\s*Common-law\s*Partner|Spouse\s*Name)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+                raw_app = app_m.group(1).splitlines()[-1].strip().title()
+                if not any(k in raw_app.lower() for k in ("spouse", "mother", "father", "relationship", "date", "section", "note")):
+                    add_field("full_name", "Full Name", raw_app, raw_app, 1, 0.96)
+
+            imm_dob_m = re.search(r"Applicant\s+Country\s+of\s+Birth[\s:]*([0-9]{4}-[0-9]{2}-[0-9]{2})", full_text, re.IGNORECASE)
+            if imm_dob_m and "date_of_birth" not in added_keys:
+                add_field("date_of_birth", "Date of Birth", imm_dob_m.group(1), imm_dob_m.group(1), 1, 0.97)
+
+            sp_m = re.search(r"(?:Spouse\s*or\s*Common-law\s*Partner|Spouse\s*Name|SpouseName)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            if not sp_m:
+                sp_m = re.search(r"(?:Marital\s*status:\s*)?([A-Z][A-Za-z\s]{4,45}?)\s+(?:common-law\s+)?Spouse\b", full_text)
             if sp_m and "spouse_legal_name" not in added_keys:
-                raw_sp = sp_m.group(1).splitlines()[0].strip().title()
-                add_field("spouse_legal_name", "Spouse's Legal Name", raw_sp, raw_sp, 1, 0.96)
+                raw_sp = sp_m.group(1).splitlines()[-1].strip().title()
+                if not any(k in raw_sp.lower() for k in ("applicant", "mother", "father", "relationship", "date", "married", "present")):
+                    add_field("spouse_legal_name", "Spouse's Legal Name", raw_sp, raw_sp, 1, 0.96)
 
-        # Memorandum / Certificate of Marriage
-        if "MEMRANDUM OF MARRIAGE" in full_text.upper() or "MEMORANDUM OF MARRIAGE" in full_text.upper() or "CERTIFICATE OF MARRIAGE" in full_text.upper() or "MARRIAGE" in (filename or "").upper():
-            cert_no_m = re.search(r"(?:Certificate\s*No\.?|Registration\s*No\.?)[\s:]+([A-Z0-9/\-]+)", full_text, re.IGNORECASE)
+            mot_5645 = re.search(r"([A-Z][A-Za-z\s]{4,45}?)\s+Mother\s+Country\s+of\s+Birth", full_text)
+            if mot_5645 and "mother_legal_name" not in added_keys:
+                raw_m5645 = mot_5645.group(1).splitlines()[-1].strip().title()
+                if not any(k in raw_m5645.lower() for k in ("deceased", "ahmedabad", "india", "married")):
+                    add_field("mother_legal_name", "Mother's Legal Name", raw_m5645, raw_m5645, 1, 0.96)
+
+            fat_5645 = re.search(r"([A-Z][A-Za-z\s]{4,45}?)\s+Father\s+Country\s+of\s+Birth", full_text)
+            if fat_5645 and "father_legal_name" not in added_keys:
+                raw_f5645 = fat_5645.group(1).splitlines()[-1].strip().title()
+                if not any(k in raw_f5645.lower() for k in ("society", "ahmedabad", "india", "married")):
+                    add_field("father_legal_name", "Father's Legal Name", raw_f5645, raw_f5645, 1, 0.96)
+
+        # Memorandum / Certificate of Marriage (supports both tabular Memorandum and Gujarat Form II Prose Certificate)
+        if (
+            "MEMRANDUM OF MARRIAGE" in full_text.upper()
+            or "MEMORANDUM OF MARRIAGE" in full_text.upper()
+            or "CERTIFICATE OF MARRIAGE" in full_text.upper()
+            or "MARRIAGE" in (filename or "").upper()
+            or ("SOLEMNIZED" in full_text.upper() and "MARRIAGE" in full_text.upper())
+            or "BRIDEGROOM" in full_text.upper()
+        ):
+            # 1. Gujarat Form II Prose Certificate ("Certify that Shri <Groom> Son of Shri <GroomFather> ... and <Bride> daughter of Shri <BrideFather> ... solemnized on <Date> ... serial No <No>")
+            prose_groom_m = re.search(
+                r"Certify\s+that\s+(?:Shri|Smt\.?|Mr\.?)?\s*([A-Za-z][A-Za-z\s\.-]{2,45}?)\s+(?:Son|S/o)\s+of\s+(?:Shri|Mr\.?)?\s*([A-Za-z][A-Za-z\s\.-]{2,45}?)\s+residing\s+at",
+                full_text,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if prose_groom_m:
+                raw_pg = " ".join(prose_groom_m.group(1).split()).strip(" .:-_")
+                raw_pgf = " ".join(prose_groom_m.group(2).split()).strip(" .:-_")
+                if raw_pg and "groom_name" not in added_keys:
+                    add_field("groom_name", "Bridegroom Legal Name", raw_pg, raw_pg.title(), 1, 0.98)
+                    if "full_name" not in added_keys:
+                        add_field("full_name", "Full Name", raw_pg, raw_pg.title(), 1, 0.98)
+                        add_field("applicant_name", "Candidate Applicant Name", raw_pg, raw_pg.title(), 1, 0.98)
+                if raw_pgf and "father_legal_name" not in added_keys:
+                    add_field("father_legal_name", "Bridegroom's Father Name", raw_pgf, raw_pgf.title(), 1, 0.96)
+
+            prose_bride_m = re.search(
+                r"\band\s+(?:Kum\.?|Smt\.?|Ms\.?|Chi\.?)?\s*([A-Za-z][A-Za-z\s\.-]{2,45}?)\s+(?:daughter\s*of|D/o)\s+(?:Shri|Mr\.?)?\s*([A-Za-z0-9][A-Za-z0-9\s\.-]{2,45}?)(?:\s+(?:n\s*|r\s*)?residing|\s+[nr]\s+siding|\s+have|\s+was|\r|\n)",
+                full_text,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if prose_bride_m:
+                raw_pb = " ".join(prose_bride_m.group(1).split()).strip(" .:-_")
+                raw_pbf = " ".join(prose_bride_m.group(2).split()).strip(" .:-_")
+                # Check if an interline family surname was written just below 'daughter of Shri ... residing at ...' before 'have furnished'
+                tail_after_bride = full_text[prose_bride_m.end():prose_bride_m.end() + 140]
+                interline_surname_m = re.search(
+                    r"\b(PATEL|SHAH|AMIN|DESAI|MEHTA|MODI|JOSHI|TRIVEDI|PANDYA|BHATT|PARIKH|CHAUHAN|SOLANKI|RATHOD|THAKKAR|VYAS|BRAHMBHATT|PRAJAPATI|PANCHAL|BHAVSAR|SONI|GANDHI|KOTHARI)\b(?=.*?\bhave\b)",
+                    tail_after_bride,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                if interline_surname_m:
+                    cand_sur = interline_surname_m.group(1).upper()
+                    if cand_sur not in raw_pbf.upper().split():
+                        raw_pbf = f"{raw_pbf} {cand_sur}".strip()
+                if raw_pb and "bride_name" not in added_keys:
+                    add_field("bride_name", "Bride Legal Name", raw_pb, raw_pb.title(), 1, 0.98)
+                    if "spouse_legal_name" not in added_keys:
+                        add_field("spouse_legal_name", "Spouse / Bride Legal Name", raw_pb, raw_pb.title(), 1, 0.97)
+                if raw_pbf and "bride_father_name" not in added_keys:
+                    add_field("bride_father_name", "Bride's Father Name", raw_pbf, raw_pbf.title(), 1, 0.95)
+
+            cert_no_m = re.search(
+                r"(?:Certificate\s*No\.?|Registration\s*No\.?|se?a?rial\s*No\.?)[\s:_/\-]*([0-9A-Za-z][0-9A-Za-z\s/\-_]{0,12}?)(?=\s+of\s+volume|\s+of\s+\d{4}|[\r\n]|$)",
+                full_text,
+                re.IGNORECASE,
+            )
             if cert_no_m and "marriage_certificate_number" not in added_keys:
-                add_field("marriage_certificate_number", "Marriage Certificate Number", cert_no_m.group(1).strip(), cert_no_m.group(1).strip().upper(), 1, 0.98)
+                cand_cno = cert_no_m.group(1).strip(" .:-_/")
+                cand_cno = re.sub(r"\s+of$", "", cand_cno, flags=re.IGNORECASE).strip(" .:-_/")
+                # Collapse spaces inside handwritten digits (e.g., '_8 2_' -> '82')
+                if re.fullmatch(r"[\d\s_]+", cand_cno):
+                    cand_cno = re.sub(r"[\s_]+", "", cand_cno)
+                if any(ch.isdigit() for ch in cand_cno):
+                    add_field("marriage_certificate_number", "Marriage Certificate Number", cand_cno, cand_cno.upper(), 1, 0.98)
 
-            m_d = re.search(r"(?:Date\s+of\s+Marriage[\s:]+)(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{4})", full_text, re.IGNORECASE)
+            m_d = re.search(r"(?:Date\s+of\s+Marriage[\s:]+|solemnized\s+on\s+(?:date\s*)?)(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{2,4})", full_text, re.IGNORECASE)
             if not m_d:
                 m_d = re.search(r"\b(\d{1,2}-\d{1,2}-\d{4})\b", full_text)
             if m_d and "marriage_date" not in added_keys:
-                add_field("marriage_date", "Date of Marriage", m_d.group(1), normalize_date(m_d.group(1)), 1, 0.98)
+                add_field("marriage_date", "Date of Marriage", m_d.group(1), normalize_date(m_d.group(1)) or m_d.group(1), 1, 0.98)
 
-            reg_d = re.search(r"(?:Date\s+of\s+Registration[\s:]+)(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{4})", full_text, re.IGNORECASE)
+            reg_d = re.search(
+                r"(?:Date\s+of\s+Registration[\s:]+|Reg[ie]st[e]?red\s+on[\s:]+|Given\s+under\s+my\s+hand[^\r\n]*?on\s+(?:date\s*)?|\bDate\s*:\s*)(\d{1,2}[/\.-]\s*\d{1,2}[/\.-]\s*\d{2,4})",
+                full_text,
+                re.IGNORECASE,
+            )
             if reg_d and "marriage_registration_date" not in added_keys:
-                add_field("marriage_registration_date", "Date of Registration", reg_d.group(1), normalize_date(reg_d.group(1)), 1, 0.97)
+                raw_reg_d = re.sub(r"\s+", "", reg_d.group(1))
+                add_field("marriage_registration_date", "Date of Registration", raw_reg_d, normalize_date(raw_reg_d) or raw_reg_d, 1, 0.97)
 
             groom_label_m = re.search(r"(?:FULL\s+NAME\s+OF\s+THE\s+BRIDEGROOM|BRIDEGROOM\s+NAME|GROOM\s+NAME)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
             if groom_label_m and "groom_name" not in added_keys:
                 raw_g = groom_label_m.group(1).splitlines()[0].strip()
-                add_field("groom_name", "Bridegroom Legal Name", raw_g, raw_g.title(), 1, 0.98)
-                if "full_name" not in added_keys:
-                    add_field("full_name", "Full Name", raw_g, raw_g.title(), 1, 0.98)
+                if not any(k in raw_g.lower() for k in ("religion", "age", "occupation", "status", "address")):
+                    add_field("groom_name", "Bridegroom Legal Name", raw_g, raw_g.title(), 1, 0.98)
+                    if "full_name" not in added_keys:
+                        add_field("full_name", "Full Name", raw_g, raw_g.title(), 1, 0.98)
 
             bride_label_m = re.search(r"(?:FULL\s+NAME\s+OF\s+THE\s+BRIDE|BRIDE\s+NAME)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
             if bride_label_m and "bride_name" not in added_keys:
                 raw_b = bride_label_m.group(1).splitlines()[0].strip()
-                add_field("bride_name", "Bride Legal Name", raw_b, raw_b.title(), 1, 0.98)
+                if not any(k in raw_b.lower() for k in ("religion", "age", "occupation", "status", "address")):
+                    add_field("bride_name", "Bride Legal Name", raw_b, raw_b.title(), 1, 0.98)
+
+            # Fallback for old Bombay Marriage Act Memorandum where Groom/Bride names precede '<N> years'
+            if "groom_name" not in added_keys or "bride_name" not in added_keys:
+                age_names = re.findall(r"([A-Z][A-Z\s,\.]{4,45}?)\s*[\r\n]+\s*[1-6][0-9]\s*years", full_text)
+                cleaned_age_names = [
+                    " ".join(re.sub(r"[\.,]+", " ", an).split()).strip()
+                    for an in age_names
+                    if not any(k in an.lower() for k in ("age", "status", "unmarried", "married", "address", "bride", "father"))
+                ]
+                if len(cleaned_age_names) >= 1 and "groom_name" not in added_keys:
+                    add_field("groom_name", "Bridegroom Legal Name", cleaned_age_names[0], cleaned_age_names[0].title(), 1, 0.94)
+                    if "full_name" not in added_keys:
+                        add_field("full_name", "Full Name", cleaned_age_names[0], cleaned_age_names[0].title(), 1, 0.94)
+                if len(cleaned_age_names) >= 2 and "bride_name" not in added_keys:
+                    add_field("bride_name", "Bride Legal Name", cleaned_age_names[1], cleaned_age_names[1].title(), 1, 0.94)
+                    if "spouse_legal_name" not in added_keys:
+                        add_field("spouse_legal_name", "Spouse / Bride Legal Name", cleaned_age_names[1], cleaned_age_names[1].title(), 1, 0.94)
 
             priest_m = re.search(r"(?:Officiating\s+Priest|Priest\s+Name)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
             if priest_m and "officiating_priest" not in added_keys:
@@ -1174,9 +1454,10 @@ def extract_structured_fields(
             place_m = re.search(r"(?:Place\s+of\s+Marriage)[\s:]+([^\r\n]{4,80})", full_text, re.IGNORECASE)
             if place_m and "marriage_place" not in added_keys:
                 raw_pl = place_m.group(1).strip()
-                add_field("marriage_place", "Place of Marriage", raw_pl, raw_pl, 1, 0.96)
+                if not any(k in raw_pl.lower() for k in ("(with sufficient", "particulars to locate", "village, taluka")):
+                    add_field("marriage_place", "Place of Marriage", raw_pl, raw_pl, 1, 0.96)
 
-            act_m = re.search(r"\b(Bombay Registration of Marriages Act[^\n\r,]*|Registration of Marriages Act(?:,\s*\d{4})?|Special Marriage Act|Hindu Marriage Act)\b", full_text, re.IGNORECASE)
+            act_m = re.search(r"\b(Bombay Registration of Marriages Act[^\n\r,]*|Gujarat Registration of Marriages Act[^\n\r,]*|Registration of Marriages Act(?:,\s*\d{4})?|Special Marriage Act|Hindu Marriage Act)\b", full_text, re.IGNORECASE)
             if act_m and "marriage_governing_act" not in added_keys:
                 add_field("marriage_governing_act", "Marriage Governing Statute", act_m.group(1).strip(), act_m.group(1).strip().title(), 1, 0.94)
 
@@ -1594,7 +1875,7 @@ def extract_structured_fields(
             add_field("insured_person_name", "Insured Person Name", raw_ins, raw_ins.title(), 1, 0.96)
 
     # 12. POLICE & UPFRONT MEDICAL EXTRACTION (eMedical / IME / UMI)
-    if category in ("police_medical", "supporting_evidence"):
+    if category in ("police_medical", "supporting_evidence") or "eMedical" in full_text or "501MedicalExamination" in full_text:
         umi_m = re.search(r"\b(?:UMI#?|UMI\s*#?|UMI\s*No\.?)[\s:]*([A-Z0-9]{8,15})\b", full_text, re.IGNORECASE)
         if umi_m and "umi_number" not in added_keys:
             add_field("umi_number", "Upfront Medical Identifier (UMI)", umi_m.group(1).strip(), umi_m.group(1).strip().upper(), 1, 0.98)
@@ -1603,12 +1884,40 @@ def extract_structured_fields(
         if ime_m and "ime_number" not in added_keys:
             add_field("ime_number", "Immigration Medical Exam (IME)", ime_m.group(1).strip(), ime_m.group(1).strip().upper(), 1, 0.98)
 
+        med_fam = re.search(r"\bFamily\s*name[\s:]+([A-Za-z][A-Za-z\s\.-]{1,35}?)(?=\s*Date\s*of\s*Birth|\r|\n|$)", full_text, re.IGNORECASE)
+        med_giv = re.search(r"\bGiven\s*Name(?:\(s\))?[\s:]+([A-Za-z][A-Za-z\s\.-]{1,45}?)(?=\s*Identity|\s*Gender|\r|\n|$)", full_text, re.IGNORECASE)
+        if med_fam and med_giv:
+            raw_mf = med_fam.group(1).strip()
+            raw_mg = med_giv.group(1).strip()
+            comb_med = f"{raw_mg} {raw_mf}"
+            if "surname" not in added_keys:
+                add_field("surname", "Surname / Family Name", raw_mf, raw_mf.upper(), 1, 0.97)
+            if "given_names" not in added_keys:
+                add_field("given_names", "Given Names", raw_mg, raw_mg.title(), 1, 0.97)
+            if "full_name" not in added_keys:
+                add_field("full_name", "Full Name", comb_med, comb_med.title(), 1, 0.98)
+
+        med_dob = re.search(r"\bDate\s*of\s*Birth[\s:]+([0-9]{1,2}\s*[A-Za-z]{3,9}\s*[0-9]{4}|[0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{4})", full_text, re.IGNORECASE)
+        if med_dob and "date_of_birth" not in added_keys:
+            raw_mdob = med_dob.group(1).strip()
+            add_field("date_of_birth", "Date of Birth", raw_mdob, normalize_date(raw_mdob) or raw_mdob, 1, 0.97)
+
+        med_gen = re.search(r"\bGender[\s:]+(Female|Male)\b", full_text, re.IGNORECASE)
+        if med_gen and "gender" not in added_keys:
+            add_field("gender", "Gender", med_gen.group(1).title(), med_gen.group(1).title(), 1, 0.97)
+
         med_date = re.search(r"(?:Visit date:?|Exam date:?)[\s:]*([0-9]{1,2}\s*[A-Za-z]{3}\s*[0-9]{4}|[0-9]{4}[-/][0-9]{2}[-/][0-9]{2})", full_text, re.IGNORECASE)
         if med_date and "medical_exam_date" not in added_keys:
             raw_d = med_date.group(1).strip()
-            add_field("medical_exam_date", "Medical Examination Date", raw_d, normalize_date(raw_d), 1, 0.98)
+            add_field("medical_exam_date", "Medical Examination Date", raw_d, normalize_date(raw_d) or raw_d, 1, 0.98)
 
-        med_clinic = re.search(r"\b(Apollo\s*Hospitals?(?:-[A-Za-z]+)?|Max Healthcare|Fortis|Medanta|[A-Za-z\s]+Clinic|[A-Za-z\s]+Hospital)\b", full_text, re.IGNORECASE)
+        med_clinic = re.search(r"\b(Apollo\s*Hospitals?(?:-[A-Za-z]+)?|Max\s*Healthcare(?:-[A-Za-z]+)?|Fortis(?:\s*Hospital)?|Medanta|KD\s*Hospital|CIMS\s*Hospital)\b", full_text, re.IGNORECASE)
+        if not med_clinic:
+            for cm in re.finditer(r"\b([A-Z][A-Za-z\s\-]{3,35}(?:Clinic|Hospital))\b", full_text):
+                cand_cl = cm.group(1).strip()
+                if not any(bad in cand_cl.lower() for bad in ("emedical", "e medical", "medicalclinic", "medical clinic", "this clinic", "panel clinic")):
+                    med_clinic = cm
+                    break
         if med_clinic and "medical_exam_clinic" not in added_keys:
             add_field("medical_exam_clinic", "Designated Medical Clinic", med_clinic.group(1).strip(), med_clinic.group(1).strip().title(), 1, 0.95)
 
@@ -1624,6 +1933,119 @@ def extract_structured_fields(
         p_med = re.search(r"Identity\s*document\s*number[\s:]+([A-Z0-9]{7,10})", full_text, re.IGNORECASE)
         if p_med and "passport_number" not in added_keys:
             add_field("passport_number", "Passport Number", p_med.group(1).upper(), p_med.group(1).upper(), 1, 0.96)
+
+        med_iss = re.search(r"Date\s*of\s*issue[\s:]+([0-9]{1,2}\s*[A-Za-z]{3,9}\s*[0-9]{4})", full_text, re.IGNORECASE)
+        if med_iss and "issue_date" not in added_keys:
+            raw_mi = med_iss.group(1).strip()
+            add_field("issue_date", "Date of Issue", raw_mi, normalize_date(raw_mi) or raw_mi, 1, 0.96)
+
+        med_exp = re.search(r"Date\s*of\s*expiry[\s:]+([0-9]{1,2}\s*[A-Za-z]{3,9}\s*[0-9]{4})", full_text, re.IGNORECASE)
+        if med_exp and "expiry_date" not in added_keys:
+            raw_me = med_exp.group(1).strip()
+            add_field("expiry_date", "Date of Expiration", raw_me, normalize_date(raw_me) or raw_me, 1, 0.96)
+
+    # 11. INDIAN MULTILINGUAL EXTRACTION (GUJARATI ગુજરાતી & HINDI हिन्दी NATIVE LABELS)
+    if re.search(r"[\u0900-\u097F\u0A80-\u0AFF]", full_text):
+        # Full Name / Applicant Name in Gujarati or Hindi labels (e.g., નામ: / પૂરું નામ: / नाम: / पूरा नाम:)
+        if "full_name" not in added_keys:
+            indic_name_m = re.search(
+                r"(?:પૂરું\s*નામ|અરજદારનું\s*નામ|નામ|पूरा\s*नाम|आवेदक\s*का\s*नाम|नाम)\s*[:\-–]\s*([A-Za-z\u0900-\u097F\u0A80-\u0AFF][A-Za-z\u0900-\u097F\u0A80-\u0AFF\s\.]{2,60})",
+                full_text,
+            )
+            if indic_name_m:
+                raw_in_name = indic_name_m.group(1).splitlines()[0].strip()
+                norm_in_name = raw_in_name.title() if re.search(r"[A-Za-z]", raw_in_name) else raw_in_name
+                add_field("full_name", "Full Name (Indian Multilingual)", raw_in_name, norm_in_name, 1, 0.95)
+
+        # Father's Name in Gujarati (પિતાનું નામ) or Hindi (पिता का नाम)
+        if "father_legal_name" not in added_keys:
+            indic_father_m = re.search(
+                r"(?:પિતાનું\s*નામ|પિતા\s*નામ|पिता\s*का\s*नाम|पिता\s*नाम)\s*[:\-–]\s*([A-Za-z\u0900-\u097F\u0A80-\u0AFF][A-Za-z\u0900-\u097F\u0A80-\u0AFF\s\.]{2,60})",
+                full_text,
+            )
+            if indic_father_m:
+                raw_if = indic_father_m.group(1).splitlines()[0].strip()
+                norm_if = raw_if.title() if re.search(r"[A-Za-z]", raw_if) else raw_if
+                add_field("father_legal_name", "Father's Legal Name", raw_if, norm_if, 1, 0.95)
+
+        # Mother's Name in Gujarati (માતાનું નામ) or Hindi (माता का नाम)
+        if "mother_legal_name" not in added_keys:
+            indic_mother_m = re.search(
+                r"(?:માતાનું\s*નામ|માતા\s*નામ|माता\s*का\s*नाम|माता\s*नाम)\s*[:\-–]\s*([A-Za-z\u0900-\u097F\u0A80-\u0AFF][A-Za-z\u0900-\u097F\u0A80-\u0AFF\s\.]{2,60})",
+                full_text,
+            )
+            if indic_mother_m:
+                raw_im = indic_mother_m.group(1).splitlines()[0].strip()
+                norm_im = raw_im.title() if re.search(r"[A-Za-z]", raw_im) else raw_im
+                add_field("mother_legal_name", "Mother's Legal Name", raw_im, norm_im, 1, 0.95)
+
+        # Spouse Name in Gujarati (પતિ/પત્નીનું નામ) or Hindi (पति/पत्नी का नाम)
+        if "spouse_legal_name" not in added_keys:
+            indic_spouse_m = re.search(
+                r"(?:પતિ(?:/પત્ની)?નું\s*નામ|પત્નીનું\s*નામ|पति(?:/पत्नी)?\s*का\s*नाम|पत्नी\s*का\s*नाम)\s*[:\-–]\s*([A-Za-z\u0900-\u097F\u0A80-\u0AFF][A-Za-z\u0900-\u097F\u0A80-\u0AFF\s\.]{2,60})",
+                full_text,
+            )
+            if indic_spouse_m:
+                raw_isp = indic_spouse_m.group(1).splitlines()[0].strip()
+                norm_isp = raw_isp.title() if re.search(r"[A-Za-z]", raw_isp) else raw_isp
+                add_field("spouse_legal_name", "Spouse's Legal Name", raw_isp, norm_isp, 1, 0.95)
+
+        # Date of Birth in Gujarati (જન્મ તારીખ) or Hindi (जन्म तिथि)
+        if "date_of_birth" not in added_keys:
+            indic_dob_m = re.search(
+                r"(?:જન્મ\s*તારીખ|જ\.?\s*તા\.?|जन्म\s*तिथि|जन्म\s*तारीख)\s*[:\-–]\s*([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{4}|[0-9]{4}[/\.-][0-9]{1,2}[/\.-][0-9]{1,2})",
+                full_text,
+            )
+            if indic_dob_m:
+                raw_idob = indic_dob_m.group(1).strip()
+                add_field("date_of_birth", "Date of Birth", raw_idob, normalize_date(raw_idob) or raw_idob, 1, 0.96)
+
+        # Place of Birth in Gujarati (જન્મ સ્થળ) or Hindi (जन्म स्थान)
+        if "place_of_birth" not in added_keys:
+            indic_pob_m = re.search(
+                r"(?:જન્મ\s*સ્થળ|जन्म\s*स्थान)\s*[:\-–]\s*([A-Za-z\u0900-\u097F\u0A80-\u0AFF][A-Za-z\u0900-\u097F\u0A80-\u0AFF\s,\.-]{2,60})",
+                full_text,
+            )
+            if indic_pob_m:
+                raw_ipob = indic_pob_m.group(1).splitlines()[0].strip()
+                add_field("place_of_birth", "Place of Birth", raw_ipob, raw_ipob, 1, 0.94)
+
+        # Gender in Gujarati (પુરુષ / સ્ત્રી) or Hindi (पुरुष / महिला)
+        if "gender" not in added_keys:
+            if re.search(r"(?:પુરુષ|पुरुष)", full_text):
+                add_field("gender", "Gender", "Male (પુરુષ / पुरुष)", "Male", 1, 0.96)
+            elif re.search(r"(?:સ્ત્રી|महिला)", full_text):
+                add_field("gender", "Gender", "Female (સ્ત્રી / महिला)", "Female", 1, 0.96)
+
+        # Address in Gujarati (સરનામું / કાયમી સરનામું) or Hindi (पता / स्थायी पता)
+        if "residential_address" not in added_keys:
+            indic_addr_m = re.search(
+                r"(?:કાયમી\s*સરનામું|હાલનું\s*સરનામું|સરનામું|स्थायी\s*पता|वर्तमान\s*पता|पता)\s*[:\-–]\s*([A-Za-z0-9\u0900-\u097F\u0A80-\u0AFF][A-Za-z0-9\u0900-\u097F\u0A80-\u0AFF\s,\./\-]{5,120})",
+                full_text,
+            )
+            if indic_addr_m:
+                raw_iaddr = indic_addr_m.group(1).splitlines()[0].strip()
+                add_field("residential_address", "Residential Address", raw_iaddr, raw_iaddr, 1, 0.93)
+
+        # Registration Number in Gujarati (નોંધણી ક્રમાંક) or Hindi (पंजीकरण संख्या)
+        if "birth_registration_number" not in added_keys:
+            indic_reg_m = re.search(
+                r"(?:નોંધણી\s*ક્રમાંક|નોંધણી\s*નંબર|पंजीकरण\s*संख्या|रजिस्ट्रेशन\s*नं\.?)\s*[:\-–]\s*([A-Za-z0-9/\-]{1,25})",
+                full_text,
+            )
+            if indic_reg_m:
+                raw_ireg = indic_reg_m.group(1).strip()
+                add_field("birth_registration_number", "Registration Number", raw_ireg, raw_ireg, 1, 0.95)
+
+        # Registration Date in Gujarati (નોંધણીની તારીખ) or Hindi (पंजीकरण तिथि)
+        if "birth_registration_date" not in added_keys:
+            indic_rdate_m = re.search(
+                r"(?:નોંધણીની\s*તારીખ|નોંધણી\s*તારીખ|पंजीकरण\s*तिथि|पंजीकरण\s*की\s*तारीख)\s*[:\-–]\s*([0-9]{1,2}[/\.-][0-9]{1,2}[/\.-][0-9]{4})",
+                full_text,
+            )
+            if indic_rdate_m:
+                raw_irdate = indic_rdate_m.group(1).strip()
+                add_field("birth_registration_date", "Date of Registration", raw_irdate, normalize_date(raw_irdate) or raw_irdate, 1, 0.95)
 
     return extracted_fields
 

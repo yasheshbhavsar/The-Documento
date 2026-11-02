@@ -49,6 +49,12 @@ export interface ExtractorAnalysisResult {
     sha256_hash: string;
     page_count: number;
     detected_language: string;
+    detected_language_label?: string;
+    is_language_compliant?: boolean;
+    requires_caseworker_escalation?: boolean;
+    escalation_status?: "COMPLIANT" | "ESCALATED_TO_CASEWORKER";
+    caseworker_action?: string;
+    client_outreach_template?: string;
     total_blocks_detected: number;
     overall_health_score: number;
   };
@@ -61,6 +67,25 @@ export interface ExtractorAnalysisResult {
   extracted_fields: ExtractorFieldProvenance[];
   quality_findings: ExtractorQualityFinding[];
   specialized_intelligence: {
+    language_compliance?: {
+      is_compliant: boolean;
+      detected_language: string;
+      detected_language_label: string;
+      supported_languages: string[];
+      scripts_present: string[];
+      character_breakdown: {
+        english_latin: number;
+        gujarati: number;
+        hindi_devanagari: number;
+        unsupported: number;
+      };
+      unsupported_languages_detected: string[];
+      requires_caseworker_escalation: boolean;
+      escalation_status: "COMPLIANT" | "ESCALATED_TO_CASEWORKER";
+      escalation_reason?: string | null;
+      caseworker_action?: string | null;
+      client_outreach_template?: string | null;
+    };
     financial_forensics?: {
       institution: string;
       account_number_masked: string;
@@ -420,6 +445,46 @@ Father's Name: RAJESH SHARMA
 Date of Birth: 14/08/1992
 Taxpayer Status: Individual / Person`,
   },
+  {
+    id: "sample-trilingual-indian-birth-cert",
+    title: "Indian Trilingual Civil Certificate (English • ગુજરાતી • हिन्दी)",
+    category: "civil_status_family",
+    filename: "GUJARAT_BIRTH_CERTIFICATE_TRILINGUAL.pdf",
+    description: "Official Gujarat & Government of India Birth Certificate with English, Gujarati, and Hindi script labels and numerals.",
+    text_content: `ભારત સરકાર / भारत सरकार / GOVERNMENT OF INDIA
+ગુજરાત સરકાર - જન્મ અને મરણ નોંધણી અધિનિયમ, ૧૯૬૯
+जन्म प्रमाण पत्र / જન્મ પ્રમાણપત્ર / BIRTH CERTIFICATE
+(Issued under Section 12/17 of the Registration of Births and Deaths Act, 1969)
+
+for village/City: KALOL of Taluka: KALOL of District: GANDHINAGAR Gujarat State
+1. નામ / नाम / Name: KAVYA DEVANG MEHTA
+2. જાતિ / लिंग / Sex (M/F): સ્ત્રી / महिला / Female
+3. જન્મ તારીખ / जन्म तिथि / Date of Birth: ૧૮/૦૪/૨૦૦૬
+4. જન્મ સ્થળ / जन्म स्थान / Place of Birth: Suryam Hospital Kalol
+5. માતાનું નામ / माता का नाम / Name of Mother: NEHABEN DEVANG MEHTA
+6. પિતાનું નામ / पिता का नाम / Name of Father: DEVANGKUMAR RAMESHBHAI MEHTA
+7. કાયમી સરનામું / स्थायी पता / Permanent Address of Parents: 24, Shantiniketan Society, Kalol, Gandhinagar - 382721
+9. નોંધણી ક્રમાંક / पंजीकरण संख्या / Registration No: 814
+10. નોંધણીની તારીખ / पंजीकरण तिथि / Date of Registration: ૨૨/૦૪/૨૦૦૬
+Date of Issue: 12/01/2024`,
+  },
+  {
+    id: "sample-unknown-language-escalation",
+    title: "Foreign / Unknown Language Document (Case Worker Escalation)",
+    category: "civil_status_family",
+    filename: "FOREIGN_CIVIL_RECORD_UNKNOWN_LANG.pdf",
+    description: "Demonstrates automatic Case Worker escalation when a document is outside English, Gujarati, and Hindi.",
+    text_content: `REPÚBLICA DE COLOMBIA - REGISTRADURÍA NACIONAL DEL ESTADO CIVIL
+CERTIFICADO DE NACIMIENTO Y REGISTRO CIVIL
+
+Nombre Completo: CARLOS ANDRÉS MENDOZA LÓPEZ
+Apellidos: MENDOZA LÓPEZ
+Fecha de Nacimiento: 19/07/1991
+Lugar de Nacimiento: Bogotá, Distrito Capital
+Nacionalidad: Colombiana
+Estado Civil: Casado
+Domicilio Actual: Calle 72 No. 10-34, Bogotá`,
+  },
 ];
 
 export async function checkExtractorBackendHealth(): Promise<{ online: boolean; message?: string }> {
@@ -734,3 +799,67 @@ async function generateClientFallbackAnalysis(
                 raw_text_preview: contentText.slice(0, 3000) || `Extracted text stream from ${fname}`,
               };
             }
+
+export interface PacketSortedDocument {
+  document_index: number;
+  filename: string;
+  relative_path: string;
+  category: string;
+  document_subtype: string;
+  page_numbers: number[];
+  page_range: string;
+  page_count: number;
+  is_joint_document: boolean;
+  shared_with: string[];
+  extracted_fields: Record<string, string>;
+  text_preview: string;
+  pdf_base64?: string;
+}
+
+export interface PacketPersonFolder {
+  person_id: string;
+  canonical_name: string;
+  folder_name: string;
+  name_variations: string[];
+  id_anchors: Record<string, string[]>;
+  is_caseworker_review_folder: boolean;
+  total_documents: number;
+  total_pages: number;
+  documents: PacketSortedDocument[];
+}
+
+export interface PacketSortResult {
+  status: "success" | "error";
+  source_filename: string;
+  total_pages_analyzed: number;
+  total_persons_detected: number;
+  total_split_documents: number;
+  person_folders: PacketPersonFolder[];
+  zip_archive_filename: string;
+  zip_archive_base64?: string | null;
+}
+
+export async function sortDocumentPacket(file: File): Promise<PacketSortResult> {
+  const basesToTry = [API_BASE, ...DIRECT_BACKEND_BASES];
+  let lastError = "Failed to connect to OCR/AI Packet Sorter backend.";
+
+  for (const base of basesToTry) {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${base}/extractor/sort-packet`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      const errBody = await res.json().catch(() => ({}));
+      lastError = errBody.detail || `HTTP ${res.status}`;
+    } catch (err: any) {
+      lastError = err?.message || "Network error";
+    }
+  }
+  throw new Error(lastError);
+}
+

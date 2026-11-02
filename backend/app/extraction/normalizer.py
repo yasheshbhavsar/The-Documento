@@ -49,16 +49,33 @@ def normalize_date(raw_date_str: str) -> Optional[str]:
     cleaned = raw_date_str.strip().upper()
     # Remove ordinal suffixes: 1st, 2nd, 3rd, 4th
     cleaned = re.sub(r"(\d+)(ST|ND|RD|TH)", r"\1", cleaned)
+    # Remove spaces around date separators (e.g. '29- 7-2008' -> '29-7-2008')
+    cleaned = re.sub(r"(?<=\d)\s*([/\-\.])\s*(?=\d)", r"\1", cleaned)
+
+    # Expand 2-digit years in DD-MM-YY or DD/MM/YY (e.g., '26-3-87' -> '26-3-1987')
+    m_2yr = re.fullmatch(r"(\d{1,2})([/\-\.])(\d{1,2})\2(\d{2})", cleaned)
+    if m_2yr:
+        d_p, sep_p, m_p, y2_p = m_2yr.groups()
+        yr_int = int(y2_p)
+        full_yr = 1900 + yr_int if yr_int >= 30 else 2000 + yr_int
+        cleaned = f"{d_p}{sep_p}{m_p}{sep_p}{full_yr}"
 
     # Common date formats
     formats = [
         "%Y-%m-%d",
+        "%Y-%d-%m",
         "%d/%m/%Y",
         "%m/%d/%Y",
         "%d-%m-%Y",
+        "%d.%m.%Y",
         "%Y/%m/%d",
+        "%Y/%d/%m",
         "%d %B %Y",
         "%d %b %Y",
+        "%d-%B-%Y",
+        "%d-%b-%Y",
+        "%d/%B/%Y",
+        "%d/%b/%Y",
         "%B %d, %Y",
         "%b %d, %Y",
         "%d %B, %Y",

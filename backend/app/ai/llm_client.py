@@ -352,9 +352,14 @@ class MockLocalVisionClient(BaseAIClient):
 
     INVALID_NAME_PREFIXES = (
         "of the",
+        "of firm",
+        "of bank",
         "of registered",
         "of mother",
         "of father",
+        "of spouse",
+        "of bride",
+        "of bridegroom",
         "of parents",
         "of child",
         "of birth",
@@ -362,6 +367,8 @@ class MockLocalVisionClient(BaseAIClient):
         "of village",
         "of taluka",
         "of district",
+        "and address",
+        "and status",
         "date of",
         "place of",
         "name of",
@@ -438,24 +445,35 @@ class MockLocalVisionClient(BaseAIClient):
             ])
         else:
             if category in ("identity_passport", "supporting_evidence"):
-                p_match = re.search(r"(?:Passport\s*(?:No\.?|Number)|Doc\s*No\.?)[\s:]+([A-Z0-9]{6,12})", text, re.IGNORECASE)
+                p_match = re.search(r"(?:Passport\s*(?:No\.?|Number)|Doc\s*No\.?)[\s:]+((?=[A-Z0-9]*\d{5})[A-Z0-9]{6,12})", text, re.IGNORECASE)
                 if p_match:
                     entities.append(ExtractedEntity("passport_number", "Passport Number", p_match.group(1), p_match.group(1).upper(), 0.95, 1))
 
             if category in ("identity_passport", "civil_status_family", "supporting_evidence"):
                 name_match = re.search(
-                    r"\b(?:Full\s*Name|Given\s*Names?|Name(?!\s+of\s+(?:Mother|Father|Parents|Child|Bride|Bridegroom|Village|City|Taluka|District|Hospital|State|Registration|Registered)))[\s:]+([A-Za-z][A-Za-z\s\.-]{2,40})",
+                    r"\b(?:Name\s+in\s+Full|Name\s+of\s+Assessee|NAMEOFASSESSEE|Name\s+of\s+the\s+Pupil(?:\s*\(\s*in\s+full\s*\))?|Full\s*Name|Given\s*Names?|Name(?!\s+of\s+(?:Mother|Father|Parents|Child|Bride|Bridegroom|Village|City|Taluka|District|Hospital|State|Registration|Registered|Firm|Bank|Spouse|the\s+Subject|Company|Deductor|Govt|Assets|Employer)|s?\s+in\s+Full))[\s:]+([A-Za-z][A-Za-z\s\.-]{2,45})",
                     text,
                     re.IGNORECASE,
                 )
                 if name_match:
                     cand = re.sub(r"[\.\-_]{2,}", " ", name_match.group(1).splitlines()[0]).strip(" .:-_")
+                    cand = re.sub(r"^(?:in\s+full|of\s+assessee)[\s:]*", "", cand, flags=re.IGNORECASE).strip(" .:-_")
+                    cand = re.sub(r"Identity\s*document.*$", "", cand, flags=re.IGNORECASE).strip()
                     lower_cand = cand.lower()
+                    bad_substrings = (
+                        "tan section", "current free", "pledge", "repledge", "opendt", "close dt",
+                        "statement period", "nom de", "prnom", "andaddress", "inv. since",
+                        "declaration", "of company", "of deductor", "of govt", "of registered"
+                    )
                     if (
                         len(re.findall(r"[A-Za-z]", cand)) >= 3
+                        and not lower_cand.startswith("of ")
                         and not any(lower_cand.startswith(prefix) for prefix in self.INVALID_NAME_PREFIXES)
+                        and not any(b in lower_cand for b in bad_substrings)
                         and lower_cand not in (
-                            "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired", "client personal details", "female", "male"
+                            "immigration", "refugees", "canada", "unmarried", "married", "phd", "retired",
+                            "client personal details", "female", "male", "ifirm", "firm", "company",
+                            "in full", "ontario", "nom", "no", "of", "declaration", "wonmuriel"
                         )
                     ):
                         entities.append(ExtractedEntity("full_name", "Full Name", cand, cand.title(), 0.92, 1))
