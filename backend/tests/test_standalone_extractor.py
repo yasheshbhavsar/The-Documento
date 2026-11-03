@@ -811,6 +811,157 @@ def test_multi_person_sorter_roe_t4e_pr_card_continuity(client: TestClient):
     assert folders["Priya Rohan Shah"]["documents"][0]["page_numbers"] == [3, 4]
 
 
+def test_b2b_corporate_packet_duplicates_blank_bridging_paystubs_and_photo(client: TestClient):
+    """
+    Verify B2B / Corporate + Personal visa packet sorting capabilities:
+    1. Routes company/sponsor documents (Incorporation + Articles, GST Certificate, Corporate Bank
+       Balance Certificate, RCIC Submission Letter with middle narrative page) into `Corporate_Documents`.
+    2. Consolidates consecutive monthly `Salary_Pay_Stub` pages of the same employee into one
+       `Salary_Pay_Stubs` PDF.
+    3. Omits accidental blank white scanner pages (`blank_pages_omitted`) while keeping `IMM 5476`
+       stitched as a single unbroken multi-page PDF.
+    4. Classifies image-only applicant portrait photographs as `Passport_or_Visa_Photograph` in the
+       applicant's folder without false language-compliance escalation.
+    5. Isolates exact duplicate document blocks into `<Folder>/_Duplicates/` while keeping distinct
+       GST certificates separate.
+    """
+    import zipfile
+    import fitz
+    import numpy as np
+
+    doc = fitz.open()
+
+    # P1: Applicant Passport (Devansh Arvindbhai Desai)
+    p1 = doc.new_page()
+    p1.insert_text(
+        (50, 70),
+        "REPUBLIC OF INDIA\nPASSPORT\nSurname\nDESAI\nGiven Name(s)\nDEVANSH ARVINDBHAI\n"
+        "Passport No: N4455667\nDate of Birth: 18/09/1996\n"
+        "P<INDDESAI<<DEVANSH<ARVINDBHAI<<<<<<<<<<<<<<\n"
+        "N4455667<8IND9609182M3109174<<<<<<<<<<<<<<02",
+    )
+
+    # P2 & P3: Two consecutive monthly Salary Pay Stubs -> consolidated into 1 `Salary_Pay_Stubs` PDF
+    for month_lbl in ("January 2024", "February 2024"):
+        ps = doc.new_page()
+        ps.insert_text(
+            (50, 70),
+            f"PAYSLIP FOR THE MONTH OF {month_lbl.upper()}\n"
+            "Employee Name: Devansh Arvindbhai Desai\nWorking Days: 26\n"
+            "Basic Salary: 45,000.00\nNet Pay: 43,200.00",
+        )
+
+    # P4, P5 (accidental blank white page), P6: IMM 5476 Use of a Representative -> bridged as [4, 6]
+    p4 = doc.new_page()
+    p4.insert_text(
+        (50, 70),
+        "Immigration, Refugees and Citizenship Canada\nUSE OF A REPRESENTATIVE\n"
+        "SECTION A: APPLICANT INFORMATION\nFamily name: DESAI\nGiven name(s): DEVANSH ARVINDBHAI\n"
+        "IMM 5476 (08-2019) E",
+    )
+    _p5_blank = doc.new_page()  # Completely blank white page
+    p6 = doc.new_page()
+    p6.insert_text(
+        (50, 70),
+        "SECTION D: YOUR DECLARATION\nSignature of applicant\nDate: 2024-03-15\nIMM 5476 (08-2019) E",
+    )
+
+    # P7: Image-only Portrait Photograph page (synthetic gradient portrait image, zero text)
+    p7 = doc.new_page()
+    rng = np.random.default_rng(42)
+    portrait_arr = rng.integers(30, 220, size=(240, 200, 3), dtype=np.uint8)
+    pix = fitz.Pixmap(fitz.csRGB, 200, 240, portrait_arr.tobytes(), False)
+    p7.insert_image(fitz.Rect(180, 180, 380, 420), pixmap=pix)
+
+    # P8-P10: 3-page RCIC Submission Letter (P9 is middle biography narrative sandwiched between P8 & P10)
+    p8 = doc.new_page()
+    p8.insert_text(
+        (50, 70),
+        "SUBMISSION LETTER\nCollege of Immigration and Citizenship Consultants\n"
+        "Dear Visa Officer,\nPlease accept this Business Visitor Visa submission on behalf of our client.",
+    )
+    p9 = doc.new_page()
+    p9.insert_text(
+        (50, 70),
+        "Client Background and Professional Duties:\n"
+        "Mr. Devansh Arvindbhai Desai has served as Senior Operations Lead since 2021 and will return to India.",
+    )
+    p10 = doc.new_page()
+    p10.insert_text(
+        (50, 70),
+        "Thank you for your consideration.\nSincerely,\nAuthorized RCIC Representative\n"
+        "College of Immigration and Citizenship Consultants",
+    )
+
+    # P11: GST Registration Certificate #1 (GSTIN 24AAACD1111K1Z5)
+    p11 = doc.new_page()
+    p11.insert_text(
+        (50, 70),
+        "GOVERNMENT OF INDIA\nForm GST REG-06\nRegistration Certificate\n"
+        "Registration Number: 24AAACD1111K1Z5\nLegal Name: ORION TECH SOLUTIONS PRIVATE LIMITED",
+    )
+
+    # P12: GST Registration Certificate #2 (Different GSTIN 27BBBCD2222M1Z9 -> NOT a duplicate)
+    p12 = doc.new_page()
+    p12.insert_text(
+        (50, 70),
+        "GOVERNMENT OF INDIA\nForm GST REG-06\nRegistration Certificate\n"
+        "Registration Number: 27BBBCD2222M1Z9\nLegal Name: ORION CLOUD SERVICES LLP",
+    )
+
+    # P13: Exact duplicate of GST Registration Certificate #1 (GSTIN 24AAACD1111K1Z5 -> routed to _Duplicates/)
+    p13 = doc.new_page()
+    p13.insert_text(
+        (50, 70),
+        "GOVERNMENT OF INDIA\nForm GST REG-06\nRegistration Certificate\n"
+        "Registration Number: 24AAACD1111K1Z5\nLegal Name: ORION TECH SOLUTIONS PRIVATE LIMITED",
+    )
+
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    resp = client.post(
+        "/api/v1/extractor/sort-packet",
+        files={"file": ("b2b_corporate_packet.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert resp.status_code == 200
+    res = resp.json()
+    assert res["status"] == "success"
+    assert res["total_pages_analyzed"] == 13
+    assert res["blank_pages_omitted"] == [5]
+    assert res["total_persons_detected"] == 1
+
+    folders = {f["folder_name"]: f for f in res["person_folders"]}
+    assert "Devansh_Arvindbhai_Desai" in folders
+    assert "Corporate_Documents" in folders
+    assert "Case_Worker_Review" not in folders
+
+    person_docs = folders["Devansh_Arvindbhai_Desai"]["documents"]
+    subtypes_and_pages = [(d["document_subtype"], d["page_numbers"]) for d in person_docs]
+    assert ("Passport and Travel Stamps", [1]) in subtypes_and_pages
+    assert ("Salary Pay Stubs", [2, 3]) in subtypes_and_pages
+    assert ("Use of Representative IMM5476", [4, 6]) in subtypes_and_pages
+    assert ("Passport or Visa Photograph", [7]) in subtypes_and_pages
+
+    corp_folder = folders["Corporate_Documents"]
+    assert corp_folder["is_corporate_folder"] is True
+    assert corp_folder["duplicates_count"] == 1
+    corp_docs = corp_folder["documents"]
+    assert corp_docs[0]["document_subtype"] == "Representative Submission Letter"
+    assert corp_docs[0]["page_numbers"] == [8, 9, 10]
+    assert corp_docs[1]["page_numbers"] == [11] and corp_docs[1]["is_duplicate"] is False
+    assert corp_docs[2]["page_numbers"] == [12] and corp_docs[2]["is_duplicate"] is False
+    assert corp_docs[3]["page_numbers"] == [13] and corp_docs[3]["is_duplicate"] is True
+    assert "_Duplicates/" in corp_docs[3]["relative_path"]
+
+    # Confirm ZIP archive contains Corporate_Documents/_Duplicates/
+    import base64
+    zf = zipfile.ZipFile(io.BytesIO(base64.b64decode(res["zip_archive_base64"])))
+    zip_names = set(zf.namelist())
+    assert any(n.startswith("Corporate_Documents/_Duplicates/") for n in zip_names)
+
+
+
 
 
 

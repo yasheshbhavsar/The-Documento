@@ -32,6 +32,9 @@ class PageExtractionResult:
     detected_rotation: int = 0  # 0, 90, 180, 270 degrees
     is_rotation_corrected: bool = False
     raw_unfiltered_text: str = ""
+    applied_rotation: int | None = None
+    is_blank_page: bool = False
+    is_photo_only_page: bool = False
 
 
 SUPPORTED_INDIAN_DOCUMENT_LANGUAGES = (
@@ -108,6 +111,15 @@ def is_corrupted_pdf_text_layer(text: str) -> bool:
         return True
     mid_word_noise_hits = len(re.findall(r"(?<=[a-zA-Z])[~;:!?'\"\\<>]+(?=[a-zA-Z])", text))
     if mid_word_noise_hits >= 5:
+        return True
+    if re.search(r"[il1t\|]{9,}", text, re.IGNORECASE):
+        return True
+    if len(re.findall(r"(?<=[A-Za-z0-9])\?(?=[A-Za-z0-9])", text)) >= 2:
+        return True
+    if (
+        len(text) < 600
+        and len(re.findall(r"\b(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]{5,}\b", text)) >= 2
+    ):
         return True
     return False
 
@@ -906,11 +918,17 @@ class OCREngine:
                     page = doc[page_idx]
                     detected_rot = int(page.rotation) % 360
                     is_rotation_corrected = False
+                    applied_rot: int | None = None
 
-                    # Normalize page rotation if not upright
+                    # Normalize page rotation only when the page is actually rendered sideways or inverted vector
+                    # (Preserves upright portrait scans where scanner stored landscape stream + /Rotate 270 or 90)
                     if detected_rot != 0:
-                        page.set_rotation(0)
                         is_rotation_corrected = True
+                        if (detected_rot in (90, 270) and page.rect.width > page.rect.height) or (
+                            detected_rot == 180 and len(page.get_images()) == 0
+                        ):
+                            page.set_rotation(0)
+                            applied_rot = 0
 
                     rect = page.rect
                     width, height = float(rect.width), float(rect.height)
@@ -957,19 +975,57 @@ class OCREngine:
                         ocr_applied = True
                         ocr_confidence = 0.92
                         scanned_text, scanned_blocks = cls._extract_scanned_page(page, width, height)
+                        # If a sideways-rotated scanned portrait page came out upside-down (180 deg) after setting rot=0, check 180 deg
+                        if applied_rot == 0 and detected_rot in (90, 270) and len(page.get_images()) > 0:
+                            top_slice = (scanned_text or "")[: max(len(scanned_text or "") // 3, 180)].upper()
+                            avg_conf_0 = (
+                                sum(b.confidence for b in scanned_blocks) / len(scanned_blocks)
+                                if scanned_blocks
+                                else 0.0
+                            )
+                            looks_upside_down = (
+                                (
+                                    ("SIGNATURE OF ISSUING AUTHORITY" in top_slice or "CHECKED BY" in top_slice)
+                                    and "CERTIFICATE" not in top_slice
+                                )
+                                or (scanned_blocks and avg_conf_0 < 0.72)
+                            )
+                            if looks_upside_down:
+                                page.set_rotation(180)
+                                rect180 = page.rect
+                                stxt180, sblks180 = cls._extract_scanned_page(
+                                    page, float(rect180.width), float(rect180.height)
+                                )
+                                score0 = sum(len(b.text) * b.confidence for b in scanned_blocks)
+                                score180 = sum(len(b.text) * b.confidence for b in sblks180)
+                                if stxt180.strip() and (
+                                    "CERTIFICATE" in stxt180[:300].upper() or score180 >= score0 * 0.95
+                                ):
+                                    scanned_text, scanned_blocks = stxt180, sblks180
+                                    applied_rot = 180
+                                    width, height = float(rect180.width), float(rect180.height)
+                                else:
+                                    page.set_rotation(0)
                         if scanned_text.strip():
                             combined_text = scanned_text
                             blocks = scanned_blocks
                             if is_corrupted_pdf_text_layer(raw_unfiltered_page_text):
                                 raw_unfiltered_page_text = scanned_text
                     elif (
-                        len(page.get_images()) == 1
-                        and 15 <= len(combined_text.strip()) < 500
-                        and combined_text.count(":") <= 1
-                        and max((img[2] for img in page.get_images()), default=0) >= 600
-                        and max((img[3] for img in page.get_images()), default=0) >= 600
+                        (
+                            len(page.get_images()) == 1
+                            and 15 <= len(combined_text.strip()) < 500
+                            and combined_text.count(":") <= 1
+                            and max((img[2] for img in page.get_images()), default=0) >= 600
+                            and max((img[3] for img in page.get_images()), default=0) >= 600
+                        )
+                        or (
+                            1 <= len(page.get_images()) <= 4
+                            and 15 <= len(combined_text.strip()) < 420
+                            and max((img[2] * img[3] for img in page.get_images()), default=0) >= 60000
+                        )
                     ):
-                        # Hybrid filled form: PDF vector overlay contains bare filled answers over a full-page scanned form image
+                        # Hybrid filled form or vector-letterhead + image-body letter: fuse vector & RapidOCR
                         scanned_text, scanned_blocks = cls._extract_scanned_page(page, width, height)
                         if scanned_blocks:
                             ocr_applied = True
@@ -987,6 +1043,36 @@ class OCREngine:
                                 blocks = fused_blocks
                                 raw_unfiltered_page_text = f"{raw_unfiltered_page_text}\n{scanned_text}".strip()
 
+                    is_blank_page = False
+                    is_photo_only_page = False
+                    alnum_chars = len(re.findall(r"[A-Za-z0-9\u0900-\u097F\u0A80-\u0AFF]", combined_text or ""))
+                    if alnum_chars < 12:
+                        try:
+                            import numpy as np
+
+                            chk_pix = page.get_pixmap(dpi=72, alpha=False)
+                            chk_arr = np.frombuffer(chk_pix.samples, dtype=np.uint8).reshape(
+                                chk_pix.height, chk_pix.width, chk_pix.n
+                            )
+                            gray_arr = chk_arr.mean(axis=2) if chk_pix.n >= 3 else chk_arr[:, :, 0]
+                            non_white_ratio = float(np.mean(gray_arr < 242))
+                            pixel_std = float(np.std(gray_arr))
+                            if alnum_chars < 4 and non_white_ratio < 0.008 and pixel_std < 6.0:
+                                is_blank_page = True
+                            elif (
+                                alnum_chars < 10
+                                and len(page.get_images()) >= 1
+                                and non_white_ratio >= 0.05
+                                and pixel_std >= 18.0
+                                and not re.search(
+                                    r"[\u0400-\u08FF\u0980-\u0A7F\u0B00-\u0DFF\u4E00-\u9FFF]",
+                                    raw_unfiltered_page_text or "",
+                                )
+                            ):
+                                is_photo_only_page = True
+                        except Exception:
+                            pass
+
                     results.append(
                         PageExtractionResult(
                             page_number=page_idx + 1,
@@ -999,6 +1085,9 @@ class OCREngine:
                             detected_rotation=detected_rot,
                             is_rotation_corrected=is_rotation_corrected,
                             raw_unfiltered_text=raw_unfiltered_page_text or combined_text,
+                            applied_rotation=applied_rot,
+                            is_blank_page=is_blank_page,
+                            is_photo_only_page=is_photo_only_page,
                         )
                     )
                 doc.close()
@@ -1164,10 +1253,31 @@ class OCREngine:
         if not parsed_items:
             return "", []
 
+        # Strip repeating security background microprint watermarks (e.g. NSDL 'e-TDS Intermediary' background pattern)
+        watermark_box_hits = sum(
+            1
+            for it in parsed_items
+            if re.search(r"e-?[ti1l8]ds|in[tl1]e?r?m[ec]di", str(it[4]), re.IGNORECASE)
+        )
+        has_etds_watermark = watermark_box_hits >= 8
+
         # Pre-clean and discard boxes that have no English, Gujarati, or Hindi letters/digits
         valid_items: list[tuple[float, float, float, float, str, float]] = []
         for x0, y0, x1, y1, raw_text, score in parsed_items:
+            if has_etds_watermark:
+                raw_text = re.sub(
+                    r"(?i)[a-z0-9\-\.]*(?:e-?[ti1l8]ds|tds\s*in[tl1]e?r?m|in[tl1]e?r?m[ec]d|termedi|ntemedi|inlermedi|ermedi|mediar)[a-z0-9\-\.]*",
+                    " ",
+                    raw_text,
+                )
+                raw_text = re.sub(
+                    r"(?i)\b(?:e-?t[di]?|tds|inte?r?|arye?|rye|diary|ediary|nedian|emedian|snte|fnterm)\b",
+                    " ",
+                    raw_text,
+                )
             cleaned = clean_ocr_text(raw_text)
+            if has_etds_watermark and len(re.findall(r"[A-Za-z0-9]", cleaned)) <= 2:
+                continue
             if cleaned and has_meaningful_script_chars(cleaned):
                 valid_items.append((x0, y0, x1, y1, cleaned, score))
 

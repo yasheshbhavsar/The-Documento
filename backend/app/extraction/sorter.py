@@ -175,6 +175,17 @@ def is_valid_person_name_candidate(name: str) -> bool:
         "markham", "vaughan", "surrey", "burnaby", "calgary", "edmonton", "ottawa",
         "montreal", "vancouver", "sudbury", "london", "hamilton", "windsor",
         "reason", "roe", "serial", "hours", "insurable", "this", "for",
+        "ceci", "certifie", "que", "statuts", "constitutifs", "formule",
+        "administrateur", "administrateurs", "personne", "personnes", "morale", "morales",
+        "domicile", "contract", "agreement", "resignation", "relieving", "experience",
+        "confirmation", "itinerary", "opportunity", "meeting", "training", "international",
+        "designation", "profession", "investor", "owner", "establishment", "verification",
+        "director", "directors", "proprietor", "incorporation", "memorandum", "association",
+        "religion", "caste", "pupil", "payslip", "paystub", "salary", "growth", "prospects",
+        "submission", "representative", "activities", "description", "beneficiary", "beneciary",
+        "vaccination", "certificate", "booking", "hotel", "hampton", "travelport", "viewtrip",
+        "ministry", "consumer", "business", "schedule", "annexure", "allotment", "deduction",
+        "municipal", "department",
     }
     if lower_full in forbidden_words or any(t in forbidden_words for t in toks):
         return False
@@ -192,6 +203,10 @@ def is_valid_person_name_candidate(name: str) -> bool:
     if any(p in lower_full for p in forbidden_phrases):
         return False
 
+    # A standalone family surname without a given name (e.g. a split 'Surname' column cell) is never a complete person name
+    if len(toks) == 1 and toks[0].upper() in INDIAN_SURNAMES:
+        return False
+
     return True
 
 
@@ -203,12 +218,71 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
     """
     u = (text or "").upper()
 
-    # 0. PAN Card (Physical ID card vs ITR)
+    # 0a. Income Tax TAN Allotment Letter (checked before PAN Card since both mention Income Tax Department)
+    if (
+        "ALLOTMENT OF TAX DEDUCTION ACCOUNT NUMBER" in u
+        or "TAX DEDUCTION ACCOUNT NUMBER" in u
+        or "TAX COLLECTIONS AT SOURCE ACCOUNT NUMBER" in u
+        or "FORM 49B" in u
+        or bool(re.search(r"/TAN/\b|\bTAN\s*ALLOTMENT\b", u))
+    ):
+        return "financial_evidence", "Tax_Deduction_TAN_Letter"
+
+    # 0b. Profession Tax Registration Certificate
+    if (
+        "PROFESSION TAX DEPARTMENT" in u
+        or ("PROFESSION TAX" in u and "CERTIFICATE OF REGISTRATION" in u)
+        or (("FORM NO.2" in u or "FORM NO. 2" in u) and "PROFESSION TAX" in u)
+    ):
+        return "financial_evidence", "Profession_Tax_Certificate"
+
+    # 0c. Corporate Incorporation, Articles of Incorporation & Memorandum of Association (MOA)
+    if (
+        "SPICE MOA" in u
+        or "MEMORANDUM OF ASSOCIATION" in u
+        or "FORM NO. INC-33" in u
+        or ("COMPANIES ACT, 2013" in u and bool(re.search(r"\bPAGE\s+[1-9]\s+OF\s+[1-9]\b", u)))
+        or ("SUBSCRIBER DETAILS" in u and "DIN/PAN/PASSPORT" in u)
+    ):
+        return "supporting_evidence", "Company_Memorandum_of_Association"
+
+    if (
+        "ONTARIO CORPORATION NUMBER" in u
+        or "ARTICLES OF INCORPORATION" in u
+        or "STATUTS CONSTITUTIFS" in u
+        or ("CERTIFICATE OF INCORPORATION" in u and "BUSINESS CORPORATIONS ACT" in u)
+        or "CORPORATIONS INFORMATION ACT" in u
+        or "PERSONNES MORALES EN L'ONTARIO" in u
+        or "PERSONNES MORALES EN I'ONTARIO" in u
+        or "PERSONNES MORALES EN ONTARIO" in u
+        or "FOR MINISTRY OF CONSUMER AND BUSINESS SERVICES RECEIPT PURPOSES ONLY" in u
+        or ("PROVINCE OF ONTARIO" in u and "REQUEST ID" in u and "DATE REPORT PRODUCED" in u)
+    ):
+        return "supporting_evidence", "Certificate_and_Articles_of_Incorporation"
+
+    if "BUSINESS ACTIVITIES DESCRIPTION" in u or (
+        "FAMILY SPONSORSHIP:" in u and "PERMANENT RESIDENTS IN APPLYING" in u
+    ):
+        return "supporting_evidence", "Company_Profile_Description"
+
+    # 0d. PAN Card (Corporate e-PAN vs Personal Physical/e-PAN Card)
     if (
         "PERMANENT ACCOUNT NUMBER CARD" in u
+        or "E-PERMANENT ACCOUNT NUMBER" in u
+        or "(E-PAN)" in u
         or ("INCOME TAX DEPARTMENT" in u and "PERMANENT ACCOUNT NUMBER" in u and "ASSESSMENT YEAR" not in u and "RETURN" not in u)
         or ("INCOME TAX DEPARTMENT" in u and "FATHER'S NAME" in u and "ASSESSMENT YEAR" not in u and "COMPUTATION" not in u)
     ):
+        pan_code_m = re.search(r"\b([A-Z]{3}([A-Z])[A-Z][0-9]{4}[A-Z])\b", u)
+        is_corp_pan = (
+            (pan_code_m is not None and pan_code_m.group(2) != "P")
+            or "PRIVATE LIMITED" in u
+            or "PVT LTD" in u
+            or "PVT. LTD" in u
+            or "DATE OF INCORPORATION" in u
+        )
+        if is_corp_pan:
+            return "identity_passport", "Company_PAN_Card"
         return "identity_passport", "PAN_Identity_Card"
 
     # 1. Income Tax Return (ITR Acknowledgement + Computation + Schedules)
@@ -239,7 +313,49 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
     ):
         return "financial_evidence", "Income_Tax_Return_ITR"
 
-    # 1b. Visa Cover Letter & Itinerary (checked before CA Net Worth Certificate so cover letter mentions of CA don't misclassify Page 1)
+    # 1b. Representative Submission Letter vs Personal Visa Cover Letter & Travel Bookings
+    if (
+        "SUBMISSION LETTER" in u
+        or "FROM: (REPRESENTATIVE)" in u
+        or ("THE VISA OFFICER" in u and "FROM:" in u and "REPRESENTATIVE" in u)
+        or (
+            "COLLEGE OF IMMIGRATION AND CITIZENSHIP CONSULTANTS" in u
+            and "USE OF A REPRESENTATIVE" not in u
+            and "IMM 5476" not in u
+        )
+        or "ENGAGE IN INTERNATIONAL BUSINESS ACTIVITIES IN CANADA" in u
+        or "ENTERING THE CANADIAN LABOR MARKET" in u
+        or "ENTERING THE CANADIAN LABOUR MARKET" in u
+        or ("ENCLOSING HEREWITH THE FOLLOWING DOCUMENTS" in u and "APPLICANT'S DOCUMENTS" in u)
+        or ("STAYING AT THE HOTEL BOOKED BY THE COMPANY" in u and "EXPENDITURE OF THE TRIP" in u)
+    ):
+        return "government_correspondence", "Representative_Submission_Letter"
+
+    if (
+        "ITINERARY SUMMARY FOR" in u
+        or bool(re.search(r"\bDAY\s*1\s*:\s*[A-Z]+.*?\bDAY\s*2\s*:", u, re.DOTALL))
+        or bool(re.search(r"\bDAY\s*1[0-9]\s*(?:&\s*1[0-9])?\s*:\s*[A-Z]+", u))
+    ):
+        return "travel_records", "Travel_Itinerary_Summary"
+
+    if (
+        "TRAVELPORT VIEWTRIP" in u
+        or "VIEWTRIP.TRAVELPORT.COM" in u
+        or "ELECTRONIC TICKET RECEIPT" in u
+        or ("FLIGHT" in u and "BAGGAGE" in u and "TERMINAL" in u)
+    ):
+        return "travel_records", "Flight_Booking_Itinerary"
+
+    if (
+        "YOUR CONFIRMED BOOKING AT" in u
+        or "WANT A BETTER EXPERIENCE WHEN BOOKING YOUR TRIP" in u
+        or "GUESTS ARE REQUIRED TO SHOW A PHOTO ID AND CREDIT CARD UPON CHECK-IN" in u
+        or ("PROPERTY POLICIES" in u and "ROOM TYPES" in u)
+        or ("STAR RATING:" in u and "STAR HOTEL" in u)
+        or ("APPROXIMATE TIME OF ARRIVAL" in u and "SPECIAL REQUESTS" in u)
+    ):
+        return "insurance_accommodation", "Hotel_Booking_Confirmation"
+
     if (
         "TO, THE VISA OFFICER" in u
         or "SUBCLASS 600" in u
@@ -295,21 +411,49 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
     if (
         "LETTER OF ACCEPTANCE" in u
         or "OFFER OF ADMISSION" in u
-        or "DESIGNATED LEARNING INSTITUTION" in u
-        or bool(re.search(r"\bDLI\s*(?:NUMBER|#)|\bO19[0-9]{9,10}\b", u))
+        or (
+            (
+                "DESIGNATED LEARNING INSTITUTION" in u
+                or bool(re.search(r"\bDLI\s*(?:NUMBER|#)|\bO19[0-9]{9,10}\b", u))
+            )
+            and "DEAR VISA OFFICER" not in u
+            and "CONSULATE GENERAL" not in u
+            and "REPRESENTATIVE FOR" not in u
+            and "VISIT THE COLLEGE" not in u
+        )
         or ("ESTIMATED TUITION" in u and "PROGRAM OF STUDY" in u)
         or ("ACADEMIC STATUS" in u and "LENGTH OF PROGRAM" in u)
         or ("EVIDENCE OF WORK REQUIREMENT IN STUDY" in u)
     ):
         return "educational_records", "Offer_Letter_LOA"
 
+    if "SCHOOL LEAVING CERTIFICATE" in u or (
+        "LEAVING CERTIFICATE" in u
+        and ("NAME OF THE PUPIL" in u or "NAMEOFTHE PUPIL" in u or "HIGHSCHOOL" in u or "HIGH SCHOOL" in u)
+    ):
+        return "educational_records", "School_Leaving_Certificate"
+
     if (
         "BONAFIDE CERTIFICATE" in u
         or "BONAFIDECERTIFICATE" in u
-        or "SCHOOL LEAVING CERTIFICATE" in u
         or "BONAFIDE STUDENT" in u
     ):
         return "educational_records", "School_Bonafide_Certificate"
+
+    if (
+        "RESIGNATION LETTER" in u
+        or "RELIEVING LETTER" in u
+        or ("RESIGN" in u and "LAST WORKING DAY" in u)
+    ):
+        return "employment_records", "Employment_Resignation_Letter"
+
+    if (
+        "GROWTH PROSPECTS" in u
+        or "5-YEAR TERM PLAN" in u
+        or "5-YEARTERMPLANOFTHECONTRACT" in u.replace(" ", "")
+        or ("CLIENT EVENTS AND WEBINARS" in u and "CLIENT APPRECIATION" in u)
+    ):
+        return "employment_records", "Employment_Contract_Growth_Plan"
 
     if (
         "RECORD OF EMPLOYMENT" in u
@@ -334,6 +478,9 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
         or "APPOINTMENT LETTER" in u
         or "APPOINTMENTLETTER" in u
         or "THE EMPLOYER AGREES TO EMPLOY" in u
+        or "THIS EMPLOYMENT CONTRACT WILL COMMENCE" in u
+        or ("TERM OF EMPLOYMENT:" in u and "COMPENSATION AND BENEFITS" in u)
+        or ("NON-COMPETITION" in u and ("GOVERNING LAW" in u or "SOLICITATION" in u))
         or ("WAGES AND DEDUCTIONS" in u and "HOURS OF WORK" in u)
     ):
         return "employment_records", "Employment_Contract_Agreement"
@@ -440,6 +587,7 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
         or "UNIQUEIDENTIFICATIONAUTHORITY" in u
         or "YOUR AADHAAR NO" in u
         or "ENROLLMENT NO" in u
+        or "ENROLMENT NO" in u
         or ("GOVERNMENT OF INDIA" in u and "AADHAAR" in u and "INCOME TAX" not in u)
         or (bool(re.search(r"\b[2-9][0-9]{3}\s*[0-9]{4}\s*[0-9]{4}\b", u)) and ("UIDAI" in u or "GOVERNMENTOFINDIA" in u or "આધાર" in text))
     ):
@@ -469,6 +617,14 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
 
     if "VACCINATION WORKSHEET" in u or ("NON-EDE" in u and "VACCINATION" in u) or ("PANEL PHYSICIAN" in u and "VACCINATION" in u):
         return "police_medical", "eMedical_Vaccination_Worksheet"
+    if (
+        "COVID-19 VACCINATION" in u
+        or "CERTIFICATE FOR COVID-19" in u
+        or "CERTICATE FOR COVID-19" in u
+        or "COWIN.GOV.IN" in u
+        or ("VACCINATION DETAILS" in u and ("BENEFICIARY" in u or "BENECIARY" in u))
+    ):
+        return "police_medical", "Vaccination_Certificate"
     if bool(re.search(r"\bE[\s\-]?MEDICAL\b|\bUMIU[0-9]{6,}|STATUS\s*CLINIC", u)):
         return "police_medical", "eMedical_Information_Sheet"
 
@@ -477,7 +633,7 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
         or "FAMILYINFORMATION" in u
         or "IMM 5645" in u
         or "IMM5645" in u
-        or bool(re.search(r"SECTION\s*[ABC]\s*[-–]?\s*(?:SPOUSE|CHILDREN|BROTHERS\s*AND\s*SISTERS)", u))
+        or bool(re.search(r"SECTION\s*[ABC]\s*[-–]?\s*(?:SPOUSE|CHILDREN|BROTHERS\s*AND\s*SISTERS|BROTHERSANDSISTERS)", u))
         or "BLOOD RELATED FAMILY MEMBERS" in u
         or "FULL NAME (AS PER PASSPORT)" in u
     ):
@@ -485,11 +641,15 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
 
     if (
         "USE OF A REPRESENTATIVE" in u
+        or "USEOFAREPRESENTATIVE" in u
         or "USE OF A FAMILY MEMBER REPRESENTATIVE" in u
         or "IMM 5476" in u
         or "IMM5476" in u
         or "IMM 5713" in u
         or "IMM5713" in u
+        or "COLLEGE OF IMMIGRATION AND CITIZENSHIP CONSULTANTS" in u
+        or "COLLEGEOF IMMIGRATION AND CITIZENSHIP CONSULTANTS" in u
+        or ("SECTION D: YOUR DECLARATION" in u or "SECTIOND: YOURDECLARATION" in u)
     ):
         return "government_correspondence", "Use_of_Representative_IMM5476"
 
@@ -532,13 +692,29 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
     if (
         "LETTER OF INVITATION" in u
         or "INVITATION LETTER" in u
+        or "INVITES THE BELOW NOTED PERSONNEL" in u
+        or "INTERNATIONAL MEETING AND TRAINING OPPORTUNITY" in u
+        or ("TRAVEL ARRANGEMENTS AND EXPENSES" in u and "RESPONSIBLE FOR ARRANGING" in u)
+        or ("REPRESENTATIVE FOR" in u and ("VISIT THE COLLEGE" in u or "DEAR VISA OFFICER" in u))
         or ("TO WHOMSOEVER IT MAY CONCERN" in u and "INVITE" in u and "VISITOR VISA" in u)
+        or ("TO WHOM IT MAY CONCERN" in u and "INVITE" in u and "VISITOR VISA" in u)
         or ("CANADIAN CITIZENSHIP OR PERMANENT RESIDENT" in u and "BEAR ALL THE RESPONSIBILITIES" in u)
     ):
         return "government_correspondence", "Letter_of_Invitation"
 
-    if "MAXIMUM STAY 30 DAYS" in u or "MAXIMUM STAY 3O DAYS" in u or "MAXIMUMSTAY3ODAYS" in u or "ALLOWED TO ENTER UAE" in u:
+    if "ESTABLISHMENT CARD" in u or "EST.OWNER" in u.replace(" ", ""):
+        return "supporting_evidence", "UAE_Establishment_Card"
+    if (
+        "MAXIMUM STAY 30 DAYS" in u
+        or "MAXIMUM STAY 3O DAYS" in u
+        or "MAXIMUMSTAY3ODAYS" in u
+        or "ALLOWED TO ENTER UAE" in u
+        or "ENTRY PERMIT NO" in u
+        or "ENTRYPERMITNO" in u
+    ):
         return "government_correspondence", "UAE_eVisa_Grant"
+    if ("UNITED ARAB EMIRATES" in u and "RESIDENCE" in u) or "RESIDENCE PERMIT BECOME INVALID" in u:
+        return "visas_residence_permits", "UAE_Residence_Visa"
     if "SAFEGUARDING OUR HOME" in u or "E-VISA FOR REPUBLIC OF SINGAPORE" in u:
         return "government_correspondence", "Singapore_eVisa_Grant"
     if "GOVERNMENT OF MALAYSIA" in u or "MALAYSIA IMMIGRATION" in u or "ELECTRONIC VISA" in u or bool(re.search(r"\bE[\s\-]?VI\s*SA\b", u)):
@@ -549,9 +725,18 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
         return "supporting_evidence", "Utility_Bill_Statement"
     if "SUMMARY" in u and "EARNINGS" in u and "TAXES" in u:
         return "employment_records", "Payroll_Earnings_Statement"
-    if "EMPLOYEE NAME" in u and "PAY DATE" in u:
+    if (
+        ("EMPLOYEE NAME" in u and "PAY DATE" in u)
+        or "PAYSLIP FOR" in u
+        or ("PAYSLIP" in u and ("EMPLOYEE NAME" in u or "WORKING DAYS" in u or "NET PAY" in u))
+    ):
         return "employment_records", "Salary_Pay_Stub"
-    if "PERIOD OF EMPLOYMENT" in u or ("JOB TITLE" in u and "DUTIES AND RESPONSIBILITIES" in u) or ("TO WHOM IT MAY CONCERN" in u and "EMPLOYED" in u):
+    if (
+        "PERIOD OF EMPLOYMENT" in u
+        or ("JOB TITLE" in u and "DUTIES AND RESPONSIBILITIES" in u)
+        or ("TO WHOM IT MAY CONCERN" in u and "EMPLOYED" in u)
+        or "EMPLOYED FULL-TIME BY" in u
+    ):
         return "employment_records", "Employment_Verification_Letter"
 
     # 9. Share Portfolio Valuation vs Property Valuation vs Demat vs Bank Claim Form 135 vs Academic
@@ -580,9 +765,22 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
     ):
         return "financial_evidence", "Bank_Claim_Form_135"
 
-    if "CHANCELLOR" in u or "OTHANELOR" in u or "BACHELOR OF" in u or "MASTER OF" in u:
+    if (
+        ("CHANCELLOR" in u or "CHANCELLOY" in u or "OTHANELOR" in u or "BACHELOR OF" in u or "MASTER OF" in u or "CERTIFICATE OF PASSING" in u or "CERTITICATE OT PASSING" in u)
+        and "TRANSCRIPT" not in u
+        and "STATEMENT OF MARKS" not in u
+        and "STATEMENT OFMARKS" not in u
+        and "SEM :" not in u
+    ):
         return "educational_records", "University_Degree_Certificate"
-    if ("MARKS" in u and "OBTAINED" in u) or ("UNIVERSITY" in u and "SEMESTER" in u) or ("EXAMINATION" in u and "SUBJECT" in u):
+    if (
+        ("MARKS" in u and "OBTAINED" in u)
+        or "STATEMENT OF MARKS" in u
+        or "STATEMENT OFMARKS" in u
+        or "TRANSCRIPT(DIPLOMA)" in u
+        or ("UNIVERSITY" in u and ("SEMESTER" in u or "SEM :" in u))
+        or ("EXAMINATION" in u and "SUBJECT" in u)
+    ):
         return "educational_records", "Academic_Marksheet_Transcript"
 
     if (
@@ -601,15 +799,24 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
     ):
         return "financial_evidence", "Demat_Investment_Holding_Statement"
 
-    # 10. Bank Balance Certificates, Fixed Deposit Receipts, and Bank Account Statements
+    # 10. Bank Balance Certificates, Fixed Deposit Receipts, Business Bank Statements, and Personal Bank Statements
     if (
         "BALANCE CERTIFICATE AS ON" in u
         or "BALANCECERTIFICATEASON" in u
+        or "BALANCE CONFIRMATION" in u
+        or "CERTIFY THE BALANCE OUTSTANDING" in u
+        or "AVAILABLE BALANCE IN THE ACCOUNT AS ON" in u
+        or "AVAILABLEBALANCE IN THE ACCOUNT AS ON" in u
+        or ("MAINTAININGA CURRENT ACCOUNT" in u or "MAINTAINING A CURRENT ACCOUNT" in u)
         or ("THE MEHSANA URBAN CO-OP BANK" in u and "URBAN BANK ROAD" in u and "USER ID" in u and "STATEMENT OF ACCOUNT" not in u)
     ):
         return "financial_evidence", "Bank_Balance_Certificate"
     if "CUMMULATIVE DEPOSIT" in u or ("RECEIVED FROM" in u and "FOR RS." in u and "MATURITY" in u):
         return "financial_evidence", "Fixed_Deposit_Receipt"
+    if "BUSINESS ACCOUNT STATEMENT" in u or (
+        "ROYAL BANK OF CANADA" in u and ("INC." in u or "PVT LTD" in u or "CORP." in u or "LTD." in u)
+    ):
+        return "financial_evidence", "Business_Bank_Statement"
     if (
         "STATEMENT OF ACCOUNT" in u
         or "STATEMCNT OF ACCOUNT" in u
@@ -640,13 +847,29 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
         return "financial_evidence", "Bank_Account_Statement"
 
     # 11. Passports & Travel Stamps
+    is_non_passport_letter_or_booking = any(
+        kw in u
+        for kw in (
+            "PVT LTD",
+            "PVT. LTD",
+            "PRIVATE LIMITED",
+            "INC.",
+            "PAYSLIP",
+            "DEAR ",
+            "TO WHOM",
+            "BOOKING",
+            "HOTEL",
+            "VIEWTRIP",
+            "TRAVELPORT",
+            "COLLEGE",
+        )
+    )
     if (
         "REPUBLIC OF INDIA" in u
         or "REPUBLTCOF TNDIA" in u
         or "REPUBLIC OFINDIA" in u
         or "REPUBLTC OF: INDIA" in u
         or "RFPUBLTC OF INDIA" in u
-        or "PASSPORT" in u
         or "PASSEPORT" in u
         or "P<IND" in u
         or "P<CAN" in u
@@ -654,27 +877,35 @@ def detect_page_subtype(text: str, category: str) -> Tuple[str, str]:
         or "NAME OF FATHER/LEGAL GUARDIAN" in u
         or "NAME OF FATHER/LEGAI GUARDIAN" in u
         or "OLD PASSPORT NO" in u
+        or "OLD PASSPORT NOWITH" in u
         or "PASSPORT CANCELLED" in u
-        or "/VISA" in u
-        or "/ VISA" in u
         or "VISA/VISUM" in u
-        or "DEPARTURE" in u
-        or "DPARTURE" in u
-        or "DEPARTED" in u
-        or "ARRIVAL" in u
-        or "ARRVAL" in u
-        or "ARRVAI" in u
-        or "ARRIVAI" in u
-        or "ARR VA L" in u
-        or "ISA ON ARPAL" in u
-        or "ISA ON ARFRAL" in u
-        or "IMMIGRATION" in u
         or "MMIGRATIONNDIA" in u
         or "UMMEGRATOM" in u
         or "ROISSY-CG" in u
         or "FUMICINO" in u
         or ("PLACE OF BIRTH" in u and "GIVEN NAM" in u)
         or bool(re.search(r"Address\s+[^\r\n]+\s+([A-Z]+\s+[A-Z]+\s+PATEL)\s+([A-Z]+\s+[A-Z]+\s+PATEL)", text))
+        or (
+            not is_non_passport_letter_or_booking
+            and len(u) < 950
+            and (
+                "PASSPORT" in u
+                or "/VISA" in u
+                or "/ VISA" in u
+                or "DEPARTURE" in u
+                or "DPARTURE" in u
+                or "DEPARTED" in u
+                or "ARRIVAL" in u
+                or "ARRVAL" in u
+                or "ARRVAI" in u
+                or "ARRIVAI" in u
+                or "ARR VA L" in u
+                or "ISA ON ARPAL" in u
+                or "ISA ON ARFRAL" in u
+                or "IMMIGRATION" in u
+            )
+        )
     ):
         return "identity_passport", "Passport_and_Travel_Stamps"
 
@@ -844,9 +1075,26 @@ def extract_page_subjects_and_anchors(
         if ont_child:
             primary_names.append(deconcatenate_indian_name(ont_child.group(1)))
         else:
-            cand_c = field_map.get("child_legal_name") or field_map.get("full_name")
-            if cand_c and is_valid_person_name_candidate(cand_c):
-                primary_names.append(deconcatenate_indian_name(cand_c))
+            mun_child = re.search(
+                r"\bName\s*[\r\n:]+\s*([A-Z][A-Za-z]{2,20})(?=\s*[\r\n]|\s*\([0-9]|\s+Sex|\s+MALE|\s+FEMALE)",
+                text,
+            )
+            mun_father = re.search(
+                r"Name\s*of\s*Father\s*[\r\n:]+\s*([A-Z][A-Za-z\s]{4,40}?)(?=\r|\n|Place|Address|Permanent|Name\s*of\s*Mother|\([0-9])",
+                text,
+                re.IGNORECASE,
+            )
+            if mun_child and mun_father:
+                c_given = mun_child.group(1).strip()
+                f_toks = normalize_person_tokens(mun_father.group(1))
+                if len(f_toks) >= 2 and f_toks[-1].upper() in INDIAN_SURNAMES:
+                    constructed = deconcatenate_indian_name(f"{c_given} {f_toks[0]} {f_toks[-1]}")
+                    if is_valid_person_name_candidate(constructed):
+                        primary_names.append(constructed)
+            if not primary_names:
+                cand_c = field_map.get("child_legal_name") or field_map.get("full_name")
+                if cand_c and is_valid_person_name_candidate(cand_c):
+                    primary_names.append(deconcatenate_indian_name(cand_c))
 
     elif subtype == "Passport_and_Travel_Stamps":
         is_back_endorsement = bool(
@@ -1044,9 +1292,29 @@ def extract_page_subjects_and_anchors(
             if em_m2:
                 primary_names.append(deconcatenate_indian_name(em_m2.group(1)))
 
+    elif subtype == "Vaccination_Certificate":
+        vac_m = re.search(
+            r"Bene(?:fi)?ciary\s*Name\s*(?:/[^\r\n]*)?[\r\n:]+\s*([A-Za-z\s]{5,45}?)(?=\s+Age|\s+Gender|\r|\n)",
+            text,
+            re.IGNORECASE,
+        )
+        if vac_m and is_valid_person_name_candidate(vac_m.group(1)):
+            primary_names.append(deconcatenate_indian_name(vac_m.group(1)))
+
+    elif subtype == "School_Leaving_Certificate":
+        slc_m = re.search(
+            r"Name\s*of\s*the\s*Pupil\s*in\s*Full[^A-Za-z]*?(?:Surname\s*First\s*\)?\s*)?([A-Z][A-Za-z\s]{5,45}?)(?=[:\r\n]|2\.\s*Religion)",
+            text,
+            re.IGNORECASE,
+        )
+        if slc_m and is_valid_person_name_candidate(slc_m.group(1)):
+            primary_names.append(deconcatenate_indian_name(slc_m.group(1)))
+
     elif subtype in (
         "Salary_Pay_Stub",
         "Employment_Verification_Letter",
+        "Employment_Resignation_Letter",
+        "Employment_Contract_Growth_Plan",
         "Payroll_Earnings_Statement",
         "T4_Statement_of_Remuneration",
         "CRA_Notice_of_Assessment",
@@ -1055,9 +1323,11 @@ def extract_page_subjects_and_anchors(
         "Employment_Contract_Agreement",
     ):
         for pat in (
-            r"Employee\s+Name\s*:\s*[\r\n]*\s*([A-Za-z\s]{5,40}?)(?=\s+Pay\s+Date|\r|\n)",
+            r"RESIGNATION\s+LETTER\s*[-–:]\s*([A-Za-z\s]{5,40}?)(?=\r|\n|https?)",
+            r"Employee\s+Name\s*[:\-]?\s*[\r\n]*\s*([A-Za-z\.\s]{5,40}?)(?=\s+Pay\s+Date|\s+Working\s+Days|\s+Position|\s+Designation|\r|\n)",
             r"Re\s*:\s*([A-Za-z\s]{5,35}?)(?=\s*\(|\r|\n)",
-            r"confirm\s+that\s+([A-Za-z\s]{5,35}?)\s+is\s+(?:currently\s+)?employed",
+            r"confirm\s+that\s+([A-Za-z\.\s]{5,35}?)\s+(?:is|has\s+been)\s+(?:currently\s+)?employed",
+            r"(?:Mr\.|Mrs\.|Ms\.)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\s*[\r\n]+\s*[0-9]{1,4}\s+[A-Za-z]",
             r"Foreign\s+Worker\s+Names?\s*[\r\n:]+\s*([A-Za-z\s,]{5,45}?)(?=\s+[A-Z][0-9]{7}|\s+Expiry|\r|\n)",
             r"SUDBURY\s+ON\s+[A-Z0-9\s]+\s*[\r\n]+\s*([A-Z][A-Z\s]{5,35}?)\s*[\r\n]+\s*[0-9]+\s+[A-Z]",
             r"^\s*([A-Z][A-Z\s]{5,35}?)\s*[\r\n]+\s*[0-9]+\s+[A-Z]+\s+(?:CRES|AVE|ST|RD|DR|CRT|COURT|BLVD|WAY|LN)\b",
@@ -1121,6 +1391,14 @@ def extract_page_subjects_and_anchors(
                 primary_names.append(deconcatenate_indian_name(jh_m.group(1)))
 
         if not primary_names:
+            ind_bal_m = re.search(
+                r"\b(?:MR|MRS|MS|SHRI|SMT)\.?\s+([A-Z][A-Z\s]{5,40}?)(?=\s*[\r\n]|\s+Pin\s+Code|\s+\(Saving)",
+                text,
+            )
+            if ind_bal_m and is_valid_person_name_candidate(ind_bal_m.group(1)):
+                primary_names.append(deconcatenate_indian_name(ind_bal_m.group(1)))
+
+        if not primary_names:
             can_bank_m = re.search(r"\b((?:MR|MRS|MS)\s+[A-Z][A-Z\s]{4,35}?)\s*[\r\n]+\s*[0-9]{1,5}\s+[A-Z]", text)
             if can_bank_m and is_valid_person_name_candidate(can_bank_m.group(1)):
                 primary_names.append(deconcatenate_indian_name(can_bank_m.group(1)))
@@ -1158,13 +1436,16 @@ def extract_page_subjects_and_anchors(
             primary_names.append(deconcatenate_indian_name(claim_m.group(1)))
 
     elif subtype in ("Academic_Degree_or_Marksheet", "University_Degree_Certificate", "Academic_Marksheet_Transcript"):
-        deg_m = re.search(r"(?:wihinsigned|withinsigned)\s+([A-Za-z\s]{8,35}?)\s*[\r\n]+", text, re.IGNORECASE)
-        if deg_m and is_valid_person_name_candidate(deg_m.group(1)):
-            primary_names.append(deconcatenate_indian_name(deg_m.group(1)))
-        else:
-            mk_m = re.search(r"Min[1i]\s+Marks\s+[0-9]+\s+([A-Za-z\s]{8,35}?)(?=\s+SUBJECT|\r|\n)", text, re.IGNORECASE)
-            if mk_m and is_valid_person_name_candidate(mk_m.group(1)):
-                primary_names.append(deconcatenate_indian_name(mk_m.group(1)))
+        for acad_pat in (
+            r"(?:wihinsigned|withinsigned)\s+([A-Za-z\s]{8,35}?)\s*[\r\n]+",
+            r"Min[1i]\s+Marks\s+[0-9]+\s+([A-Za-z\s]{8,35}?)(?=\s+SUBJECT|\r|\n)",
+            r"(?:certify|cartify|tortify)\s+that\s*[\r\n]+\s*([A-Z][A-Z\s]{5,45}?)\s*[\r\n]+",
+            r"\bNAME\s*:\s*([A-Z][A-Z\s]{5,45}?)(?=\s+COLLEGE|\s+ENROLL|\r|\n)",
+        ):
+            am = re.search(acad_pat, text, re.IGNORECASE)
+            if am and is_valid_person_name_candidate(am.group(1)):
+                primary_names.append(deconcatenate_indian_name(am.group(1)))
+                break
 
     elif subtype in (
         "Visa_Cover_Letter_and_Itinerary",
@@ -1174,16 +1455,31 @@ def extract_page_subjects_and_anchors(
         "IRCC_Visa_Application_Form",
         "Minor_Travel_Consent_Letter",
     ):
-        for pat in (
-            r"Application\s+for\s+the\s+Family\s+of\s+([A-Za-z\s]{5,40}?)(?=\s+Dear|\r|\n)",
-            r"Insured\s+Coverage\s+Summary\s+([A-Za-z\s]{5,40}?)\s+[0-9]{2}/[0-9]{2}/[0-9]{4}",
-            r"Account\s+Number\s+[0-9\s\-]+([A-Z][A-Za-z\s]{5,35}?)(?=\r|\n)",
-            r"([A-Z][A-Za-z\s]{5,40}?)\s*[\r\n]+\s*Date\s*of\s*Birth\s*:",
-        ):
-            sm = re.search(pat, text, re.IGNORECASE)
-            if sm and is_valid_person_name_candidate(sm.group(1)):
-                primary_names.append(deconcatenate_indian_name(sm.group(1)))
-                break
+        if subtype == "Family_Information_Sheet":
+            imm_wrap_m = re.search(
+                r"[\r\n]+\s*([A-Z][A-Z\s]{3,35}?)\s+(?:19|20)[0-9]{2}-[0-9]{2}-[0-9]{2}[^\r\n]*[\r\n]+\s*([A-Z]{2,20})\s+Applicant\b",
+                text,
+            )
+            if imm_wrap_m:
+                combined_app = deconcatenate_indian_name(f"{imm_wrap_m.group(1).strip()} {imm_wrap_m.group(2).strip()}")
+                if is_valid_person_name_candidate(combined_app):
+                    primary_names.append(combined_app)
+            if not primary_names:
+                imm_inline_m = re.search(r"[\r\n]+\s*([A-Z][A-Z\s]{5,40}?)\s+Applicant\b", text)
+                if imm_inline_m and is_valid_person_name_candidate(imm_inline_m.group(1)):
+                    primary_names.append(deconcatenate_indian_name(imm_inline_m.group(1)))
+
+        if not primary_names:
+            for pat in (
+                r"Application\s+for\s+the\s+Family\s+of\s+([A-Za-z\s]{5,40}?)(?=\s+Dear|\r|\n)",
+                r"Insured\s+Coverage\s+Summary\s+([A-Za-z\s]{5,40}?)\s+[0-9]{2}/[0-9]{2}/[0-9]{4}",
+                r"Account\s+Number\s+[0-9\s\-]+([A-Z][A-Za-z\s]{5,35}?)(?=\r|\n)",
+                r"([A-Z][A-Za-z\s]{5,40}?)\s*[\r\n]+\s*Date\s*of\s*Birth\s*:",
+            ):
+                sm = re.search(pat, text, re.IGNORECASE)
+                if sm and is_valid_person_name_candidate(sm.group(1)):
+                    primary_names.append(deconcatenate_indian_name(sm.group(1)))
+                    break
         if not primary_names:
             for k in ("full_name", "applicant_name", "account_holder_name"):
                 val = field_map.get(k)
@@ -1325,20 +1621,120 @@ def names_belong_to_same_person(name_a: str, name_b: str) -> bool:
     return cmp_res.is_concordant or cmp_res.similarity_score >= 0.72
 
 
+ALWAYS_CORPORATE_SUBTYPES = {
+    "Certificate_and_Articles_of_Incorporation",
+    "Company_Memorandum_of_Association",
+    "GST_Registration_Certificate",
+    "Company_PAN_Card",
+    "Tax_Deduction_TAN_Letter",
+    "Profession_Tax_Certificate",
+    "Company_Profile_Description",
+    "Business_Bank_Statement",
+    "UAE_Establishment_Card",
+    "Representative_Submission_Letter",
+    "Certificate_of_Representation",
+}
+
+
+def is_corporate_page(subtype: str, text: str) -> bool:
+    """
+    Determines whether a page belongs to the corporate/company/sponsor folder (`Corporate_Documents`)
+    rather than an individual applicant's personal folder.
+    """
+    if subtype in ALWAYS_CORPORATE_SUBTYPES:
+        return True
+    u = (text or "").upper()
+    if subtype == "Bank_Balance_Certificate":
+        return any(
+            kw in u
+            for kw in ("M/S.", "M/S ", "PVT LTD", "PVT. LTD", "PRIVATE LIMITED", "CURRENT ACCOUNT", "INC.", "LLP")
+        )
+    if subtype == "Letter_of_Invitation":
+        return any(
+            kw in u
+            for kw in (
+                "PVT LTD",
+                "PVT. LTD",
+                "PRIVATE LIMITED",
+                "INC.",
+                "BUSINESS VISITOR",
+                "REPRESENTATIVE FOR",
+                "VISIT THE COLLEGE",
+                "INTERNATIONAL MEETING",
+                "TRAINING AND NETWORKING",
+            )
+        )
+    if subtype in ("UAE_eVisa_Grant", "UAE_Residence_Visa"):
+        return "INVESTOR" in u and any(kw in u for kw in ("SPONSOR", "LLC", "VERIFICATION", "ESTABLISHMENT"))
+    return False
+
+
+def _compute_segment_duplicate_signature(seg: dict[str, Any]) -> dict[str, Any]:
+    """Builds normalized alphanumeric, lexical word-set, and distinguishing ID-anchor signatures for duplicate detection."""
+    full_text = "\n".join((pr.get("text") or "") for pr in seg["pages"])
+    u = full_text.upper()
+    norm_alnum = re.sub(r"[^A-Z0-9]", "", u)
+    word_set = {w for w in re.findall(r"[A-Z]{3,}", u)}
+    gstins = set(re.findall(r"\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b", u))
+    pans = set(re.findall(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b", u))
+    passports = set(re.findall(r"\b[A-Z][0-9]{7}\b", u))
+    long_nums = set(re.findall(r"\b[0-9]{6,}\b", u))
+    return {
+        "subtype": seg["subtype"],
+        "page_count": len(seg["page_numbers"]),
+        "norm_alnum": norm_alnum,
+        "word_set": word_set,
+        "strict_ids": gstins | pans | passports,
+        "long_nums": long_nums,
+    }
+
+
+def _are_segments_exact_duplicates(sig_a: dict[str, Any], sig_b: dict[str, Any]) -> bool:
+    """
+    Returns True only when two segments represent the exact same document (either byte-for-byte
+    text-identical or vector-vs-scanned copies of the exact same underlying document with matching IDs).
+    Never flags two distinct GST certificates, bank statement periods, or ITR years as duplicates.
+    """
+    if sig_a["subtype"] != sig_b["subtype"] or sig_a["page_count"] != sig_b["page_count"]:
+        return False
+
+    # 1. Exact normalized alphanumeric match (digital/merge duplicate)
+    if len(sig_a["norm_alnum"]) >= 40 and sig_a["norm_alnum"] == sig_b["norm_alnum"]:
+        return True
+
+    # 2. Strict ID conflict guard (e.g. different GSTIN, PAN, or Passport No -> NOT duplicate)
+    if sig_a["strict_ids"] and sig_b["strict_ids"] and sig_a["strict_ids"] != sig_b["strict_ids"]:
+        return False
+    if sig_a["long_nums"] and sig_b["long_nums"]:
+        num_overlap = len(sig_a["long_nums"] & sig_b["long_nums"]) / max(
+            min(len(sig_a["long_nums"]), len(sig_b["long_nums"])), 1
+        )
+        if num_overlap < 0.50:
+            return False
+
+    # 3. High lexical word-set Jaccard match (catches vector vs scanned copy of same itinerary/letter/TAN)
+    wa, wb = sig_a["word_set"], sig_b["word_set"]
+    if len(wa) >= 12 and len(wb) >= 12:
+        jaccard = len(wa & wb) / max(len(wa | wb), 1)
+        if jaccard >= 0.68:
+            return True
+
+    return False
+
+
 def is_new_document_boundary(prev_p: dict[str, Any], curr_p: dict[str, Any]) -> bool:
     """
     Determines whether `curr_p` starts a NEW separate document even when `prev_p` and `curr_p`
     belong to the same person(s) and have the same document `subtype`.
     Ensures granular document splitting (e.g., separate monthly Bank Statements, separate
-    Property Valuation Reports, separate Pay Stubs / T4s / CRA NOAs, and Current vs Old Passports).
+    Property Valuation Reports, consolidated monthly Pay Stubs per employee, T4s / CRA NOAs, and Current vs Old Passports).
     """
     sub = curr_p["subtype"]
     prev_u = (prev_p.get("text") or "").upper()
     curr_u = (curr_p.get("text") or "").upper()
 
-    # 1. Standalone 1-page certificates, slips, pay stubs, and eVisas
+    # 1. Standalone 1-page certificates, slips, cards, photos, and eVisas
     if sub in (
-        "Salary_Pay_Stub",
         "Payroll_Earnings_Statement",
         "Bank_Balance_Certificate",
         "Fixed_Deposit_Receipt",
@@ -1346,11 +1742,82 @@ def is_new_document_boundary(prev_p: dict[str, Any], curr_p: dict[str, Any]) -> 
         "IELTS_Language_Test_Report",
         "Police_Clearance_Certificate_PCC",
         "School_Bonafide_Certificate",
+        "School_Leaving_Certificate",
+        "Vaccination_Certificate",
+        "Passport_or_Visa_Photograph",
+        "Company_PAN_Card",
+        "PAN_Identity_Card",
+        "Tax_Deduction_TAN_Letter",
+        "Profession_Tax_Certificate",
+        "UAE_Establishment_Card",
+        "UAE_Residence_Visa",
         "UAE_eVisa_Grant",
         "Singapore_eVisa_Grant",
         "Malaysia_eVisa_Grant",
     ):
         return True
+
+    # 1_paystub. Consecutive monthly Salary_Pay_Stub pages of the same employee consolidate into Salary_Pay_Stubs
+    if sub == "Salary_Pay_Stub":
+        if prev_p.get("cluster_ids") and curr_p.get("cluster_ids") and prev_p["cluster_ids"] != curr_p["cluster_ids"]:
+            return True
+        return False
+
+    # 1_gst. GST Registration Certificate: Page 1 has 'Form GST REG', Pages 2-3 are Annexure A/B
+    if sub == "GST_Registration_Certificate":
+        if "FORM GST REG" in curr_u and "ANNEXURE" not in curr_u[:80]:
+            return True
+        return False
+
+    # 1_incorp. Corporate Incorporation & MOA multi-page boundaries
+    if sub == "Certificate_and_Articles_of_Incorporation":
+        if (
+            ("CERTIFICATE OF INCORPORATION" in curr_u and "ARTICLES OF INCORPORATION" not in curr_u)
+            or ("DATE REPORT PRODUCED" in curr_u and "PAGE 1 OF" in curr_u)
+        ) and "FORM 1" not in curr_u[:120]:
+            return True
+        return False
+
+    if sub == "Company_Memorandum_of_Association":
+        if bool(re.search(r"\bPAGE\s+1\s+OF\s+[0-9]+\b", curr_u)) or "SPICE MOA" in curr_u:
+            return True
+        return False
+
+    # 1_travel. Hotel Booking, Flight Itinerary & Invitation Letter boundaries
+    if sub == "Hotel_Booking_Confirmation":
+        if "YOUR CONFIRMED BOOKING AT" in curr_u or (
+            "STAR RATING:" in curr_u and "SPECIAL REQUESTS" not in curr_u[:80]
+        ):
+            return True
+        return False
+
+    if sub == "Flight_Booking_Itinerary":
+        if bool(re.search(r"\b1/[2-9]\b", curr_u)) and not bool(re.search(r"\b1/[2-9]\b", prev_u)):
+            return True
+        return False
+
+    if sub == "Letter_of_Invitation":
+        top_u = curr_u[:750]
+        if any(
+            sal in top_u
+            for sal in (
+                "DEAR ",
+                "TO WHOM IT MAY CONCERN",
+                "TO WHOMSOEVER IT MAY CONCERN",
+                "CONSULATE GENERAL",
+            )
+        ) or any(hdr in curr_u[:280] for hdr in ("LETTER OF INVITATION", "INVITATION LETTER")):
+            return True
+        return False
+
+    if sub == "Academic_Marksheet_Transcript":
+        if (
+            "STATEMENT OF MARKS" in curr_u
+            or "STATEMENT OFMARKS" in curr_u
+            or "TRANSCRIPT(DIPLOMA)" in curr_u
+        ):
+            return True
+        return False
 
     # 1_roe. Record of Employment (ROE): Page 1 has 'SERIAL NO' or 'REASON FOR ISSUING THIS ROE'; Page 2 has Employer Signature / Comments
     if sub == "Record_of_Employment_ROE":
@@ -1391,9 +1858,9 @@ def is_new_document_boundary(prev_p: dict[str, Any], curr_p: dict[str, Any]) -> 
             return True
         return False
 
-    # 4. Bank Account Statement & Demat Holding Statement: split on 'Page 1 of X', new Passbook Legend, or new Account ID
-    if sub in ("Bank_Account_Statement", "Demat_Investment_Holding_Statement"):
-        if bool(re.search(r"\bPAGE\s+1\s+OF\s+[0-9]+", curr_u)):
+    # 4. Bank Account Statement, Business Bank Statement & Demat Holding Statement
+    if sub in ("Bank_Account_Statement", "Business_Bank_Statement", "Demat_Investment_Holding_Statement"):
+        if bool(re.search(r"\b(?:PAGE\s+)?1\s+OF\s+[0-9]+\b", curr_u)) or "RBBDA" in curr_u:
             return True
         if "GENERALLY USED ABBREVIATIONS" in curr_u or "HPTIRGENERALLYUSEDABBREVIATIONS" in curr_u:
             return True
@@ -1447,6 +1914,7 @@ def sort_and_split_document_packet(
 
     page_records: list[dict[str, Any]] = []
     clusters: list[PersonCluster] = []
+    blank_pages_omitted: list[int] = []
 
     def get_or_create_cluster(raw_name: str, anchors: dict[str, str], is_joint_page: bool = False) -> PersonCluster:
         clean = deconcatenate_indian_name(raw_name)
@@ -1479,49 +1947,78 @@ def sort_and_split_document_packet(
 
     # Pass 1: Extract every page's category, subtype, fields, language compliance, and initial subjects
     for p in pages:
-        lang_comp = evaluate_language_compliance(
-            text=p.text,
-            raw_unfiltered_text=p.raw_unfiltered_text,
-            filename=filename,
-        )
-        raw_cat, cat_conf = classify_document(p.text, filename="")
-        canonical_cat, subtype = detect_page_subtype(p.text, raw_cat)
+        if getattr(p, "is_blank_page", False):
+            blank_pages_omitted.append(p.page_number)
+            continue
 
-        single_page_res = PageExtractionResult(
-            page_number=1,
-            text=p.text,
-            ocr_applied=p.ocr_applied,
-            ocr_confidence=p.ocr_confidence,
-            blocks=p.blocks,
-            width=p.width,
-            height=p.height,
-            detected_rotation=p.detected_rotation,
-            is_rotation_corrected=p.is_rotation_corrected,
-            raw_unfiltered_text=p.raw_unfiltered_text,
-        )
-        extracted_flds = extract_structured_fields(
-            document_id=dummy_doc_id,
-            organization_id=dummy_org_id,
-            category=canonical_cat,
-            pages=[single_page_res],
-            document_bytes=None,
-            mime_type="text/plain",
-            filename="",
-        )
-        subj_info = extract_page_subjects_and_anchors(p, canonical_cat, subtype, extracted_flds)
+        if getattr(p, "is_photo_only_page", False):
+            canonical_cat, subtype = "identity_passport", "Passport_or_Visa_Photograph"
+            cat_conf = 0.96
+            lang_comp = {
+                "detected_language": "en",
+                "is_compliant": True,
+                "requires_caseworker_escalation": False,
+                "escalation_status": "COMPLIANT",
+                "caseworker_action": None,
+                "client_outreach_template": None,
+            }
+            subj_info = {
+                "primary_names": [],
+                "bridged_married_aliases": [],
+                "is_joint": False,
+                "id_anchors": {},
+                "metadata_relatives": [],
+                "field_map": {},
+            }
+        else:
+            lang_comp = evaluate_language_compliance(
+                text=p.text,
+                raw_unfiltered_text=p.raw_unfiltered_text,
+                filename=filename,
+            )
+            raw_cat, cat_conf = classify_document(p.text, filename="")
+            canonical_cat, subtype = detect_page_subtype(p.text, raw_cat)
 
+            single_page_res = PageExtractionResult(
+                page_number=1,
+                text=p.text,
+                ocr_applied=p.ocr_applied,
+                ocr_confidence=p.ocr_confidence,
+                blocks=p.blocks,
+                width=p.width,
+                height=p.height,
+                detected_rotation=p.detected_rotation,
+                is_rotation_corrected=p.is_rotation_corrected,
+                raw_unfiltered_text=p.raw_unfiltered_text,
+            )
+            extracted_flds = extract_structured_fields(
+                document_id=dummy_doc_id,
+                organization_id=dummy_org_id,
+                category=canonical_cat,
+                pages=[single_page_res],
+                document_bytes=None,
+                mime_type="text/plain",
+                filename="",
+            )
+            subj_info = extract_page_subjects_and_anchors(p, canonical_cat, subtype, extracted_flds)
+
+        corp_flag = is_corporate_page(subtype, p.text)
         matched_cluster_ids: list[str] = []
-        is_joint_pg = subj_info["is_joint"]
-        for pname in subj_info["primary_names"]:
-            c = get_or_create_cluster(pname, subj_info["id_anchors"], is_joint_page=is_joint_pg)
-            if c.cluster_id not in matched_cluster_ids:
-                matched_cluster_ids.append(c.cluster_id)
+        is_joint_pg = False if corp_flag else subj_info["is_joint"]
 
-        for maiden_name, married_alias in subj_info.get("bridged_married_aliases", []):
-            for c in clusters:
-                if maiden_name in c.name_variations or married_alias in c.name_variations:
-                    c.add_variation(maiden_name)
-                    c.add_variation(married_alias)
+        if corp_flag:
+            matched_cluster_ids = ["CORPORATE_DOCUMENTS"]
+        else:
+            for pname in subj_info["primary_names"]:
+                c = get_or_create_cluster(pname, subj_info["id_anchors"], is_joint_page=is_joint_pg)
+                if c.cluster_id not in matched_cluster_ids:
+                    matched_cluster_ids.append(c.cluster_id)
+
+            for maiden_name, married_alias in subj_info.get("bridged_married_aliases", []):
+                for c in clusters:
+                    if maiden_name in c.name_variations or married_alias in c.name_variations:
+                        c.add_variation(maiden_name)
+                        c.add_variation(married_alias)
 
         page_records.append({
             "page_number": p.page_number,
@@ -1534,10 +2031,40 @@ def sort_and_split_document_packet(
             "language_compliance": lang_comp,
             "primary_names": subj_info["primary_names"],
             "is_joint": is_joint_pg,
+            "is_corporate": corp_flag,
+            "applied_rotation": getattr(p, "applied_rotation", None),
             "id_anchors": subj_info["id_anchors"],
             "field_map": subj_info["field_map"],
             "cluster_ids": matched_cluster_ids,
         })
+
+    # Pass 1.5: Sandwich narrative continuity for multi-page Representative_Submission_Letter
+    for i in range(1, len(page_records) - 1):
+        if (
+            page_records[i - 1]["subtype"] == "Representative_Submission_Letter"
+            and any(
+                page_records[k]["subtype"] == "Representative_Submission_Letter"
+                for k in range(i + 1, min(i + 3, len(page_records)))
+            )
+            and page_records[i]["subtype"] in (
+                "Employment_Verification_Letter",
+                "Employment_Records",
+                "Supporting_Evidence",
+                "Government_Correspondence",
+                "Visa_Cover_Letter_and_Itinerary",
+            )
+        ):
+            page_records[i]["category"] = "government_correspondence"
+            page_records[i]["subtype"] = "Representative_Submission_Letter"
+            page_records[i]["is_corporate"] = True
+            page_records[i]["is_joint"] = False
+            page_records[i]["cluster_ids"] = ["CORPORATE_DOCUMENTS"]
+            page_records[i]["language_compliance"]["requires_caseworker_escalation"] = False
+
+    if clusters:
+        referenced_cids = {cid for pr in page_records for cid in pr["cluster_ids"] if cid != "CORPORATE_DOCUMENTS"}
+        if referenced_cids:
+            clusters = [c for c in clusters if c.cluster_id in referenced_cids]
 
     # Pass 2: Consolidate clusters that share name concordance or bridged maiden/married variations
     merged_any = True
@@ -1571,7 +2098,7 @@ def sort_and_split_document_packet(
 
     # Pass 3: Resolve pages that have an ID anchor (PAN, Passport, File No, SIN, UMI, Account, UCI) but no explicit name on that page
     for pr in page_records:
-        if not pr["cluster_ids"] and pr["id_anchors"]:
+        if not pr["cluster_ids"] and not pr.get("is_corporate") and pr["id_anchors"]:
             for c in clusters:
                 for ak in ("pan", "passport", "file_no", "sin", "umi", "account", "uci"):
                     if pr["id_anchors"].get(ak) and pr["id_anchors"][ak] in c.id_anchors[ak]:
@@ -1580,6 +2107,26 @@ def sort_and_split_document_packet(
                 if pr["cluster_ids"]:
                     break
 
+    # Pass 3b: Route third-party sponsor-visa-only clusters into CORPORATE_DOCUMENTS when corporate documents exist
+    has_corporate_docs = any(pr.get("is_corporate") for pr in page_records)
+    if has_corporate_docs and len(clusters) > 1:
+        c_subtypes: dict[str, set[str]] = {c.cluster_id: set() for c in clusters}
+        for pr in page_records:
+            for cid in pr["cluster_ids"]:
+                if cid in c_subtypes:
+                    c_subtypes[cid].add(pr["subtype"])
+        sponsor_visa_only_subtypes = {"UAE_eVisa_Grant", "UAE_Residence_Visa", "Foreign_eVisa_Grant"}
+        remap_to_corp = {
+            cid for cid, subs in c_subtypes.items() if subs and subs.issubset(sponsor_visa_only_subtypes)
+        }
+        if remap_to_corp and len(remap_to_corp) < len(clusters):
+            clusters = [c for c in clusters if c.cluster_id not in remap_to_corp]
+            for pr in page_records:
+                if any(cid in remap_to_corp for cid in pr["cluster_ids"]):
+                    pr["is_corporate"] = True
+                    pr["is_joint"] = False
+                    pr["cluster_ids"] = ["CORPORATE_DOCUMENTS"]
+
     # Pass 4: Bidirectional Multi-Page Continuity Propagation
     # 4a. Attach trailing blank/minimal 'Page 6' of a 6-page CRA Notice of Assessment to Page 5
     for i in range(1, len(page_records)):
@@ -1587,6 +2134,7 @@ def sort_and_split_document_packet(
         prev_p = page_records[i - 1]
         if (
             len((curr_p.get("text") or "").strip()) < 15
+            and not curr_p.get("is_corporate")
             and prev_p["subtype"] == "CRA_Notice_of_Assessment"
             and "PAGE 5" in (prev_p.get("text") or "").upper()
         ):
@@ -1628,12 +2176,18 @@ def sort_and_split_document_packet(
         if pr["subtype"] == "Income_Tax_Return_ITR" and pr["id_anchors"].get("itr_ay"):
             pr["subtype"] = f"Income_Tax_Return_ITR_AY_{pr['id_anchors']['itr_ay']}"
 
-    # 4c. Propagate Person Cluster IDs across continuation pages (Forward first within document boundaries, then Backward for cover/legend pages)
-    for i in range(1, len(page_records)):
-        curr_p = page_records[i]
-        prev_p = page_records[i - 1]
+    # 4c. Propagate Person Cluster IDs across non-corporate pages (never bleeding CORPORATE_DOCUMENTS onto personal pages)
+    non_corp_indices = [idx for idx, pr in enumerate(page_records) if not pr.get("is_corporate")]
+
+    for k in range(1, len(non_corp_indices)):
+        curr_idx = non_corp_indices[k]
+        prev_idx = non_corp_indices[k - 1]
+        curr_p = page_records[curr_idx]
+        prev_p = page_records[prev_idx]
+        are_physically_adjacent = curr_idx == prev_idx + 1
         if (
-            curr_p["subtype"] == "CA_Net_Worth_Certificate"
+            are_physically_adjacent
+            and curr_p["subtype"] == "CA_Net_Worth_Certificate"
             and prev_p["subtype"] == "CA_Net_Worth_Certificate"
             and prev_p["is_joint"]
         ):
@@ -1642,11 +2196,14 @@ def sort_and_split_document_packet(
         elif not curr_p["cluster_ids"] and prev_p["cluster_ids"]:
             if curr_p["subtype"] != prev_p["subtype"] or not is_new_document_boundary(prev_p, curr_p):
                 curr_p["cluster_ids"] = list(prev_p["cluster_ids"])
-                curr_p["is_joint"] = prev_p["is_joint"]
+                curr_p["is_joint"] = prev_p["is_joint"] if are_physically_adjacent else False
 
-    for i in range(len(page_records) - 2, -1, -1):
-        curr_p = page_records[i]
-        next_p = page_records[i + 1]
+    for k in range(len(non_corp_indices) - 2, -1, -1):
+        curr_idx = non_corp_indices[k]
+        next_idx = non_corp_indices[k + 1]
+        curr_p = page_records[curr_idx]
+        next_p = page_records[next_idx]
+        are_physically_adjacent = next_idx == curr_idx + 1
         if not curr_p["cluster_ids"] and next_p["cluster_ids"]:
             if (
                 curr_p["subtype"] == next_p["subtype"]
@@ -1654,22 +2211,28 @@ def sort_and_split_document_packet(
                 or ("PAGE 1" in curr_p["text"].upper() and curr_p["category"] == next_p["category"])
             ):
                 curr_p["cluster_ids"] = list(next_p["cluster_ids"])
-                curr_p["is_joint"] = next_p["is_joint"]
+                curr_p["is_joint"] = next_p["is_joint"] if are_physically_adjacent else False
 
-    for i in range(1, len(page_records)):
-        curr_p = page_records[i]
-        prev_p = page_records[i - 1]
+    for k in range(1, len(non_corp_indices)):
+        curr_idx = non_corp_indices[k]
+        prev_idx = non_corp_indices[k - 1]
+        curr_p = page_records[curr_idx]
+        prev_p = page_records[prev_idx]
+        are_physically_adjacent = curr_idx == prev_idx + 1
         if not curr_p["cluster_ids"] and prev_p["cluster_ids"]:
             curr_p["cluster_ids"] = list(prev_p["cluster_ids"])
-            curr_p["is_joint"] = prev_p["is_joint"]
+            curr_p["is_joint"] = prev_p["is_joint"] if are_physically_adjacent else False
 
-    first_assigned_idx = next((idx for idx, pr in enumerate(page_records) if pr["cluster_ids"]), None)
-    if first_assigned_idx is not None and first_assigned_idx > 0:
-        first_cids = page_records[first_assigned_idx]["cluster_ids"]
-        for idx in range(first_assigned_idx - 1, -1, -1):
-            page_records[idx]["cluster_ids"] = list(first_cids)
+    first_assigned_nc_pos = next(
+        (pos for pos, idx in enumerate(non_corp_indices) if page_records[idx]["cluster_ids"]),
+        None,
+    )
+    if first_assigned_nc_pos is not None and first_assigned_nc_pos > 0:
+        first_cids = page_records[non_corp_indices[first_assigned_nc_pos]]["cluster_ids"]
+        for pos in range(first_assigned_nc_pos - 1, -1, -1):
+            page_records[non_corp_indices[pos]]["cluster_ids"] = list(first_cids)
 
-    # Pass 5: Segment pages into logical multi-page Documents per Person with granular boundary detection
+    # Pass 5: Segment pages into logical multi-page Documents per Person/Corporate folder with granular boundary detection
     segments: list[dict[str, Any]] = []
     for pr in page_records:
         requires_lang_review = pr["language_compliance"].get("requires_caseworker_escalation", False)
@@ -1693,7 +2256,11 @@ def sort_and_split_document_packet(
                 "pages": [pr],
             })
 
-    # Pass 6: Build Person Folders and generate split PDFs for each segment
+    for seg in segments:
+        if seg["subtype"] == "Salary_Pay_Stub" and len(seg["page_numbers"]) > 1:
+            seg["subtype"] = "Salary_Pay_Stubs"
+
+    # Pass 6: Build Person & Corporate Folders, apply upright page rotation, and isolate exact duplicates in _Duplicates/
     person_folders_map: dict[str, dict[str, Any]] = {}
     for c in clusters:
         person_folders_map[c.cluster_id] = {
@@ -1703,6 +2270,23 @@ def sort_and_split_document_packet(
             "name_variations": c.name_variations,
             "id_anchors": {k: sorted(list(v)) for k, v in c.id_anchors.items() if v and k != "file_no"},
             "is_caseworker_review_folder": False,
+            "is_corporate_folder": False,
+            "duplicates_count": 0,
+            "total_documents": 0,
+            "total_pages": 0,
+            "documents": [],
+        }
+
+    if any("CORPORATE_DOCUMENTS" in seg["cluster_ids"] for seg in segments):
+        person_folders_map["CORPORATE_DOCUMENTS"] = {
+            "person_id": "CORPORATE_DOCUMENTS",
+            "canonical_name": "Corporate Documents",
+            "folder_name": "Corporate_Documents",
+            "name_variations": ["Company, Business & Sponsor Documents"],
+            "id_anchors": {},
+            "is_caseworker_review_folder": False,
+            "is_corporate_folder": True,
+            "duplicates_count": 0,
             "total_documents": 0,
             "total_pages": 0,
             "documents": [],
@@ -1716,6 +2300,8 @@ def sort_and_split_document_packet(
             "name_variations": ["Unassigned / Manual Review Required"],
             "id_anchors": {},
             "is_caseworker_review_folder": True,
+            "is_corporate_folder": False,
+            "duplicates_count": 0,
             "total_documents": 0,
             "total_pages": 0,
             "documents": [],
@@ -1726,6 +2312,8 @@ def sort_and_split_document_packet(
 
     base_stem = os.path.splitext(os.path.basename(filename))[0]
     base_stem_clean = re.sub(r"[^A-Za-z0-9]+", "_", base_stem).strip("_")
+    page_rot_by_pno = {pr["page_number"]: pr.get("applied_rotation") for pr in page_records}
+    seen_canonical_sigs: dict[str, list[tuple[dict[str, Any], str]]] = {}
 
     for seg in segments:
         pnos = seg["page_numbers"]
@@ -1735,6 +2323,9 @@ def sort_and_split_document_packet(
         split_pdf = fitz.open()
         for pno in pnos:
             split_pdf.insert_pdf(src_doc, from_page=pno - 1, to_page=pno - 1)
+            applied_rot = page_rot_by_pno.get(pno)
+            if applied_rot is not None:
+                split_pdf[-1].set_rotation(applied_rot)
         split_pdf_bytes = split_pdf.tobytes(garbage=3, deflate=True)
         split_pdf.close()
 
@@ -1744,25 +2335,47 @@ def sort_and_split_document_packet(
                 if fk not in merged_fields and fv:
                     merged_fields[fk] = fv
 
+        seg_sig = _compute_segment_duplicate_signature(seg)
+
         for cid in seg["cluster_ids"]:
             folder_obj = person_folders_map.get(cid)
             if not folder_obj:
                 continue
-            doc_seq = folder_obj["total_documents"] + 1
-            doc_filename = f"{doc_seq:02d}_{seg['subtype']}_{page_range_label}.pdf"
-            rel_zip_path = f"{folder_obj['folder_name']}/{doc_filename}"
+
+            matched_dup_of: Optional[str] = None
+            if cid != "CASE_WORKER_REVIEW":
+                for prev_sig, prev_fname in seen_canonical_sigs.get(cid, []):
+                    if _are_segments_exact_duplicates(prev_sig, seg_sig):
+                        matched_dup_of = prev_fname
+                        break
+
+            is_dup = matched_dup_of is not None
+            if is_dup:
+                folder_obj["duplicates_count"] += 1
+                seq_num = folder_obj["duplicates_count"]
+                doc_filename = f"{seq_num:02d}_{seg['subtype']}_{page_range_label}.pdf"
+                rel_zip_path = f"{folder_obj['folder_name']}/_Duplicates/{doc_filename}"
+            else:
+                seq_num = (folder_obj["total_documents"] - folder_obj["duplicates_count"]) + 1
+                doc_filename = f"{seq_num:02d}_{seg['subtype']}_{page_range_label}.pdf"
+                rel_zip_path = f"{folder_obj['folder_name']}/{doc_filename}"
+                seen_canonical_sigs.setdefault(cid, []).append((seg_sig, doc_filename))
 
             zf.writestr(rel_zip_path, split_pdf_bytes)
 
             if write_to_disk_dir:
-                person_disk_dir = os.path.join(write_to_disk_dir, folder_obj["folder_name"], base_stem_clean)
+                person_disk_dir = (
+                    os.path.join(write_to_disk_dir, folder_obj["folder_name"], base_stem_clean, "_Duplicates")
+                    if is_dup
+                    else os.path.join(write_to_disk_dir, folder_obj["folder_name"], base_stem_clean)
+                )
                 os.makedirs(person_disk_dir, exist_ok=True)
                 disk_file_path = os.path.join(person_disk_dir, doc_filename)
                 with open(disk_file_path, "wb") as df:
                     df.write(split_pdf_bytes)
 
             doc_entry: dict[str, Any] = {
-                "document_index": doc_seq,
+                "document_index": folder_obj["total_documents"] + 1,
                 "filename": doc_filename,
                 "relative_path": rel_zip_path,
                 "category": seg["category"],
@@ -1771,6 +2384,8 @@ def sort_and_split_document_packet(
                 "page_range": f"Page {p_start}" if p_start == p_end else f"Pages {p_start}–{p_end}",
                 "page_count": len(pnos),
                 "is_joint_document": seg["is_joint"],
+                "is_duplicate": is_dup,
+                "duplicate_of": matched_dup_of,
                 "shared_with": [
                     person_folders_map[other_cid]["canonical_name"]
                     for other_cid in seg["cluster_ids"]
@@ -1792,7 +2407,9 @@ def sort_and_split_document_packet(
     active_folders = [
         f for f in person_folders_map.values() if f["total_documents"] > 0
     ]
-    active_folders.sort(key=lambda x: (x["is_caseworker_review_folder"], -x["total_pages"]))
+    active_folders.sort(
+        key=lambda x: (x["is_caseworker_review_folder"], x.get("is_corporate_folder", False), -x["total_pages"])
+    )
 
     zip_b64 = base64.b64encode(zip_buffer.getvalue()).decode("ascii") if include_split_pdf_bytes else None
 
@@ -1800,7 +2417,12 @@ def sort_and_split_document_packet(
         "status": "success",
         "source_filename": filename,
         "total_pages_analyzed": len(pages),
-        "total_persons_detected": sum(1 for f in active_folders if not f["is_caseworker_review_folder"]),
+        "blank_pages_omitted": blank_pages_omitted,
+        "total_persons_detected": sum(
+            1
+            for f in active_folders
+            if not f["is_caseworker_review_folder"] and not f.get("is_corporate_folder", False)
+        ),
         "total_split_documents": sum(f["total_documents"] for f in active_folders),
         "person_folders": active_folders,
         "zip_archive_filename": f"{base_stem_clean}_Sorted_By_Person.zip",

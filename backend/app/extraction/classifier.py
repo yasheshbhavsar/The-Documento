@@ -34,11 +34,13 @@ CATEGORY_RULES: list[dict] = [
             r"\bTRAVEL DOCUMENT\b",
             r"\bNATIONAL IDENTIT(?:Y| CARD)\b",
             r"UNIQUE\s*IDENTIFICATION\s*AUTHORITY\s*OF\s*INDIA",
+            r"\bENROLL?MENT\s*NO\b",
             r"\bCONFIRMATION\s*OF\s*PERMANENT\s*RESIDENCE\b",
             r"\bPERMANENT\s*RESIDENT\s*CARD\b",
             r"\bCACANPD[0-9<]+\b",
             r"\bINCOME TAX DEPARTMENT.*GOVT\. OF INDIA\b",
-            r"\bPERMANENT ACCOUNT NUMBER\b",
+            r"\bE-?PERMANENT ACCOUNT NUMBER\b",
+            r"\bE-?PAN\s*CARD\b",
             r"\bDRIV(?:ING|ER)\s*LICEN[CS]E\b",
             r"\bUNION OF INDIA DRIVING LICENCE\b",
             r"\bMOTOR VEHICLES DEPARTMENT\b",
@@ -141,6 +143,10 @@ CATEGORY_RULES: list[dict] = [
             r"\bWORK AUTHORIZATION\b",
             r"\bBIOMETRIC RESIDENCE PERMIT\b",
             r"\bVALID UNTIL\b",
+            r"\bENTRY\s*PERMIT\s*NO\b",
+            r"\bALLOWED\s*TO\s*ENTER\s*UAE\b",
+            r"\bGENERAL\s*DIRECTORATE\s*OF\s*RESIDENCY\b",
+            r"\bESTABLISHMENT\s*CARD\b",
         ],
     },
     {
@@ -188,6 +194,9 @@ CATEGORY_RULES: list[dict] = [
             r"\bCEFR LEVEL\b",
             r"\bBONAFIDE\s*CERTIFICATE\b",
             r"\bSCHOOL\s*LEAVING\s*CERTIFICATE\b",
+            r"\bLEAVING\s*CERTIFICATE\b",
+            r"\bNAME\s*OF\s*THE\s*PUPIL\b",
+            r"\bCERTIFICATE\s*OF\s*PASSING\b",
             r"\bSTATEMENT OF MARKS\b",
         ],
     },
@@ -230,6 +239,9 @@ CATEGORY_RULES: list[dict] = [
             r"\bEI/IPLOYi/lENT CONTRACT\b",
             r"\bAPPOINTMENT\s*LETTER\b",
             r"\bEXPERIENCE\s*CERTIFICATE\b",
+            r"\bEXPERIENCE\s*LETTER\b",
+            r"\bRESIGNATION\s*LETTER\b",
+            r"\bRELIEVING\s*LETTER\b",
             r"\bRECORD OF EMPLOYMENT\b",
             r"\bSERIAL NO\. OF ROE\b",
             r"\bINSURABLE EARNINGS\b",
@@ -237,6 +249,8 @@ CATEGORY_RULES: list[dict] = [
             r"\bFORM W-2\b",
             r"\bPAYSTUB\b",
             r"\bPAYSLIP\b",
+            r"\bWORKING\s*DAYS\b",
+            r"\bNET\s*PAY\b",
             r"\bCURRICULUM VITAE\b",
             r"\bRESUME\b",
             r"\bPROFESSIONAL EXPERIENCE\b",
@@ -270,7 +284,12 @@ CATEGORY_RULES: list[dict] = [
         ],
         "patterns": [
             r"\bBANK STATEMENT\b",
+            r"\bBUSINESS ACCOUNT STATEMENT\b",
             r"\bACCOUNT STATEMENT\b",
+            r"\bBALANCE CONFIRMATION\b",
+            r"\bCERTIFY THE BALANCE\b",
+            r"\bALLOTMENT OF TAX DEDUCTION ACCOUNT NUMBER\b",
+            r"\bPROFESSION TAX DEPARTMENT\b",
             r"\bCLOSING BALANCE\b",
             r"\bOPENING BALANCE\b",
             r"\bCHECKING ACCOUNT\b",
@@ -323,6 +342,9 @@ CATEGORY_RULES: list[dict] = [
             r"\bPURPOSE OF VISIT\b",
             r"\bFOREMOST PURPOSE OF OUR INTENDED VISIT\b",
             r"\bBOARDING PASS\b",
+            r"\bITINERARY SUMMARY\b",
+            r"\bTRAVELPORT\b",
+            r"\bVIEWTRIP\b",
             r"\bFLIGHT ITINERARY\b",
             r"\bTRAVEL HISTORY\b",
             r"\bFLIGHT NUMBER\b",
@@ -361,6 +383,9 @@ CATEGORY_RULES: list[dict] = [
             r"\bLANDLORD\b",
             r"\bMONTHLY RENT\b",
             r"\bACCOMMODATION CONFIRMATION\b",
+            r"\bCONFIRMED BOOKING\b",
+            r"\bPROPERTY POLICIES\b",
+            r"\bSTAR HOTEL\b",
         ],
     },
     {
@@ -390,6 +415,9 @@ CATEGORY_RULES: list[dict] = [
             r"\bGOOD CONDUCT CERTIFICATE\b",
             r"\bMEDICAL EXAMINATION\b",
             r"\bVACCINATION RECORD\b",
+            r"\bVACCINATION DETAILS\b",
+            r"\bCOVID-?19 VACCINATION\b",
+            r"\bBENE(?:FI)?CIARY DETAILS\b",
             r"\bCIVIL SURGEON\b",
             r"\bREPORT OF MEDICAL EXAMINATION\b",
             r"\bDISCHARGE SUMMARY REPORT\b",
@@ -435,6 +463,9 @@ CATEGORY_RULES: list[dict] = [
             r"\bUSE OF A FAMILY REPRESENTATIVE\b",
             r"\bINVITATION LETTER\b",
             r"\bLETTER OF INVITATION\b",
+            r"\bSUBMISSION LETTER\b",
+            r"\bREPRESENTATIVE FOR\b",
+            r"\bCOLLEGE OF IMMIGRATION AND CITIZENSHIP CONSULTANTS\b",
             r"\bSPONSOR(?:'S)? DOCUMENTS\b",
             r"\bUSCIS\b",
             r"\bNOTICE OF ACTION\b",
@@ -521,14 +552,18 @@ def classify_document(
         if (
             category == "educational_records"
             and "PROVINCIAL ATTESTATION LETTER" not in combined
+            and "DEAR VISA OFFICER" not in combined
+            and "CONSULATE GENERAL" not in combined
             and (
                 "TEST REPORT FORM" in combined
                 or "OVERALL BAND SCORE" in combined
                 or "LETTER OF ACCEPTANCE" in combined
                 or "OFFER OF ADMISSION" in combined
-                or "DESIGNATED LEARNING INSTITUTION" in combined
+                or ("DESIGNATED LEARNING INSTITUTION" in combined and "REPRESENTATIVE FOR" not in combined)
                 or "BONAFIDE CERTIFICATE" in combined
                 or "BONAFIDECERTIFICATE" in combined
+                or "SCHOOL LEAVING CERTIFICATE" in combined
+                or "LEAVING CERTIFICATE" in combined
             )
         ):
             filename_boost = max(filename_boost, 0.45)

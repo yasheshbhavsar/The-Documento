@@ -810,6 +810,8 @@ export interface PacketSortedDocument {
   page_range: string;
   page_count: number;
   is_joint_document: boolean;
+  is_duplicate?: boolean;
+  duplicate_of?: string | null;
   shared_with: string[];
   extracted_fields: Record<string, string>;
   text_preview: string;
@@ -823,6 +825,8 @@ export interface PacketPersonFolder {
   name_variations: string[];
   id_anchors: Record<string, string[]>;
   is_caseworker_review_folder: boolean;
+  is_corporate_folder?: boolean;
+  duplicates_count?: number;
   total_documents: number;
   total_pages: number;
   documents: PacketSortedDocument[];
@@ -832,6 +836,7 @@ export interface PacketSortResult {
   status: "success" | "error";
   source_filename: string;
   total_pages_analyzed: number;
+  blank_pages_omitted?: number[];
   total_persons_detected: number;
   total_split_documents: number;
   person_folders: PacketPersonFolder[];

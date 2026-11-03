@@ -915,8 +915,11 @@ export function DocumentExtractorLab() {
                     Sorted Person Folders: {packetSortResult.source_filename}
                   </h2>
                   <p style={{ fontSize: "13px", color: "#94A3B8", margin: 0 }}>
-                    Analyzed {packetSortResult.total_pages_analyzed} pages &bull; Detected{" "}
-                    {packetSortResult.total_persons_detected} distinct person(s) &bull; Generated{" "}
+                    Analyzed {packetSortResult.total_pages_analyzed} pages
+                    {packetSortResult.blank_pages_omitted && packetSortResult.blank_pages_omitted.length > 0
+                      ? ` (${packetSortResult.blank_pages_omitted.length} blank page${packetSortResult.blank_pages_omitted.length > 1 ? "s" : ""} omitted)`
+                      : ""}{" "}
+                    &bull; Detected {packetSortResult.total_persons_detected} distinct person(s) &bull; Generated{" "}
                     {packetSortResult.total_split_documents} separated multi-page PDF documents
                   </p>
                 </div>
@@ -982,6 +985,7 @@ export function DocumentExtractorLab() {
                     {packetSortResult.person_folders.map((pf) => {
                       const isSelected = selectedPersonFolderId === pf.person_id;
                       const isReview = pf.is_caseworker_review_folder;
+                      const isCorporate = Boolean(pf.is_corporate_folder);
                       return (
                         <div
                           key={pf.person_id}
@@ -1019,7 +1023,7 @@ export function DocumentExtractorLab() {
                                 color: isReview ? "#FCD34D" : isSelected ? "#7DD3FC" : "#FFFFFF",
                               }}
                             >
-                              {isReview ? "⚠️ " : "📁 "}
+                              {isReview ? "⚠️ " : isCorporate ? "🏢 " : "📁 "}
                               {pf.canonical_name}
                             </div>
                             <span
@@ -1047,6 +1051,9 @@ export function DocumentExtractorLab() {
                             }}
                           >
                             /{pf.folder_name}/
+                            {pf.duplicates_count && pf.duplicates_count > 0
+                              ? ` • ${pf.duplicates_count} in _Duplicates/`
+                              : ""}
                           </div>
 
                           {/* Consolidated Name Variations */}
@@ -1166,8 +1173,8 @@ export function DocumentExtractorLab() {
                                     marginBottom: "6px",
                                   }}
                                 >
-                                  <span style={{ fontSize: "14px", fontWeight: 700, color: "#34D399" }}>
-                                    📄 {doc.filename}
+                                  <span style={{ fontSize: "14px", fontWeight: 700, color: doc.is_duplicate ? "#FBBF24" : "#34D399" }}>
+                                    📄 {doc.is_duplicate ? `_Duplicates/${doc.filename}` : doc.filename}
                                   </span>
                                   <span
                                     style={{
@@ -1193,6 +1200,21 @@ export function DocumentExtractorLab() {
                                   >
                                     {doc.page_range} ({doc.page_count}p)
                                   </span>
+                                  {doc.is_duplicate && (
+                                    <span
+                                      style={{
+                                        fontSize: "11px",
+                                        fontWeight: 700,
+                                        padding: "2px 8px",
+                                        borderRadius: "6px",
+                                        background: "rgba(245, 158, 11, 0.18)",
+                                        border: "1px solid rgba(245, 158, 11, 0.4)",
+                                        color: "#FCD34D",
+                                      }}
+                                    >
+                                      🔁 DUPLICATE{doc.duplicate_of ? ` (of ${doc.duplicate_of})` : ""}
+                                    </span>
+                                  )}
                                   {doc.is_joint_document && (
                                     <span
                                       style={{
