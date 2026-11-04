@@ -377,6 +377,22 @@ export function DocumentExtractorLab() {
               </div>
 
               <Link
+                href="/calculators"
+                style={{
+                  textDecoration: "none",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#6EE7B7",
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(16, 185, 129, 0.3)",
+                  background: "rgba(16, 185, 129, 0.08)",
+                }}
+              >
+                PR Calculators
+              </Link>
+
+              <Link
                 href="/"
                 style={{
                   textDecoration: "none",

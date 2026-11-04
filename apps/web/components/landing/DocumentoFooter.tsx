@@ -104,6 +104,10 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
               {[
                 { href: "#preview", label: "Interactive Case Preview" },
+                { href: "/calculators", label: "Global PR Calculators (CA • AU • NZ • UK • DE)" },
+                { href: "/crs-calculator", label: "Canada CRS Score Calculator" },
+                { href: "/pnp-calculator", label: "Canada PNP Points Calculator" },
+                { href: "/extractor", label: "AI Document Extractor Lab" },
                 { href: "#coverage", label: "Visa & Jurisdiction Coverage" },
                 { href: "#comparison", label: "Problem vs. Solution Matrix" },
                 { href: "#workflow", label: "6-Stage Casework Journey" },

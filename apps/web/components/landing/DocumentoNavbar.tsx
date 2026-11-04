@@ -158,6 +158,25 @@ export function DocumentoNavbar({
           </a>
 
           <a
+            href="/calculators"
+            data-testid="nav-pr-calculators-link"
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#384A46",
+              textDecoration: "none",
+              transition: "color 0.15s ease",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#0D6866")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#384A46")}
+            title="Country-separated PR & Skilled Migration Calculators (CA, AU, NZ, UK, DE)"
+          >
+            PR Calculators
+          </a>
+
+          <a
             href="/extractor"
             style={{
               fontSize: "11px",
@@ -338,6 +357,27 @@ export function DocumentoNavbar({
               {link.label}
             </a>
           ))}
+
+          <a
+            href="/calculators"
+            onClick={() => setMobileMenuOpen(false)}
+            style={{
+              fontSize: "13px",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: "#0D6866",
+              textDecoration: "none",
+              padding: "8px 0",
+              borderBottom: "1px solid #F1F6F4",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>PR Calculators</span>
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "#063C3D" }}>5 Countries →</span>
+          </a>
 
           <a
             href="/extractor"

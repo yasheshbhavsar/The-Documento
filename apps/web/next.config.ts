@@ -12,11 +12,12 @@ const targetDestination = backendBaseUrl.includes("/api/v1")
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  outputFileTracingRoot: path.resolve(__dirname),
   experimental: {
     proxyTimeout: 120000,
   },
   turbopack: {
-    root: path.resolve(__dirname, "../../"),
+    root: path.resolve(__dirname),
   },
   reactStrictMode: true,
   async rewrites() {

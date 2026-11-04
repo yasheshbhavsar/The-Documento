@@ -423,25 +423,128 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
 
             {/* Action Button & Disclaimer */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "16px" }}>
-              <button
-                type="button"
-                onClick={() => onOpenLogin("firm")}
-                style={{
-                  padding: "12px 24px",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: "#07594F",
-                  color: "#FFFFFF",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  transition: "background-color 0.15s ease",
-                }}
-              >
-                {activePreset.status === "Available"
-                  ? "Access Workspace for this Pathway →"
-                  : "Join Jurisdiction Waitlist →"}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+                <button
+                  type="button"
+                  onClick={() => onOpenLogin("firm")}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: "10px",
+                    border: "none",
+                    background: "#07594F",
+                    color: "#FFFFFF",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "background-color 0.15s ease",
+                  }}
+                >
+                  {activePreset.status === "Available"
+                    ? "Access Workspace for this Pathway →"
+                    : "Join Jurisdiction Waitlist →"}
+                </button>
+
+                {activePreset.id === "ca-all" && (
+                  <>
+                    <a
+                      href="/crs-calculator"
+                      style={{
+                        padding: "11px 20px",
+                        borderRadius: "10px",
+                        border: "1px solid #0D6866",
+                        background: "#F4F9F7",
+                        color: "#063C3D",
+                        fontSize: "14px",
+                        fontWeight: 650,
+                        textDecoration: "none",
+                        transition: "all 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "#EAF5EF";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "#F4F9F7";
+                      }}
+                    >
+                      Open Official CRS Score Calculator →
+                    </a>
+                    <a
+                      href="/pnp-calculator"
+                      style={{
+                        padding: "11px 20px",
+                        borderRadius: "10px",
+                        border: "1px solid #0D6866",
+                        background: "#FFFFFF",
+                        color: "#063C3D",
+                        fontSize: "14px",
+                        fontWeight: 650,
+                        textDecoration: "none",
+                        transition: "all 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "#EAF5EF";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "#FFFFFF";
+                      }}
+                    >
+                      Open Official PNP Points Calculator →
+                    </a>
+                  </>
+                )}
+
+                {activePreset.id === "uk-gtv" && (
+                  <a
+                    href="/calculators/uk-skilled-worker"
+                    style={{
+                      padding: "11px 20px",
+                      borderRadius: "10px",
+                      border: "1px solid #0D6866",
+                      background: "#F4F9F7",
+                      color: "#063C3D",
+                      fontSize: "14px",
+                      fontWeight: 650,
+                      textDecoration: "none",
+                    }}
+                  >
+                    Open UK 70-Point &amp; ILR Calculator →
+                  </a>
+                )}
+
+                {activePreset.id === "de-bluecard" && (
+                  <a
+                    href="/calculators/germany-pr"
+                    style={{
+                      padding: "11px 20px",
+                      borderRadius: "10px",
+                      border: "1px solid #0D6866",
+                      background: "#F4F9F7",
+                      color: "#063C3D",
+                      fontSize: "14px",
+                      fontWeight: 650,
+                      textDecoration: "none",
+                    }}
+                  >
+                    Open Germany Chancenkarte &amp; Blue Card Calculator →
+                  </a>
+                )}
+
+                <a
+                  href="/calculators"
+                  style={{
+                    padding: "11px 18px",
+                    borderRadius: "10px",
+                    border: "1px solid rgba(13, 104, 102, 0.25)",
+                    background: "#FFFFFF",
+                    color: "#07594F",
+                    fontSize: "13.5px",
+                    fontWeight: 650,
+                    textDecoration: "none",
+                  }}
+                >
+                  All 5-Country PR Calculators →
+                </a>
+              </div>
 
               <span style={{ fontSize: "12px", color: "#6E7F7C" }}>
                 Workflow guidance only. Does not substitute for formal legal representation.
