@@ -1866,3 +1866,121 @@ class VisaAppointment(Base):
     client: Mapped[ClientProfile] = relationship(back_populates="appointments")
 
 
+
+
+class AgencyOnboardingApplication(Base):
+    """
+    B2B Visa Agency & Immigration Practice KYB Onboarding Application.
+    Supports Two-Track KYB (Regulated Counsel: CICC/OMARA/IAA/SRA vs Registered Overseas Consultancy)
+    and tracks approval, sandbox provisioning, and cryptographic owner activation.
+    """
+    __tablename__ = "agency_onboarding_applications"
+    __table_args__ = (
+        Index("ix_agency_onb_status", "kyb_status"),
+        Index("ix_agency_onb_slug", "requested_slug"),
+        Index("ix_agency_onb_email", "contact_work_email"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    legal_entity_name: Mapped[str] = mapped_column(String(220), nullable=False)
+    trading_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    requested_slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    hq_country: Mapped[str] = mapped_column(String(64), nullable=False)
+    hq_city: Mapped[str] = mapped_column(String(120), nullable=False)
+    corporate_domain: Mapped[str] = mapped_column(String(160), nullable=False)
+    tax_registration_id: Mapped[str] = mapped_column(String(80), nullable=False)
+
+    contact_full_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    contact_work_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    contact_phone: Mapped[str | None] = mapped_column(String(60), nullable=True)
+
+    kyb_track: Mapped[str] = mapped_column(String(40), default="regulated_counsel", nullable=False)
+    regulatory_body: Mapped[str] = mapped_column(String(64), nullable=False)
+    license_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    co_counsel_details: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    target_corridors_json: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    estimated_monthly_cases: Mapped[int] = mapped_column(Integer, default=25, nullable=False)
+    requested_seats: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    branch_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    selected_plan_tier: Mapped[str] = mapped_column(String(40), default="growth", nullable=False)
+
+    dpa_accepted: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    zero_training_accepted: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    kyb_status: Mapped[str] = mapped_column(String(40), default="pending_kyb", nullable=False)
+    reviewer_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    provisioned_organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
+    activation_token_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+
+class AgencyTenantGovernance(Base):
+    """
+    Documento HQ Control-Plane Governance, SaaS Metering & Zero-PII Telemetry Record per Agency Tenant.
+    """
+    __tablename__ = "agency_tenant_governance"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), unique=True, nullable=False, index=True
+    )
+    trading_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    plan_tier: Mapped[str] = mapped_column(String(40), default="growth", nullable=False)
+    mrr_usd: Mapped[float] = mapped_column(Float, default=499.0, nullable=False)
+    billing_status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+
+    kyb_track: Mapped[str] = mapped_column(String(40), default="regulated_counsel", nullable=False)
+    regulatory_body: Mapped[str] = mapped_column(String(64), default="CICC", nullable=False)
+    license_number: Mapped[str] = mapped_column(String(100), default="VERIFIED", nullable=False)
+    hq_country: Mapped[str] = mapped_column(String(64), default="CA", nullable=False)
+    hq_city: Mapped[str] = mapped_column(String(120), default="Toronto", nullable=False)
+
+    seat_limit: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
+    monthly_case_quota: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
+    monthly_ai_extraction_quota: Mapped[int] = mapped_column(Integer, default=1500, nullable=False)
+    ai_extractions_used_30d: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    calculator_leads_30d: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    enabled_corridors_json: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    feature_flags_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    branding_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+    support_grant_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    support_grant_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+
+class CalculatorAgencyLead(Base):
+    """
+    Prospective Applicant PR Scorecard Lead captured via an Agency's Co-Branded Calculator Link (?agency=<slug>).
+    """
+    __tablename__ = "calculator_agency_leads"
+    __table_args__ = (
+        Index("ix_calc_leads_org", "organization_id", "created_at"),
+        Index("ix_calc_leads_slug", "agency_slug"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    agency_slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    applicant_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    applicant_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    applicant_phone: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    calculator_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    country_code: Mapped[str] = mapped_column(String(8), nullable=False)
+    score_summary: Mapped[str] = mapped_column(String(160), nullable=False)
+    score_payload_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    lead_status: Mapped[str] = mapped_column(String(32), default="new_lead", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

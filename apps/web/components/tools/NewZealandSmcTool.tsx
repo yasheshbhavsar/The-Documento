@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DocumentoLogo } from "../common/DocumentoLogo";
+import { CobrandedAgencyLeadWidget } from "../agency/CobrandedAgencyLeadWidget";
 import { CalculatorCountrySwitchBar } from "./CalculatorCountrySwitchBar";
 import { CountryCalculatorHeroCard } from "./CountryVisualIdentity";
 import {
@@ -681,6 +682,18 @@ export function NewZealandSmcTool() {
                   {copiedSummary ? "Copied Summary ✓" : "Copy Score Summary"}
                 </button>
               </div>
+
+              <CobrandedAgencyLeadWidget
+                calculatorId="new-zealand-smc"
+                calculatorTitle="New Zealand 6-Point SMC Residence"
+                countryCode="NZ"
+                liveScoreSummary={`${result.totalClaimablePoints} / 6 SMC pts (${result.eligibleUnderAnySmcRoute ? "SMC Residence Eligible" : "Below 6-Pt Gate"})`}
+                hasCalculatedScore={result.totalClaimablePoints > 0 || result.eligibleUnderAnySmcRoute}
+                scorePayload={{
+                  totalPoints: result.totalClaimablePoints,
+                  eligible: result.eligibleUnderAnySmcRoute,
+                }}
+              />
             </div>
 
             {tips.length > 0 && (

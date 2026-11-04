@@ -1,4 +1,5 @@
 import { UserContext, UserExperience, ClientProfile, RetainedClientCredential } from "./types";
+import { getAgencyApplications, getAgencyTeamInvites, getAgencyTenants } from "./agencyPlatformStore";
 
 const isTestEnv =
   (typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.env.VITEST === "true")) ||
@@ -111,6 +112,23 @@ export const DEMO_USERS: Record<string, UserContext> = {
     organization_name: "Vanguard Immigration Law Group LLP",
     experience: "client_applicant",
     permissions: ["portal:access", "documents:upload", "messages:send", "questionnaire:submit"],
+  },
+  platform_super_admin: {
+    id: "usr-hq-01",
+    email: "hq.admin@documento.ai",
+    full_name: "Documento HQ • Platform Governance",
+    role: "platform_super_admin",
+    organization_id: "ten-documento-hq",
+    organization_name: "Documento Platform Control Plane",
+    experience: "platform_super_admin",
+    permissions: [
+      "platform:agencies:read",
+      "platform:agencies:manage",
+      "platform:kyb:review",
+      "platform:quotas:manage",
+      "platform:billing:read",
+      "platform:support:grant_audit",
+    ],
   },
 };
 
@@ -265,6 +283,143 @@ export function authenticateUser(
         organization_name: "Vanguard Immigration Law Group LLP",
         experience: "client_applicant",
         permissions: ["portal:access", "documents:upload", "messages:send", "questionnaire:submit"],
+      },
+    };
+  }
+
+  // Documento HQ Platform Super-Admin Control Plane
+  if (
+    normalizedEmail === "hq.admin@documento.ai" ||
+    normalizedEmail === "superadmin@documento.ai" ||
+    normalizedEmail === "ops@documento.ai"
+  ) {
+    return {
+      success: true,
+      user: {
+        ...DEMO_USERS.platform_super_admin,
+        email: normalizedEmail,
+      },
+    };
+  }
+
+  // Check provisioned B2B Partner Agencies (including Emergency Freeze enforcement)
+  const partnerTenants = getAgencyTenants();
+  const matchedAgency = partnerTenants.find(
+    (t) => t.ownerEmail.toLowerCase() === normalizedEmail
+  );
+  if (matchedAgency) {
+    if (matchedAgency.status === "suspended") {
+      return {
+        success: false,
+        error:
+          "Workspace Frozen: This agency tenant has been suspended by Documento Platform Governance. Active sessions are revoked.",
+      };
+    }
+    // Preserve exact fixture id for Sarah Jenkins at Vanguard while mapping all other provisioned firms dynamically
+    if (normalizedEmail === "sarah.jenkins@vanguardlegal.com") {
+      return {
+        success: true,
+        user: {
+          ...DEMO_USERS.master_admin,
+          email: normalizedEmail,
+          agency_slug: matchedAgency.slug,
+        },
+      };
+    }
+    if (matchedAgency.temporaryPassword && password && password !== "••••••••••••" && password !== matchedAgency.temporaryPassword) {
+      return {
+        success: false,
+        error: "Invalid agency owner password. Please enter the password you created during signup or your invite passcode.",
+      };
+    }
+    return {
+      success: true,
+      user: {
+        id: `usr-owner-${matchedAgency.slug}`,
+        email: normalizedEmail,
+        full_name: matchedAgency.ownerFullName,
+        role: "master_admin",
+        organization_id: matchedAgency.organizationId,
+        organization_name: matchedAgency.legalEntityName,
+        experience: "master_admin",
+        permissions: ["*"],
+        agency_slug: matchedAgency.slug,
+      },
+    };
+  }
+
+  // Check Invited Agency Team Staff (Case Managers & Paralegals)
+  const teamInvites = getAgencyTeamInvites();
+  const matchedInvite = teamInvites.find((i) => i.email.toLowerCase() === normalizedEmail);
+  if (matchedInvite) {
+    const parentTenant = partnerTenants.find((t) => t.organizationId === matchedInvite.organizationId);
+    if (parentTenant && parentTenant.status === "suspended") {
+      return {
+        success: false,
+        error:
+          "Workspace Frozen: This agency tenant has been suspended by Documento Platform Governance. Active sessions are revoked.",
+      };
+    }
+    return {
+      success: true,
+      user: {
+        id: matchedInvite.id,
+        email: normalizedEmail,
+        full_name: matchedInvite.fullName,
+        role: "case_manager",
+        organization_id: matchedInvite.organizationId,
+        organization_name: matchedInvite.agencyLegalName,
+        experience: matchedInvite.role === "paralegal" ? "paralegal" : "case_manager",
+        permissions: [
+          "cases:read",
+          "cases:write",
+          "documents:review",
+          "ai_findings:adjudicate",
+          "tasks:manage",
+          ...(matchedInvite.role === "case_manager" ? ["client:delete"] : []),
+        ],
+        agency_slug: matchedInvite.agencySlug,
+      },
+    };
+  }
+
+  // Check Self-Serve Agency Owners currently in 14-Day Trial / Pending KYB Sandbox
+  const pendingApps = getAgencyApplications();
+  const matchedPendingApp = pendingApps.find(
+    (a) => a.contactWorkEmail.toLowerCase() === normalizedEmail && a.kybStatus !== "approved"
+  );
+  if (matchedPendingApp) {
+    if (matchedPendingApp.kybStatus === "rejected") {
+      return {
+        success: false,
+        error:
+          "KYB Verification Declined: Your agency application could not be verified. Please contact Documento Compliance Support.",
+      };
+    }
+    if (
+      matchedPendingApp.ownerPassword &&
+      password &&
+      password !== "••••••••••••" &&
+      password !== matchedPendingApp.ownerPassword
+    ) {
+      return {
+        success: false,
+        error: "Incorrect password for your agency account.",
+      };
+    }
+    return {
+      success: true,
+      user: {
+        id: `usr-sandbox-${matchedPendingApp.requestedSlug}`,
+        email: normalizedEmail,
+        full_name: matchedPendingApp.contactFullName,
+        role: "master_admin",
+        organization_id: `sandbox-${matchedPendingApp.requestedSlug}`,
+        organization_name: matchedPendingApp.legalEntityName,
+        experience: "master_admin",
+        permissions: ["*"],
+        agency_slug: matchedPendingApp.requestedSlug,
+        is_sandbox_agency: true,
       },
     };
   }

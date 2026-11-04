@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DocumentoLogo } from "../common/DocumentoLogo";
+import { CobrandedAgencyLeadWidget } from "../agency/CobrandedAgencyLeadWidget";
 import { CalculatorCountrySwitchBar } from "./CalculatorCountrySwitchBar";
 import { CountryCalculatorHeroCard } from "./CountryVisualIdentity";
 import {
@@ -2674,6 +2675,18 @@ export function CrsCalculatorTool() {
                   {copiedShareLink ? "Link Copied ✓" : "Share Link"}
                 </button>
               </div>
+
+              <CobrandedAgencyLeadWidget
+                calculatorId="canada-crs"
+                calculatorTitle="Canada Express Entry CRS"
+                countryCode="CA"
+                liveScoreSummary={`${breakdown.grandTotal} CRS pts (${form.policyVersion === "nov_2026_lmi" ? "Nov 2026 LMI Grid" : "Current IRCC Grid"})`}
+                hasCalculatedScore={breakdown.grandTotal > 0}
+                scorePayload={{
+                  grandTotal: breakdown.grandTotal,
+                  policyVersion: form.policyVersion,
+                }}
+              />
             </div>
 
             {/* Recent Express Entry Draw Cutoffs Card */}

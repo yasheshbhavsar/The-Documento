@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DocumentoLogo } from "../common/DocumentoLogo";
+import { CobrandedAgencyLeadWidget } from "../agency/CobrandedAgencyLeadWidget";
 import { CalculatorCountrySwitchBar } from "./CalculatorCountrySwitchBar";
 import { CountryCalculatorHeroCard } from "./CountryVisualIdentity";
 import {
@@ -995,6 +996,27 @@ export function GermanyPrCalculatorTool() {
                   {copiedShareLink ? "Link Copied ✓" : "Share Link"}
                 </button>
               </div>
+
+              <CobrandedAgencyLeadWidget
+                calculatorId="germany-pr"
+                calculatorTitle="Germany Chancenkarte & EU Blue Card PR"
+                countryCode="DE"
+                liveScoreSummary={
+                  result.blueCard.eligibleForBlueCard
+                    ? `${result.totalPoints} Chancenkarte pts • EU Blue Card (${result.blueCard.prMonthsTimeline}-Mo PR)`
+                    : `${result.totalPoints} / 6 Chancenkarte pts${result.qualifiesViaDirectFachkraftWaiver ? " (Direct Fachkraft)" : ""}`
+                }
+                hasCalculatedScore={
+                  result.totalPoints > 0 ||
+                  result.qualifiesViaDirectFachkraftWaiver ||
+                  result.blueCard.eligibleForBlueCard
+                }
+                scorePayload={{
+                  totalPoints: result.totalPoints,
+                  chancenkarteEligible: result.chancenkarteEligible,
+                  blueCardEligible: result.blueCard.eligibleForBlueCard,
+                }}
+              />
             </div>
 
             {tips.length > 0 && (

@@ -41,6 +41,7 @@ from backend.app.api.v1.governance import router as governance_router
 from backend.app.api.v1.appointments import router as appointments_router
 from backend.app.api.v1.extractor import router as extractor_router
 from backend.app.api.v1.ai import router as ai_router
+from backend.app.api.v1.agency_platform import router as agency_platform_router
 
 # Initialize structured logging
 setup_logging()
@@ -111,6 +112,7 @@ app.include_router(governance_router, prefix="/api/v1")
 app.include_router(appointments_router, prefix="/api/v1")
 app.include_router(extractor_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
+app.include_router(agency_platform_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["health"])

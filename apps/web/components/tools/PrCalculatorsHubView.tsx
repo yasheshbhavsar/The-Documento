@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DocumentoLogo } from "../common/DocumentoLogo";
 import { CountryDivisionMatrix } from "./CountryDivisionMatrix";
 import { CountryFlagBadge } from "./CountryVisualIdentity";
+import {
+  AgencyTenantRecord,
+  resolveActiveCobrandedAgency,
+  submitCobrandedCalculatorLead,
+  withAgencyAttribution,
+} from "../../lib/agencyPlatformStore";
 import {
   CALCULATOR_COUNTRY_GROUPS,
   CalculatorCountryId,
@@ -403,7 +409,13 @@ function evaluateLiveCountryFit(state: MatcherState): {
   };
 }
 
-function CalculatorSpotlightCard({ calc }: { calc: GlobalCalculatorEntry }) {
+function CalculatorSpotlightCard({
+  calc,
+  agencySlug,
+}: {
+  calc: GlobalCalculatorEntry;
+  agencySlug?: string | null;
+}) {
   const [spot, setSpot] = useState<{ x: number; y: number; active: boolean }>({
     x: 50,
     y: 50,
@@ -625,7 +637,7 @@ function CalculatorSpotlightCard({ calc }: { calc: GlobalCalculatorEntry }) {
         }}
       >
         <Link
-          href={calc.href}
+          href={withAgencyAttribution(calc.href, agencySlug)}
           className="hub-primary-calc-btn"
           style={{
             display: "inline-flex",
@@ -665,10 +677,68 @@ function CalculatorSpotlightCard({ calc }: { calc: GlobalCalculatorEntry }) {
   );
 }
 
-export function PrCalculatorsHubView() {
+const COBRANDED_CALC_OPTIONS = [
+  { id: "canada-crs", title: "Canada Express Entry CRS", countryCode: "CA" },
+  { id: "canada-pnp", title: "Canada Provincial Nominee (PNP)", countryCode: "CA" },
+  { id: "australia-pr", title: "Australia SkillSelect (189 / 190 / 491)", countryCode: "AU" },
+  { id: "new-zealand-smc", title: "New Zealand 6-Point SMC", countryCode: "NZ" },
+  { id: "uk-skilled-worker", title: "UK 70-Point Skilled Worker & ILR", countryCode: "UK" },
+  { id: "germany-pr", title: "Germany Chancenkarte & EU Blue Card", countryCode: "DE" },
+] as const;
+
+export function PrCalculatorsHubView({ initialAgencySlug }: { initialAgencySlug?: string } = {}) {
   const [selectedCountry, setSelectedCountry] = useState<"all" | CalculatorCountryId>("all");
   const [radarCountry, setRadarCountry] = useState<CalculatorCountryId>("canada");
   const [matcher, setMatcher] = useState<MatcherState>(EMPTY_MATCHER);
+
+  // Co-Branded Partner Agency Lead Bridge (?agency=<slug>)
+  const [partnerAgency, setPartnerAgency] = useState<AgencyTenantRecord | null>(null);
+  const [leadFormOpen, setLeadFormOpen] = useState<boolean>(false);
+  const [leadName, setLeadName] = useState<string>("");
+  const [leadEmail, setLeadEmail] = useState<string>("");
+  const [leadPhone, setLeadPhone] = useState<string>("");
+  const [leadCalcId, setLeadCalcId] = useState<string>("canada-crs");
+  const [leadScoreSummary, setLeadScoreSummary] = useState<string>("");
+  const [leadSubmittedMsg, setLeadSubmittedMsg] = useState<string | null>(null);
+  const [leadErrorMsg, setLeadErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPartnerAgency(resolveActiveCobrandedAgency(initialAgencySlug));
+  }, [initialAgencySlug]);
+
+  const handleSubmitCobrandedLead = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLeadErrorMsg(null);
+    if (!partnerAgency) return;
+    if (!leadName.trim() || !leadEmail.includes("@") || !leadScoreSummary.trim()) {
+      setLeadErrorMsg("Please enter your full name, valid email, and calculated score summary.");
+      return;
+    }
+    const calcSpec =
+      COBRANDED_CALC_OPTIONS.find((c) => c.id === leadCalcId) || COBRANDED_CALC_OPTIONS[0];
+    try {
+      submitCobrandedCalculatorLead({
+        agencySlug: partnerAgency.slug,
+        applicantName: leadName,
+        applicantEmail: leadEmail,
+        applicantPhone: leadPhone,
+        calculatorId: calcSpec.id,
+        calculatorTitle: calcSpec.title,
+        countryCode: calcSpec.countryCode,
+        scoreSummary: leadScoreSummary,
+      });
+      setLeadSubmittedMsg(
+        `Your ${calcSpec.title} scorecard (${leadScoreSummary.trim()}) has been routed securely to ${partnerAgency.tradingName}.`
+      );
+      setLeadName("");
+      setLeadEmail("");
+      setLeadPhone("");
+      setLeadScoreSummary("");
+      setLeadFormOpen(false);
+    } catch (err: any) {
+      setLeadErrorMsg(err?.message || "Unable to submit scorecard right now.");
+    }
+  };
 
   const visibleGroups =
     selectedCountry === "all"
@@ -754,6 +824,19 @@ export function PrCalculatorsHubView() {
               Platform Overview
             </Link>
             <Link
+              href="/agency-onboarding"
+              style={{
+                fontSize: "13.5px",
+                fontWeight: 600,
+                color: "#445451",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                textDecoration: "none",
+              }}
+            >
+              For Visa Agencies
+            </Link>
+            <Link
               href="/extractor"
               style={{
                 fontSize: "13.5px",
@@ -785,6 +868,214 @@ export function PrCalculatorsHubView() {
           </nav>
         </div>
       </header>
+
+      {/* Co-Branded Partner Agency Assessment Strip (?agency=<slug>) */}
+      {partnerAgency && (
+        <section
+          data-testid="cobranded-agency-banner"
+          style={{
+            background: "#FFFFFF",
+            borderBottom: "1px solid #B9DED4",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: "1320px",
+              margin: "0 auto",
+              padding: "16px 24px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "14px",
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 750,
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      background: "#EAF6F0",
+                      color: "#176B50",
+                      border: "1px solid #B9DED4",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    Verified Documento Partner • {partnerAgency.regulatoryBody} ({partnerAgency.licenseNumber})
+                  </span>
+                  <span style={{ fontSize: "12px", color: "#6E7F7C" }}>
+                    {partnerAgency.hqCity}, {partnerAgency.hqCountry}
+                  </span>
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: 750, color: "#063C3D", marginTop: "4px" }}>
+                  {partnerAgency.tradingName} — Official PR &amp; Skilled Points Assessment Portal
+                </div>
+                {partnerAgency.branding.tagline && (
+                  <div style={{ fontSize: "12.5px", color: "#445451", marginTop: "2px" }}>
+                    {partnerAgency.branding.tagline}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                data-testid="open-cobranded-lead-form-btn"
+                onClick={() => {
+                  setLeadSubmittedMsg(null);
+                  setLeadFormOpen((prev) => !prev);
+                }}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: "8px",
+                  border: "1px solid #063C3D",
+                  background: partnerAgency.branding.primaryColor || "#063C3D",
+                  color: "#FFFFFF",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {leadFormOpen
+                  ? "Close Scorecard Submission"
+                  : `Submit PR Scorecard to ${partnerAgency.tradingName} →`}
+              </button>
+            </div>
+
+            {leadSubmittedMsg && (
+              <div
+                data-testid="cobranded-lead-confirmation"
+                style={{
+                  marginTop: "12px",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: "#EAF6F0",
+                  border: "1px solid #B9DED4",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#063C3D",
+                }}
+              >
+                {leadSubmittedMsg}
+              </div>
+            )}
+
+            {leadFormOpen && (
+              <form
+                data-testid="cobranded-lead-form"
+                onSubmit={handleSubmitCobrandedLead}
+                style={{
+                  marginTop: "14px",
+                  padding: "16px 18px",
+                  background: "#F8F7F2",
+                  border: "1px solid #DCE5E1",
+                  borderRadius: "10px",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: "12px",
+                  alignItems: "end",
+                }}
+              >
+                <div>
+                  <label htmlFor="cb-lead-name" style={{ display: "block", fontSize: "11.5px", fontWeight: 650, color: "#172322", marginBottom: "4px" }}>
+                    Applicant Full Name *
+                  </label>
+                  <input
+                    id="cb-lead-name"
+                    type="text"
+                    required
+                    value={leadName}
+                    onChange={(e) => setLeadName(e.target.value)}
+                    placeholder="e.g. Rohan Deshmukh"
+                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px", background: "#FFFFFF" }}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="cb-lead-email" style={{ display: "block", fontSize: "11.5px", fontWeight: 650, color: "#172322", marginBottom: "4px" }}>
+                    Email Address *
+                  </label>
+                  <input
+                    id="cb-lead-email"
+                    type="email"
+                    required
+                    value={leadEmail}
+                    onChange={(e) => setLeadEmail(e.target.value)}
+                    placeholder="rohan@example.com"
+                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px", background: "#FFFFFF" }}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="cb-lead-calc" style={{ display: "block", fontSize: "11.5px", fontWeight: 650, color: "#172322", marginBottom: "4px" }}>
+                    Calculator / Corridor *
+                  </label>
+                  <select
+                    id="cb-lead-calc"
+                    value={leadCalcId}
+                    onChange={(e) => setLeadCalcId(e.target.value)}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px", background: "#FFFFFF" }}
+                  >
+                    {COBRANDED_CALC_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="cb-lead-score" style={{ display: "block", fontSize: "11.5px", fontWeight: 650, color: "#172322", marginBottom: "4px" }}>
+                    Calculated Score Summary *
+                  </label>
+                  <input
+                    id="cb-lead-score"
+                    type="text"
+                    required
+                    value={leadScoreSummary}
+                    onChange={(e) => setLeadScoreSummary(e.target.value)}
+                    placeholder="e.g. 518 CRS (CLB 9 + Master's)"
+                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px", background: "#FFFFFF" }}
+                  />
+                </div>
+
+                <div>
+                  <button
+                    type="submit"
+                    data-testid="submit-cobranded-lead-btn"
+                    style={{
+                      width: "100%",
+                      padding: "9px 14px",
+                      borderRadius: "6px",
+                      border: "1px solid #0D6866",
+                      background: "#0D6866",
+                      color: "#FFFFFF",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Send Scorecard
+                  </button>
+                </div>
+
+                {leadErrorMsg && (
+                  <div style={{ gridColumn: "1 / -1", fontSize: "12px", color: "#B91C1C", fontWeight: 600 }}>
+                    {leadErrorMsg}
+                  </div>
+                )}
+              </form>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Clean, Dot-Free Editorial Hero Banner */}
       <section
@@ -1210,7 +1501,7 @@ export function PrCalculatorsHubView() {
                   Filter list to {activeRadar.countryName}
                 </button>
                 <Link
-                  href={activeRadar.primaryHref}
+                  href={withAgencyAttribution(activeRadar.primaryHref, partnerAgency?.slug)}
                   style={{
                     fontSize: "12.5px",
                     fontWeight: 750,
@@ -1637,7 +1928,7 @@ export function PrCalculatorsHubView() {
                               {row.statusLabel}
                             </span>
                             <Link
-                              href={row.href}
+                              href={withAgencyAttribution(row.href, partnerAgency?.slug)}
                               style={{
                                 fontSize: "12px",
                                 fontWeight: 750,
@@ -1935,7 +2226,11 @@ export function PrCalculatorsHubView() {
                     }}
                   >
                     {group.calculators.map((calc) => (
-                      <CalculatorSpotlightCard key={calc.id} calc={calc} />
+                      <CalculatorSpotlightCard
+                        key={calc.id}
+                        calc={calc}
+                        agencySlug={partnerAgency?.slug}
+                      />
                     ))}
                   </div>
                 </section>

@@ -59,6 +59,13 @@ class AuthContext:
     def is_master_admin(self) -> bool:
         return self.has_role(RoleCode.MASTER_ADMIN) or self.has_role(RoleCode.ORGANIZATION_ADMIN)
 
+    def is_platform_super_admin(self) -> bool:
+        return (
+            self.has_role(RoleCode.PLATFORM_SUPER_ADMIN)
+            or self.has_role(RoleCode.SYSTEM_ADMIN)
+            or self.has_permission("platform:agencies:manage")
+        )
+
     def is_company_admin(self) -> bool:
         return self.is_master_admin() or self.has_role(RoleCode.COMPANY_ADMIN)
 
@@ -177,6 +184,16 @@ async def get_auth_context(
             user = db.query(User).filter(User.id == user_id).first()
             if not user or user.status != "active":
                 raise AuthenticationError("User account is inactive, deactivated, or revoked")
+
+            # Verify tenant workspace is not frozen/suspended (unless HQ super-admin)
+            is_hq_operator = (
+                RoleCode.PLATFORM_SUPER_ADMIN.value in roles_list
+                or RoleCode.PLATFORM_OPS.value in roles_list
+            )
+            if not is_hq_operator:
+                org_row = db.query(Organization).filter(Organization.id == org_id).first()
+                if org_row and org_row.status != "active":
+                    raise AuthenticationError("Agency workspace is suspended by Platform Governance")
 
             # Verify active membership in DB if present
             if membership_id:

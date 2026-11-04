@@ -191,6 +191,32 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                   Client &amp; Applicant Portal Sign In →
                 </button>
               </li>
+              <li>
+                <a
+                  href="/agency-onboarding"
+                  style={{
+                    color: "#5EEAD4",
+                    fontWeight: 650,
+                    textDecoration: "none",
+                    textShadow: "0 1px 4px rgba(0, 15, 15, 0.95)",
+                  }}
+                >
+                  Partner Visa Agency Onboarding →
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/super-admin"
+                  style={{
+                    color: "#B8E2D8",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    textShadow: "0 1px 4px rgba(0, 15, 15, 0.95)",
+                  }}
+                >
+                  Documento HQ Control Plane →
+                </a>
+              </li>
               <li style={{ marginTop: "4px" }}>
                 <button
                   type="button"

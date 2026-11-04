@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DocumentoLogo } from "../common/DocumentoLogo";
+import { CobrandedAgencyLeadWidget } from "../agency/CobrandedAgencyLeadWidget";
 import { CalculatorCountrySwitchBar } from "./CalculatorCountrySwitchBar";
 import { CountryCalculatorHeroCard } from "./CountryVisualIdentity";
 import {
@@ -874,6 +875,19 @@ export function AustraliaSkillSelectTool() {
                   {copiedShareLink ? "Link Copied ✓" : "Share Link"}
                 </button>
               </div>
+
+              <CobrandedAgencyLeadWidget
+                calculatorId="australia-pr"
+                calculatorTitle="Australia SkillSelect PR (189 / 190 / 491)"
+                countryCode="AU"
+                liveScoreSummary={`${result.totalScore} pts (${form.activeSubclass.replace("subclass_", "Subclass ")} • ${result.eligibleToSubmitEoi ? "65+ Pass Met" : "Below 65 Pass"})`}
+                hasCalculatedScore={result.totalScore > 0}
+                scorePayload={{
+                  totalScore: result.totalScore,
+                  subclass: form.activeSubclass,
+                  eligible: result.eligibleToSubmitEoi,
+                }}
+              />
             </div>
 
             {tips.length > 0 && (

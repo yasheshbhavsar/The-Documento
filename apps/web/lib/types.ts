@@ -1,4 +1,9 @@
-export type UserExperience = "master_admin" | "case_manager" | "client_applicant" | "paralegal";
+export type UserExperience =
+  | "master_admin"
+  | "case_manager"
+  | "client_applicant"
+  | "paralegal"
+  | "platform_super_admin";
 
 export type RoleCode =
   | "master_admin"
@@ -10,7 +15,9 @@ export type RoleCode =
   | "retained_client"
   | "organization_admin"
   | "case_worker"
-  | "applicant";
+  | "applicant"
+  | "platform_super_admin"
+  | "platform_ops";
 
 export interface UserContext {
   id: string;
@@ -22,6 +29,8 @@ export interface UserContext {
   organization_name: string;
   experience: UserExperience;
   permissions: string[];
+  agency_slug?: string;
+  is_sandbox_agency?: boolean;
 }
 export type PaymentClearanceStatus = "PENDING" | "PARTIALLY_PAID" | "PAID";
 export type PreparationStatus =

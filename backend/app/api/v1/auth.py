@@ -105,6 +105,18 @@ def login(
     if not membership:
         raise AuthenticationError("User has no active organization membership")
 
+    org = db.query(Organization).filter(Organization.id == membership.organization_id).first()
+    member_role_codes = [
+        mr.role.code
+        for mr in db.query(MembershipRole).filter(MembershipRole.membership_id == membership.id).all()
+    ]
+    if org and org.status != "active" and not any(
+        r in (RoleCode.PLATFORM_SUPER_ADMIN.value, RoleCode.PLATFORM_OPS.value) for r in member_role_codes
+    ):
+        raise PermissionDeniedError(
+            "Workspace Frozen: This agency tenant has been suspended by Documento Platform Governance."
+        )
+
     # Fetch roles
     roles = [
         mr.role.code

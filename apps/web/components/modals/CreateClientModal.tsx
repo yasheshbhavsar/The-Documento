@@ -6,11 +6,21 @@ import { Badge } from "../common/Badge";
 import { ClientProfile, DuplicateCandidate, RoleCode } from "../../lib/types";
 import { api } from "../../lib/api";
 
+export interface ClientModalPrefill {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  nationality?: string;
+  leadScoreNote?: string;
+}
+
 interface CreateClientModalProps {
   isOpen: boolean;
   onClose: () => void;
   onClientCreated: (newClient: ClientProfile) => void;
   activeRole?: RoleCode;
+  initialPrefill?: ClientModalPrefill | null;
 }
 
 export function CreateClientModal({
@@ -18,6 +28,7 @@ export function CreateClientModal({
   onClose,
   onClientCreated,
   activeRole = "master_admin",
+  initialPrefill = null,
 }: CreateClientModalProps) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -56,6 +67,17 @@ export function CreateClientModal({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && initialPrefill) {
+      setFirstName(initialPrefill.firstName || "");
+      setLastName(initialPrefill.lastName || "");
+      setEmail(initialPrefill.email || "");
+      setPhone(initialPrefill.phone || "");
+      setNationality(initialPrefill.nationality || "");
+      setError(null);
+    }
+  }, [isOpen, initialPrefill]);
 
   // Debounced duplicate detection
   useEffect(() => {
@@ -170,6 +192,23 @@ export function CreateClientModal({
       }
     >
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        {initialPrefill?.leadScoreNote && (
+          <div
+            data-testid="lead-prefill-banner"
+            style={{
+              padding: "10px 14px",
+              background: "#EAF6F0",
+              border: "1px solid #B9DED4",
+              color: "#063C3D",
+              borderRadius: "6px",
+              fontSize: "12.5px",
+              fontWeight: 600,
+            }}
+          >
+            Imported from Co-Branded PR Scorecard: {initialPrefill.leadScoreNote}
+          </div>
+        )}
+
         {error && (
           <div
             role="alert"

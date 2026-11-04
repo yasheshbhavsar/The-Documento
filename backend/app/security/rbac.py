@@ -15,6 +15,8 @@ class RoleCode(StrEnum):
     RULE_EDITOR = "rule_editor"
     RULE_APPROVER = "rule_approver"
     SYSTEM_ADMIN = "system_admin"
+    PLATFORM_SUPER_ADMIN = "platform_super_admin"
+    PLATFORM_OPS = "platform_ops"
     AUDITOR = "auditor"
 
     # Compatibility aliases
@@ -78,6 +80,20 @@ ROLE_PERMISSIONS: dict[RoleCode, set[str]] = {
     },
     RoleCode.SYSTEM_ADMIN: {
         "system:manage", "observability:read",
+        "platform:agencies:read", "platform:agencies:manage",
+        "platform:kyb:review", "platform:quotas:manage",
+        "platform:billing:read", "platform:support:grant_audit",
+    },
+    RoleCode.PLATFORM_SUPER_ADMIN: {
+        "system:manage", "observability:read", "audit:read",
+        "platform:agencies:read", "platform:agencies:manage",
+        "platform:kyb:review", "platform:quotas:manage",
+        "platform:billing:read", "platform:support:grant_audit",
+    },
+    RoleCode.PLATFORM_OPS: {
+        "observability:read",
+        "platform:agencies:read", "platform:kyb:review",
+        "platform:support:grant_audit",
     },
     RoleCode.AUDITOR: {
         "audit:read", "analytics:read",

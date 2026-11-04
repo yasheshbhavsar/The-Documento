@@ -194,6 +194,25 @@ export function DocumentoNavbar({
             AI Lab
           </a>
 
+          <a
+            href="/agency-onboarding"
+            data-testid="nav-agency-onboarding-link"
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#0D6866",
+              textDecoration: "none",
+              transition: "color 0.15s ease",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#063C3D")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#0D6866")}
+            title="KYB Onboarding & Partner Workspace Provisioning for Visa Agencies & Law Firms"
+          >
+            For Agencies
+          </a>
+
           <button
             type="button"
             onClick={() => onOpenLogin("client")}
@@ -394,6 +413,27 @@ export function DocumentoNavbar({
             }}
           >
             🔬 AI Extractor Lab
+          </a>
+
+          <a
+            href="/agency-onboarding"
+            onClick={() => setMobileMenuOpen(false)}
+            style={{
+              fontSize: "13px",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: "#0D6866",
+              textDecoration: "none",
+              padding: "8px 0",
+              borderBottom: "1px solid #F1F6F4",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>For Visa Agencies</span>
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "#063C3D" }}>KYB Onboarding →</span>
           </a>
 
           <div style={{ display: "flex", gap: "10px", paddingTop: "8px" }}>

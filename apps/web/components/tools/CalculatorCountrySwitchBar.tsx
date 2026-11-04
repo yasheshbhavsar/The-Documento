@@ -1,11 +1,15 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ALL_GLOBAL_CALCULATORS,
   getCountryGroupById,
 } from "../../lib/calculators/catalog";
+import {
+  resolveActiveCobrandedAgency,
+  withAgencyAttribution,
+} from "../../lib/agencyPlatformStore";
 import { CountryFlagBadge } from "./CountryVisualIdentity";
 
 interface CalculatorCountrySwitchBarProps {
@@ -24,6 +28,13 @@ const COMPACT_LABEL_BY_ID: Record<string, string> = {
 export function CalculatorCountrySwitchBar({
   activeCalculatorId,
 }: CalculatorCountrySwitchBarProps) {
+  const [agencySlug, setAgencySlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    const active = resolveActiveCobrandedAgency();
+    setAgencySlug(active ? active.slug : null);
+  }, []);
+
   return (
     <div
       className="calc-peer-switch-bar"
@@ -49,7 +60,7 @@ export function CalculatorCountrySwitchBar({
         }}
       >
         <Link
-          href="/calculators"
+          href={withAgencyAttribution("/calculators", agencySlug)}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -87,7 +98,7 @@ export function CalculatorCountrySwitchBar({
           return (
             <Link
               key={calc.id}
-              href={calc.href}
+              href={withAgencyAttribution(calc.href, agencySlug)}
               aria-current={active ? "page" : undefined}
               style={{
                 display: "inline-flex",

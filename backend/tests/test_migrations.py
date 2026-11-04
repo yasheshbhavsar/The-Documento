@@ -34,6 +34,7 @@ def test_alembic_upgrade_and_downgrade(tmp_path):
         "audit_events", "notifications", "case_interim_reports", "firm_configuration_audit_logs",
         "completed_application_summaries", "case_withdrawal_tombstones", "firm_export_requests", "privacy_legal_reviews",
         "pilot_cohorts", "pilot_stress_test_executions", "pilot_kpi_benchmarks", "release_gate_evaluations", "operational_runbooks",
+        "agency_onboarding_applications", "agency_tenant_governance", "calculator_agency_leads",
         "alembic_version"
     }
     assert expected_tables.issubset(set(tables)), f"Missing tables: {expected_tables - set(tables)}"

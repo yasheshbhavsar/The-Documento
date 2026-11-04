@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DocumentoLogo } from "../common/DocumentoLogo";
+import { CobrandedAgencyLeadWidget } from "../agency/CobrandedAgencyLeadWidget";
 import { CalculatorCountrySwitchBar } from "./CalculatorCountrySwitchBar";
 import { CountryCalculatorHeroCard } from "./CountryVisualIdentity";
 import {
@@ -2815,6 +2816,19 @@ export function PnpCalculatorTool() {
                   {copiedShareLink ? "Link Copied ✓" : "Share Link"}
                 </button>
               </div>
+
+              <CobrandedAgencyLeadWidget
+                calculatorId="canada-pnp"
+                calculatorTitle={`Canada PNP — ${activeResult.provinceName} (${activeResult.programShortName})`}
+                countryCode="CA"
+                liveScoreSummary={`${activeResult.totalScore} / ${activeResult.maxScore} ${activeResult.programShortName} pts`}
+                hasCalculatedScore={activeResult.totalScore > 0}
+                scorePayload={{
+                  province: form.activeProvince,
+                  totalScore: activeResult.totalScore,
+                  maxScore: activeResult.maxScore,
+                }}
+              />
             </div>
 
             {/* Express Entry +600 CRS Bridge Card */}

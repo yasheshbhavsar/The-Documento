@@ -25,6 +25,8 @@ import { FirmConfigurationHub } from "../firm/FirmConfigurationHub";
 import { PathwayExpansionDesk } from "../pathways/PathwayExpansionDesk";
 import { ProvisionCredentialsModal } from "../modals/ProvisionCredentialsModal";
 import { ManagerPriorityQueueView } from "./ManagerPriorityQueueView";
+import { AgencyGrowthAndSetupDesk } from "../agency/AgencyGrowthAndSetupDesk";
+import { CalculatorAgencyLeadRecord, getAgencyForOrganization, getCalculatorAgencyLeads } from "../../lib/agencyPlatformStore";
 import {
   api,
   fetchManagerPriorityQueue,
@@ -44,6 +46,7 @@ interface OwnerMasterDashboardProps {
   onClientUpdated?: (c: ClientProfile) => void;
   onDeleteClient?: (clientId: string) => Promise<void> | void;
   currentUser?: UserContext;
+  onConvertLeadToClient?: (lead: CalculatorAgencyLeadRecord) => void;
 }
 
 export function OwnerMasterDashboard({
@@ -59,6 +62,7 @@ export function OwnerMasterDashboard({
   onClientUpdated,
   onDeleteClient,
   currentUser,
+  onConvertLeadToClient,
 }: OwnerMasterDashboardProps) {
   const [activeTab, setActiveTab] = useState<
     | "overview"
@@ -78,7 +82,22 @@ export function OwnerMasterDashboard({
     | "rules"
     | "stage9_release_governance"
     | "stage10_pathway_expansion"
-  >("overview");
+    | "partner_growth"
+  >(
+    currentUser?.is_sandbox_agency ||
+      (currentUser?.organization_id && currentUser.organization_id !== "ten-vanguard")
+      ? "partner_growth"
+      : "overview"
+  );
+
+  React.useEffect(() => {
+    if (
+      currentUser?.is_sandbox_agency ||
+      (currentUser?.organization_id && currentUser.organization_id !== "ten-vanguard")
+    ) {
+      setActiveTab("partner_growth");
+    }
+  }, [currentUser?.organization_id, currentUser?.is_sandbox_agency]);
 
   const [selectedClientForCredentials, setSelectedClientForCredentials] = useState<ClientProfile | null>(null);
   const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
@@ -234,8 +253,14 @@ export function OwnerMasterDashboard({
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const firmAgency = getAgencyForOrganization(currentUser?.organization_id || "ten-vanguard");
+  const unreadCalculatorLeadsCount = firmAgency
+    ? getCalculatorAgencyLeads(firmAgency.organizationId).filter((l) => l.leadStatus === "new_lead").length
+    : 0;
+
   const navItems = [
     { key: "overview", id: "tab-btn-overview", label: "Company Overview", icon: "🏢", count: null },
+    { key: "partner_growth", id: "tab-btn-partner-growth", label: "Partner Onboarding & Leads", icon: "🔗", count: unreadCalculatorLeadsCount || null },
     { key: "firm_config", id: "tab-btn-firm-config", label: "Firm Governance & Configuration", icon: "🏛️", count: null },
     { key: "reliability_ops", id: "tab-btn-reliability-ops", label: "Reliability, Privacy & Security", icon: "🛡️", count: null },
     { key: "manager_priority", id: "tab-btn-manager-priority", label: "Priority Command Board", icon: "🚨", count: 8 },
@@ -322,6 +347,10 @@ export function OwnerMasterDashboard({
     stage10_pathway_expansion: {
       title: "Stage 10: Pathway Expansion & Regional Localization Desk",
       subtitle: "Multi-Jurisdiction Inventory (Priorities 1–5), 8 Broad Application Families, EU/Schengen Distinctions, Safe-Stop Principles & Multilingual Matching Engine",
+    },
+    partner_growth: {
+      title: "Partner Agency Setup, Co-Branded PR Calculators & HQ Privacy Gate",
+      subtitle: "Configure your verified agency calculator link (?agency=slug), convert incoming PR scorecard leads, and govern your Zero-PII Break-Glass support token.",
     },
   }[activeTab];
 
@@ -741,6 +770,45 @@ export function OwnerMasterDashboard({
             </Button>
           </div>
         </div>
+
+      {activeTab !== "partner_growth" &&
+        (currentUser?.is_sandbox_agency || (firmAgency && !firmAgency.branding.setupCompleted)) && (
+          <div
+            data-testid="day0-agency-setup-callout"
+            style={{
+              padding: "14px 18px",
+              borderRadius: "10px",
+              background: currentUser?.is_sandbox_agency ? "#FFFBEB" : "#EAF6F0",
+              border: `1px solid ${currentUser?.is_sandbox_agency ? "#FDE68A" : "#B9DED4"}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div style={{ fontSize: "13px", color: "#172322" }}>
+              <strong style={{ color: "#063C3D" }}>
+                {currentUser?.is_sandbox_agency
+                  ? "KYB Sandbox Active:"
+                  : "Complete Day-0 Partner Agency Setup:"}
+              </strong>{" "}
+              Configure your co-branded PR calculator portal (<code>/calculators?agency={firmAgency?.slug || "partner"}</code>) and active visa corridors.
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => setActiveTab("partner_growth")}>
+              Open Partner Setup &amp; Leads →
+            </Button>
+          </div>
+        )}
+
+      {/* PARTNER ONBOARDING, CO-BRANDED CALCULATOR LEADS & BREAK-GLASS PRIVACY TAB */}
+      {activeTab === "partner_growth" && (
+        <AgencyGrowthAndSetupDesk
+          currentUser={currentUser}
+          onOpenCreateClient={onOpenCreateClient}
+          onConvertLeadToClient={onConvertLeadToClient}
+        />
+      )}
 
       {/* OVERVIEW TAB */}
       {activeTab === "overview" && (

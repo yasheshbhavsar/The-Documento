@@ -71,7 +71,7 @@ export default function LoginPage() {
               localStorage.removeItem("documento_user");
             }
           }
-          router.push("/");
+          router.push(userObj.role === "platform_super_admin" ? "/super-admin" : "/");
           return;
         }
 
@@ -87,7 +87,7 @@ export default function LoginPage() {
               localStorage.removeItem("documento_user");
             }
           }
-          router.push("/");
+          router.push(res.user.role === "platform_super_admin" ? "/super-admin" : "/");
           return;
         }
 
@@ -109,7 +109,7 @@ export default function LoginPage() {
               localStorage.removeItem("documento_user");
             }
           }
-          router.push("/");
+          router.push(res.user.role === "platform_super_admin" ? "/super-admin" : "/");
         } else {
           setErrorMessage(res.error || "Authentication failed. Please verify credentials.");
         }
@@ -489,6 +489,27 @@ export default function LoginPage() {
             >
               🌐 Google Workspace
             </button>
+          </div>
+
+          <div
+            style={{
+              marginTop: "18px",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              background: "#F8F7F2",
+              border: "1px solid #DCE5E1",
+              textAlign: "center",
+              fontSize: "12px",
+              color: "#445451",
+            }}
+          >
+            New immigration law firm or visa agency?{" "}
+            <a
+              href="/agency-onboarding"
+              style={{ color: "#0D6866", fontWeight: 700, textDecoration: "none" }}
+            >
+              Apply for Partner KYB Onboarding →
+            </a>
           </div>
         </div>
       </div>

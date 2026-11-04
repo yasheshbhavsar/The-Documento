@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DocumentoLogo } from "../common/DocumentoLogo";
+import { CobrandedAgencyLeadWidget } from "../agency/CobrandedAgencyLeadWidget";
 import { CalculatorCountrySwitchBar } from "./CalculatorCountrySwitchBar";
 import { CountryCalculatorHeroCard } from "./CountryVisualIdentity";
 import {
@@ -921,6 +922,19 @@ export function UkSkilledWorkerTool() {
                   {copiedShareLink ? "Link Copied ✓" : "Share Link"}
                 </button>
               </div>
+
+              <CobrandedAgencyLeadWidget
+                calculatorId="uk-skilled-worker"
+                calculatorTitle="UK 70-Point Skilled Worker & ILR"
+                countryCode="UK"
+                liveScoreSummary={`${result.totalPoints} / 70 pts (${result.visaEligible ? "Visa Eligible" : "Below 70 Pts"}${result.ilrReadyNow ? " • ILR Ready" : ""})`}
+                hasCalculatedScore={result.totalPoints > 0}
+                scorePayload={{
+                  totalPoints: result.totalPoints,
+                  visaEligible: result.visaEligible,
+                  ilrReady: result.ilrReadyNow,
+                }}
+              />
             </div>
 
             {tips.length > 0 && (

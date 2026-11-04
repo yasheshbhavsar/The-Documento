@@ -5,10 +5,12 @@ import { UserContext, UserExperience, RoleCode, ImmigrationCase, ClientProfile, 
 import { api } from "../lib/api";
 import { DEMO_USERS } from "../lib/auth";
 import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
+import { SuperAdminControlPlane } from "../components/admin/SuperAdminControlPlane";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
 import { ClientPortal } from "../components/dashboards/ClientPortal";
 import { CreateCaseModal } from "../components/modals/CreateCaseModal";
-import { CreateClientModal } from "../components/modals/CreateClientModal";
+import { CreateClientModal, ClientModalPrefill } from "../components/modals/CreateClientModal";
+import { CalculatorAgencyLeadRecord } from "../lib/agencyPlatformStore";
 import { CaseDrilldownDrawer } from "../components/modals/CaseDrilldownDrawer";
 import { CaseDetailModal } from "../components/cases/CaseDetailModal";
 import { DocumentUploadModal } from "../components/modals/DocumentUploadModal";
@@ -62,6 +64,7 @@ export default function Home() {
   // Modals state
   const [isCreateCaseOpen, setIsCreateCaseOpen] = useState(false);
   const [isCreateClientOpen, setIsCreateClientOpen] = useState(false);
+  const [clientModalPrefill, setClientModalPrefill] = useState<ClientModalPrefill | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isQuestionnaireOpen, setIsQuestionnaireOpen] = useState(false);
   const [selectedCaseForDrawer, setSelectedCaseForDrawer] = useState<ImmigrationCase | null>(null);
@@ -84,7 +87,7 @@ export default function Home() {
     }
   }, []);
 
-  // Initial data loading when role changes
+  // Initial data loading when role or tenant organization changes
   useEffect(() => {
     async function loadData() {
       try {
@@ -95,6 +98,55 @@ export default function Home() {
             type: "warning",
             message: "Documento Production API is unreachable. In-memory fallback is disabled in production to protect data integrity.",
           });
+          return;
+        }
+
+        // Clean Day-1 Workspace Isolation: newly onboarded or partner agencies
+        // outside the flagship demo firm (`ten-vanguard`) start with a clean, empty
+        // workspace personalized to their own firm rather than fake Vanguard files.
+        if (
+          currentUser &&
+          currentUser.organization_id &&
+          currentUser.organization_id !== "ten-vanguard" &&
+          currentUser.role !== "platform_super_admin"
+        ) {
+          const nowIso = new Date().toISOString();
+          setCases([]);
+          setClients([]);
+          setDocuments([]);
+          setTasks([]);
+          setAiFindings([]);
+          setMessages([]);
+          setInvoices([]);
+          setCapacity([
+            {
+              id: currentUser.id,
+              name: currentUser.full_name,
+              role: currentUser.role,
+              active_cases: 0,
+              max_capacity: 25,
+              open_reviews: 0,
+            },
+          ]);
+          setNotifications([
+            {
+              id: `notif-welcome-${currentUser.organization_id}`,
+              title: `Welcome to ${currentUser.organization_name}`,
+              body: "Complete your 4-step Agency Launchpad to share your co-branded PR calculator link, invite paralegals, and open your first client file.",
+              status: "unread",
+              created_at: nowIso,
+            },
+          ]);
+          setAuditEvents([
+            {
+              id: `aud-init-${currentUser.organization_id}`,
+              action: "workspace.initialized",
+              object_type: "organization",
+              object_id: currentUser.organization_id,
+              actor_email: currentUser.email,
+              created_at: nowIso,
+            },
+          ]);
           return;
         }
 
@@ -136,7 +188,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [currentRole]);
+  }, [currentRole, currentUser?.organization_id]);
 
   // Auth Handlers
   const handleOpenLogin = (portal: "firm" | "client" = "firm") => {
@@ -197,6 +249,43 @@ export default function Home() {
     }, 4000);
     return () => clearTimeout(timer);
   }, [bannerAlert]);
+
+  // Restricted KYB Sandbox Guardrails & Lead-to-Client Conversion
+  const guardSandboxAgencyAction = (actionName: string): boolean => {
+    if (currentUser?.is_sandbox_agency) {
+      setBannerAlert({
+        type: "warning",
+        message: `Restricted KYB Sandbox: Live ${actionName} unlocks automatically once Documento HQ verifies your regulatory license.`,
+      });
+      return false;
+    }
+    return true;
+  };
+
+  const handleOpenCreateClient = () => {
+    if (!guardSandboxAgencyAction("client retention & portal credential issuance")) return;
+    setClientModalPrefill(null);
+    setIsCreateClientOpen(true);
+  };
+
+  const handleConvertLeadToClient = (lead: CalculatorAgencyLeadRecord) => {
+    if (!guardSandboxAgencyAction("lead-to-client retention")) return;
+    const parts = lead.applicantName.trim().split(/\s+/);
+    setClientModalPrefill({
+      firstName: parts[0] || "",
+      lastName: parts.slice(1).join(" ") || "Applicant",
+      email: lead.applicantEmail,
+      phone: lead.applicantPhone || "",
+      nationality: "",
+      leadScoreNote: `${lead.calculatorTitle} — ${lead.scoreSummary}`,
+    });
+    setIsCreateClientOpen(true);
+  };
+
+  const handleOpenUploadModal = () => {
+    if (!guardSandboxAgencyAction("applicant PII document uploads")) return;
+    setIsUploadModalOpen(true);
+  };
 
   // Domain Handlers
   const handleCaseCreated = (newCase: ImmigrationCase) => {
@@ -470,7 +559,11 @@ export default function Home() {
       )}
 
       {/* STATE B: AUTHENTICATED ENTERPRISE WORKSPACE */}
-      {currentUser && (
+      {currentUser && (activeExp === "platform_super_admin" || currentRole === "platform_ops") && (
+        <SuperAdminControlPlane onSignOut={handleLogout} />
+      )}
+
+      {currentUser && activeExp !== "platform_super_admin" && currentRole !== "platform_ops" && (
         <div>
           <WorkspaceHeader
             currentUser={currentUser}
@@ -490,7 +583,8 @@ export default function Home() {
                 capacity={capacity}
                 isLiveBackend={isLiveBackend}
                 onOpenCreateCase={() => setIsCreateCaseOpen(true)}
-                onOpenCreateClient={() => setIsCreateClientOpen(true)}
+                onOpenCreateClient={handleOpenCreateClient}
+                onConvertLeadToClient={handleConvertLeadToClient}
                 onSelectCase={(c) => setSelectedCaseForDrawer(c)}
                 onClientUpdated={handleClientUpdated}
                 onDeleteClient={handleDeleteClient}
@@ -509,8 +603,8 @@ export default function Home() {
                 onToggleTask={handleToggleTask}
                 onSendMessage={handleSendMessage}
                 onSelectCase={(c) => setSelectedCaseForDrawer(c)}
-                onOpenUploadModal={() => setIsUploadModalOpen(true)}
-                onOpenCreateClient={() => setIsCreateClientOpen(true)}
+                onOpenUploadModal={handleOpenUploadModal}
+                onOpenCreateClient={handleOpenCreateClient}
                 onDocumentUpdated={handleDocumentUpdated}
                 onClientUpdated={handleClientUpdated}
                 onDeleteClient={handleDeleteClient}
@@ -553,7 +647,7 @@ export default function Home() {
                   messages={clientMessages}
                   notifications={clientCase ? notifications : []}
                   invoices={clientInvoices}
-                  onOpenUploadModal={() => setIsUploadModalOpen(true)}
+                  onOpenUploadModal={handleOpenUploadModal}
                   onOpenQuestionnaireModal={() => setIsQuestionnaireOpen(true)}
                   onSendMessage={handleSendMessage}
                   onMarkNotificationRead={handleMarkNotificationRead}
@@ -576,9 +670,13 @@ export default function Home() {
       />
       <CreateClientModal
         isOpen={isCreateClientOpen}
-        onClose={() => setIsCreateClientOpen(false)}
+        onClose={() => {
+          setIsCreateClientOpen(false);
+          setClientModalPrefill(null);
+        }}
         onClientCreated={handleClientCreated}
         activeRole={currentRole}
+        initialPrefill={clientModalPrefill}
       />
       <CaseDrilldownDrawer
         isOpen={!!selectedCaseForDrawer}

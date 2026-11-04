@@ -615,6 +615,28 @@ export function DocumentoLoginModal({
           </button>
         </div>
 
+        {/* Partner Visa Agency Onboarding Link */}
+        <div
+          style={{
+            marginBottom: "16px",
+            padding: "10px 12px",
+            borderRadius: "8px",
+            background: "#F8F7F2",
+            border: "1px solid #DCE5E1",
+            textAlign: "center",
+            fontSize: "12px",
+            color: "#445451",
+          }}
+        >
+          New immigration law firm or visa agency?{" "}
+          <a
+            href="/agency-onboarding"
+            style={{ color: "#0D6866", fontWeight: 700, textDecoration: "none" }}
+          >
+            Apply for Partner KYB Onboarding →
+          </a>
+        </div>
+
         {/* Security & Compliance Badge */}
         <div
           style={{
