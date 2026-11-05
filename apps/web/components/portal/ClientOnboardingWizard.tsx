@@ -331,7 +331,7 @@ export function ClientOnboardingWizard({
                     Form G-28 Notice of Entry of Appearance & Legal Representation
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                    I authorize Sarah Jenkins, Esq. and the retaining law firm to represent my petition before the United States Citizenship and Immigration Services (USCIS) and Department of Homeland Security (DHS).
+                    I authorize my designated immigration counsel and the retaining firm to represent my application before the relevant government immigration authorities.
                   </div>
                 </div>
               </label>

@@ -237,7 +237,7 @@ export function CaseRequirementEvaluationView({
               Active Case:
             </span>
             <strong style={{ color: "#172322", fontSize: "13px" }}>
-              {currentCase?.case_number || "CASE-US-8841"} ({currentCase?.jurisdiction || "US"} {currentCase?.visa_category || "EB-1A"})
+              {currentCase?.case_number || "NO-CASE-SELECTED"} ({currentCase?.jurisdiction || "—"} {currentCase?.visa_category || ""})
             </strong>
           </div>
           <div style={{ borderLeft: "1px solid #DCE5E1", paddingLeft: "16px" }}>

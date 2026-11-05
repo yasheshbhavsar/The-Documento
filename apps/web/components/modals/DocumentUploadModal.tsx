@@ -3,13 +3,14 @@ import { Modal } from "../common/Modal";
 import { SelectInput } from "../common/FormControls";
 import { Button } from "../common/Button";
 import { calculateSHA256, formatBytes } from "../../lib/crypto";
-import { DocumentItem, DocumentCategory, RoleCode } from "../../lib/types";
+import { DocumentItem, DocumentCategory, ImmigrationCase, RoleCode } from "../../lib/types";
 import { api } from "../../lib/api";
 
 interface DocumentUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   caseId?: string;
+  cases?: ImmigrationCase[];
   parentDocumentId?: string;
   onDocumentUploaded: (doc: DocumentItem) => void;
   activeRole?: RoleCode;
@@ -18,11 +19,13 @@ interface DocumentUploadModalProps {
 export function DocumentUploadModal({
   isOpen,
   onClose,
-  caseId = "case-01",
+  caseId,
+  cases = [],
   parentDocumentId,
   onDocumentUploaded,
   activeRole = "retained_client",
 }: DocumentUploadModalProps) {
+  const [selectedCaseId, setSelectedCaseId] = useState<string>(caseId || cases[0]?.id || "");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [category, setCategory] = useState<DocumentCategory>("identity_passport");
   const [title, setTitle] = useState("");
@@ -30,6 +33,16 @@ export function DocumentUploadModal({
   const [computedHash, setComputedHash] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      if (caseId) {
+        setSelectedCaseId(caseId);
+      } else if (cases.length > 0 && !cases.some((c) => c.id === selectedCaseId)) {
+        setSelectedCaseId(cases[0].id);
+      }
+    }
+  }, [isOpen, caseId, cases, selectedCaseId]);
 
   const categories = [
     { label: "Passports and Identity Documents", value: "identity_passport" },
@@ -99,7 +112,8 @@ export function DocumentUploadModal({
       formData.append("file", selectedFile);
       formData.append("category", category);
       formData.append("title", title || selectedFile.name);
-      if (caseId) formData.append("case_id", caseId);
+      const targetCaseId = selectedCaseId || caseId || cases[0]?.id || "";
+      if (targetCaseId) formData.append("case_id", targetCaseId);
       if (parentDocumentId) formData.append("parent_document_id", parentDocumentId);
 
       const res = await api.uploadDocumentFile(formData, activeRole);
@@ -186,6 +200,22 @@ export function DocumentUploadModal({
             }}
           >
             Uploading as a new revision (superseding previous version).
+          </div>
+        )}
+
+        {cases.length > 0 && (
+          <div>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "6px" }}>
+              Target Case / Petition *
+            </label>
+            <SelectInput
+              value={selectedCaseId}
+              onChange={(e) => setSelectedCaseId(e.target.value)}
+              options={cases.map((c) => ({
+                label: `${c.case_number} — ${c.title} (${c.client_name || "Applicant"})`,
+                value: c.id,
+              }))}
+            />
           </div>
         )}
 

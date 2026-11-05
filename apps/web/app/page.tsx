@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { UserContext, UserExperience, RoleCode, ImmigrationCase, ClientProfile, DocumentItem, CaseTask, AIFinding, MessageItem, NotificationItem, InvoiceItem, TeamMemberCapacity, AuditEvent } from "../lib/types";
 import { api } from "../lib/api";
-import { DEMO_USERS } from "../lib/auth";
+import { purgeLegacyDemoStorageOnce } from "../lib/agencyPlatformStore";
 import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
 import { SuperAdminControlPlane } from "../components/admin/SuperAdminControlPlane";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
@@ -72,6 +72,7 @@ export default function Home() {
 
   // Load existing session from storage if present
   useEffect(() => {
+    purgeLegacyDemoStorageOnce();
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("documento_user") || sessionStorage.getItem("documento_user");
       if (stored) {
@@ -101,16 +102,7 @@ export default function Home() {
           return;
         }
 
-        // Clean Day-1 Workspace Isolation: newly onboarded or partner agencies
-        // outside the flagship demo firm (`ten-vanguard`) start with a clean, empty
-        // workspace personalized to their own firm rather than fake Vanguard files.
-        if (
-          currentUser &&
-          currentUser.organization_id &&
-          currentUser.organization_id !== "ten-vanguard" &&
-          currentUser.role !== "platform_super_admin"
-        ) {
-          const nowIso = new Date().toISOString();
+        if (!currentUser || currentUser.role === "platform_super_admin" || currentUser.role === "platform_ops") {
           setCases([]);
           setClients([]);
           setDocuments([]);
@@ -118,35 +110,7 @@ export default function Home() {
           setAiFindings([]);
           setMessages([]);
           setInvoices([]);
-          setCapacity([
-            {
-              id: currentUser.id,
-              name: currentUser.full_name,
-              role: currentUser.role,
-              active_cases: 0,
-              max_capacity: 25,
-              open_reviews: 0,
-            },
-          ]);
-          setNotifications([
-            {
-              id: `notif-welcome-${currentUser.organization_id}`,
-              title: `Welcome to ${currentUser.organization_name}`,
-              body: "Complete your 4-step Agency Launchpad to share your co-branded PR calculator link, invite paralegals, and open your first client file.",
-              status: "unread",
-              created_at: nowIso,
-            },
-          ]);
-          setAuditEvents([
-            {
-              id: `aud-init-${currentUser.organization_id}`,
-              action: "workspace.initialized",
-              object_type: "organization",
-              object_id: currentUser.organization_id,
-              actor_email: currentUser.email,
-              created_at: nowIso,
-            },
-          ]);
+          setCapacity([]);
           return;
         }
 
@@ -188,7 +152,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [currentRole, currentUser?.organization_id]);
+  }, [currentRole, currentUser?.id, currentUser?.organization_id]);
 
   // Auth Handlers
   const handleOpenLogin = (portal: "firm" | "client" = "firm") => {
@@ -230,15 +194,6 @@ export default function Home() {
       type: "info",
       message: "You have been safely signed out of Documento.",
     });
-  };
-
-  const handleSwitchRoleInWorkspace = (role: string | UserExperience) => {
-    const demoUser = DEMO_USERS[role] || DEMO_USERS.master_admin;
-    setCurrentUser(demoUser);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("documento_user", JSON.stringify(demoUser));
-    }
-    setBannerAlert(null);
   };
 
   // Auto-dismiss transient banner alerts after 4 seconds
@@ -423,8 +378,8 @@ export default function Home() {
         id: "audit-init",
         action: "workspace.initialized",
         object_type: "workspace",
-        object_id: "org-vanguard",
-        actor_email: currentUser?.email || "sarah.jenkins@vanguardlegal.com",
+        object_id: currentUser?.organization_id || "workspace",
+        actor_email: currentUser?.email || "operator@workspace.local",
         created_at: new Date().toISOString(),
         metadata: {
           note: "Firm workspace started from scratch (Day 0). Zero mock cases and zero mock documents.",
@@ -568,7 +523,6 @@ export default function Home() {
           <WorkspaceHeader
             currentUser={currentUser}
             onLogout={handleLogout}
-            onSwitchRole={handleSwitchRoleInWorkspace}
             onResetToScratch={handleResetToScratch}
             isLiveBackend={isLiveBackend}
           />
@@ -647,6 +601,7 @@ export default function Home() {
                   messages={clientMessages}
                   notifications={clientCase ? notifications : []}
                   invoices={clientInvoices}
+                  currentUser={currentUser}
                   onOpenUploadModal={handleOpenUploadModal}
                   onOpenQuestionnaireModal={() => setIsQuestionnaireOpen(true)}
                   onSendMessage={handleSendMessage}
@@ -682,7 +637,12 @@ export default function Home() {
         isOpen={!!selectedCaseForDrawer}
         onClose={() => setSelectedCaseForDrawer(null)}
         caseItem={selectedCaseForDrawer}
-        onOpenWorkspace={() => handleSwitchRoleInWorkspace("case_manager")}
+        onOpenWorkspace={() => {
+          if (selectedCaseForDrawer) {
+            setSelectedCaseForDetailModal(selectedCaseForDrawer);
+            setSelectedCaseForDrawer(null);
+          }
+        }}
         onOpenDetailModal={(c) => setSelectedCaseForDetailModal(c)}
       />
       <CaseDetailModal
@@ -695,6 +655,29 @@ export default function Home() {
       <DocumentUploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
+        cases={
+          activeExp === "client_applicant"
+            ? cases.filter(
+                (c) =>
+                  c.client_id === currentUser?.id ||
+                  (c.client_name &&
+                    currentUser?.full_name &&
+                    c.client_name.toLowerCase().includes(currentUser.full_name.toLowerCase()))
+              )
+            : cases
+        }
+        caseId={
+          selectedCaseForDetailModal?.id ||
+          (activeExp === "client_applicant"
+            ? cases.find(
+                (c) =>
+                  c.client_id === currentUser?.id ||
+                  (c.client_name &&
+                    currentUser?.full_name &&
+                    c.client_name.toLowerCase().includes(currentUser.full_name.toLowerCase()))
+              )?.id
+            : cases[0]?.id)
+        }
         onDocumentUploaded={handleDocumentUploaded}
         activeRole={currentRole}
       />

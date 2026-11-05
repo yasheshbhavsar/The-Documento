@@ -203,6 +203,23 @@ def submit_agency_onboarding_application(
         kyb_status="pending_kyb",
     )
     db.add(app_record)
+
+    if payload.owner_password:
+        owner_email_norm = payload.contact_work_email.lower().strip()
+        existing_user = db.query(User).filter(User.email == owner_email_norm).first()
+        if not existing_user:
+            db.add(
+                User(
+                    organization_id=None,
+                    email=owner_email_norm,
+                    name=payload.contact_full_name.strip(),
+                    full_name=payload.contact_full_name.strip(),
+                    password_hash=hash_password(payload.owner_password),
+                    phone=payload.contact_phone.strip() if payload.contact_phone else None,
+                    status="pending",
+                )
+            )
+
     db.commit()
     db.refresh(app_record)
 
@@ -814,6 +831,10 @@ def adjudicate_kyb_application(
             status="active",
         )
         db.add(user)
+        db.flush()
+    else:
+        user.organization_id = org.id
+        user.status = "active"
         db.flush()
 
     membership = OrganizationMembership(

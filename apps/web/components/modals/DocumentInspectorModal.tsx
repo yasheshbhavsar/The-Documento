@@ -713,7 +713,7 @@ export function DocumentInspectorModal({
                       THIS IS AN OFFICIAL RECORD VERIFIED UNDER IMMIGRATION AND NATIONALITY ACT (INA) COMPLIANCE STANDARDS.
                     </p>
                     <div className="p-2 bg-indigo-50 border border-indigo-200 rounded text-indigo-900 font-mono text-[10px]">
-                      <strong>Extracted Page {currentPage} Identifier:</strong> {doc.title} — Reference #{doc.case_number || "CASE-US-8841"}
+                      <strong>Extracted Page {currentPage} Identifier:</strong> {doc.title} — Reference #{doc.case_number || "UNASSIGNED"}
                     </div>
                     <p className="text-slate-600 italic text-[10px]">
                       Document fingerprint verified: <code className="bg-slate-100 px-1 rounded">{doc.sha256_hash ? doc.sha256_hash.slice(0, 24) : "SHA256-AUTHENTICATED"}</code>

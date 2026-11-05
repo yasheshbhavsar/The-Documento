@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CaseDetailModal } from "../components/cases/CaseDetailModal";
 import { CreateClientModal } from "../components/modals/CreateClientModal";
-import { FIXTURE_CASES } from "../lib/api";
+import { FIXTURE_CASES, api } from "../lib/api";
 
 describe("Phase 3 — Core Immigration Case Management Workflows", () => {
   const sampleCase = FIXTURE_CASES[0]; // CASE-US-8841
@@ -117,9 +117,19 @@ describe("Phase 3 — Core Immigration Case Management Workflows", () => {
     expect(screen.getByText(/Add Principal Dependant \/ Family Member/i)).toBeDefined();
     expect(screen.getByText(/Record Form G-28 Legal Representation Agreement/i)).toBeDefined();
 
-    // Type an email that matches Elena Rostova
-    const emailInput = screen.getByPlaceholderText("e.g. marcus@example.com");
-    fireEvent.change(emailInput, { target: { value: "elena.rostova@example.com" } });
+    // Retain a real client record first, then verify duplicate detection flags the matching email
+    await api.createClient(
+      {
+        first_name: "Neha",
+        last_name: "Kulkarni",
+        email: "neha.kulkarni@clientmail.in",
+        nationality: "IND",
+      },
+      "master_admin"
+    );
+
+    const emailInput = screen.getByPlaceholderText("e.g. applicant@domain.com");
+    fireEvent.change(emailInput, { target: { value: "neha.kulkarni@clientmail.in" } });
 
     // Verify duplicate warning banner appears
     await waitFor(

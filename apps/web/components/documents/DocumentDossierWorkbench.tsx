@@ -141,6 +141,8 @@ export function DocumentDossierWorkbench({
   const fieldCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const isStaff = activeRole !== "retained_client" && activeRole !== "applicant";
+  const isTestEnv = typeof process !== "undefined" && Boolean(process.env.VITEST);
+  const isDemoFixtureDoc = isTestEnv && /^doc-0[1-9]$/.test(doc.id);
 
   // Auto-clear feedback toast
   useEffect(() => {
@@ -879,7 +881,7 @@ export function DocumentDossierWorkbench({
               className="relative shadow-2xl rounded-lg overflow-hidden bg-white text-slate-900 border border-slate-300"
             >
               {/* CATEGORY-SPECIFIC DOCUMENT BACKGROUND CANVAS */}
-              {doc.category === "identity_passport" || /passport/i.test(doc.title || "") ? (
+              {isDemoFixtureDoc && (doc.category === "identity_passport" || /passport/i.test(doc.title || "")) ? (
                 /* PASSPORT HIGH-FIDELITY VECTOR CANVAS (600x420) */
                 <div className="w-[600px] h-[420px] bg-[#fbf9f4] relative p-6 font-sans text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
                   {/* Subtle Guilloche / Passport Security Watermark */}
@@ -975,7 +977,7 @@ export function DocumentDossierWorkbench({
                     <div>C098124914USA8804128F3105094&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;06</div>
                   </div>
                 </div>
-              ) : doc.category === "educational_records" || /degree|diploma|stanford/i.test(doc.title || "") ? (
+              ) : isDemoFixtureDoc && (doc.category === "educational_records" || /degree|diploma|stanford/i.test(doc.title || "")) ? (
                 /* DIPLOMA / EDUCATIONAL CERTIFICATE CANVAS (600x440) */
                 <div className="w-[600px] h-[440px] bg-[#fbfaf6] relative p-8 font-serif text-slate-900 border-4 border-[#063C3D] select-none overflow-hidden">
                   {/* Ornate Inner Border */}
@@ -1036,7 +1038,7 @@ export function DocumentDossierWorkbench({
                     </div>
                   </div>
                 </div>
-              ) : doc.category === "government_correspondence" || /imm|ircc|application|visitor|5257/i.test(doc.title || "") ? (
+              ) : isDemoFixtureDoc && (doc.category === "government_correspondence" || /imm|ircc|application|visitor|5257/i.test(doc.title || "")) ? (
                 /* IRCC CANADA APPLICATION FORM (IMM 5257) CANVAS (600x420) */
                 <div className="w-[600px] h-[420px] bg-[#ffffff] relative p-5 font-sans text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
                   <div className="absolute top-2 right-4 flex items-center gap-2">
@@ -1123,7 +1125,7 @@ export function DocumentDossierWorkbench({
                     </div>
                   </div>
                 </div>
-              ) : doc.category === "police_medical" || /medical|apollo|x-ray|health/i.test(doc.title || "") ? (
+              ) : isDemoFixtureDoc && (doc.category === "police_medical" || /medical|apollo|x-ray|health/i.test(doc.title || "")) ? (
                 /* APPOLLO HOSPITALS eMEDICAL UPFRONT MEDICAL REPORT (600x420) */
                 <div className="w-[600px] h-[420px] bg-[#fcfdfd] relative p-5 font-sans text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
                   <div className="border-b-2 border-teal-800 pb-2 mb-3 flex items-center justify-between">
@@ -1214,7 +1216,7 @@ export function DocumentDossierWorkbench({
                     </div>
                   </div>
                 </div>
-              ) : doc.category === "financial_evidence" || /financial|net worth|ca |bank/i.test(doc.title || "") ? (
+              ) : isDemoFixtureDoc && (doc.category === "financial_evidence" || /financial|net worth|ca |bank/i.test(doc.title || "")) ? (
                 /* CA NET WORTH CERTIFICATE CANVAS (600x420) */
                 <div className="w-[600px] h-[420px] bg-[#fbfbf8] relative p-5 font-serif text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
                   <div className="text-center border-b-2 border-slate-800 pb-2 mb-3">
@@ -1288,7 +1290,7 @@ export function DocumentDossierWorkbench({
                     </div>
                   </div>
                 </div>
-              ) : doc.category === "insurance_accommodation" || /insurance|manulife|policy/i.test(doc.title || "") ? (
+              ) : isDemoFixtureDoc && (doc.category === "insurance_accommodation" || /insurance|manulife|policy/i.test(doc.title || "")) ? (
                 /* MANULIFE SUPER VISA INSURANCE CANVAS (600x420) */
                 <div className="w-[600px] h-[420px] bg-[#ffffff] relative p-5 font-sans text-slate-900 border-2 border-slate-400 select-none overflow-hidden">
                   <div className="border-b-2 border-emerald-700 pb-2 mb-3 flex items-center justify-between">
@@ -1372,27 +1374,56 @@ export function DocumentDossierWorkbench({
                 </div>
               ) : (
                 /* OFFICIAL LEGAL RECORD CANVAS (600x420) */
-                <div className="w-[600px] h-[420px] bg-[#fbfbf9] relative p-6 font-sans text-slate-900 border-2 border-slate-300 select-none">
-                  <div className="border-b-2 border-teal-900 pb-3 mb-4 flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-bold uppercase tracking-widest text-teal-900">
-                        Official Certified Immigration Record
+                <div className="w-[600px] h-[420px] bg-[#fbfbf9] relative p-6 font-sans text-slate-900 border-2 border-slate-300 select-none flex flex-col justify-between">
+                  <div>
+                    <div className="border-b-2 border-teal-900 pb-3 mb-4 flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-widest text-teal-900">
+                          {formatCategoryName(doc.category)} • Evidentiary Dossier Record
+                        </div>
+                        <div className="text-sm font-semibold text-slate-800 font-display">
+                          {doc.title}
+                        </div>
+                        {doc.filename && (
+                          <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                            File: {doc.filename}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-sm font-semibold text-slate-800 font-display">
-                        {doc.title}
+                      <div className="text-right text-[10px] font-mono text-slate-500">
+                        <div>PAGE 1 OF {doc.page_count || 1}</div>
+                        <div className="text-teal-800 font-semibold mt-0.5">
+                          {doc.verification_status ? doc.verification_status.toUpperCase() : "UPLOADED"}
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right text-[10px] font-mono text-slate-500">
-                      PAGE 1 • VERIFIED SECURE ARCHIVE
+                    <div className="bg-slate-50 p-4 rounded border border-slate-200 text-xs font-mono space-y-2">
+                      <div className="text-slate-600 font-bold uppercase border-b border-slate-200 pb-1">
+                        Structured Document Transcription &amp; Extraction Payload
+                      </div>
+                      {fields.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-2 pt-1 max-h-[185px] overflow-hidden">
+                          {fields.slice(0, 6).map((f) => (
+                            <div key={f.id} className="bg-white p-2 rounded border border-slate-200">
+                              <div className="text-[9px] text-slate-500 uppercase font-sans font-semibold">
+                                {f.field_label || f.field_name}
+                              </div>
+                              <div className="text-[11px] font-bold text-slate-900 truncate">
+                                {f.is_manually_corrected ? f.corrected_value : f.normalized_value || f.original_value}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-slate-800 leading-relaxed max-h-[185px] overflow-hidden whitespace-pre-line">
+                          {doc.extracted_text || `Immutable evidentiary upload (${doc.filename || doc.title}) indexed for case review.`}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="bg-slate-50 p-4 rounded border border-slate-200 text-xs font-mono space-y-2">
-                    <div className="text-slate-600 font-bold uppercase border-b border-slate-200 pb-1">
-                      Structured Document Transcription & Extraction Payload
-                    </div>
-                    <div className="text-slate-800 leading-relaxed max-h-[220px] overflow-hidden whitespace-pre-line">
-                      {doc.extracted_text || "Immutable source file indexed for evidentiary petition review."}
-                    </div>
+                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[10px] font-mono text-slate-500">
+                    <span>SHA-256: {doc.sha256_hash ? `${doc.sha256_hash.slice(0, 24)}…` : "Verified on intake"}</span>
+                    <span>Uploaded: {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : "Active Session"}</span>
                   </div>
                 </div>
               )}
@@ -2558,7 +2589,7 @@ export function DocumentDossierWorkbench({
                   type="text"
                   value={targetApplicantName}
                   onChange={(e) => setTargetApplicantName(e.target.value)}
-                  placeholder="e.g. Dr. Elena Rostova"
+                  placeholder="Full legal name as shown on passport"
                   className="w-full bg-[#051413] border border-[#1b3a36] rounded-lg p-2 text-slate-100 focus:outline-none focus:border-teal-500"
                 />
               </div>

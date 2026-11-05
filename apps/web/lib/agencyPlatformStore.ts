@@ -380,16 +380,76 @@ export interface ReconciledPlatformOverview {
   quotaAttentionCount: number;
 }
 
+const isTestEnv =
+  (typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.env.VITEST === "true")) ||
+  (typeof import.meta !== "undefined" && Boolean((import.meta as any).env?.VITEST));
+
 const STORAGE_KEYS = {
-  tenants: "documento_agency_tenants_v1",
-  applications: "documento_agency_applications_v1",
-  leads: "documento_calculator_leads_v1",
-  logs: "documento_platform_gov_logs_v1",
-  teamInvites: "documento_agency_team_invites_v1",
-  invoices: "documento_agency_invoices_v1",
-  tickets: "documento_agency_support_tickets_v1",
-  broadcasts: "documento_statutory_broadcasts_v1",
+  tenants: "documento_agency_tenants_v3_clean",
+  applications: "documento_agency_applications_v3_clean",
+  leads: "documento_calculator_leads_v3_clean",
+  logs: "documento_platform_gov_logs_v3_clean",
+  teamInvites: "documento_agency_team_invites_v3_clean",
+  invoices: "documento_agency_invoices_v3_clean",
+  tickets: "documento_agency_support_tickets_v3_clean",
+  broadcasts: "documento_statutory_broadcasts_v3_clean",
 };
+
+const ZERO_DEMO_PURGE_FLAG = "documento_zero_demo_purged_v3";
+
+export function purgeLegacyDemoStorageOnce(): void {
+  if (typeof window === "undefined" || isTestEnv) return;
+  try {
+    if (window.localStorage.getItem(ZERO_DEMO_PURGE_FLAG) === "true") return;
+    const legacyKeys = [
+      "documento_agency_tenants_v1",
+      "documento_agency_applications_v1",
+      "documento_calculator_leads_v1",
+      "documento_platform_gov_logs_v1",
+      "documento_agency_team_invites_v1",
+      "documento_agency_invoices_v1",
+      "documento_agency_support_tickets_v1",
+      "documento_statutory_broadcasts_v1",
+      "documento_cases",
+      "documento_clients",
+      "documento_documents",
+      "documento_tasks",
+      "documento_findings",
+      "documento_messages",
+      "documento_invoices",
+      "documento_audit_events",
+      "documento_notifications",
+      "documento_client_credentials",
+      "documento_supervisory_notes",
+      "documento_internal_notes",
+    ];
+    for (const k of legacyKeys) {
+      window.localStorage.removeItem(k);
+    }
+    const rawUser = window.localStorage.getItem("documento_user");
+    if (rawUser) {
+      try {
+        const parsed = JSON.parse(rawUser);
+        if (
+          parsed?.organization_id === "ten-vanguard" ||
+          (typeof parsed?.id === "string" && parsed.id.startsWith("usr-0")) ||
+          parsed?.email === "dr.thorne@cambridge.edu" ||
+          parsed?.email === "rohan.verma@example.com"
+        ) {
+          window.localStorage.removeItem("documento_user");
+        }
+      } catch {
+        window.localStorage.removeItem("documento_user");
+      }
+    }
+    window.sessionStorage.removeItem("documento_cobranded_agency_slug");
+    window.localStorage.setItem(ZERO_DEMO_PURGE_FLAG, "true");
+  } catch {
+    // ignore storage access issues
+  }
+}
+
+purgeLegacyDemoStorageOnce();
 
 export function normalizeAgencySlug(raw: string): string {
   return (
@@ -402,450 +462,13 @@ export function normalizeAgencySlug(raw: string): string {
   );
 }
 
-const SEED_TENANTS: AgencyTenantRecord[] = [
-  {
-    organizationId: "ten-vanguard",
-    legalEntityName: "Vanguard Immigration Law Group LLP",
-    tradingName: "Vanguard Immigration Law",
-    slug: "vanguard-legal",
-    ownerEmail: "sarah.jenkins@vanguardlegal.com",
-    ownerFullName: "Sarah Jenkins, Esq.",
-    status: "active",
-    health: "thriving",
-    planTier: "growth",
-    mrrUsd: 499,
-    billingStatus: "active",
-    kybTrack: "regulated_counsel",
-    regulatoryBody: "CICC",
-    licenseNumber: "R708412",
-    hqCity: "Toronto",
-    hqCountry: "Canada",
-    seatsUsed: 11,
-    seatLimit: 18,
-    casesActiveCount: 94,
-    monthlyCaseQuota: 180,
-    aiExtractionsUsed30d: 1420,
-    monthlyAiExtractionQuota: 2500,
-    calculatorLeads30d: 38,
-    enabledCorridors: ["CA", "US", "UK"],
-    featureFlags: {
-      ai_lab: true,
-      cobranded_calculators: true,
-      multi_branch: true,
-      custom_rules: true,
-    },
-    branding: {
-      primaryColor: "#063C3D",
-      tagline: "Regulated Canadian & Cross-Border PR Counsel — Submit your verified 2026 points scorecard.",
-      consultationBookingUrl: "https://vanguardlegal.com/book-pr-strategy",
-      whatsappNumber: "+1 416 555 0199",
-      setupCompleted: true,
-    },
-    supportGrantActive: false,
-    supportGrantExpiresAt: null,
-    supportGrantReason: null,
-    lastStaffLoginLabel: "14m ago",
-    createdAt: "2026-06-12T09:30:00Z",
-  },
-  {
-    organizationId: "ten-southerncross",
-    legalEntityName: "Southern Cross Migration Advisory Pty Ltd",
-    tradingName: "Southern Cross Migration",
-    slug: "southern-cross-au",
-    ownerEmail: "lachlan.reid@southerncrossmigration.com.au",
-    ownerFullName: "Lachlan Reid, MARN",
-    status: "active",
-    health: "thriving",
-    planTier: "growth",
-    mrrUsd: 499,
-    billingStatus: "active",
-    kybTrack: "regulated_counsel",
-    regulatoryBody: "OMARA",
-    licenseNumber: "MARN 2117483",
-    hqCity: "Melbourne",
-    hqCountry: "Australia",
-    seatsUsed: 14,
-    seatLimit: 18,
-    casesActiveCount: 152,
-    monthlyCaseQuota: 180,
-    aiExtractionsUsed30d: 2290,
-    monthlyAiExtractionQuota: 2500,
-    calculatorLeads30d: 29,
-    enabledCorridors: ["AU", "NZ", "UK"],
-    featureFlags: {
-      ai_lab: true,
-      cobranded_calculators: true,
-      multi_branch: true,
-      custom_rules: true,
-    },
-    branding: {
-      primaryColor: "#0D6866",
-      tagline: "OMARA-Registered Subclass 189/190/491 & Trans-Tasman SMC Specialists.",
-      setupCompleted: true,
-    },
-    supportGrantActive: false,
-    supportGrantExpiresAt: null,
-    supportGrantReason: null,
-    lastStaffLoginLabel: "42m ago",
-    createdAt: "2026-07-04T04:15:00Z",
-  },
-  {
-    organizationId: "ten-thamesbridge",
-    legalEntityName: "Thamesbridge Chambers & Global Mobility LLP",
-    tradingName: "Thamesbridge Mobility",
-    slug: "thamesbridge-uk",
-    ownerEmail: "eleanor.price@thamesbridgelaw.co.uk",
-    ownerFullName: "Eleanor Price, Solicitor",
-    status: "active",
-    health: "thriving",
-    planTier: "enterprise",
-    mrrUsd: 1190,
-    billingStatus: "active",
-    kybTrack: "regulated_counsel",
-    regulatoryBody: "UK_IAA_SRA",
-    licenseNumber: "SRA 649210",
-    hqCity: "London",
-    hqCountry: "United Kingdom",
-    seatsUsed: 34,
-    seatLimit: 60,
-    casesActiveCount: 312,
-    monthlyCaseQuota: 750,
-    aiExtractionsUsed30d: 5410,
-    monthlyAiExtractionQuota: 10000,
-    calculatorLeads30d: 64,
-    enabledCorridors: ["UK", "DE", "CA", "US"],
-    featureFlags: {
-      ai_lab: true,
-      cobranded_calculators: true,
-      multi_branch: true,
-      custom_rules: true,
-    },
-    branding: {
-      primaryColor: "#063C3D",
-      tagline: "Corporate Sponsor Licences, Skilled Worker & 5-Year ILR Practice.",
-      setupCompleted: true,
-    },
-    supportGrantActive: false,
-    supportGrantExpiresAt: null,
-    supportGrantReason: null,
-    lastStaffLoginLabel: "6m ago",
-    createdAt: "2026-05-19T11:00:00Z",
-  },
-  {
-    organizationId: "ten-indus",
-    legalEntityName: "Indus Global Study & PR Pathways Pvt Ltd",
-    tradingName: "Indus PR Pathways",
-    slug: "indus-pathways",
-    ownerEmail: "vikram.bedi@induspathways.in",
-    ownerFullName: "Vikram Bedi",
-    status: "active",
-    health: "thriving",
-    planTier: "boutique",
-    mrrUsd: 199,
-    billingStatus: "active",
-    kybTrack: "overseas_consultancy",
-    regulatoryBody: "MEA_IATA_CORP",
-    licenseNumber: "CIN-U74999CH2021PTC054812",
-    hqCity: "Chandigarh",
-    hqCountry: "India",
-    seatsUsed: 6,
-    seatLimit: 6,
-    casesActiveCount: 46,
-    monthlyCaseQuota: 50,
-    aiExtractionsUsed30d: 545,
-    monthlyAiExtractionQuota: 600,
-    calculatorLeads30d: 51,
-    enabledCorridors: ["CA", "AU", "UK", "DE"],
-    featureFlags: {
-      ai_lab: true,
-      cobranded_calculators: true,
-      multi_branch: false,
-      custom_rules: false,
-    },
-    branding: {
-      primaryColor: "#0D6866",
-      tagline: "Verified Express Entry, PNP, SkillSelect & Germany Chancenkarte Intake Desk.",
-      setupCompleted: true,
-    },
-    supportGrantActive: false,
-    supportGrantExpiresAt: null,
-    supportGrantReason: null,
-    lastStaffLoginLabel: "1h ago",
-    createdAt: "2026-08-22T06:45:00Z",
-  },
-  {
-    organizationId: "ten-rheinmain",
-    legalEntityName: "RheinMain Fachkräfte & Relocation GmbH",
-    tradingName: "RheinMain Relocation",
-    slug: "rheinmain-relocation",
-    ownerEmail: "lukas.weber@rheinmain-relocation.de",
-    ownerFullName: "Dr. Lukas Weber",
-    status: "active",
-    health: "onboarding",
-    planTier: "pilot_14d",
-    mrrUsd: 0,
-    billingStatus: "trialing",
-    paymentMethod: "trial",
-    trialEndsAt: "2026-11-12T13:20:00Z",
-    kybTrack: "regulated_counsel",
-    regulatoryBody: "LAW_SOCIETY_BAR",
-    licenseNumber: "RAK-FFM-49201",
-    hqCity: "Frankfurt",
-    hqCountry: "Germany",
-    seatsUsed: 2,
-    seatLimit: 3,
-    casesActiveCount: 4,
-    monthlyCaseQuota: 15,
-    aiExtractionsUsed30d: 28,
-    monthlyAiExtractionQuota: 150,
-    calculatorLeads30d: 7,
-    enabledCorridors: ["DE", "UK"],
-    featureFlags: {
-      ai_lab: true,
-      cobranded_calculators: true,
-      multi_branch: false,
-      custom_rules: false,
-    },
-    branding: {
-      primaryColor: "#063C3D",
-      tagline: "EU Blue Card § 18g & Chancenkarte § 20b Relocation Counsel.",
-      setupCompleted: false,
-    },
-    supportGrantActive: false,
-    supportGrantExpiresAt: null,
-    supportGrantReason: null,
-    lastStaffLoginLabel: "3h ago",
-    createdAt: "2026-10-29T13:20:00Z",
-  },
-];
+const SEED_TENANTS: AgencyTenantRecord[] = [];
 
-const SEED_APPLICATIONS: AgencyKybApplication[] = [
-  {
-    id: "app-maplecrest-01",
-    dossierCode: "KYB-84F29A10",
-    legalEntityName: "MapleCrest Regulated Immigration Inc.",
-    tradingName: "MapleCrest RCIC Counsel",
-    requestedSlug: "maplecrest-rcic",
-    hqCountry: "Canada",
-    hqCity: "Mississauga",
-    corporateDomain: "maplecrestimmigration.ca",
-    taxRegistrationId: "BN-748291044RC0001",
-    contactFullName: "Amrit Grewal, RCIC-IRB",
-    contactWorkEmail: "amrit.grewal@maplecrestimmigration.ca",
-    contactPhone: "+1 (905) 555-0194",
-    consultationBookingUrl: "https://maplecrestimmigration.ca/consult",
-    kybTrack: "regulated_counsel",
-    regulatoryBody: "CICC",
-    licenseNumber: "R714290",
-    uploadedDocuments: [
-      {
-        id: "kybdoc-mc-1",
-        docType: "practitioner_license",
-        fileName: "CICC_Practicing_Certificate_R714290_2026.pdf",
-        fileSizeKb: 418,
-        mimeType: "application/pdf",
-        sha256Preview: "9f4c2a81...d70e",
-        uploadedAt: "2026-11-04T07:38:00Z",
-      },
-      {
-        id: "kybdoc-mc-2",
-        docType: "business_registration",
-        fileName: "Ontario_Articles_Incorporation_BN748291044.pdf",
-        fileSizeKb: 612,
-        mimeType: "application/pdf",
-        sha256Preview: "3b18e09c...41af",
-        uploadedAt: "2026-11-04T07:39:00Z",
-      },
-      {
-        id: "kybdoc-mc-3",
-        docType: "principal_id",
-        fileName: "Amrit_Grewal_RCIC_Photo_Card.jpg",
-        fileSizeKb: 284,
-        mimeType: "image/jpeg",
-        sha256Preview: "71da55e2...88c1",
-        uploadedAt: "2026-11-04T07:39:30Z",
-      },
-    ],
-    verificationChecklist: {
-      registryVerified: true,
-      entityTaxMatched: true,
-      domainOwnershipVerified: true,
-      principalIdentityVerified: true,
-    },
-    targetCorridors: ["CA", "US"],
-    estimatedMonthlyCases: 45,
-    requestedSeats: 8,
-    branchCount: 2,
-    selectedPlanTier: "growth",
-    dpaAccepted: true,
-    zeroTrainingAccepted: true,
-    kybStatus: "pending_kyb",
-    createdAt: "2026-11-04T07:40:00Z",
-  },
-  {
-    id: "app-aotearoa-02",
-    dossierCode: "KYB-39C18D04",
-    legalEntityName: "Aotearoa Pacific Visa Advisers Ltd",
-    tradingName: "Aotearoa Visa Advisers",
-    requestedSlug: "aotearoa-visas",
-    hqCountry: "New Zealand",
-    hqCity: "Auckland",
-    corporateDomain: "aotearoavisas.co.nz",
-    taxRegistrationId: "NZBN-9429048192014",
-    contactFullName: "Aroha Kerr, LIA",
-    contactWorkEmail: "aroha.kerr@aotearoavisas.co.nz",
-    contactPhone: "+64 9 555 0148",
-    kybTrack: "regulated_counsel",
-    regulatoryBody: "NZ_IAA",
-    licenseNumber: "IAA-202201489",
-    uploadedDocuments: [
-      {
-        id: "kybdoc-ao-1",
-        docType: "practitioner_license",
-        fileName: "NZ_IAA_Full_Licence_202201489.pdf",
-        fileSizeKb: 392,
-        mimeType: "application/pdf",
-        sha256Preview: "c421ab90...19ef",
-        uploadedAt: "2026-11-03T21:13:00Z",
-      },
-      {
-        id: "kybdoc-ao-2",
-        docType: "business_registration",
-        fileName: "NZ_Companies_Office_NZBN_9429048192014.pdf",
-        fileSizeKb: 510,
-        mimeType: "application/pdf",
-        sha256Preview: "88f012bc...03d4",
-        uploadedAt: "2026-11-03T21:14:00Z",
-      },
-    ],
-    verificationChecklist: {
-      registryVerified: true,
-      entityTaxMatched: true,
-      domainOwnershipVerified: true,
-      principalIdentityVerified: false,
-    },
-    targetCorridors: ["NZ", "AU"],
-    estimatedMonthlyCases: 22,
-    requestedSeats: 4,
-    branchCount: 1,
-    selectedPlanTier: "boutique",
-    dpaAccepted: true,
-    zeroTrainingAccepted: true,
-    kybStatus: "pending_kyb",
-    createdAt: "2026-11-03T21:15:00Z",
-  },
-  {
-    id: "app-crescent-03",
-    dossierCode: "KYB-71B04E88",
-    legalEntityName: "Crescent Overseas Careers LLC",
-    tradingName: "Crescent Global Visas",
-    requestedSlug: "crescent-dubai",
-    hqCountry: "United Arab Emirates",
-    hqCity: "Dubai",
-    corporateDomain: "crescentcareers.ae",
-    taxRegistrationId: "DED-948120-DXB",
-    contactFullName: "Tariq Mansoor",
-    contactWorkEmail: "tariq.mansoor@crescentcareers.ae",
-    contactPhone: "+971 4 555 0182",
-    kybTrack: "overseas_consultancy",
-    regulatoryBody: "MEA_IATA_CORP",
-    licenseNumber: "DED-948120",
-    coCounselDetails: "Awaiting signed CICC co-counsel addendum",
-    uploadedDocuments: [
-      {
-        id: "kybdoc-cr-1",
-        docType: "business_registration",
-        fileName: "Dubai_DED_Commercial_License_948120.pdf",
-        fileSizeKb: 740,
-        mimeType: "application/pdf",
-        sha256Preview: "55a9c112...e420",
-        uploadedAt: "2026-11-02T11:24:00Z",
-      },
-    ],
-    verificationChecklist: {
-      registryVerified: false,
-      entityTaxMatched: true,
-      domainOwnershipVerified: true,
-      principalIdentityVerified: true,
-    },
-    targetCorridors: ["CA", "UK", "DE"],
-    estimatedMonthlyCases: 60,
-    requestedSeats: 12,
-    branchCount: 2,
-    selectedPlanTier: "growth",
-    dpaAccepted: true,
-    zeroTrainingAccepted: true,
-    kybStatus: "clarification_requested",
-    reviewerNotes:
-      "Trade license verified; please provide co-counsel RCIC/SRA registration number for direct representation filings.",
-    reviewedByEmail: "hq.admin@documento.ai",
-    reviewedAt: "2026-11-03T16:10:00Z",
-    createdAt: "2026-11-02T11:25:00Z",
-  },
-];
+const SEED_APPLICATIONS: AgencyKybApplication[] = [];
 
-const SEED_LEADS: CalculatorAgencyLeadRecord[] = [
-  {
-    id: "lead-01",
-    organizationId: "ten-vanguard",
-    agencySlug: "vanguard-legal",
-    applicantName: "Neha Kulkarni",
-    applicantEmail: "neha.kulkarni@proton.me",
-    applicantPhone: "+1 (416) 555-0139",
-    calculatorId: "canada-crs",
-    calculatorTitle: "Canada Express Entry CRS",
-    countryCode: "CA",
-    scoreSummary: "524 CRS (Nov 2026 LMI Grid • CEC Eligible)",
-    leadStatus: "new_lead",
-    createdAt: "2026-11-04T10:12:00Z",
-  },
-  {
-    id: "lead-02",
-    organizationId: "ten-vanguard",
-    agencySlug: "vanguard-legal",
-    applicantName: "Jean-Luc Moreau",
-    applicantEmail: "jl.moreau@umontreal.ca",
-    applicantPhone: "+1 (514) 555-0172",
-    calculatorId: "canada-pnp",
-    calculatorTitle: "Canada OINP Employer Job Offer",
-    countryCode: "CA",
-    scoreSummary: "89 / 132 OINP Points (Bilingual + $80k+ CRA Tier)",
-    leadStatus: "new_lead",
-    createdAt: "2026-11-03T18:45:00Z",
-  },
-  {
-    id: "lead-03",
-    organizationId: "ten-vanguard",
-    agencySlug: "vanguard-legal",
-    applicantName: "Callum MacLeod",
-    applicantEmail: "c.macleod@edinburgh-biotech.co.uk",
-    calculatorId: "uk-skilled-worker",
-    calculatorTitle: "UK 70-Point Skilled Worker & ILR",
-    countryCode: "UK",
-    scoreSummary: "70 / 70 Pts (Option C STEM PhD • £46,500/yr)",
-    leadStatus: "contacted",
-    createdAt: "2026-11-02T14:20:00Z",
-  },
-];
+const SEED_LEADS: CalculatorAgencyLeadRecord[] = [];
 
-const SEED_LOGS: PlatformGovernanceLogEntry[] = [
-  {
-    id: "govlog-01",
-    timestamp: "2026-11-03T16:10:00Z",
-    actorEmail: "hq.admin@documento.ai",
-    agencyName: "Crescent Global Visas",
-    actionCode: "kyb.clarification_requested",
-    detail: "Requested co-counsel RCIC/SRA registration addendum prior to tenant activation.",
-  },
-  {
-    id: "govlog-02",
-    timestamp: "2026-10-29T13:20:00Z",
-    actorEmail: "hq.admin@documento.ai",
-    agencyName: "RheinMain Relocation",
-    actionCode: "platform.agency_provisioned",
-    detail: "Verified RAK-FFM-49201 & provisioned 14-Day KYB Pilot workspace (DE, UK corridors).",
-  },
-];
+const SEED_LOGS: PlatformGovernanceLogEntry[] = [];
 
 function readJsonStorage<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -1249,6 +872,25 @@ export function adjudicateAgencyKybApplication(
     STORAGE_KEYS.applications,
     apps.map((a) => (a.id === applicationId ? updatedApp : a))
   );
+
+  if (spec.mrrUsd > 0) {
+    const existingInvoices = getPlatformBillingInvoices();
+    const initialInvoice: AgencyBillingInvoice = {
+      id: `inv-${Date.now()}`,
+      invoiceNumber: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      organizationId: orgId,
+      tradingName: newTenant.tradingName,
+      planLabel: spec.label,
+      amountUsd: spec.mrrUsd,
+      paymentMethod: "stripe_card",
+      status: "paid",
+      dueDate: nowIso.slice(0, 10),
+      paidAt: nowIso,
+      notes: "Initial subscription invoice issued upon KYB approval & workspace provisioning",
+    };
+    writeJsonStorage(STORAGE_KEYS.invoices, [initialInvoice, ...existingInvoices]);
+  }
+
   appendGovernanceLog({
     actorEmail,
     agencyName: newTenant.tradingName,
@@ -1417,7 +1059,34 @@ export function getAgencyForOrganization(organizationId: string): AgencyTenantRe
     };
   }
 
-  return tenants[0] || null;
+  return null;
+}
+
+export function incrementAgencyUsageMetrics(
+  organizationId: string,
+  deltas: { casesDelta?: number; aiExtractionsDelta?: number }
+): void {
+  if (!organizationId) return;
+  const tenants = getAgencyTenants();
+  const target = tenants.find((t) => t.organizationId === organizationId);
+  if (!target) return;
+  const nextCases = Math.max(0, target.casesActiveCount + (deltas.casesDelta || 0));
+  const nextAi = Math.max(0, target.aiExtractionsUsed30d + (deltas.aiExtractionsDelta || 0));
+  const updated: AgencyTenantRecord = {
+    ...target,
+    casesActiveCount: nextCases,
+    aiExtractionsUsed30d: nextAi,
+    health:
+      target.status === "suspended"
+        ? "suspended"
+        : nextCases > 0
+          ? "thriving"
+          : "onboarding",
+  };
+  writeJsonStorage(
+    STORAGE_KEYS.tenants,
+    tenants.map((t) => (t.organizationId === organizationId ? updated : t))
+  );
 }
 
 export function saveAgencyDay0Setup(
@@ -1801,126 +1470,11 @@ export function exportPartnerAgenciesCsv(tenants: AgencyTenantRecord[]): string 
 // BILLING / WIRE INVOICES, SUPPORT DESK & STATUTORY BROADCASTS
 // ============================================================================
 
-const SEED_INVOICES: AgencyBillingInvoice[] = [
-  {
-    id: "inv-hq-01",
-    invoiceNumber: "INV-2026-1101",
-    organizationId: "ten-thamesbridge",
-    tradingName: "Thamesbridge Mobility",
-    planLabel: "Enterprise Multi-Branch",
-    amountUsd: 1190,
-    paymentMethod: "stripe_card",
-    status: "paid",
-    dueDate: "2026-11-01",
-    paidAt: "2026-11-01T09:05:00Z",
-    notes: "Monthly subscription auto-settled via corporate Visa •••• 8821",
-  },
-  {
-    id: "inv-hq-02",
-    invoiceNumber: "INV-2026-1102",
-    organizationId: "ten-vanguard",
-    tradingName: "Vanguard Immigration Law",
-    planLabel: "Growth Consultancy",
-    amountUsd: 499,
-    paymentMethod: "stripe_card",
-    status: "paid",
-    dueDate: "2026-11-01",
-    paidAt: "2026-11-01T09:12:00Z",
-    notes: "Monthly subscription auto-settled",
-  },
-  {
-    id: "inv-hq-03",
-    invoiceNumber: "INV-2026-1103",
-    organizationId: "ten-southerncross",
-    tradingName: "Southern Cross Migration",
-    planLabel: "Growth Consultancy",
-    amountUsd: 499,
-    paymentMethod: "stripe_card",
-    status: "past_due",
-    dueDate: "2026-11-02",
-    paidAt: null,
-    notes: "Corporate card expired (Amex •••• 4019) — retry dunning active",
-  },
-  {
-    id: "inv-hq-04",
-    invoiceNumber: "INV-2026-1104",
-    organizationId: "ten-indus",
-    tradingName: "Indus PR Pathways",
-    planLabel: "Growth Consultancy Upgrade (SWIFT Wire)",
-    amountUsd: 499,
-    paymentMethod: "wire_invoice",
-    status: "pending_wire",
-    dueDate: "2026-11-10",
-    paidAt: null,
-    notes: "Requested seat expansion from 6 -> 18 seats via international bank transfer",
-  },
-];
+const SEED_INVOICES: AgencyBillingInvoice[] = [];
 
-const SEED_SUPPORT_TICKETS: AgencySupportTicket[] = [
-  {
-    id: "tkt-01",
-    ticketCode: "SUP-4091",
-    organizationId: "ten-indus",
-    tradingName: "Indus PR Pathways",
-    requesterEmail: "vikram.bedi@induspathways.in",
-    category: "billing_seats",
-    subject: "Seat cap reached (6/6) — upgrading Chandigarh & Delhi counsellors",
-    message:
-      "We hit 6/6 seats and 46/50 active cases this week. Our finance team initiated wire INV-2026-1104 — please unlock Growth 18-seat quota once received.",
-    breakGlassAttached: false,
-    status: "open",
-    createdAt: "2026-11-04T06:20:00Z",
-    updatedAt: "2026-11-04T06:20:00Z",
-  },
-  {
-    id: "tkt-02",
-    ticketCode: "SUP-4092",
-    organizationId: "ten-rheinmain",
-    tradingName: "RheinMain Relocation",
-    requesterEmail: "lukas.weber@rheinmain-relocation.de",
-    category: "statutory_rules",
-    subject: "Chancenkarte § 20b Anabin H+ degree + Blocked Account €1,091/mo check",
-    message:
-      "Testing our 14-day pilot with 4 German relocation files — confirming whether Indian 3-year B.Sc + 2-year M.Sc maps to full 4-point qualification recognition.",
-    breakGlassAttached: false,
-    status: "open",
-    createdAt: "2026-11-03T15:10:00Z",
-    updatedAt: "2026-11-03T15:10:00Z",
-  },
-];
+const SEED_SUPPORT_TICKETS: AgencySupportTicket[] = [];
 
-const SEED_RULE_BROADCASTS: StatutoryRuleBroadcast[] = [
-  {
-    id: "rb-01",
-    corridorCode: "CA",
-    title: "IRCC Express Entry CEC Draw #324 — 517 CRS Cutoff & Proof-of-Funds Synced",
-    summary:
-      "Updated Canada CRS benchmark advisories and 2026 LICO settlement funds table across all partner workspaces and co-branded calculators.",
-    effectiveDate: "2026-11-04",
-    publishedByEmail: "hq.admin@documento.ai",
-    publishedAt: "2026-11-04T08:00:00Z",
-  },
-  {
-    id: "rb-02",
-    corridorCode: "UK",
-    title: "UK Home Office Appendix Skilled Occupations Going-Rate Checklists Verified",
-    summary:
-      "Confirmed £38,700 general floor and PhD/New Entrant Option C–E tradeable salary discounts across Skilled Worker & 5-Year ILR calculators.",
-    effectiveDate: "2026-11-01",
-    publishedByEmail: "hq.admin@documento.ai",
-    publishedAt: "2026-11-01T10:30:00Z",
-  },
-  {
-    id: "rb-03",
-    corridorCode: "AU",
-    title: "Australia SkillSelect Schedule 6D Subclass 189/190 State Nomination Matrix Live",
-    summary:
-      "Synchronized +5 Subclass 190 and +15 Subclass 491 state/regional nomination rules and Specialist STEM Masters/PhD checklists.",
-    effectiveDate: "2026-10-28",
-    publishedByEmail: "hq.admin@documento.ai",
-    publishedAt: "2026-10-28T14:15:00Z",
-  },
-];
+const SEED_RULE_BROADCASTS: StatutoryRuleBroadcast[] = [];
 
 export function buildKybUploadedDocMeta(
   docType: KybDocType,

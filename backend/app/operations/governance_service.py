@@ -766,8 +766,8 @@ Trigger rollback immediately if any of the following occur post-deployment:
 
 | Role | Primary Contact | Secondary Contact | Response SLA |
 | :--- | :--- | :--- | :--- |
-| **Incident Commander** | Elena Rostova (Managing Partner) | Marcus Vance, Esq. | 15 Minutes |
-| **Security & Privacy Lead (DPO)** | Dr. Sarah Jenkins (Chief Compliance) | External Counsel | 30 Minutes |
+| **Incident Commander** | Designated Managing Partner | Deputy Practice Lead | 15 Minutes |
+| **Security & Privacy Lead (DPO)** | Chief Compliance Officer (DPO) | External Legal Counsel | 30 Minutes |
 | **Lead Platform Engineer** | On-Call Lead Engineer (`pager@documento.io`) | DevOps Secondary | 10 Minutes |
 | **Customer Communications** | Head of Partner Relations | Support Lead | 45 Minutes |
 

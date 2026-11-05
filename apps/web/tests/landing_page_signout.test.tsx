@@ -2,12 +2,51 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import Home from "../app/page";
+import {
+  submitAgencyOnboarding,
+  adjudicateAgencyKybApplication,
+} from "../lib/agencyPlatformStore";
+import { PLATFORM_HQ_OPERATOR_EMAIL } from "../lib/auth";
+
+async function seedRealApprovedPartnerForSignIn() {
+  const application = await submitAgencyOnboarding({
+    legalEntityName: "Maple North Immigration Counsel Inc.",
+    tradingName: "Maple North RCIC",
+    requestedSlug: "maple-north-rcic",
+    hqCountry: "CA",
+    hqCity: "Ottawa",
+    corporateDomain: "maplenorthrcic.ca",
+    taxRegistrationId: "BN-719204881RC0001",
+    contactFullName: "Harpreet Sidhu, RCIC",
+    contactWorkEmail: "harpreet@maplenorthrcic.ca",
+    contactPhone: "+1-613-555-0188",
+    ownerPassword: "MapleNorthPassword2026!",
+    kybTrack: "regulated_counsel",
+    regulatoryBody: "CICC",
+    licenseNumber: "R715902",
+    targetCorridors: ["CA"],
+    estimatedMonthlyCases: 20,
+    requestedSeats: 5,
+    branchCount: 1,
+    selectedPlanTier: "growth",
+    dpaAccepted: true,
+    zeroTrainingAccepted: true,
+  });
+
+  adjudicateAgencyKybApplication(
+    application.id,
+    "approve",
+    "Verified CICC registry standing.",
+    PLATFORM_HQ_OPERATOR_EMAIL
+  );
+}
 
 describe("Landing Page Sign-In and Sign-Out Flow", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear();
     sessionStorage.clear();
     window.scrollTo = vi.fn();
+    await seedRealApprovedPartnerForSignIn();
   });
 
   afterEach(() => {
@@ -16,120 +55,99 @@ describe("Landing Page Sign-In and Sign-Out Flow", () => {
   });
 
   it(
-    "renders landing page, signs in, signs out, and ensures landing page remains fully visible",
+    "renders landing page, signs in as real provisioned agency owner with 0 demo cases, signs out, and restores landing page",
     async () => {
-    render(<Home />);
+      render(<Home />);
 
-    // 1. Initial State: Landing page should be visible
-    expect(screen.getByText(/Every immigration case\./i)).toBeDefined();
-    expect(screen.getByText(/Clearer by design\./i)).toBeDefined();
-    const signInBtn = screen.getAllByRole("button", { name: /Sign In/i })[0];
-    expect(signInBtn).toBeDefined();
-
-    // 2. Open Login Modal
-    fireEvent.click(signInBtn);
-
-    // Login modal should be open
-    expect(screen.getByText(/Sign in to Documento/i)).toBeDefined();
-
-    // 3. Enter credentials & submit login
-    const emailInput = screen.getByLabelText(/Business Email/i);
-    const passwordInput = screen.getByLabelText(/^Password$/i);
-    const submitBtn = screen.getByRole("button", { name: /Sign In to Firm Workspace/i });
-    fireEvent.change(emailInput, { target: { value: "sarah.jenkins@vanguardlegal.com" } });
-    fireEvent.change(passwordInput, { target: { value: "SecurePassword2026!" } });
-    fireEvent.click(submitBtn);
-
-    // Wait for login state transition (modal has 400ms setTimeout)
-    await waitFor(
-      () => {
-        expect(screen.getAllByText(/Executive Command Center/i).length).toBeGreaterThan(0);
-        expect(screen.queryByText(/Every immigration case\./i)).toBeNull();
-      },
-      { timeout: 2000 }
-    );
-
-    // 4. Open User Profile Menu in WorkspaceHeader
-    const profileBtn = screen.getByLabelText(/User profile and persona switch menu/i);
-    fireEvent.click(profileBtn);
-
-    // Now Managing Partner and Sign Out should be in the opened menu
-    expect(screen.getAllByText(/Managing Partner/i).length).toBeGreaterThan(0);
-
-    // 5. Click Sign Out
-    const signOutBtn = screen.getByRole("button", { name: /Sign Out of Documento/i });
-    fireEvent.click(signOutBtn);
-
-    // 6. Verify Landing Page is mounted back
-    await waitFor(() => {
       expect(screen.getByText(/Every immigration case\./i)).toBeDefined();
-    });
-    expect(screen.getByText(/Clearer by design\./i)).toBeDefined();
-    expect(screen.getByText(/Eliminate administrative paperwork chaos\./i)).toBeDefined();
+      expect(screen.getByText(/Clearer by design\./i)).toBeDefined();
+      const signInBtn = screen.getAllByRole("button", { name: /Sign In/i })[0];
+      fireEvent.click(signInBtn);
 
-    // Verify banner alert
-    expect(screen.getByText(/You have been safely signed out of Documento\./i)).toBeDefined();
-  }, 30000);
+      expect(screen.getByText(/Sign in to Documento/i)).toBeDefined();
+
+      fireEvent.change(screen.getByLabelText(/Business Email/i), {
+        target: { value: "harpreet@maplenorthrcic.ca" },
+      });
+      fireEvent.change(screen.getByLabelText(/^Password$/i), {
+        target: { value: "MapleNorthPassword2026!" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Sign In to Firm Workspace/i }));
+
+      await waitFor(
+        () => {
+          expect(screen.getAllByText(/Executive Command Center/i).length).toBeGreaterThan(0);
+          expect(screen.queryByText(/Every immigration case\./i)).toBeNull();
+        },
+        { timeout: 2500 }
+      );
+
+      // Verify clean slate (zero demo cases or fake personas in live workspace)
+      expect(screen.getByText("Active Caseload: 0 Petitions")).toBeDefined();
+      expect(screen.queryByText(/Vanguard Immigration Law/i)).toBeNull();
+
+      const profileBtn = screen.getByLabelText(/User profile menu/i);
+      fireEvent.click(profileBtn);
+      expect(screen.getAllByText(/Managing Partner/i).length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByRole("button", { name: /Sign Out of Documento/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Every immigration case\./i)).toBeDefined();
+      });
+      expect(screen.getByText(/You have been safely signed out of Documento\./i)).toBeDefined();
+    },
+    30000
+  );
 
   it(
     "ensures on-scroll animated elements receive animate class when re-mounting upon sign out in browser with IntersectionObserver",
     async () => {
-    // Mock browser IntersectionObserver
-    const observedElements: Element[] = [];
-    class MockIntersectionObserver {
-      constructor(private callback: IntersectionObserverCallback) {}
-      observe(el: Element) {
-        observedElements.push(el);
-        // Simulate immediate intersection entry
-        this.callback(
-          [{ isIntersecting: true, target: el } as unknown as IntersectionObserverEntry],
-          this as unknown as IntersectionObserver
-        );
+      const observedElements: Element[] = [];
+      class MockIntersectionObserver {
+        constructor(private callback: IntersectionObserverCallback) {}
+        observe(el: Element) {
+          observedElements.push(el);
+          this.callback(
+            [{ isIntersecting: true, target: el } as unknown as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver
+          );
+        }
+        unobserve = vi.fn();
+        disconnect = vi.fn();
       }
-      unobserve = vi.fn();
-      disconnect = vi.fn();
-    }
-    (window as any).IntersectionObserver = MockIntersectionObserver;
+      (window as any).IntersectionObserver = MockIntersectionObserver;
 
-    render(<Home />);
+      render(<Home />);
 
-    // 1. Initial State: Landing page should be visible
-    expect(screen.getByText(/Every immigration case\./i)).toBeDefined();
+      const signInBtn = screen.getAllByRole("button", { name: /Sign In/i })[0];
+      fireEvent.click(signInBtn);
+      fireEvent.change(screen.getByLabelText(/Business Email/i), {
+        target: { value: "harpreet@maplenorthrcic.ca" },
+      });
+      fireEvent.change(screen.getByLabelText(/^Password$/i), {
+        target: { value: "MapleNorthPassword2026!" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Sign In to Firm Workspace/i }));
 
-    // 2. Open Login Modal & Sign In
-    const signInBtn = screen.getAllByRole("button", { name: /Sign In/i })[0];
-    fireEvent.click(signInBtn);
-    const emailInput = screen.getByLabelText(/Business Email/i);
-    const passwordInput = screen.getByLabelText(/^Password$/i);
-    const submitBtn = screen.getByRole("button", { name: /Sign In to Firm Workspace/i });
-    fireEvent.change(emailInput, { target: { value: "sarah.jenkins@vanguardlegal.com" } });
-    fireEvent.change(passwordInput, { target: { value: "SecurePassword2026!" } });
-    fireEvent.click(submitBtn);
+      await waitFor(() => {
+        expect(screen.getAllByText(/Executive Command Center/i).length).toBeGreaterThan(0);
+      });
 
-    // Wait for login transition
-    await waitFor(() => {
-      expect(screen.getAllByText(/Executive Command Center/i).length).toBeGreaterThan(0);
-    });
+      fireEvent.click(screen.getByLabelText(/User profile menu/i));
+      fireEvent.click(screen.getByRole("button", { name: /Sign Out of Documento/i }));
 
-    // 3. Trigger Sign Out
-    const profileBtn = screen.getByLabelText(/User profile and persona switch menu/i);
-    fireEvent.click(profileBtn);
-    const signOutBtn = screen.getByRole("button", { name: /Sign Out of Documento/i });
-    fireEvent.click(signOutBtn);
+      await waitFor(() => {
+        expect(screen.getByText(/Every immigration case\./i)).toBeDefined();
+      });
 
-    // 4. Verify Landing Page returns and animated elements have animate class
-    await waitFor(() => {
-      expect(screen.getByText(/Every immigration case\./i)).toBeDefined();
-    });
+      const animatedElements = document.querySelectorAll(".animate-on-scroll");
+      expect(animatedElements.length).toBeGreaterThan(0);
+      const animatedWithClass = document.querySelectorAll(".animate-on-scroll.animate");
+      expect(animatedWithClass.length).toBeGreaterThan(0);
 
-    const animatedElements = document.querySelectorAll(".animate-on-scroll");
-    expect(animatedElements.length).toBeGreaterThan(0);
-
-    // Verify all in-view elements received the .animate class so they are not blank/paused
-    const animatedWithClass = document.querySelectorAll(".animate-on-scroll.animate");
-    expect(animatedWithClass.length).toBeGreaterThan(0);
-
-    // Clean up mock
-    delete (window as any).IntersectionObserver;
-  }, 15000);
+      delete (window as any).IntersectionObserver;
+    },
+    15000
+  );
 });

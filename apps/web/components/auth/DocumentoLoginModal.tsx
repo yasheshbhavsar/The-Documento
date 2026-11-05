@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { DocumentoLogo } from "../common/DocumentoLogo";
-import { UserContext, UserExperience, RoleCode } from "../../lib/types";
-import { DEMO_USERS, authenticateUser } from "../../lib/auth";
-import { api, setAccessToken } from "../../lib/api";
+import { UserContext, RoleCode } from "../../lib/types";
+import { authenticateUser } from "../../lib/auth";
+import { api } from "../../lib/api";
 
 interface DocumentoLoginModalProps {
   isOpen: boolean;
@@ -67,17 +67,17 @@ export function DocumentoLoginModal({
           const isClient =
             portal === "client" ||
             (liveRes.user?.roles && liveRes.user.roles.includes("retained_client"));
-          const defaultUserContext = isClient
-            ? DEMO_USERS.client_applicant
-            : DEMO_USERS.master_admin;
+          const normalizedEmail = email.trim().toLowerCase();
           const userObj: UserContext = {
-            ...defaultUserContext,
-            ...(fallbackUser || {}),
-            id: String(liveRes.user?.user_id || fallbackUser?.id || defaultUserContext.id),
-            organization_id: String(liveRes.user?.organization_id || fallbackUser?.organization_id || defaultUserContext.organization_id),
-            email: email.trim().toLowerCase(),
+            id: String(liveRes.user?.user_id || fallbackUser?.id || `usr-${normalizedEmail}`),
+            email: normalizedEmail,
+            full_name: fallbackUser?.full_name || normalizedEmail,
+            organization_id: String(liveRes.user?.organization_id || fallbackUser?.organization_id || "org-active"),
+            organization_name: fallbackUser?.organization_name || "Partner Immigration Practice",
             role: isClient ? "retained_client" : (fallbackUser?.role || (liveRes.user?.roles?.[0] as RoleCode) || "master_admin"),
             experience: isClient ? "client_applicant" : (fallbackUser?.experience || "master_admin"),
+            permissions: fallbackUser?.permissions || (isClient ? ["portal:access", "documents:upload", "messages:send", "questionnaire:submit"] : ["*"]),
+            agency_slug: fallbackUser?.agency_slug,
           };
           onLoginSuccess(userObj);
           return;
@@ -110,19 +110,12 @@ export function DocumentoLoginModal({
 
   const handleSsoClick = (provider: string) => {
     if (portal === "client") {
-      setErrorMessage("Retained client portal access is locked until temporary credentials are provided directly by your law firm Owner or Lead Paralegal.");
+      setErrorMessage("Retained client portal access requires credentials issued directly by your law firm Owner or Lead Paralegal.");
       return;
     }
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      // Seamlessly log in as Lead Counsel via SSO
-      const targetUser = DEMO_USERS.master_admin;
-      onLoginSuccess({
-        ...targetUser,
-        email: `${provider.toLowerCase().replace(/\s+/g, "")}@sso.vanguardlegal.com`,
-      });
-    }, 600);
+    setErrorMessage(
+      `${provider} SAML/OIDC SSO requires domain federation configured for an active agency workspace. Please sign in with your registered email and password.`
+    );
   };
 
   return (
@@ -357,7 +350,7 @@ export function DocumentoLoginModal({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder={portal === "firm" ? "attorney@vanguardlegal.com" : "applicant@domain.com"}
+                placeholder={portal === "firm" ? "you@youragency.com" : "applicant@domain.com"}
                 style={{
                   width: "100%",
                   padding: "10px 14px 10px 36px",

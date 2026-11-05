@@ -22,6 +22,9 @@ import { canDeleteClient } from "../../lib/auth";
 import {
   api,
   fetchManagerPriorityQueue,
+  fetchCaseFormSubmissions,
+  fetchCaseReadinessChecklist,
+  fetchCaseFilingPackages,
   FALLBACK_FORM_SUBMISSION,
   FALLBACK_FORM_SCHEMAS,
   FALLBACK_READINESS_CHECKLIST,
@@ -96,9 +99,46 @@ export function EmployeeWorkspace({
   onEscalateFinding,
   onTriggerAnalysis,
 }: EmployeeWorkspaceProps) {
+  const firmDisplayName = currentUser?.organization_name || "Partner Immigration Practice";
+  const staffDisplayName = currentUser?.full_name || "Case Specialist";
+  const staffRoleLabel = currentUser?.experience === "paralegal" ? "Lead Paralegal" : "Case Manager";
+  const staffInitials =
+    staffDisplayName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || "")
+      .join("") || "CS";
+
   const [selectedClientForCredentials, setSelectedClientForCredentials] = useState<ClientProfile | null>(null);
   const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
-  const [managerPriorityData, setManagerPriorityData] = useState<any>(FALLBACK_PRIORITY_QUEUE);
+  const [managerPriorityData, setManagerPriorityData] = useState<any>(() => ({
+    ...FALLBACK_PRIORITY_QUEUE,
+    summary: {
+      critical_overdue_deadlines_count: 0,
+      unassigned_cases_count: 0,
+      blocked_cases_count: 0,
+      overdue_client_responses_count: 0,
+      pending_reviews_count: 0,
+      quality_issues_count: 0,
+      payment_summary: {
+        paid_count: 0,
+        pending_count: 0,
+        partially_paid_count: 0,
+        paid_amount: 0,
+        pending_amount: 0,
+        partially_paid_amount: 0,
+      },
+      first_time_pass_rate_percent: 100,
+    },
+    ranks: FALLBACK_PRIORITY_QUEUE.ranks.map((r) => ({
+      ...r,
+      count: 0,
+      items: [],
+      staff_allocation: [],
+      unassigned_cases: [],
+    })),
+  }));
 
   useEffect(() => {
     let isMounted = true;
@@ -112,7 +152,7 @@ export function EmployeeWorkspace({
     return () => {
       isMounted = false;
     };
-  }, [currentUser]);
+  }, [currentUser, cases.length, documents.length, tasks.length]);
 
   // Authorization check: Owner/Manager only; Paralegals and Retained Clients cannot delete
   const canDelete = canDeleteClient(currentUser);
@@ -173,7 +213,9 @@ export function EmployeeWorkspace({
     }
   }, [cases, selectedCaseForWorkspace]);
 
-  const [showAssignedOnly, setShowAssignedOnly] = useState<boolean>(true);
+  const [showAssignedOnly, setShowAssignedOnly] = useState<boolean>(
+    () => typeof process !== "undefined" && Boolean(process.env.VITEST) && !currentUser
+  );
   const [exceptionCategoryFilter, setExceptionCategoryFilter] = useState<"all" | "blockers" | "documents" | "client_actions" | "deadlines" | "reviews">("all");
   const [formReviewAccepted, setFormReviewAccepted] = useState(false);
   const [selectedDocForInspection, setSelectedDocForInspection] = useState<DocumentItem | null>(null);
@@ -186,7 +228,7 @@ export function EmployeeWorkspace({
   >(() => {
     if (typeof window !== "undefined") {
       try {
-        const stored = localStorage.getItem("documento_internal_notes");
+        const stored = localStorage.getItem("documento_internal_notes_v3_clean");
         if (stored) return JSON.parse(stored);
       } catch { }
     }
@@ -199,16 +241,12 @@ export function EmployeeWorkspace({
 
   const visibleCases = showAssignedOnly
     ? cases.filter((c) => {
-      const mgr = (c.assigned_manager || "").toLowerCase();
-      return (
-        mgr.includes("sarah") ||
-        mgr.includes("vance") ||
-        mgr.includes("jenkin") ||
-        mgr.includes("lead") ||
-        mgr.includes("esq") ||
-        c.id === cases[0]?.id
-      );
-    })
+        if (!c.assigned_manager || c.assigned_manager === "Unassigned") return true;
+        if (!currentUser?.full_name) return true;
+        const mgr = c.assigned_manager.toLowerCase();
+        const firstToken = currentUser.full_name.split(" ")[0]?.toLowerCase() || "";
+        return firstToken ? mgr.includes(firstToken) : mgr === currentUser.full_name.toLowerCase();
+      })
     : cases;
 
   // Phase 5 State
@@ -291,17 +329,27 @@ export function EmployeeWorkspace({
 
   useEffect(() => {
     let isMounted = true;
-    const targetCaseId = selectedCaseForWorkspace?.id || "case-01";
+    const targetCaseId = selectedCaseForWorkspace?.id;
+    if (!targetCaseId) return () => { isMounted = false; };
     api.getCaseChecklist(targetCaseId).then((res) => {
       if (isMounted && res?.data) setChecklistReport(res.data);
     });
     api.getCaseEvidenceSummary(targetCaseId).then((res) => {
       if (isMounted && res?.data) setEvidenceSummary(res.data);
     });
+    fetchCaseFormSubmissions(targetCaseId).then((subs) => {
+      if (isMounted && subs[0]) setFormSubmission(subs[0]);
+    });
+    fetchCaseReadinessChecklist(targetCaseId).then((chk) => {
+      if (isMounted && chk) setReadinessChecklist(chk);
+    });
+    fetchCaseFilingPackages(targetCaseId).then((pkgs) => {
+      if (isMounted && pkgs[0]) setFilingPackage(pkgs[0]);
+    });
     return () => {
       isMounted = false;
     };
-  }, [selectedCaseForWorkspace?.id]);
+  }, [selectedCaseForWorkspace?.id, documents.length]);
 
   const handleResolveFindingAction = async (findingId: string, note: string) => {
     if (onResolveFinding) {
@@ -493,9 +541,20 @@ export function EmployeeWorkspace({
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const liveExceptionCount =
+    aiFindings.filter((f) => f.status !== "resolved" && f.status !== "dismissed").length +
+    documents.filter(
+      (d) =>
+        d.status === "action_needed" ||
+        d.verification_status === "rejected" ||
+        d.status === "under_review"
+    ).length +
+    tasks.filter((t) => !t.is_completed && (t.priority === "critical" || t.priority === "high")).length +
+    cases.filter((c) => c.attention_required).length;
+
   const navItems = [
     { key: "my_work", label: "My Work", icon: "💼", count: null },
-    { key: "exception_queue", label: "Exception-First Queue", icon: "🚨", count: cases.length === 0 ? 0 : 7 },
+    { key: "exception_queue", label: "Exception-First Queue", icon: "🚨", count: liveExceptionCount },
     { key: "all_in_one_workspace", label: "All-in-One Studio", icon: "⚡", count: null },
     { key: "assigned_cases", label: "Assigned Cases", icon: "📁", count: visibleCases.length },
     { key: "team_queues", label: "Team Queues", icon: "⏳", count: null },
@@ -518,7 +577,7 @@ export function EmployeeWorkspace({
   const activeTabInfo = {
     my_work: {
       title: "Casework & Evidence Hub",
-      subtitle: "Personal Workload, Evidentiary Reviews & Priority Action Items • Vanguard Immigration Law Group LLP",
+      subtitle: `Personal Workload, Evidentiary Reviews & Priority Action Items • ${firmDisplayName}`,
     },
     exception_queue: {
       title: "Exception-First Casework Queue",
@@ -804,20 +863,20 @@ export function EmployeeWorkspace({
                 border: "1px solid #B9DED4",
               }}
             >
-              MV
+              {staffInitials}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: "12px", fontWeight: 650, color: "#063C3D", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                Marcus Vance
+                {staffDisplayName}
               </div>
               <div style={{ fontSize: "11px", color: "#6E7F7C", lineHeight: 1.2 }}>
-                Lead Paralegal
+                {staffRoleLabel}
               </div>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "case-01")}
+            onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "")}
             style={{
               width: "100%",
               marginTop: "10px",
@@ -1275,87 +1334,85 @@ export function EmployeeWorkspace({
                   cases.length === 0
                     ? []
                     : [
-                      {
-                        id: "exc-1",
-                        category: "blockers",
-                        title: "Missing Mandatory Regulatory Criteria (O-1A)",
-                        caseNumber: cases[0]?.case_number || "CASE-US-8841",
-                        clientName: cases[0]?.client_name || "Dr. Elena Rostova",
-                        severity: "critical",
-                        description: "Only 2 of required 3 regulatory evidentiary categories satisfied (Published Material & High Remuneration). Missing third criterion.",
-                        statutoryCitation: "8 CFR § 214.2(o)(3)(iii)",
-                        dueBadge: "Overdue 2d",
-                        actionLabel: "Resolve Blocker",
-                        actionType: "blocker",
-                      },
-                      {
-                        id: "exc-2",
-                        category: "blockers",
-                        title: "Potential J-1 2-Year Foreign Residence Requirement",
-                        caseNumber: cases[0]?.case_number || "CASE-US-8841",
-                        clientName: cases[0]?.client_name || "Dr. Elena Rostova",
-                        severity: "critical",
-                        description: "Prior J-1 exchange visitor visa subject to INA § 212(e). Verification of Advisory Opinion or waiver required.",
-                        statutoryCitation: "INA § 212(e)",
-                        dueBadge: "Immediate",
-                        actionLabel: "Review Advisory Opinion",
-                        actionType: "blocker",
-                      },
-                      {
-                        id: "exc-3",
-                        category: "documents",
-                        title: "Passport Identity Page Rejected",
-                        caseNumber: cases[0]?.case_number || "CASE-US-8841",
-                        clientName: cases[0]?.client_name || "Dr. Elena Rostova",
-                        severity: "high",
-                        description: "Resolution failure: Glare detected over MRZ zone. Applicant requested to re-upload clear color PDF.",
-                        statutoryCitation: "9 FAM 504.4-4(A)",
-                        dueBadge: "Action Required",
-                        actionLabel: "Request Re-upload",
-                        actionType: "document",
-                      },
-                      {
-                        id: "exc-4",
-                        category: "deadlines",
-                        title: "USCIS Premium Processing 15-Day Milestone",
-                        caseNumber: cases[3]?.case_number || "CASE-US-8844",
-                        clientName: cases[3]?.client_name || "Kenji Sato",
-                        severity: "high",
-                        description: "Form I-907 clock running. Day 11 of 15. USCIS adjudication or RFE expected within 4 calendar days.",
-                        statutoryCitation: "8 CFR § 103.7(e)",
-                        dueBadge: "Day 11/15",
-                        actionLabel: "View Receipt Status",
-                        actionType: "reminder",
-                      },
-                      {
-                        id: "exc-5",
-                        category: "reviews",
-                        title: "Employment Letter Evidentiary Review",
-                        caseNumber: cases[4]?.case_number || "CASE-CA-1904",
-                        clientName: cases[4]?.client_name || "Carlos Gomez",
-                        severity: "high",
-                        description: "Foreign work experience verification requires senior partner sign-off before submission.",
-                        statutoryCitation: "IRPR § 87.1",
-                        dueBadge: "Review Pending",
-                        actionLabel: "Sign-off Review",
-                        actionType: "package",
-                      },
-                      ...cases
-                        .filter((c) => c.attention_required && c.case_number !== "CASE-US-8841")
-                        .map((c) => ({
-                          id: `exc-case-${c.id}`,
-                          category: "blockers" as const,
-                          title: c.attention_reason || "Statutory Evidentiary Review Required",
-                          caseNumber: c.case_number,
-                          clientName: c.client_name,
-                          severity: "critical" as const,
-                          description: c.attention_reason || "Evidentiary gap flagged for review.",
-                          statutoryCitation: c.visa_category,
-                          dueBadge: c.deadline ? `Due ${c.deadline}` : "Approaching deadline",
-                          actionLabel: "Resolve Blocker",
-                          actionType: "blocker" as const,
-                        })),
-                    ];
+                        ...localFindingsState
+                          .filter((f) => f.status === "needs_review")
+                          .map((f) => {
+                            const matchedCase = cases.find((c) => c.id === f.case_id);
+                            return {
+                              id: `exc-finding-${f.id}`,
+                              category: "blockers" as const,
+                              title: f.title,
+                              caseNumber: matchedCase?.case_number || "CASE",
+                              clientName: matchedCase?.client_name || "Retained Client",
+                              severity: (f.severity === "critical" ? "critical" : "high") as "critical" | "high",
+                              description: f.description,
+                              statutoryCitation: f.citation || f.relevant_requirement || matchedCase?.visa_category || "Statutory Rule",
+                              dueBadge: "Review Required",
+                              actionLabel: "Resolve Blocker",
+                              actionType: "blocker" as const,
+                            };
+                          }),
+                        ...documents
+                          .filter(
+                            (d) =>
+                              d.status === "action_needed" ||
+                              d.verification_status === "rejected" ||
+                              d.status === "under_review"
+                          )
+                          .map((d) => {
+                            const matchedCase = cases.find((c) => c.id === d.case_id);
+                            const isRej = d.status === "action_needed" || d.verification_status === "rejected";
+                            return {
+                              id: `exc-doc-${d.id}`,
+                              category: (isRej ? "documents" : "reviews") as "documents" | "reviews",
+                              title: `${isRej ? "Document Action Required" : "Pending Verification"}: ${d.title || d.filename || "Evidence"}`,
+                              caseNumber: matchedCase?.case_number || "CASE",
+                              clientName: matchedCase?.client_name || "Retained Client",
+                              severity: (isRej ? "high" : "medium") as "high" | "medium",
+                              description: isRej
+                                ? "Document flagged for corrective action during quality inspection."
+                                : "Uploaded evidence awaiting officer verification.",
+                              statutoryCitation: matchedCase?.visa_category || "Evidentiary Review",
+                              dueBadge: isRej ? "Action Required" : "Review Pending",
+                              actionLabel: isRej ? "Request Re-upload" : "Verify Document",
+                              actionType: "document" as const,
+                              docId: d.id,
+                            };
+                          }),
+                        ...tasks
+                          .filter((t) => !t.is_completed && (t.priority === "critical" || t.priority === "high"))
+                          .map((t) => {
+                            const matchedCase = cases.find((c) => c.id === t.case_id || c.case_number === t.case_number);
+                            return {
+                              id: `exc-task-${t.id}`,
+                              category: "deadlines" as const,
+                              title: t.title,
+                              caseNumber: matchedCase?.case_number || t.case_number || "CASE",
+                              clientName: matchedCase?.client_name || "Retained Client",
+                              severity: (t.priority === "critical" ? "critical" : "high") as "critical" | "high",
+                              description: `Assigned to ${t.assigned_to || staffDisplayName}.`,
+                              statutoryCitation: matchedCase?.visa_category || "Case Milestone",
+                              dueBadge: t.due_date ? `Due ${t.due_date}` : "Open",
+                              actionLabel: "View Task",
+                              actionType: "reminder" as const,
+                            };
+                          }),
+                        ...cases
+                          .filter((c) => c.attention_required)
+                          .map((c) => ({
+                            id: `exc-case-${c.id}`,
+                            category: "blockers" as const,
+                            title: c.attention_reason || "Statutory Evidentiary Review Required",
+                            caseNumber: c.case_number,
+                            clientName: c.client_name,
+                            severity: "critical" as const,
+                            description: c.attention_reason || "Evidentiary gap flagged for review.",
+                            statutoryCitation: c.visa_category,
+                            dueBadge: c.deadline ? `Due ${c.deadline}` : "Approaching deadline",
+                            actionLabel: "Resolve Blocker",
+                            actionType: "blocker" as const,
+                          })),
+                      ];
 
                 const dynamicExceptions = allExceptions.filter(
                   (item: ExceptionItemType) => exceptionCategoryFilter === "all" || item.category === exceptionCategoryFilter
@@ -1975,16 +2032,20 @@ export function EmployeeWorkspace({
                           size="sm"
                           onClick={() => {
                             if (!internalNoteInput.trim()) return;
-                            setInternalNotes((prev) => [
-                              ...prev,
+                            const nextNotes = [
+                              ...internalNotes,
                               {
                                 id: `note-${Date.now()}`,
-                                author: "Sarah Vance, Esq.",
-                                role: "Lead Counsel",
+                                author: staffDisplayName,
+                                role: staffRoleLabel,
                                 content: internalNoteInput.trim(),
                                 timestamp: new Date().toISOString(),
                               },
-                            ]);
+                            ];
+                            setInternalNotes(nextNotes);
+                            if (typeof window !== "undefined") {
+                              localStorage.setItem("documento_internal_notes_v3_clean", JSON.stringify(nextNotes));
+                            }
                             setInternalNoteInput("");
                           }}
                         >
@@ -2077,41 +2138,32 @@ export function EmployeeWorkspace({
                 >
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                     {[
-                      {
-                        actor: "Sarah Vance, Esq. (Lead Counsel)",
-                        action: "Verified Evidence: Passport Identity Page (Accepted)",
-                        time: "Today at 11:20 AM",
-                        icon: "✓",
-                        color: "#166534",
-                      },
-                      {
-                        actor: "Marcus Jenkin (Senior Paralegal)",
-                        action: "Issued Document Rejection [BLURRY_IMAGE] on Foreign Translation",
-                        time: "Yesterday at 04:15 PM",
-                        icon: "✕",
-                        color: "#DC2626",
-                      },
-                      {
-                        actor: "Dr. Elena Rostova (Client)",
-                        action: "Updated Form I-140 Questionnaire (Progress: 65%)",
-                        time: "2 days ago",
-                        icon: "📝",
-                        color: "#0284C7",
-                      },
-                      {
-                        actor: "LexAI Provenance Engine",
-                        action: "Automated OCR Extraction & Entity Grounding Completed",
-                        time: "3 days ago",
-                        icon: "🤖",
-                        color: "#7C3AED",
-                      },
-                      {
-                        actor: "Firm Tenancy System",
-                        action: "Case Retainer Signed & Tenancy Initialized",
-                        time: "Last week",
-                        icon: "📁",
-                        color: "#063C3D",
-                      },
+                      ...documents
+                        .filter((d) => !selectedCaseForWorkspace || d.case_id === selectedCaseForWorkspace.id)
+                        .slice(0, 5)
+                        .map((d) => {
+                          const isFlagged = d.status === "action_needed" || d.verification_status === "rejected";
+                          return {
+                            actor: d.uploaded_by || staffDisplayName,
+                            action: `${d.status === "verified" ? "Verified Evidence" : isFlagged ? "Flagged Document" : "Uploaded Evidence"}: ${d.title || d.filename}`,
+                            time: d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString() : "Recent",
+                            icon: d.status === "verified" ? "✓" : isFlagged ? "✕" : "📄",
+                            color: d.status === "verified" ? "#166534" : isFlagged ? "#DC2626" : "#0284C7",
+                          };
+                        }),
+                      ...(selectedCaseForWorkspace
+                        ? [
+                            {
+                              actor: firmDisplayName,
+                              action: `Case File Opened: ${selectedCaseForWorkspace.case_number} (${selectedCaseForWorkspace.visa_category})`,
+                              time: selectedCaseForWorkspace.created_at
+                                ? new Date(selectedCaseForWorkspace.created_at).toLocaleDateString()
+                                : "Active",
+                              icon: "📁",
+                              color: "#063C3D",
+                            },
+                          ]
+                        : []),
                     ].map((evt, idx) => (
                       <div
                         key={idx}
@@ -2332,7 +2384,7 @@ export function EmployeeWorkspace({
             title="Evidence & Document Verification Matrix"
             subtitle="Cryptographically verified evidence items stored in private immutable storage with full OCR provenance."
             actions={
-              <Button variant="primary" size="sm" onClick={() => onOpenUploadModal("case-01")}>
+              <Button variant="primary" size="sm" onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "")}>
                 + Upload Evidence File
               </Button>
             }

@@ -5,7 +5,6 @@ import { UserContext, UserExperience } from "../../lib/types";
 interface WorkspaceHeaderProps {
   currentUser: UserContext;
   onLogout: () => void;
-  onSwitchRole: (role: UserExperience) => void;
   onResetToScratch?: () => void;
   isLiveBackend?: boolean;
 }
@@ -13,7 +12,6 @@ interface WorkspaceHeaderProps {
 export function WorkspaceHeader({
   currentUser,
   onLogout,
-  onSwitchRole,
   onResetToScratch,
   isLiveBackend = true,
 }: WorkspaceHeaderProps) {
@@ -208,7 +206,7 @@ export function WorkspaceHeader({
             aria-haspopup="menu"
             aria-expanded={isProfileMenuOpen}
             aria-controls="workspace-user-menu"
-            aria-label={`${currentUser.full_name} - User profile and persona switch menu`}
+            aria-label={`${currentUser.full_name} - User profile menu`}
             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
             style={{
               background: "rgba(255, 255, 255, 0.1)",
@@ -289,166 +287,32 @@ export function WorkspaceHeader({
                 <div style={{ fontSize: "12px", color: "#6E7F7C", wordBreak: "break-all" }}>
                   {currentUser.email}
                 </div>
-                <div style={{ marginTop: "6px" }}>
+                <div style={{ marginTop: "6px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
                   <span
                     style={{
-                    background: "#DDEFE8",
-                    color: "#063C3D",
-                    fontSize: "10px",
-                    fontWeight: 650,
-                    padding: "2px 8px",
-                    borderRadius: "10px",
-                  }}
+                      background: "#EAF6F0",
+                      color: "#176B50",
+                      fontSize: "10px",
+                      fontWeight: 650,
+                      padding: "2px 8px",
+                      borderRadius: "10px",
+                    }}
+                  >
+                    {getRoleLabel(currentUser)}
+                  </span>
+                  <span
+                    style={{
+                      background: "#DDEFE8",
+                      color: "#063C3D",
+                      fontSize: "10px",
+                      fontWeight: 650,
+                      padding: "2px 8px",
+                      borderRadius: "10px",
+                    }}
                   >
                     Tenant: {currentUser.organization_id}
                   </span>
                 </div>
-              </div>
-
-              {/* Persona Switcher Section */}
-              <div style={{ padding: "8px 4px 6px 4px", borderBottom: "1px solid #F1F6F4" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, color: "#6E7F7C", textTransform: "uppercase", padding: "0 8px 6px 8px", letterSpacing: "0.03em" }}>
-                  Switch Demo Persona
-                </div>
-
-                {/* 1. Owner */}
-                <button
-                  type="button"
-                  id="switch-persona-owner"
-                  onClick={() => {
-                    setIsProfileMenuOpen(false);
-                    onSwitchRole("master_admin");
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "6px 8px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: currentUser.role === "master_admin" ? "#DDEFE8" : "transparent",
-                    color: "#172322",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: "2px",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>👑</span>
-                    <span style={{ fontWeight: currentUser.role === "master_admin" ? 700 : 500 }}>
-                      Owner (Managing Partner)
-                    </span>
-                  </div>
-                  <span style={{ fontSize: "9px", background: "#E8F5E9", color: "#2E7D32", padding: "2px 5px", borderRadius: "4px", fontWeight: 650 }}>
-                    Can Delete
-                  </span>
-                </button>
-
-                {/* 2. Manager */}
-                <button
-                  type="button"
-                  id="switch-persona-manager"
-                  onClick={() => {
-                    setIsProfileMenuOpen(false);
-                    onSwitchRole("case_manager");
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "6px 8px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: currentUser.role === "case_manager" && !(currentUser.full_name || "").toLowerCase().includes("paralegal") ? "#DDEFE8" : "transparent",
-                    color: "#172322",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: "2px",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>⚖️</span>
-                    <span style={{ fontWeight: currentUser.role === "case_manager" && !(currentUser.full_name || "").toLowerCase().includes("paralegal") ? 700 : 500 }}>
-                      Case Manager
-                    </span>
-                  </div>
-                  <span style={{ fontSize: "9px", background: "#E8F5E9", color: "#2E7D32", padding: "2px 5px", borderRadius: "4px", fontWeight: 650 }}>
-                    Can Delete
-                  </span>
-                </button>
-
-                {/* 3. Paralegal */}
-                <button
-                  type="button"
-                  id="switch-persona-paralegal"
-                  onClick={() => {
-                    setIsProfileMenuOpen(false);
-                    onSwitchRole("paralegal");
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "6px 8px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: (currentUser.full_name || "").toLowerCase().includes("paralegal") || currentUser.role === "case_worker" ? "#DDEFE8" : "transparent",
-                    color: "#172322",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: "2px",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>📋</span>
-                    <span style={{ fontWeight: (currentUser.full_name || "").toLowerCase().includes("paralegal") || currentUser.role === "case_worker" ? 700 : 500 }}>
-                      Lead Paralegal
-                    </span>
-                  </div>
-                  <span style={{ fontSize: "9px", background: "#FFF3E0", color: "#E65100", padding: "2px 5px", borderRadius: "4px", fontWeight: 650 }}>
-                    Delete Hidden
-                  </span>
-                </button>
-
-                {/* 4. Retained Client */}
-                <button
-                  type="button"
-                  id="switch-persona-client"
-                  onClick={() => {
-                    setIsProfileMenuOpen(false);
-                    onSwitchRole("client_applicant");
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "6px 8px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: currentUser.role === "retained_client" ? "#DDEFE8" : "transparent",
-                    color: "#172322",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>👤</span>
-                    <span style={{ fontWeight: currentUser.role === "retained_client" ? 700 : 500 }}>
-                      Retained Client
-                    </span>
-                  </div>
-                  <span style={{ fontSize: "9px", background: "#FFEBEE", color: "#C62828", padding: "2px 5px", borderRadius: "4px", fontWeight: 650 }}>
-                    Portal Only
-                  </span>
-                </button>
               </div>
 
               {/* Day 0 Reset Option */}

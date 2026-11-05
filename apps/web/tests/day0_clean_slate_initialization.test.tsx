@@ -7,7 +7,7 @@ import { ClientPortal } from "../components/dashboards/ClientPortal";
 import { CreateCaseModal } from "../components/modals/CreateCaseModal";
 import { CreateClientModal } from "../components/modals/CreateClientModal";
 import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
-import { DEMO_USERS } from "../lib/auth";
+import { UserContext } from "../lib/types";
 
 describe("Day 0 Scratch Setup — Zero Mock Data & Interactive Workflow", () => {
   beforeEach(() => {
@@ -182,14 +182,23 @@ describe("Day 0 Scratch Setup — Zero Mock Data & Interactive Workflow", () => 
 
   it("renders Day 0 Reset button in WorkspaceHeader and confirms reset callback", () => {
     const handleReset = vi.fn();
-    // Mock window.confirm
     vi.spyOn(window, "confirm").mockImplementation(() => true);
+
+    const ownerUser: UserContext = {
+      id: "owner-1",
+      email: "partner@northstarrcic.ca",
+      full_name: "Priya Grewal, RCIC",
+      role: "master_admin",
+      organization_id: "ten-northstar-rcic",
+      organization_name: "NorthStar RCIC",
+      experience: "master_admin",
+      permissions: ["cases:read", "cases:write", "client:delete"],
+    };
 
     render(
       <WorkspaceHeader
-        currentUser={DEMO_USERS.master_admin}
+        currentUser={ownerUser}
         onLogout={vi.fn()}
-        onSwitchRole={vi.fn()}
         onResetToScratch={handleReset}
         isLiveBackend={false}
       />

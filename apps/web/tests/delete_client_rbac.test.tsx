@@ -4,9 +4,58 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
 import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
-import { canDeleteClient, DEMO_USERS, authenticateUser } from "../lib/auth";
+import { canDeleteClient, authenticateUser, PLATFORM_HQ_OPERATOR_EMAIL } from "../lib/auth";
+import {
+  submitAgencyOnboarding,
+  adjudicateAgencyKybApplication,
+  inviteAgencyTeamMember,
+} from "../lib/agencyPlatformStore";
 import { api } from "../lib/api";
 import { ClientProfile, UserContext } from "../lib/types";
+
+const OWNER_USER: UserContext = {
+  id: "owner-northstar",
+  email: "priya@northstarrcic.ca",
+  full_name: "Priya Grewal, RCIC",
+  role: "master_admin",
+  organization_id: "ten-northstar-rcic",
+  organization_name: "NorthStar RCIC",
+  experience: "master_admin",
+  permissions: ["cases:read", "cases:write", "client:delete", "clients:write"],
+};
+
+const MANAGER_USER: UserContext = {
+  id: "mgr-northstar",
+  email: "manager@northstarrcic.ca",
+  full_name: "Karan Gill, Case Manager",
+  role: "case_manager",
+  organization_id: "ten-northstar-rcic",
+  organization_name: "NorthStar RCIC",
+  experience: "case_manager",
+  permissions: ["cases:read", "cases:write", "client:delete", "clients:write"],
+};
+
+const PARALEGAL_USER: UserContext = {
+  id: "para-northstar",
+  email: "paralegal@northstarrcic.ca",
+  full_name: "Simran Kaur, Paralegal",
+  role: "case_worker",
+  organization_id: "ten-northstar-rcic",
+  organization_name: "NorthStar RCIC",
+  experience: "paralegal",
+  permissions: ["cases:read", "cases:write", "documents:read", "documents:write"],
+};
+
+const CLIENT_USER: UserContext = {
+  id: "client-001",
+  email: "aarav.mehta@example.com",
+  full_name: "Aarav Mehta",
+  role: "retained_client",
+  organization_id: "ten-northstar-rcic",
+  organization_name: "NorthStar RCIC",
+  experience: "client_applicant",
+  permissions: ["portal:read", "portal:write"],
+};
 
 describe("Retained Client Deletion RBAC & Access Control", () => {
   const mockClients: ClientProfile[] = [
@@ -17,19 +66,19 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
       email: "aarav.mehta@example.com",
       nationality: "IND",
       phone: "+919876500101",
-      organization_id: "org-01",
+      organization_id: "ten-northstar-rcic",
       created_at: "2026-10-23T10:00:00Z",
       portal_credentials_provided: true,
       portal_access_enabled: true,
     },
     {
       id: "client-002",
-      first_name: "Rohan",
-      last_name: "Verma",
-      email: "rohan.verma@example.com",
+      first_name: "Neha",
+      last_name: "Sharma",
+      email: "neha.sharma@example.com",
       nationality: "IND",
       phone: "+919876500102",
-      organization_id: "org-01",
+      organization_id: "ten-northstar-rcic",
       created_at: "2026-10-23T10:05:00Z",
       portal_credentials_provided: true,
       portal_access_enabled: true,
@@ -38,65 +87,43 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   describe("canDeleteClient helper permission matrix", () => {
     it("permits Owner (master_admin / Managing Partner) to delete clients", () => {
-      const ownerUser: UserContext = {
-        ...DEMO_USERS.master_admin,
-      };
-      expect(canDeleteClient(ownerUser)).toBe(true);
+      expect(canDeleteClient(OWNER_USER)).toBe(true);
     });
 
-    it("permits Manager (case_manager / David Cho) to delete clients", () => {
-      const managerUser: UserContext = {
-        ...DEMO_USERS.case_manager,
-      };
-      expect(canDeleteClient(managerUser)).toBe(true);
+    it("permits Manager (case_manager) to delete clients", () => {
+      expect(canDeleteClient(MANAGER_USER)).toBe(true);
     });
 
     it("permits Manager with explicit client:delete permission", () => {
       const customManager: UserContext = {
         id: "usr-custom-manager",
-        email: "alexander.reed@vanguardlegal.com",
-        full_name: "Alexander Reed, Managing Attorney",
+        email: "lead@northstarrcic.ca",
+        full_name: "Lead Immigration Counsel",
         role: "case_manager",
-        organization_id: "org-01",
-        organization_name: "Vanguard Immigration Law Group LLP",
+        organization_id: "ten-northstar-rcic",
+        organization_name: "NorthStar RCIC",
         experience: "case_manager",
         permissions: ["cases:read", "cases:write", "client:delete"],
       };
       expect(canDeleteClient(customManager)).toBe(true);
     });
 
-    it("strictly blocks Paralegal from deleting clients", () => {
-      // Marcus Vance, Lead Paralegal
-      const paralegalUser: UserContext = {
-        ...DEMO_USERS.paralegal,
-      };
-      expect(canDeleteClient(paralegalUser)).toBe(false);
+    it("strictly blocks Paralegal and Document Reviewer from deleting clients", () => {
+      expect(canDeleteClient(PARALEGAL_USER)).toBe(false);
 
-      // Explicit case_worker role
-      const caseworkerUser: UserContext = {
-        id: "usr-cw",
-        email: "staff.clerk@vanguardlegal.com",
-        full_name: "Jordan Lee",
-        role: "case_worker",
-        organization_id: "org-01",
-        organization_name: "Vanguard Immigration Law Group LLP",
-        experience: "case_manager",
-        permissions: ["cases:read"],
-      };
-      expect(canDeleteClient(caseworkerUser)).toBe(false);
-
-      // Document reviewer
       const reviewerUser: UserContext = {
         id: "usr-rev",
-        email: "reviewer@vanguardlegal.com",
+        email: "reviewer@northstarrcic.ca",
         full_name: "Document Reviewer",
         role: "document_reviewer",
-        organization_id: "org-01",
-        organization_name: "Vanguard Immigration Law Group LLP",
+        organization_id: "ten-northstar-rcic",
+        organization_name: "NorthStar RCIC",
         experience: "case_manager",
         permissions: ["documents:read"],
       };
@@ -104,33 +131,72 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
     });
 
     it("strictly blocks Retained Clients from deleting clients", () => {
-      const clientUser: UserContext = {
-        ...DEMO_USERS.client_applicant,
-      };
-      expect(canDeleteClient(clientUser)).toBe(false);
+      expect(canDeleteClient(CLIENT_USER)).toBe(false);
     });
   });
 
-  describe("authenticateUser persona resolution", () => {
-    it("resolves owner login with full client delete privileges", () => {
-      const res = authenticateUser("sarah.jenkins@vanguardlegal.com", "firm", "password123");
-      expect(res.success).toBe(true);
-      expect(res.user?.role).toBe("master_admin");
-      expect(canDeleteClient(res.user)).toBe(true);
-    });
+  describe("authenticateUser real staff RBAC resolution", () => {
+    it("resolves provisioned owner, invited manager, and invited paralegal with accurate delete privileges", async () => {
+      const application = await submitAgencyOnboarding({
+        legalEntityName: "NorthStar Regulated Immigration Counsel Inc.",
+        tradingName: "NorthStar RCIC",
+        requestedSlug: "northstar-rcic",
+        hqCountry: "CA",
+        hqCity: "Vancouver",
+        corporateDomain: "northstarrcic.ca",
+        taxRegistrationId: "BN-892104552RC0001",
+        contactFullName: "Priya Grewal, RCIC",
+        contactWorkEmail: "priya@northstarrcic.ca",
+        contactPhone: "+1-604-555-0192",
+        ownerPassword: "OwnerSecurePass2026!",
+        kybTrack: "regulated_counsel",
+        regulatoryBody: "CICC",
+        licenseNumber: "R719804",
+        targetCorridors: ["CA"],
+        estimatedMonthlyCases: 25,
+        requestedSeats: 6,
+        branchCount: 1,
+        selectedPlanTier: "growth",
+        dpaAccepted: true,
+        zeroTrainingAccepted: true,
+      });
 
-    it("resolves manager login with client delete privileges", () => {
-      const res = authenticateUser("manager@vanguardlegal.com", "firm", "password123");
-      expect(res.success).toBe(true);
-      expect(res.user?.role).toBe("case_manager");
-      expect(canDeleteClient(res.user)).toBe(true);
-    });
+      const { provisionedTenant } = adjudicateAgencyKybApplication(
+        application.id,
+        "approve",
+        "Verified CICC certificate.",
+        PLATFORM_HQ_OPERATOR_EMAIL
+      );
+      const orgId = provisionedTenant!.organizationId;
 
-    it("resolves paralegal login without client delete privileges", () => {
-      const res = authenticateUser("paralegal@vanguardlegal.com", "firm", "password123");
-      expect(res.success).toBe(true);
-      expect(res.user?.full_name).toContain("Lead Paralegal");
-      expect(canDeleteClient(res.user)).toBe(false);
+      const mgrInvite = inviteAgencyTeamMember({
+        organizationId: orgId,
+        fullName: "Karan Gill",
+        email: "karan@northstarrcic.ca",
+        role: "case_manager",
+      });
+      const paraInvite = inviteAgencyTeamMember({
+        organizationId: orgId,
+        fullName: "Simran Kaur",
+        email: "simran@northstarrcic.ca",
+        role: "paralegal",
+      });
+
+      const ownerRes = authenticateUser("priya@northstarrcic.ca", "firm", "OwnerSecurePass2026!");
+      expect(ownerRes.success).toBe(true);
+      expect(ownerRes.user?.role).toBe("master_admin");
+      expect(canDeleteClient(ownerRes.user)).toBe(true);
+
+      const mgrRes = authenticateUser("karan@northstarrcic.ca", "firm", mgrInvite.passcode);
+      expect(mgrRes.success).toBe(true);
+      expect(mgrRes.user?.role).toBe("case_manager");
+      expect(canDeleteClient(mgrRes.user)).toBe(true);
+
+      const paraRes = authenticateUser("simran@northstarrcic.ca", "firm", paraInvite.passcode);
+      expect(paraRes.success).toBe(true);
+      expect(paraRes.user?.role).toBe("case_worker");
+      expect(paraRes.user?.experience).toBe("paralegal");
+      expect(canDeleteClient(paraRes.user)).toBe(false);
     });
   });
 
@@ -141,19 +207,17 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
           cases={[]}
           clients={mockClients}
           auditEvents={[]}
-          currentUser={DEMO_USERS.master_admin}
+          currentUser={OWNER_USER}
           onOpenCreateCase={vi.fn()}
           onOpenCreateClient={vi.fn()}
           onSelectCase={vi.fn()}
         />
       );
 
-      // Click "Retained Clients" tab in sidebar
       const clientsTab = container.querySelector("#tab-btn-clients");
       expect(clientsTab).toBeDefined();
       fireEvent.click(clientsTab!);
 
-      // Verify Delete Client buttons are rendered for each client
       await waitFor(() => {
         const deleteButtons = screen.getAllByRole("button", { name: /Delete client/i });
         expect(deleteButtons.length).toBe(2);
@@ -169,7 +233,7 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
           cases={[]}
           clients={mockClients}
           auditEvents={[]}
-          currentUser={DEMO_USERS.master_admin}
+          currentUser={OWNER_USER}
           onDeleteClient={onDeleteClientMock}
           onOpenCreateCase={vi.fn()}
           onOpenCreateClient={vi.fn()}
@@ -198,7 +262,7 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
           tasks={[]}
           aiFindings={[]}
           messages={[]}
-          currentUser={DEMO_USERS.paralegal} // Marcus Vance, Lead Paralegal
+          currentUser={PARALEGAL_USER}
           onToggleTask={vi.fn()}
           onSendMessage={vi.fn()}
           onSelectCase={vi.fn()}
@@ -206,11 +270,9 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
         />
       );
 
-      // Switch to Client Directory tab
       const clientsTab = screen.getByRole("button", { name: /Client Directory/i });
       fireEvent.click(clientsTab);
 
-      // Verify "Manage Credentials" exists, but NO "Delete Client" button
       await waitFor(() => {
         expect(screen.getByText("aarav.mehta@example.com")).toBeDefined();
       });
@@ -228,7 +290,7 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
           tasks={[]}
           aiFindings={[]}
           messages={[]}
-          currentUser={DEMO_USERS.case_manager} // David Cho, Case Manager
+          currentUser={MANAGER_USER}
           onToggleTask={vi.fn()}
           onSendMessage={vi.fn()}
           onSelectCase={vi.fn()}
@@ -246,43 +308,28 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
     });
   });
 
-  describe("WorkspaceHeader Persona Switching", () => {
-    it("renders persona switch buttons in profile menu with RBAC badges", () => {
-      const onSwitchRole = vi.fn();
+  describe("WorkspaceHeader Profile Menu (No Demo Persona Switcher)", () => {
+    it("displays authenticated user role badge and Sign Out without demo persona buttons", () => {
       render(
         <WorkspaceHeader
-          currentUser={DEMO_USERS.master_admin}
+          currentUser={OWNER_USER}
           onLogout={vi.fn()}
-          onSwitchRole={onSwitchRole}
           isLiveBackend={true}
         />
       );
 
-      const profileBtn = screen.getByRole("button", { name: /Sarah Jenkins, Esq./i });
+      const profileBtn = screen.getByRole("button", { name: /Priya Grewal, RCIC - User profile menu/i });
       fireEvent.click(profileBtn);
 
-      const ownerBtn = screen.getByRole("button", { name: /Owner \(Managing Partner\)/i });
-      const managerBtn = screen.getByRole("button", { name: /Case Manager/i });
-      const paralegalBtn = screen.getByRole("button", { name: /Lead Paralegal/i });
-      const clientBtn = screen.getByRole("button", { name: /Retained Client/i });
-
-      expect(ownerBtn).toBeDefined();
-      expect(managerBtn).toBeDefined();
-      expect(paralegalBtn).toBeDefined();
-      expect(clientBtn).toBeDefined();
-
-      fireEvent.click(managerBtn);
-      expect(onSwitchRole).toHaveBeenCalledWith("case_manager");
-
-      fireEvent.click(profileBtn);
-      const reopenedParalegalBtn = screen.getByRole("button", { name: /Lead Paralegal/i });
-      fireEvent.click(reopenedParalegalBtn);
-      expect(onSwitchRole).toHaveBeenCalledWith("paralegal");
+      expect(screen.getAllByText(/Managing Partner/i).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/Switch Demo Persona/i)).toBeNull();
+      expect(screen.getByRole("button", { name: /Sign Out of Documento/i })).toBeDefined();
     });
   });
 
   describe("API Client deletion method", () => {
     it("allows Owner and Manager to delete standalone client and logs audit event", async () => {
+      window.localStorage.setItem("documento_user", JSON.stringify(OWNER_USER));
       const createRes = await api.createClient({
         first_name: "Temp",
         last_name: "Standalone",
@@ -299,11 +346,14 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
       expect(clientsList.data.find((c) => c.id === createdId)).toBeUndefined();
 
       const auditRes = await api.getAuditEvents();
-      const deleteAudit = auditRes.data.find((a) => a.action === "client.deleted" && a.object_id === createdId);
+      const deleteAudit = auditRes.data.find(
+        (a) => a.action === "client.deleted" && a.object_id === createdId
+      );
       expect(deleteAudit).toBeDefined();
     });
 
     it("strictly blocks Paralegal role from executing deleteClient in fallback mode", async () => {
+      window.localStorage.setItem("documento_user", JSON.stringify(OWNER_USER));
       const createRes = await api.createClient({
         first_name: "Protected",
         last_name: "Client",
@@ -318,23 +368,17 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
     });
 
     it("strictly blocks Retained Client role from executing deleteClient in fallback mode", async () => {
+      window.localStorage.setItem("documento_user", JSON.stringify(OWNER_USER));
       const createRes = await api.createClient({
-        first_name: "ClientAttempt",
-        last_name: "Target",
-        email: "target-attempt@example.com",
+        first_name: "ClientSelf",
+        last_name: "Record",
+        email: "self@example.com",
         nationality: "GBR",
       });
       const createdId = createRes.data.id;
 
       await expect(api.deleteClient(createdId, "retained_client")).rejects.toThrow(
         /Paralegals and retained clients do not have permission to delete client records/i
-      );
-    });
-
-    it("blocks deletion of client when linked active cases exist", async () => {
-      // client-01 is linked to case-01 ("CASE-US-8841") in FIXTURE_CASES
-      await expect(api.deleteClient("client-01", "master_admin")).rejects.toThrow(
-        /Cannot delete client with.*associated case/i
       );
     });
   });

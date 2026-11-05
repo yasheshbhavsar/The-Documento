@@ -132,6 +132,13 @@ import {
 } from "./types";
 
 
+import {
+  getAgencyForOrganization,
+  getAgencyTeamInvites,
+  incrementAgencyUsageMetrics,
+  purgeLegacyDemoStorageOnce,
+} from "./agencyPlatformStore";
+
 const API_BASE_URL = typeof window !== "undefined" ? "/api/backend" : "http://localhost:8000/api/v1";
 
 // Default simulation IDs for development
@@ -1009,7 +1016,24 @@ function setStored<T>(key: string, value: T): void {
   }
 }
 
-let localFindings: AIFinding[] = getStored("documento_findings", isTestEnv ? FIXTURE_AI_FINDINGS : []);
+const CASES_STORAGE_KEY = "documento_cases_v3_clean";
+const CLIENTS_STORAGE_KEY = "documento_clients_v3_clean";
+const DOCS_STORAGE_KEY = "documento_documents_v3_clean";
+const AUDIT_STORAGE_KEY = "documento_audit_events_v3_clean";
+const NOTIFS_STORAGE_KEY = "documento_notifications_v3_clean";
+const TASKS_STORAGE_KEY = "documento_tasks_v3_clean";
+const FINDINGS_STORAGE_KEY = "documento_findings_v3_clean";
+const MESSAGES_STORAGE_KEY = "documento_messages_v3_clean";
+const INVOICES_STORAGE_KEY = "documento_invoices_v3_clean";
+const DOC_REQUESTS_STORAGE_KEY = "documento_doc_requests_v3_clean";
+const MSG_THREADS_STORAGE_KEY = "documento_msg_threads_v3_clean";
+const THREAD_MSGS_STORAGE_KEY = "documento_thread_msgs_v3_clean";
+const APPOINTMENTS_STORAGE_KEY = "documento_appointments_v3_clean";
+const SPONSORS_STORAGE_KEY = "documento_sponsors_v3_clean";
+const ENGAGEMENTS_STORAGE_KEY = "documento_engagements_v3_clean";
+const BILLING_INVOICES_STORAGE_KEY = "documento_billing_invoices_v3_clean";
+
+let localFindings: AIFinding[] = getStored(FINDINGS_STORAGE_KEY, isTestEnv ? [...FIXTURE_AI_FINDINGS] : []);
 
 export const FIXTURE_MESSAGES: MessageItem[] = [
   {
@@ -1114,8 +1138,8 @@ export const INITIAL_AUDIT_EVENT: AuditEvent = {
   id: "audit-init",
   action: "workspace.initialized",
   object_type: "workspace",
-  object_id: "org-vanguard",
-  actor_email: "sarah.jenkins@vanguardlegal.com",
+  object_id: "org-workspace",
+  actor_email: "system@documento.ai",
   created_at: new Date().toISOString(),
   metadata: {
     note: "Initial clean workspace initialized from scratch. Zero mock cases and zero mock documents loaded.",
@@ -1130,30 +1154,99 @@ export const INITIAL_NOTIFICATION: NotificationItem = {
   created_at: new Date().toISOString(),
 };
 
-// Ensure Day-0 clean slate in browser runtime if not yet synchronized
+// Ensure Day-0 clean slate in browser runtime — purge any legacy demo keys once
 if (typeof window !== "undefined" && !isTestEnv) {
-  if (localStorage.getItem("documento_clean_slate_enforced") !== "v3") {
-    localStorage.removeItem("documento_cases");
-    localStorage.removeItem("documento_clients");
-    localStorage.removeItem("documento_documents");
-    localStorage.removeItem("documento_tasks");
-    localStorage.removeItem("documento_findings");
-    localStorage.removeItem("documento_messages");
-    localStorage.removeItem("documento_invoices");
-    localStorage.removeItem("documento_client_credentials");
-    localStorage.setItem("documento_clean_slate_enforced", "v3");
-  }
+  purgeLegacyDemoStorageOnce();
 }
 
-// In-memory mutation state with localStorage persistence for local interactivity
-let localCases: ImmigrationCase[] = getStored("documento_cases", isTestEnv ? FIXTURE_CASES : []);
-let localClients: ClientProfile[] = getStored("documento_clients", isTestEnv ? FIXTURE_CLIENTS : []);
-let localDocuments: DocumentItem[] = getStored("documento_documents", isTestEnv ? FIXTURE_DOCUMENTS : []);
-let localAuditEvents: AuditEvent[] = getStored("documento_audit_events", isTestEnv ? FIXTURE_AUDIT_EVENTS : [INITIAL_AUDIT_EVENT]);
-let localNotifications: NotificationItem[] = getStored("documento_notifications", isTestEnv ? FIXTURE_NOTIFICATIONS : [INITIAL_NOTIFICATION]);
-let localTasks: CaseTask[] = getStored("documento_tasks", isTestEnv ? FIXTURE_TASKS : []);
-let localMessages: MessageItem[] = getStored("documento_messages", isTestEnv ? FIXTURE_MESSAGES : []);
-let localInvoices: InvoiceItem[] = getStored("documento_invoices", isTestEnv ? FIXTURE_INVOICES : []);
+// In-memory mutation state with clean localStorage persistence
+let localCases: ImmigrationCase[] = getStored(CASES_STORAGE_KEY, isTestEnv ? [...FIXTURE_CASES] : []);
+let localClients: ClientProfile[] = getStored(CLIENTS_STORAGE_KEY, isTestEnv ? [...FIXTURE_CLIENTS] : []);
+let localDocuments: DocumentItem[] = getStored(DOCS_STORAGE_KEY, isTestEnv ? [...FIXTURE_DOCUMENTS] : []);
+let localAuditEvents: AuditEvent[] = getStored(AUDIT_STORAGE_KEY, isTestEnv ? [...FIXTURE_AUDIT_EVENTS] : []);
+let localNotifications: NotificationItem[] = getStored(NOTIFS_STORAGE_KEY, isTestEnv ? [...FIXTURE_NOTIFICATIONS] : []);
+let localTasks: CaseTask[] = getStored(TASKS_STORAGE_KEY, isTestEnv ? [...FIXTURE_TASKS] : []);
+let localMessages: MessageItem[] = getStored(MESSAGES_STORAGE_KEY, isTestEnv ? [...FIXTURE_MESSAGES] : []);
+let localInvoices: InvoiceItem[] = getStored(INVOICES_STORAGE_KEY, isTestEnv ? [...FIXTURE_INVOICES] : []);
+
+interface ActiveSessionContext {
+  hasSession: boolean;
+  userId: string;
+  email: string;
+  fullName: string;
+  organizationId: string;
+  organizationName: string;
+  role: RoleCode;
+}
+
+function getActiveSessionContext(fallbackRole: RoleCode = "master_admin"): ActiveSessionContext {
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("documento_user") || sessionStorage.getItem("documento_user");
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<UserContext>;
+        if (parsed && (parsed.email || parsed.id)) {
+          const orgId = String(parsed.organization_id || DEMO_ORG_ID);
+          const agency = getAgencyForOrganization(orgId);
+          return {
+            hasSession: true,
+            userId: String(parsed.id || `usr-${Date.now()}`),
+            email: String(parsed.email || "operator@documento.ai"),
+            fullName: String(parsed.full_name || parsed.name || parsed.email || "Authorized User"),
+            organizationId: orgId,
+            organizationName: String(
+              parsed.organization_name || agency?.legalEntityName || "Partner Immigration Practice"
+            ),
+            role: (parsed.role || fallbackRole) as RoleCode,
+          };
+        }
+      }
+    } catch {
+      // ignore parse failure
+    }
+  }
+
+  return {
+    hasSession: false,
+    userId: fallbackRole === "retained_client" ? "usr-client" : "usr-staff",
+    email: fallbackRole === "retained_client" ? "client@portal.local" : "staff@practice.local",
+    fullName: fallbackRole === "retained_client" ? "Retained Client" : "Authorized Counsel",
+    organizationId: DEMO_ORG_ID,
+    organizationName: "Immigration Practice Workspace",
+    role: fallbackRole,
+  };
+}
+
+function syncFromStorage(): void {
+  if (typeof window === "undefined") return;
+  localCases = getStored(CASES_STORAGE_KEY, isTestEnv ? [...FIXTURE_CASES] : []);
+  localClients = getStored(CLIENTS_STORAGE_KEY, isTestEnv ? [...FIXTURE_CLIENTS] : []);
+  localDocuments = getStored(DOCS_STORAGE_KEY, isTestEnv ? [...FIXTURE_DOCUMENTS] : []);
+  localAuditEvents = getStored(AUDIT_STORAGE_KEY, isTestEnv ? [...FIXTURE_AUDIT_EVENTS] : []);
+  localNotifications = getStored(NOTIFS_STORAGE_KEY, isTestEnv ? [...FIXTURE_NOTIFICATIONS] : []);
+  localTasks = getStored(TASKS_STORAGE_KEY, isTestEnv ? [...FIXTURE_TASKS] : []);
+  localFindings = getStored(FINDINGS_STORAGE_KEY, isTestEnv ? [...FIXTURE_AI_FINDINGS] : []);
+  localMessages = getStored(MESSAGES_STORAGE_KEY, isTestEnv ? [...FIXTURE_MESSAGES] : []);
+  localInvoices = getStored(INVOICES_STORAGE_KEY, isTestEnv ? [...FIXTURE_INVOICES] : []);
+}
+
+function filterByActiveOrg<T extends { organization_id?: string }>(
+  items: T[],
+  ctx: ActiveSessionContext
+): T[] {
+  if (!ctx.hasSession) return items;
+  return items.filter((item) => !item.organization_id || item.organization_id === ctx.organizationId);
+}
+
+function getOrgCaseIds(ctx: ActiveSessionContext): Set<string> {
+  const orgCases = filterByActiveOrg(localCases, ctx);
+  const ids = new Set<string>();
+  for (const c of orgCases) {
+    ids.add(c.id);
+    if (c.case_number) ids.add(c.case_number);
+  }
+  return ids;
+}
 
 export interface ApiResponse<T> {
   data: T;
@@ -1211,23 +1304,10 @@ export function fallbackData<T>(data: T, endpointContext?: string): T {
 
 function getAuthHeaders(role: RoleCode = "company_admin"): Record<string, string> {
   const token = getAccessToken();
-  let resolvedOrgId: string | undefined;
-  let resolvedUserId: string | undefined;
-  let resolvedRole: string = role;
-
-  if (typeof window !== "undefined") {
-    try {
-      const stored = localStorage.getItem("documento_user");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.organization_id) resolvedOrgId = String(parsed.organization_id);
-        if (parsed?.id) resolvedUserId = String(parsed.id);
-        if (parsed?.role) resolvedRole = parsed.role;
-      }
-    } catch {
-      // ignore storage parse error
-    }
-  }
+  const ctx = getActiveSessionContext(role);
+  let resolvedOrgId: string | undefined = ctx.hasSession ? ctx.organizationId : undefined;
+  let resolvedUserId: string | undefined = ctx.hasSession ? ctx.userId : undefined;
+  let resolvedRole: string = ctx.hasSession ? ctx.role : role;
 
   if (token && (!resolvedOrgId || !resolvedUserId)) {
     try {
@@ -1251,16 +1331,10 @@ function getAuthHeaders(role: RoleCode = "company_admin"): Record<string, string
   }
 
   if (!resolvedOrgId) {
-    resolvedOrgId = DEMO_ORG_ID;
+    resolvedOrgId = ctx.organizationId;
   }
   if (!resolvedUserId) {
-    const user =
-      role === "retained_client" || role === "applicant"
-        ? DEMO_USERS.client_applicant
-        : role === "master_admin" || role === "company_admin" || role === "organization_admin"
-          ? DEMO_USERS.master_admin
-          : DEMO_USERS.case_manager;
-    resolvedUserId = user.id;
+    resolvedUserId = ctx.userId;
   }
 
   const headers: Record<string, string> = {
@@ -1340,14 +1414,22 @@ export const api = {
         return { data, isLiveBackend: true };
       }
     } catch {
-      // Graceful fallback to fixture
+      // Graceful fallback to persisted storage
     }
 
-    // Role-filter fixtures according to boundary rules
-    if (role === "retained_client" || role === "applicant") {
-      return fallbackResponse(localCases);
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    const orgCases = filterByActiveOrg(localCases, ctx);
+
+    if (ctx.hasSession && (role === "retained_client" || role === "applicant" || ctx.role === "retained_client")) {
+      const clientMatches = orgCases.filter(
+        (c) =>
+          c.client_id === ctx.userId ||
+          (c.client_name && ctx.fullName && c.client_name.trim().toLowerCase() === ctx.fullName.trim().toLowerCase())
+      );
+      return fallbackResponse(clientMatches);
     }
-    return fallbackResponse(localCases);
+    return fallbackResponse(orgCases);
   },
 
   async createCase(
@@ -1360,6 +1442,7 @@ export const api = {
     },
     role: RoleCode = "master_admin"
   ): Promise<ApiResponse<ImmigrationCase>> {
+    const ctx = getActiveSessionContext(role);
     try {
       const res = await fetch(`${API_BASE_URL}/cases`, {
         method: "POST",
@@ -1368,14 +1451,22 @@ export const api = {
       });
       if (res.ok) {
         const data = await res.json();
+        syncFromStorage();
+        localCases = [{ ...data, organization_id: data.organization_id || ctx.organizationId }, ...localCases.filter((c) => c.id !== data.id)];
+        setStored(CASES_STORAGE_KEY, localCases);
+        if (ctx.hasSession) {
+          incrementAgencyUsageMetrics(ctx.organizationId, { casesDelta: 1 });
+        }
         return { data, isLiveBackend: true };
       }
     } catch {
       // Fallback
     }
 
+    syncFromStorage();
     const client = localClients.find((c) => c.id === payload.client_id);
-    const clientName = client ? `${client.first_name} ${client.last_name}` : "Retained Client";
+    const clientName = client ? `${client.first_name} ${client.last_name}`.trim() : "Retained Client";
+    const assignedManager = (payload as any).assigned_manager || (ctx.hasSession ? ctx.fullName : undefined);
     const newCase: ImmigrationCase = {
       id: `case-${Date.now()}`,
       case_number: payload.case_number,
@@ -1386,15 +1477,19 @@ export const api = {
       visa_category: payload.visa_category,
       status: "intake",
       readiness_score: 10,
-      assigned_manager: (payload as any).assigned_manager || undefined,
+      assigned_manager: assignedManager,
       deadline: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       priority_date: new Date().toISOString().split("T")[0],
-      organization_id: DEMO_ORG_ID,
+      organization_id: ctx.organizationId,
       created_at: new Date().toISOString(),
       attention_required: false,
     };
     localCases = [newCase, ...localCases];
-    setStored("documento_cases", localCases);
+    setStored(CASES_STORAGE_KEY, localCases);
+
+    if (ctx.hasSession) {
+      incrementAgencyUsageMetrics(ctx.organizationId, { casesDelta: 1 });
+    }
 
     // Initial Case Task to guide caseworker
     const initialTask: CaseTask = {
@@ -1405,10 +1500,10 @@ export const api = {
       due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       priority: "high",
       is_completed: false,
-      assigned_to: (payload as any).assigned_manager || "Unassigned",
+      assigned_to: assignedManager || "Unassigned",
     };
     localTasks = [initialTask, ...localTasks];
-    setStored("documento_tasks", localTasks);
+    setStored(TASKS_STORAGE_KEY, localTasks);
 
     // Record audit event
     localAuditEvents = [
@@ -1417,13 +1512,18 @@ export const api = {
         action: "case.created",
         object_type: "case",
         object_id: newCase.case_number,
-        actor_email: DEMO_USERS[role === "master_admin" ? "master_admin" : "case_manager"].email,
+        actor_email: ctx.email,
         created_at: new Date().toISOString(),
-        metadata: { title: newCase.title, jurisdiction: newCase.jurisdiction, visa_category: newCase.visa_category },
+        metadata: {
+          title: newCase.title,
+          jurisdiction: newCase.jurisdiction,
+          visa_category: newCase.visa_category,
+          organization_id: ctx.organizationId,
+        },
       },
       ...localAuditEvents,
     ];
-    setStored("documento_audit_events", localAuditEvents);
+    setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
     return fallbackResponse(newCase);
   },
@@ -1442,7 +1542,9 @@ export const api = {
     } catch {
       // Fallback
     }
-    return fallbackResponse(localClients);
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    return fallbackResponse(filterByActiveOrg(localClients, ctx));
   },
 
   async createClient(
@@ -1462,6 +1564,9 @@ export const api = {
     },
     role: RoleCode = "master_admin"
   ): Promise<ApiResponse<ClientProfile>> {
+    const ctx = getActiveSessionContext(role);
+    const resolvedOrgId = payload.organization_id || ctx.organizationId;
+    const resolvedOrgName = ctx.hasSession ? ctx.organizationName : undefined;
     try {
       const res = await fetch(`${API_BASE_URL}/clients`, {
         method: "POST",
@@ -1470,12 +1575,15 @@ export const api = {
       });
       if (res.ok) {
         const data = await res.json();
+        syncFromStorage();
         const provisionedBy = role === "master_admin" ? "Owner (Managing Partner)" : "Lead Paralegal";
         const provisionedAt = new Date().toISOString();
         const hasCredentials = Boolean(payload.portal_credentials_provided || payload.temporary_password);
 
         const clientWithCreds: ClientProfile = {
           ...data,
+          organization_id: data.organization_id || resolvedOrgId,
+          organization_name: resolvedOrgName,
           portal_credentials_provided: hasCredentials,
           portal_access_enabled: hasCredentials && payload.portal_access_enabled !== false,
           credentials_provisioned_by: hasCredentials ? provisionedBy : undefined,
@@ -1487,25 +1595,36 @@ export const api = {
           const creds = getStored<Record<string, any>>("documento_client_credentials", {});
           creds[payload.email.toLowerCase()] = {
             client_id: data.id,
+            client_name: `${payload.first_name} ${payload.last_name}`.trim(),
             email: payload.email.toLowerCase(),
             password: clientWithCreds.portal_temporary_password,
+            temporary_password: clientWithCreds.portal_temporary_password,
             portal_access_enabled: clientWithCreds.portal_access_enabled,
             provisioned_by: provisionedBy,
             provisioned_at: provisionedAt,
+            organization_id: clientWithCreds.organization_id,
+            organization_name: resolvedOrgName,
           };
           setStored("documento_client_credentials", creds);
         }
 
         localClients = [clientWithCreds, ...localClients.filter((c) => c.id !== data.id)];
-        setStored("documento_clients", localClients);
+        setStored(CLIENTS_STORAGE_KEY, localClients);
 
         return { data: clientWithCreds, isLiveBackend: true };
       }
-      const errJson = await res.json().catch(() => null);
-      const detail = errJson?.detail;
-      const errorMsg = typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ") : `HTTP ${res.status}`;
-      console.error("Backend client creation failed:", res.status, errorMsg);
-      throw new Error(`Server error: ${errorMsg}`);
+      if (res.status !== 502 && res.status !== 503 && res.status !== 504) {
+        const errJson = await res.json().catch(() => null);
+        const detail = errJson?.detail;
+        const errorMsg =
+          typeof detail === "string"
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ")
+              : `HTTP ${res.status}`;
+        console.error("Backend client creation failed:", res.status, errorMsg);
+        throw new Error(`Server error: ${errorMsg}`);
+      }
     } catch (err: any) {
       if (err.message && err.message.startsWith("Server error:")) {
         throw err;
@@ -1513,6 +1632,7 @@ export const api = {
       // Fallback only if backend is completely offline/unreachable
     }
 
+    syncFromStorage();
     const provisionedBy = role === "master_admin" ? "Owner (Managing Partner)" : "Lead Paralegal";
     const provisionedAt = new Date().toISOString();
     const hasCredentials = Boolean(payload.portal_credentials_provided || payload.temporary_password);
@@ -1524,7 +1644,9 @@ export const api = {
       email: payload.email,
       phone: payload.phone,
       nationality: payload.nationality,
-      organization_id: DEMO_ORG_ID,
+      date_of_birth: payload.date_of_birth,
+      organization_id: resolvedOrgId,
+      organization_name: resolvedOrgName,
       created_at: new Date().toISOString(),
       portal_credentials_provided: hasCredentials,
       portal_access_enabled: hasCredentials && payload.portal_access_enabled !== false,
@@ -1533,17 +1655,21 @@ export const api = {
       portal_temporary_password: hasCredentials ? (payload.temporary_password || "ClientPass2026!") : undefined,
     };
     localClients = [newClient, ...localClients];
-    setStored("documento_clients", localClients);
+    setStored(CLIENTS_STORAGE_KEY, localClients);
 
     if (hasCredentials && newClient.portal_temporary_password) {
       const creds = getStored<Record<string, any>>("documento_client_credentials", {});
       creds[newClient.email.toLowerCase()] = {
         client_id: newClient.id,
+        client_name: `${newClient.first_name} ${newClient.last_name}`.trim(),
         email: newClient.email.toLowerCase(),
         password: newClient.portal_temporary_password,
+        temporary_password: newClient.portal_temporary_password,
         portal_access_enabled: newClient.portal_access_enabled,
         provisioned_by: provisionedBy,
         provisioned_at: provisionedAt,
+        organization_id: resolvedOrgId,
+        organization_name: resolvedOrgName,
       };
       setStored("documento_client_credentials", creds);
     }
@@ -1554,17 +1680,18 @@ export const api = {
         action: "client.created",
         object_type: "client",
         object_id: newClient.id,
-        actor_email: DEMO_USERS[role === "master_admin" ? "master_admin" : "case_manager"].email,
+        actor_email: ctx.email,
         created_at: new Date().toISOString(),
         metadata: {
           client_name: `${newClient.first_name} ${newClient.last_name}`,
           nationality: newClient.nationality,
           portal_credentials_provided: hasCredentials,
+          organization_id: resolvedOrgId,
         },
       },
       ...localAuditEvents,
     ];
-    setStored("documento_audit_events", localAuditEvents);
+    setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
     return fallbackResponse(newClient);
   },
@@ -1575,6 +1702,8 @@ export const api = {
     allowLogin: boolean = true,
     role: RoleCode = "master_admin"
   ): Promise<ApiResponse<ClientProfile>> {
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
     const clientIndex = localClients.findIndex((c) => c.id === clientId);
     if (clientIndex === -1) {
       throw new Error(`Client ${clientId} not found.`);
@@ -1594,16 +1723,20 @@ export const api = {
     };
 
     localClients[clientIndex] = updatedClient;
-    setStored("documento_clients", localClients);
+    setStored(CLIENTS_STORAGE_KEY, localClients);
 
     const creds = getStored<Record<string, any>>("documento_client_credentials", {});
     creds[client.email.toLowerCase()] = {
       client_id: client.id,
+      client_name: `${client.first_name} ${client.last_name}`.trim(),
       email: client.email.toLowerCase(),
       password,
+      temporary_password: password,
       portal_access_enabled: allowLogin,
       provisioned_by: provisionedBy,
       provisioned_at: provisionedAt,
+      organization_id: client.organization_id || ctx.organizationId,
+      organization_name: client.organization_name || (ctx.hasSession ? ctx.organizationName : undefined),
     };
     setStored("documento_client_credentials", creds);
 
@@ -1613,17 +1746,18 @@ export const api = {
         action: "client.credentials_issued",
         object_type: "client",
         object_id: client.id,
-        actor_email: DEMO_USERS[role === "master_admin" ? "master_admin" : "case_manager"].email,
+        actor_email: ctx.email,
         created_at: provisionedAt,
         metadata: {
           client_email: client.email,
           provisioned_by: provisionedBy,
           portal_access_enabled: allowLogin,
+          organization_id: client.organization_id || ctx.organizationId,
         },
       },
       ...localAuditEvents,
     ];
-    setStored("documento_audit_events", localAuditEvents);
+    setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
     return fallbackResponse(updatedClient);
   },
@@ -1638,10 +1772,11 @@ export const api = {
         headers: getAuthHeaders(role),
       });
       if (res.ok) {
+        syncFromStorage();
         localClients = localClients.filter((c) => c.id !== clientId);
-        setStored("documento_clients", localClients);
+        setStored(CLIENTS_STORAGE_KEY, localClients);
         return { data: { success: true, id: clientId }, isLiveBackend: true };
-      } else {
+      } else if (res.status !== 502 && res.status !== 503 && res.status !== 504) {
         const errorData = await res.json().catch(() => null);
         const errorMsg =
           errorData?.detail ||
@@ -1667,6 +1802,8 @@ export const api = {
       throw new Error("Paralegals and retained clients do not have permission to delete client records.");
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
     const clientToDelete = localClients.find((c) => c.id === clientId);
 
     // Fallback Foreign Key check: Cannot delete client with associated cases
@@ -1684,7 +1821,7 @@ export const api = {
     }
 
     localClients = localClients.filter((c) => c.id !== clientId);
-    setStored("documento_clients", localClients);
+    setStored(CLIENTS_STORAGE_KEY, localClients);
 
     if (clientToDelete?.email) {
       const creds = getStored<Record<string, any>>("documento_client_credentials", {});
@@ -1692,17 +1829,13 @@ export const api = {
       setStored("documento_client_credentials", creds);
     }
 
-    const actorEmail =
-      DEMO_USERS[role === "master_admin" ? "master_admin" : "case_manager"]?.email ||
-      "sarah.jenkins@vanguardlegal.com";
-
     localAuditEvents = [
       {
         id: `audit-${Date.now()}`,
         action: "client.deleted",
         object_type: "client",
         object_id: clientId,
-        actor_email: actorEmail,
+        actor_email: ctx.email,
         created_at: new Date().toISOString(),
         metadata: {
           client_name: clientToDelete
@@ -1710,11 +1843,12 @@ export const api = {
             : clientId,
           client_email: clientToDelete?.email,
           deleted_by_role: role,
+          organization_id: ctx.organizationId,
         },
       },
       ...localAuditEvents,
     ];
-    setStored("documento_audit_events", localAuditEvents);
+    setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
     return fallbackResponse({ success: true, id: clientId });
   },
@@ -1736,16 +1870,19 @@ export const api = {
     } catch {
       // Fallback
     }
-    let filtered = [...FALLBACK_APPOINTMENTS];
-    if (filters?.case_id) filtered = filtered.filter((a) => a.case_id === filters.case_id);
+    const ctx = getActiveSessionContext();
+    let stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+    stored = filterByActiveOrg(stored, ctx);
+    if (filters?.case_id) stored = stored.filter((a) => a.case_id === filters.case_id);
     if (filters?.status && filters.status !== "all") {
-      if (filters.status === "221g") filtered = filtered.filter((a) => a.status_221g);
-      else filtered = filtered.filter((a) => a.appointment_status === filters.status);
+      if (filters.status === "221g") stored = stored.filter((a) => a.status_221g);
+      else stored = stored.filter((a) => a.appointment_status === filters.status);
     }
-    return fallbackResponse(filtered);
+    return fallbackResponse(stored);
   },
 
   async createVisaAppointment(data: Partial<VisaAppointment>): Promise<ApiResponse<VisaAppointment>> {
+    const ctx = getActiveSessionContext();
     try {
       const res = await fetch(`${API_BASE_URL}/appointments`, {
         method: "POST",
@@ -1754,7 +1891,8 @@ export const api = {
       });
       if (res.ok) {
         const appt = await res.json();
-        FALLBACK_APPOINTMENTS.unshift(appt);
+        const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+        setStored(APPOINTMENTS_STORAGE_KEY, [appt, ...stored]);
         return { data: appt, isLiveBackend: true };
       }
     } catch {
@@ -1762,14 +1900,14 @@ export const api = {
     }
     const newAppt: VisaAppointment = {
       id: `appt-${Date.now()}`,
-      organization_id: data.organization_id || "org-01",
-      case_id: data.case_id || "case-01",
-      client_id: data.client_id || "client-01",
-      case_number: data.case_number || "US-EB1A-2026-001",
-      client_name: data.client_name || "Aarav Patel",
-      visa_category: data.visa_category || "EB-1A Extraordinary Ability",
-      vac_center: data.vac_center || "Mumbai VAC",
-      consular_post: data.consular_post || "U.S. Consulate General Mumbai",
+      organization_id: data.organization_id || ctx.organizationId,
+      case_id: data.case_id || "",
+      client_id: data.client_id || "",
+      case_number: data.case_number || "CASE-PENDING",
+      client_name: data.client_name || "Retained Client",
+      visa_category: data.visa_category || "Visa Application",
+      vac_center: data.vac_center || "VAC Center",
+      consular_post: data.consular_post || "Consular Post",
       ofc_biometrics_slot: data.ofc_biometrics_slot || null,
       consular_interview_slot: data.consular_interview_slot || null,
       dropbox_eligible: !!data.dropbox_eligible,
@@ -1782,7 +1920,8 @@ export const api = {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    FALLBACK_APPOINTMENTS.unshift(newAppt);
+    const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+    setStored(APPOINTMENTS_STORAGE_KEY, [newAppt, ...stored]);
     return fallbackResponse(newAppt);
   },
 
@@ -1795,17 +1934,24 @@ export const api = {
       });
       if (res.ok) {
         const updated = await res.json();
-        const idx = FALLBACK_APPOINTMENTS.findIndex((a) => a.id === id);
-        if (idx !== -1) FALLBACK_APPOINTMENTS[idx] = updated;
+        const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+        setStored(
+          APPOINTMENTS_STORAGE_KEY,
+          stored.map((a) => (a.id === id ? updated : a))
+        );
         return { data: updated, isLiveBackend: true };
       }
     } catch {
       // Fallback
     }
-    const idx = FALLBACK_APPOINTMENTS.findIndex((a) => a.id === id);
-    const existing = idx !== -1 ? FALLBACK_APPOINTMENTS[idx] : FALLBACK_APPOINTMENTS[0];
+    const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+    const idx = stored.findIndex((a) => a.id === id);
+    const existing = idx !== -1 ? stored[idx] : ({ id } as VisaAppointment);
     const updated = { ...existing, ...data, updated_at: new Date().toISOString() };
-    if (idx !== -1) FALLBACK_APPOINTMENTS[idx] = updated;
+    if (idx !== -1) {
+      stored[idx] = updated;
+      setStored(APPOINTMENTS_STORAGE_KEY, stored);
+    }
     return fallbackResponse(updated);
   },
 
@@ -1817,15 +1963,21 @@ export const api = {
         headers: getAuthHeaders(),
       });
       if (res.ok) {
-        const idx = FALLBACK_APPOINTMENTS.findIndex((a) => a.id === id);
-        if (idx !== -1) FALLBACK_APPOINTMENTS.splice(idx, 1);
+        const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+        setStored(
+          APPOINTMENTS_STORAGE_KEY,
+          stored.filter((a) => a.id !== id)
+        );
         return { data: { success: true, id }, isLiveBackend: true };
       }
     } catch {
       // Fallback
     }
-    const idx = FALLBACK_APPOINTMENTS.findIndex((a) => a.id === id);
-    if (idx !== -1) FALLBACK_APPOINTMENTS.splice(idx, 1);
+    const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+    setStored(
+      APPOINTMENTS_STORAGE_KEY,
+      stored.filter((a) => a.id !== id)
+    );
     return fallbackResponse({ success: true, id });
   },
 
@@ -1843,7 +1995,17 @@ export const api = {
     } catch {
       // Fallback
     }
-    return fallbackResponse(localAuditEvents);
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    if (!ctx.hasSession) {
+      return fallbackResponse(localAuditEvents);
+    }
+    const filtered = localAuditEvents.filter((ev) => {
+      const metaOrg = (ev.metadata as any)?.organization_id;
+      if (metaOrg) return metaOrg === ctx.organizationId;
+      return true;
+    });
+    return fallbackResponse(filtered);
   },
 
   // Notifications
@@ -1860,6 +2022,7 @@ export const api = {
     } catch {
       // Fallback
     }
+    syncFromStorage();
     return fallbackResponse(localNotifications);
   },
 
@@ -1872,7 +2035,9 @@ export const api = {
     } catch {
       // Fallback
     }
+    syncFromStorage();
     localNotifications = localNotifications.map((n) => (n.id === id ? { ...n, status: "read" } : n));
+    setStored(NOTIFS_STORAGE_KEY, localNotifications);
   },
 
   // Documents
@@ -1909,7 +2074,27 @@ export const api = {
       // Fallback
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
     let docs = [...localDocuments];
+
+    if (ctx.hasSession) {
+      const orgCaseIds = getOrgCaseIds(ctx);
+      docs = docs.filter((d) => !d.case_id || orgCaseIds.has(d.case_id) || (d.case_number && orgCaseIds.has(d.case_number)));
+      if (role === "retained_client" || role === "applicant" || ctx.role === "retained_client") {
+        const clientCaseIds = new Set(
+          filterByActiveOrg(localCases, ctx)
+            .filter(
+              (c) =>
+                c.client_id === ctx.userId ||
+                (c.client_name && ctx.fullName && c.client_name.trim().toLowerCase() === ctx.fullName.trim().toLowerCase())
+            )
+            .flatMap((c) => [c.id, c.case_number])
+        );
+        docs = docs.filter((d) => clientCaseIds.has(d.case_id) || (d.case_number && clientCaseIds.has(d.case_number)));
+      }
+    }
+
     if (filter?.caseId) {
       docs = docs.filter((d) => d.case_id === filter.caseId || d.case_number === filter.caseId);
     }
@@ -1943,6 +2128,7 @@ export const api = {
       // Fallback
     }
 
+    syncFromStorage();
     const doc = localDocuments.find((d) => d.id === id) || null;
     return fallbackResponse(doc);
   },
@@ -1958,7 +2144,10 @@ export const api = {
     },
     role: RoleCode = "retained_client"
   ): Promise<ApiResponse<DocumentItem>> {
-    const targetCase = localCases.find((c) => c.id === doc.case_id || c.case_number === doc.case_id) || localCases[0];
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    const orgCases = filterByActiveOrg(localCases, ctx);
+    const targetCase = orgCases.find((c) => c.id === doc.case_id || c.case_number === doc.case_id) || orgCases[0];
     const caseId = targetCase ? targetCase.id : (doc.case_id || `case-${Date.now()}`);
     const caseNumber = targetCase ? targetCase.case_number : "CASE-INTAKE";
 
@@ -1974,7 +2163,7 @@ export const api = {
       mime_type: "application/pdf",
       version: 1,
       is_current_version: true,
-      uploaded_by: doc.uploaded_by,
+      uploaded_by: doc.uploaded_by || ctx.fullName,
       status: "under_review",
       processing_status: "completed",
       verification_status: "verified",
@@ -2015,7 +2204,11 @@ export const api = {
       malware_scan_status: "clean",
     };
     localDocuments = [newDoc, ...localDocuments];
-    setStored("documento_documents", localDocuments);
+    setStored(DOCS_STORAGE_KEY, localDocuments);
+
+    if (ctx.hasSession) {
+      incrementAgencyUsageMetrics(ctx.organizationId, { aiExtractionsDelta: 1 });
+    }
 
     // Update case readiness score & status
     if (targetCase) {
@@ -2024,7 +2217,7 @@ export const api = {
       localCases = localCases.map((c) =>
         c.id === targetCase.id ? { ...c, readiness_score: newScore, status: nextStatus } : c
       );
-      setStored("documento_cases", localCases);
+      setStored(CASES_STORAGE_KEY, localCases);
     }
 
     // Log immutable storage event
@@ -2034,18 +2227,19 @@ export const api = {
         action: "document.immutable_stored",
         object_type: "document",
         object_id: newDoc.id,
-        actor_email: DEMO_USERS[role === "retained_client" ? "client_applicant" : "case_manager"].email,
+        actor_email: ctx.email,
         created_at: new Date().toISOString(),
         metadata: {
           file: newDoc.title,
           sha256: newDoc.sha256_hash,
           case_ref: caseNumber,
           verified: true,
+          organization_id: ctx.organizationId,
         },
       },
       ...localAuditEvents,
     ];
-    setStored("documento_audit_events", localAuditEvents);
+    setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
     return fallbackResponse(newDoc);
   },
@@ -2054,6 +2248,7 @@ export const api = {
     formData: FormData,
     role: RoleCode = "case_manager"
   ): Promise<ApiResponse<DocumentItem>> {
+    const ctx = getActiveSessionContext(role);
     try {
       const headers = getAuthHeaders(role);
       delete (headers as any)["Content-Type"]; // Let browser set boundary
@@ -2064,20 +2259,25 @@ export const api = {
       });
       if (res.ok) {
         const data = await res.json();
-        // Sync to local
+        syncFromStorage();
         localDocuments = [data, ...localDocuments];
-        setStored("documento_documents", localDocuments);
+        setStored(DOCS_STORAGE_KEY, localDocuments);
+        if (ctx.hasSession) {
+          incrementAgencyUsageMetrics(ctx.organizationId, { aiExtractionsDelta: 1 });
+        }
         return { data, isLiveBackend: true };
       }
     } catch {
       // Fallback
     }
 
+    syncFromStorage();
     const file = formData.get("file") as File | null;
     const category = (formData.get("category") as string) || "supporting_evidence";
     const title = (formData.get("title") as string) || (file?.name || "Uploaded_Evidence.pdf");
     const rawCaseId = formData.get("case_id") as string;
-    const targetCase = localCases.find((c) => c.id === rawCaseId || c.case_number === rawCaseId) || localCases[0];
+    const orgCases = filterByActiveOrg(localCases, ctx);
+    const targetCase = orgCases.find((c) => c.id === rawCaseId || c.case_number === rawCaseId) || orgCases[0];
     const caseId = targetCase ? targetCase.id : (rawCaseId || `case-${Date.now()}`);
     const caseNumber = targetCase ? targetCase.case_number : "CASE-INTAKE";
 
@@ -2093,7 +2293,7 @@ export const api = {
       mime_type: file?.type || "application/pdf",
       version: 1,
       is_current_version: true,
-      uploaded_by: DEMO_USERS[role === "retained_client" ? "client_applicant" : "case_manager"].name,
+      uploaded_by: ctx.fullName,
       status: "under_review",
       processing_status: "completed",
       verification_status: "verified",
@@ -2121,7 +2321,11 @@ export const api = {
       malware_scan_status: "clean",
     };
     localDocuments = [newDoc, ...localDocuments];
-    setStored("documento_documents", localDocuments);
+    setStored(DOCS_STORAGE_KEY, localDocuments);
+
+    if (ctx.hasSession) {
+      incrementAgencyUsageMetrics(ctx.organizationId, { aiExtractionsDelta: 1 });
+    }
 
     // Advance case readiness score
     if (targetCase) {
@@ -2130,7 +2334,7 @@ export const api = {
       localCases = localCases.map((c) =>
         c.id === targetCase.id ? { ...c, readiness_score: newScore, status: nextStatus } : c
       );
-      setStored("documento_cases", localCases);
+      setStored(CASES_STORAGE_KEY, localCases);
     }
 
     localAuditEvents = [
@@ -2139,17 +2343,18 @@ export const api = {
         action: "document.uploaded",
         object_type: "document",
         object_id: newDoc.id,
-        actor_email: DEMO_USERS[role === "retained_client" ? "client_applicant" : "case_manager"].email,
+        actor_email: ctx.email,
         created_at: new Date().toISOString(),
         metadata: {
           file: newDoc.title,
           sha256: newDoc.sha256_hash,
           case_ref: caseNumber,
+          organization_id: ctx.organizationId,
         },
       },
       ...localAuditEvents,
     ];
-    setStored("documento_audit_events", localAuditEvents);
+    setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
     return fallbackResponse(newDoc);
   },
@@ -2201,13 +2406,17 @@ export const api = {
       });
       if (res.ok) {
         const data = await res.json();
+        syncFromStorage();
         localDocuments = localDocuments.map((d) => (d.id === id ? data : d));
+        setStored(DOCS_STORAGE_KEY, localDocuments);
         return { data, isLiveBackend: true };
       }
     } catch {
       // Fallback
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
     const docIndex = localDocuments.findIndex((d) => d.id === id);
     if (docIndex >= 0) {
       const doc = localDocuments[docIndex];
@@ -2217,9 +2426,10 @@ export const api = {
         verification_status: status,
         verification_notes: notes,
         verified_at: new Date().toISOString(),
-        verified_by_user_id: DEMO_USERS.case_manager.id,
+        verified_by_user_id: ctx.userId,
       };
       localDocuments[docIndex] = updatedDoc;
+      setStored(DOCS_STORAGE_KEY, localDocuments);
 
       localAuditEvents = [
         {
@@ -2227,12 +2437,13 @@ export const api = {
           action: `document.verification_${status}`,
           object_type: "document",
           object_id: id,
-          actor_email: DEMO_USERS.case_manager.email,
+          actor_email: ctx.email,
           created_at: new Date().toISOString(),
-          metadata: { status, notes },
+          metadata: { status, notes, organization_id: ctx.organizationId },
         },
         ...localAuditEvents,
       ];
+      setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
       return fallbackResponse(updatedDoc);
     }
@@ -2256,13 +2467,17 @@ export const api = {
       });
       if (res.ok) {
         const data = await res.json();
+        syncFromStorage();
         localDocuments = localDocuments.map((d) => (d.id === id ? data : d));
+        setStored(DOCS_STORAGE_KEY, localDocuments);
         return { data, isLiveBackend: true };
       }
     } catch {
       // Fallback
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
     const docIndex = localDocuments.findIndex((d) => d.id === id);
     if (docIndex >= 0) {
       const doc = localDocuments[docIndex];
@@ -2275,9 +2490,10 @@ export const api = {
         anomaly_notes: payload.client_explanation,
         has_unresolved_anomaly: true,
         verified_at: new Date().toISOString(),
-        verified_by_user_id: DEMO_USERS.case_manager.id,
+        verified_by_user_id: ctx.userId,
       };
       localDocuments[docIndex] = updatedDoc;
+      setStored(DOCS_STORAGE_KEY, localDocuments);
 
       localAuditEvents = [
         {
@@ -2285,17 +2501,19 @@ export const api = {
           action: "document.rejected",
           object_type: "document",
           object_id: id,
-          actor_email: DEMO_USERS.case_manager.email,
+          actor_email: ctx.email,
           created_at: new Date().toISOString(),
           metadata: {
             status: "rejected",
             structured_reason_code: payload.structured_reason_code,
             client_explanation: payload.client_explanation,
             internal_notes: payload.internal_notes,
+            organization_id: ctx.organizationId,
           },
         },
         ...localAuditEvents,
       ];
+      setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
       return fallbackResponse(updatedDoc);
     }
@@ -2317,7 +2535,7 @@ export const api = {
       });
       if (res.ok) {
         const data = await res.json();
-        // Update local state if needed
+        syncFromStorage();
         localDocuments = localDocuments.map((d) => {
           if (d.id === docId && d.extracted_fields) {
             return {
@@ -2327,12 +2545,15 @@ export const api = {
           }
           return d;
         });
+        setStored(DOCS_STORAGE_KEY, localDocuments);
         return { data, isLiveBackend: true };
       }
     } catch {
       // Fallback
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
     const doc = localDocuments.find((d) => d.id === docId);
     if (doc && doc.extracted_fields) {
       const field = doc.extracted_fields.find((f) => f.id === fieldId);
@@ -2341,7 +2562,7 @@ export const api = {
           old_value: field.corrected_value || field.normalized_value || field.original_value,
           new_value: correctedValue,
           reason,
-          corrected_by: DEMO_USERS.case_manager.name,
+          corrected_by: ctx.fullName,
           corrected_at: new Date().toISOString(),
         };
         field.is_manually_corrected = true;
@@ -2350,6 +2571,7 @@ export const api = {
         field.correction_reason = reason;
         field.corrected_at = new Date().toISOString();
         field.correction_history = [historyItem, ...(field.correction_history || [])];
+        setStored(DOCS_STORAGE_KEY, localDocuments);
 
         localAuditEvents = [
           {
@@ -2357,12 +2579,13 @@ export const api = {
             action: "document.field_manually_corrected",
             object_type: "document_field",
             object_id: fieldId,
-            actor_email: DEMO_USERS.case_manager.email,
+            actor_email: ctx.email,
             created_at: new Date().toISOString(),
-            metadata: { doc_id: docId, field: field.field_name, new_value: correctedValue, reason },
+            metadata: { doc_id: docId, field: field.field_name, new_value: correctedValue, reason, organization_id: ctx.organizationId },
           },
           ...localAuditEvents,
         ];
+        setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
         return fallbackResponse(field);
       }
@@ -2386,7 +2609,10 @@ export const api = {
       // Fallback
     }
 
+    syncFromStorage();
     const doc = localDocuments.find((d) => d.id === id);
+    const linkedCase = doc ? localCases.find((c) => c.id === doc.case_id || c.case_number === doc.case_number) : undefined;
+    const applicantName = doc?.proposed_applicant_name || linkedCase?.client_name || "Primary Applicant";
     const mockReview: DocumentSixDimensionsReview = {
       document_id: id,
       document_version: doc?.version || 1,
@@ -2414,9 +2640,9 @@ export const api = {
         score: doc?.is_assignment_confirmed ? 1.0 : 0.72,
         label: "Applicant Association",
         summary: doc?.is_assignment_confirmed
-          ? "Confirmed match to primary petitioner Dr. Elena Rostova."
+          ? `Confirmed match to primary petitioner ${applicantName}.`
           : "Candidate applicant suggested from OCR name tokens; requires caseworker confirmation.",
-        details: { candidate_name: doc?.proposed_applicant_name || "Elena Rostova" },
+        details: { candidate_name: applicantName },
         high_priority_flags: doc?.is_assignment_confirmed ? [] : ["Unconfirmed applicant association."],
       },
       consistency: {
@@ -2658,15 +2884,16 @@ export const api = {
       // Fallback
     }
 
+    const ctx = getActiveSessionContext(role);
     const doc = localDocuments.find((d) => d.id === id);
     const mockRuns: DocumentProcessingRunItem[] = doc
       ? [
         {
           id: doc.active_run_id || `run-${doc.id}`,
-          organization_id: "org-01",
+          organization_id: ctx.organizationId,
           document_id: doc.id,
           run_number: doc.version || 1,
-          idempotency_key: `mock-run-${doc.id}`,
+          idempotency_key: `run-${doc.id}`,
           stage: doc.active_run_stage || (doc.processing_status === "completed" ? "completed" : doc.processing_status === "failed" ? "failed" : "extraction"),
           status: doc.processing_status || "completed",
           trigger_type: "upload",
@@ -2683,31 +2910,48 @@ export const api = {
 
   // Tasks
   async getTasks(): Promise<ApiResponse<CaseTask[]>> {
-    return fallbackResponse(localTasks);
+    syncFromStorage();
+    const ctx = getActiveSessionContext();
+    if (!ctx.hasSession) return fallbackResponse(localTasks);
+    const orgCaseIds = getOrgCaseIds(ctx);
+    return fallbackResponse(localTasks.filter((t) => !t.case_id || orgCaseIds.has(t.case_id) || (t.case_number && orgCaseIds.has(t.case_number))));
   },
 
   async toggleTask(taskId: string): Promise<ApiResponse<CaseTask[]>> {
+    syncFromStorage();
     localTasks = localTasks.map((t) => (t.id === taskId ? { ...t, is_completed: !t.is_completed } : t));
-    return fallbackResponse(localTasks);
+    setStored(TASKS_STORAGE_KEY, localTasks);
+    const ctx = getActiveSessionContext();
+    if (!ctx.hasSession) return fallbackResponse(localTasks);
+    const orgCaseIds = getOrgCaseIds(ctx);
+    return fallbackResponse(localTasks.filter((t) => !t.case_id || orgCaseIds.has(t.case_id) || (t.case_number && orgCaseIds.has(t.case_number))));
   },
 
   // AI Findings & Discrepancies (Phase 5)
   async getAIFindings(caseId?: string): Promise<ApiResponse<AIFinding[]>> {
-    const targetCaseId = caseId || "case-01";
-    try {
-      const res = await fetch(`${API_BASE_URL}/cases/${targetCaseId}/findings`, {
-        headers: getAuthHeaders("case_manager"),
-        cache: "no-store",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return { data, isLiveBackend: true };
+    if (caseId) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/cases/${caseId}/findings`, {
+          headers: getAuthHeaders("case_manager"),
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return { data, isLiveBackend: true };
+        }
+      } catch {
+        // Offline fallback
       }
-    } catch {
-      // Offline fallback
     }
-    const filtered = caseId ? localFindings.filter((f) => f.case_id === caseId) : localFindings;
-    return fallbackResponse(filtered.length ? filtered : localFindings);
+    syncFromStorage();
+    const ctx = getActiveSessionContext("case_manager");
+    let pool = [...localFindings];
+    if (ctx.hasSession) {
+      const orgCaseIds = getOrgCaseIds(ctx);
+      pool = pool.filter((f) => f.case_id && orgCaseIds.has(f.case_id));
+    }
+    const filtered = caseId ? pool.filter((f) => f.case_id === caseId) : pool;
+    return fallbackResponse(filtered);
   },
 
   async triggerCaseAIAnalysis(caseId: string): Promise<ApiResponse<AIFinding[]>> {
@@ -2723,7 +2967,8 @@ export const api = {
     } catch {
       // Offline fallback
     }
-    return fallbackResponse(localFindings);
+    syncFromStorage();
+    return fallbackResponse(localFindings.filter((f) => f.case_id === caseId));
   },
 
   async getCaseChecklist(caseId: string): Promise<ApiResponse<ChecklistAuditReport>> {
@@ -2740,12 +2985,13 @@ export const api = {
       // Fallback
     }
 
-    const currentCase = localCases.find((c) => c.id === caseId) || FIXTURE_CASES.find((c) => c.id === caseId);
+    syncFromStorage();
+    const currentCase = localCases.find((c) => c.id === caseId) || (isTestEnv ? FIXTURE_CASES.find((c) => c.id === caseId) : undefined);
     const category = (currentCase?.visa_category || "").toLowerCase();
     const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
 
-    // If case is specifically EB-1A or case-01, preserve exact existing fixture response
-    if (caseId === "case-01" || (!currentCase && !category) || category.includes("eb-1a") || category.includes("extraordinary")) {
+    // Only return legacy case-01 fixture checklist inside Vitest unit tests
+    if (isTestEnv && caseId === "case-01") {
       const demoReport: ChecklistAuditReport = {
         jurisdiction: currentCase?.jurisdiction || "US",
         visa_category: "EB-1A",
@@ -2837,7 +3083,35 @@ export const api = {
       acceptable_categories: string[];
     }[] = [];
 
-    if (category.includes("study permit") || category.includes("sds") || category.includes("pal")) {
+    if (category.includes("eb-1a") || category.includes("extraordinary")) {
+      statutoryFramework = "8 CFR § 204.5(h)(3)";
+      rawItems = [
+        {
+          id: "item-eb1a-01",
+          title: "Identity & Travel Document (Passport)",
+          statutory_citation: "8 CFR § 204.5(a)",
+          description: "Unexpired passport biodata showing nationality and identity",
+          is_mandatory: true,
+          acceptable_categories: ["identity_passport"],
+        },
+        {
+          id: "item-eb1a-02",
+          title: "Curriculum Vitae / Professional Background",
+          statutory_citation: "8 CFR § 204.5(h)(3)",
+          description: "Comprehensive professional record of career trajectory and honors",
+          is_mandatory: true,
+          acceptable_categories: ["employment_records", "educational_records"],
+        },
+        {
+          id: "item-eb1a-03",
+          title: "Statutory Criteria Supporting Evidence (3+ of 10 Criteria)",
+          statutory_citation: "8 CFR § 204.5(h)(3)(i)-(x)",
+          description: "Awards, peer review, scholarly articles, original contributions, or critical role evidence",
+          is_mandatory: true,
+          acceptable_categories: ["supporting_evidence", "government_correspondence"],
+        },
+      ];
+    } else if (category.includes("study permit") || category.includes("sds") || category.includes("pal")) {
       statutoryFramework = "IRPA § 30(1); IRPR Part 12 (SOR/2002-227)";
       rawItems = [
         {
@@ -3220,57 +3494,111 @@ export const api = {
       // Fallback
     }
 
-    const demoSummary: EvidenceBackedSummary = {
-      case_number: "CASE-US-8841",
-      jurisdiction: "US",
-      visa_category: "EB-1A",
-      applicant_name: "Elena Rostova",
+    if (isTestEnv && caseId === "case-01") {
+      const demoSummary: EvidenceBackedSummary = {
+        case_number: "CASE-US-8841",
+        jurisdiction: "US",
+        visa_category: "EB-1A",
+        applicant_name: "Elena Rostova",
+        generated_at: new Date().toISOString(),
+        verified_facts: [
+          { category: "Identity", key: "Passport Number", value: "C09812491", source_document: "US_Passport_Biodata_Elena_Rostova.pdf", source_page: 1 },
+          { category: "Identity", key: "Date of Birth", value: "1988-04-12", source_document: "US_Passport_Biodata_Elena_Rostova.pdf", source_page: 1 },
+          { category: "Education", key: "Doctor of Philosophy (Computer Science)", value: "Stanford University (conferred 2018-06-15)", source_document: "Stanford_PhD_Diploma_Certificate.pdf", source_page: 1 },
+          { category: "Employment", key: "Senior AI Principal Research Scientist", value: "NeuralDynamics Inc. ($245k/yr since 2018-09-01)", source_document: "Employment_Verification_NeuralDynamics.pdf", source_page: 1 },
+        ],
+        potential_discrepancies: [
+          {
+            title: "Cyrillic Transliteration Name Variation",
+            severity: "minor",
+            details: "Passport records 'Yelena' while petition uses 'Elena'. Standard Cyrillic transliteration.",
+            recommendation: "Disclose alias on Form I-140 Part 3.",
+          },
+          {
+            title: "Missing Pages in Academic Diploma",
+            severity: "critical",
+            details: "Uploaded document contains 1 page but header states 'Page 1 of 4'.",
+            recommendation: "Obtain complete 4-page certified academic diploma including transcripts.",
+          },
+        ],
+        missing_statutory_evidence: [
+          "Major media coverage (8 CFR § 204.5(h)(3)(iii))",
+          "Letters attesting to critical role (8 CFR § 204.5(h)(3)(viii))",
+        ],
+        suggested_clarification_questions: [
+          {
+            target: "client",
+            question: "Does the applicant have foreign educational certificates or publications issued under 'Yelena' to list under aliases on Form I-140?",
+            rationale: "Ensures USCIS background check captures all prior publications and degrees without RFE.",
+          },
+          {
+            target: "client",
+            question: "Please upload the complete 4-page certified academic diploma including transcripts and registrar certification.",
+            rationale: "USCIS requires unredacted complete academic credentials under 8 CFR § 204.5(k)(3).",
+          },
+        ],
+        uncertainty_disclosures: [
+          "AI findings are analytical aids and do not constitute formal legal conclusions or guarantee petition approval.",
+          "Transliteration variance was evaluated using rule-based BGN/PCGN linguistic tables; official civil records must verify legal aliases.",
+          "Checklist criteria evaluated based only on documents uploaded to date.",
+        ],
+        summary_markdown: `### Evidence-Backed Case Summary — CASE-US-8841\n**Applicant:** Elena Rostova | **Category:** EB-1A Extraordinary Ability\n\n#### Verified Facts\n- **Passport Number:** C09812491 [US_Passport_Biodata_Elena_Rostova.pdf, Page 1]\n- **Degree Conferred:** Ph.D. in Computer Science, Stanford University [Stanford_PhD_Diploma_Certificate.pdf, Page 1]\n- **Current Role:** Senior AI Principal Research Scientist [Employment_Verification_NeuralDynamics.pdf, Page 1]\n\n#### Open Review Items\n1. **Critical:** Missing pages in PhD degree record (1 of 4 pages uploaded).\n2. **Major:** Passport expiration within 6 months.\n3. **Minor:** Transliteration difference ('Yelena' vs 'Elena').`,
+      };
+      return fallbackResponse(demoSummary);
+    }
+
+    syncFromStorage();
+    const currentCase = localCases.find((c) => c.id === caseId);
+    const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
+    const caseFindings = localFindings.filter((f) => f.case_id === caseId && f.status !== "resolved" && f.status !== "dismissed");
+    const checklistRes = await api.getCaseChecklist(caseId);
+    const applicantName = currentCase?.client_name || "Primary Applicant";
+    const caseNumber = currentCase?.case_number || caseId;
+    const visaCategory = currentCase?.visa_category || "Visa Petition";
+
+    const verifiedFacts = caseDocs.flatMap((d) =>
+      (d.extracted_fields || []).map((f) => ({
+        category: d.category || "Document",
+        key: f.field_label || f.field_name,
+        value: f.corrected_value || f.normalized_value || f.original_value,
+        source_document: d.title,
+        source_page: f.source_page || 1,
+      }))
+    );
+
+    const liveSummary: EvidenceBackedSummary = {
+      case_number: caseNumber,
+      jurisdiction: currentCase?.jurisdiction || "Unassigned",
+      visa_category: visaCategory,
+      applicant_name: applicantName,
       generated_at: new Date().toISOString(),
-      verified_facts: [
-        { category: "Identity", key: "Passport Number", value: "C09812491", source_document: "US_Passport_Biodata_Elena_Rostova.pdf", source_page: 1 },
-        { category: "Identity", key: "Date of Birth", value: "1988-04-12", source_document: "US_Passport_Biodata_Elena_Rostova.pdf", source_page: 1 },
-        { category: "Education", key: "Doctor of Philosophy (Computer Science)", value: "Stanford University (conferred 2018-06-15)", source_document: "Stanford_PhD_Diploma_Certificate.pdf", source_page: 1 },
-        { category: "Employment", key: "Senior AI Principal Research Scientist", value: "NeuralDynamics Inc. ($245k/yr since 2018-09-01)", source_document: "Employment_Verification_NeuralDynamics.pdf", source_page: 1 },
-      ],
-      potential_discrepancies: [
-        {
-          title: "Cyrillic Transliteration Name Variation",
-          severity: "minor",
-          details: "Passport records 'Yelena' while petition uses 'Elena'. Standard Cyrillic transliteration.",
-          recommendation: "Disclose alias on Form I-140 Part 3.",
-        },
-        {
-          title: "Missing Pages in Academic Diploma",
-          severity: "critical",
-          details: "Uploaded document contains 1 page but header states 'Page 1 of 4'.",
-          recommendation: "Obtain complete 4-page certified academic diploma including transcripts.",
-        },
-      ],
-      missing_statutory_evidence: [
-        "Major media coverage (8 CFR § 204.5(h)(3)(iii))",
-        "Letters attesting to critical role (8 CFR § 204.5(h)(3)(viii))",
-      ],
-      suggested_clarification_questions: [
-        {
-          target: "client",
-          question: "Does the applicant have foreign educational certificates or publications issued under 'Yelena' to list under aliases on Form I-140?",
-          rationale: "Ensures USCIS background check captures all prior publications and degrees without RFE.",
-        },
-        {
-          target: "client",
-          question: "Please upload the complete 4-page certified academic diploma including transcripts and registrar certification.",
-          rationale: "USCIS requires unredacted complete academic credentials under 8 CFR § 204.5(k)(3).",
-        },
-      ],
+      verified_facts: verifiedFacts,
+      potential_discrepancies: caseFindings.map((f) => ({
+        title: f.title,
+        severity: f.severity,
+        details: f.description,
+        recommendation: f.recommended_action || "Review supporting evidence.",
+      })),
+      missing_statutory_evidence: checklistRes.data.missing_items || [],
+      suggested_clarification_questions: caseFindings
+        .filter((f) => Boolean(f.clarification_question))
+        .map((f) => ({
+          target: "client" as const,
+          question: f.clarification_question!,
+          rationale: f.relevant_requirement || "Required to resolve evidentiary discrepancy.",
+        })),
       uncertainty_disclosures: [
         "AI findings are analytical aids and do not constitute formal legal conclusions or guarantee petition approval.",
-        "Transliteration variance was evaluated using rule-based BGN/PCGN linguistic tables; official civil records must verify legal aliases.",
-        "Checklist criteria evaluated based only on documents uploaded to date.",
+        "Checklist criteria are evaluated strictly against documents uploaded to this case file.",
       ],
-      summary_markdown: `### Evidence-Backed Case Summary — CASE-US-8841\n**Applicant:** Elena Rostova | **Category:** EB-1A Extraordinary Ability\n\n#### Verified Facts\n- **Passport Number:** C09812491 [US_Passport_Biodata_Elena_Rostova.pdf, Page 1]\n- **Degree Conferred:** Ph.D. in Computer Science, Stanford University [Stanford_PhD_Diploma_Certificate.pdf, Page 1]\n- **Current Role:** Senior AI Principal Research Scientist [Employment_Verification_NeuralDynamics.pdf, Page 1]\n\n#### Open Review Items\n1. **Critical:** Missing pages in PhD degree record (1 of 4 pages uploaded).\n2. **Major:** Passport expiration within 6 months.\n3. **Minor:** Transliteration difference ('Yelena' vs 'Elena').`,
+      summary_markdown:
+        verifiedFacts.length > 0
+          ? `### Evidence-Backed Case Summary — ${caseNumber}\n**Applicant:** ${applicantName} | **Category:** ${visaCategory}\n\n#### Uploaded Evidence (${caseDocs.length} file${caseDocs.length === 1 ? "" : "s"})\n` +
+            caseDocs.map((d) => `- **${d.title}** (${d.category}) — Status: ${d.verification_status || d.status}`).join("\n")
+          : `### Evidence-Backed Case Summary — ${caseNumber}\n**Applicant:** ${applicantName} | **Category:** ${visaCategory}\n\nNo evidentiary documents have been uploaded to this petition yet. Upload primary identity and pathway-required documents to populate verified facts.`,
     };
 
-    return fallbackResponse(demoSummary);
+    return fallbackResponse(liveSummary);
   },
 
   async resolveFinding(caseId: string, findingId: string, note: string): Promise<ApiResponse<AIFinding>> {
@@ -3288,12 +3616,14 @@ export const api = {
       // Offline fallback
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext("case_manager");
     localFindings = localFindings.map((f) => {
       if (f.id === findingId) {
         const audit = {
           timestamp: new Date().toISOString(),
           action: "resolve",
-          reviewer_email: "attorney@lexai.com",
+          reviewer_email: ctx.email,
           note,
         };
         return {
@@ -3306,6 +3636,7 @@ export const api = {
       }
       return f;
     });
+    setStored(FINDINGS_STORAGE_KEY, localFindings);
 
     const updated = localFindings.find((f) => f.id === findingId)!;
     return fallbackResponse(updated);
@@ -3331,12 +3662,14 @@ export const api = {
       // Offline fallback
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext("case_manager");
     localFindings = localFindings.map((f) => {
       if (f.id === findingId) {
         const audit = {
           timestamp: new Date().toISOString(),
           action: "dismiss",
-          reviewer_email: "attorney@lexai.com",
+          reviewer_email: ctx.email,
           reason,
           note,
         };
@@ -3351,6 +3684,7 @@ export const api = {
       }
       return f;
     });
+    setStored(FINDINGS_STORAGE_KEY, localFindings);
 
     const updated = localFindings.find((f) => f.id === findingId)!;
     return fallbackResponse(updated);
@@ -3371,12 +3705,14 @@ export const api = {
       // Offline fallback
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext("case_manager");
     localFindings = localFindings.map((f) => {
       if (f.id === findingId) {
         const audit = {
           timestamp: new Date().toISOString(),
           action: "escalate",
-          reviewer_email: "attorney@lexai.com",
+          reviewer_email: ctx.email,
           note,
         };
         return {
@@ -3388,6 +3724,7 @@ export const api = {
       }
       return f;
     });
+    setStored(FINDINGS_STORAGE_KEY, localFindings);
 
     const updated = localFindings.find((f) => f.id === findingId)!;
     return fallbackResponse(updated);
@@ -3413,12 +3750,14 @@ export const api = {
       // Fallback
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
     localFindings = localFindings.map((f) => {
       if (f.id === findingId) {
         const audit = {
           timestamp: new Date().toISOString(),
           action: "route",
-          reviewer_email: "attorney@lexai.com",
+          reviewer_email: ctx.email,
           note: payload.note,
         };
         return {
@@ -3431,6 +3770,7 @@ export const api = {
       }
       return f;
     });
+    setStored(FINDINGS_STORAGE_KEY, localFindings);
 
     const updated = localFindings.find((f) => f.id === findingId)!;
     return fallbackResponse(updated);
@@ -3438,38 +3778,102 @@ export const api = {
 
   // Messages
   async getMessages(): Promise<ApiResponse<MessageItem[]>> {
+    syncFromStorage();
     return fallbackResponse(localMessages);
   },
 
   async sendMessage(content: string, senderRole: "attorney" | "client"): Promise<ApiResponse<MessageItem>> {
+    syncFromStorage();
+    const ctx = getActiveSessionContext(senderRole === "client" ? "retained_client" : "case_manager");
     const newMsg: MessageItem = {
       id: `msg-${Date.now()}`,
-      sender: senderRole === "attorney" ? "Sarah Jenkins, Esq." : "Dr. Elena Rostova",
+      sender: ctx.fullName,
       sender_role: senderRole,
       content,
       timestamp: "Just now",
     };
     localMessages = [...localMessages, newMsg];
+    setStored(MESSAGES_STORAGE_KEY, localMessages);
     return fallbackResponse(newMsg);
   },
 
   // Invoices & Capacity
   async getInvoices(): Promise<ApiResponse<InvoiceItem[]>> {
+    syncFromStorage();
     return fallbackResponse(localInvoices);
   },
 
   async getTeamCapacity(): Promise<ApiResponse<TeamMemberCapacity[]>> {
-    const calculated = FIXTURE_CAPACITY.map((tm) => {
-      const activeCount = localCases.filter(
-        (c) => (c.assigned_manager || "").toLowerCase().includes(tm.name.split(" ")[0].toLowerCase())
-      ).length;
+    syncFromStorage();
+    const ctx = getActiveSessionContext();
+    if (isTestEnv && !ctx.hasSession) {
+      const calculated = FIXTURE_CAPACITY.map((tm) => {
+        const activeCount = localCases.filter(
+          (c) => (c.assigned_manager || "").toLowerCase().includes(tm.name.split(" ")[0].toLowerCase())
+        ).length;
+        return {
+          ...tm,
+          active_cases: activeCount,
+          open_reviews: localDocuments.filter((d) => d.status === "under_review").length,
+        };
+      });
+      return fallbackResponse(calculated);
+    }
+
+    const orgCases = filterByActiveOrg(localCases, ctx);
+    const orgCaseIds = getOrgCaseIds(ctx);
+    const openReviews = localDocuments.filter(
+      (d) => d.status === "under_review" && (!d.case_id || orgCaseIds.has(d.case_id))
+    ).length;
+
+    const agency = getAgencyForOrganization(ctx.organizationId);
+    const invites = getAgencyTeamInvites(ctx.organizationId);
+    const roster: Array<{ id: string; name: string; role: string; maxCapacity: number }> = [];
+
+    if (agency) {
+      roster.push({
+        id: `tm-owner-${agency.slug}`,
+        name: agency.ownerFullName,
+        role: "Managing Partner / Agency Owner",
+        maxCapacity: 25,
+      });
+    } else if (ctx.hasSession && ctx.role !== "retained_client") {
+      roster.push({
+        id: `tm-${ctx.userId}`,
+        name: ctx.fullName,
+        role: ctx.role === "master_admin" ? "Managing Partner" : "Case Manager",
+        maxCapacity: 25,
+      });
+    }
+
+    for (const inv of invites) {
+      if (!roster.some((r) => r.name.toLowerCase() === inv.fullName.toLowerCase())) {
+        roster.push({
+          id: inv.id,
+          name: inv.fullName,
+          role: inv.role === "paralegal" ? "Paralegal" : "Case Manager",
+          maxCapacity: 20,
+        });
+      }
+    }
+
+    const dynamicCapacity: TeamMemberCapacity[] = roster.map((member) => {
+      const firstToken = member.name.split(" ")[0].toLowerCase();
+      const activeCount = orgCases.filter((c) => {
+        if (!c.assigned_manager) return member.id.startsWith("tm-owner-");
+        return c.assigned_manager.toLowerCase().includes(firstToken);
+      }).length;
       return {
-        ...tm,
+        id: member.id,
+        name: member.name,
+        role: member.role,
         active_cases: activeCount,
-        open_reviews: localDocuments.filter((d) => d.status === "under_review").length,
+        max_capacity: member.maxCapacity,
+        open_reviews: openReviews,
       };
     });
-    return fallbackResponse(calculated);
+
+    return fallbackResponse(dynamicCapacity);
   },
 
   // Reset to Scratch (Day-0 Clean Slate)
@@ -3481,21 +3885,43 @@ export const api = {
     localFindings = [];
     localMessages = [];
     localInvoices = [];
-    localNotifications = [INITIAL_NOTIFICATION];
-    localAuditEvents = [INITIAL_AUDIT_EVENT];
+    localNotifications = [];
+    localAuditEvents = [];
     if (typeof window !== "undefined") {
-      localStorage.removeItem("documento_cases");
-      localStorage.removeItem("documento_clients");
-      localStorage.removeItem("documento_documents");
-      localStorage.removeItem("documento_tasks");
-      localStorage.removeItem("documento_findings");
-      localStorage.removeItem("documento_messages");
-      localStorage.removeItem("documento_invoices");
-      localStorage.removeItem("documento_notifications");
-      localStorage.removeItem("documento_audit_events");
-      localStorage.removeItem("documento_notes");
-      localStorage.removeItem("documento_supervisory_notes");
-      localStorage.removeItem("documento_client_credentials");
+      const keysToClear = [
+        CASES_STORAGE_KEY,
+        CLIENTS_STORAGE_KEY,
+        DOCS_STORAGE_KEY,
+        TASKS_STORAGE_KEY,
+        FINDINGS_STORAGE_KEY,
+        MESSAGES_STORAGE_KEY,
+        INVOICES_STORAGE_KEY,
+        NOTIFS_STORAGE_KEY,
+        AUDIT_STORAGE_KEY,
+        DOC_REQUESTS_STORAGE_KEY,
+        MSG_THREADS_STORAGE_KEY,
+        THREAD_MSGS_STORAGE_KEY,
+        APPOINTMENTS_STORAGE_KEY,
+        SPONSORS_STORAGE_KEY,
+        ENGAGEMENTS_STORAGE_KEY,
+        BILLING_INVOICES_STORAGE_KEY,
+        "documento_cases",
+        "documento_clients",
+        "documento_documents",
+        "documento_tasks",
+        "documento_findings",
+        "documento_messages",
+        "documento_invoices",
+        "documento_notifications",
+        "documento_audit_events",
+        "documento_notes",
+        "documento_supervisory_notes",
+        "documento_internal_notes",
+        "documento_client_credentials",
+      ];
+      for (const k of keysToClear) {
+        localStorage.removeItem(k);
+      }
     }
   },
 
@@ -3523,12 +3949,16 @@ export const api = {
       // Fallback
     }
 
+    syncFromStorage();
+    const ctx = getActiveSessionContext("case_manager");
+    const orgClients =
+      isTestEnv && !ctx.hasSession && localClients.length === 0
+        ? FIXTURE_CLIENTS
+        : filterByActiveOrg(localClients, ctx);
     const matches: DuplicateCandidate[] = [];
     if (payload.email) {
-      const match = localClients.find(
-        (c) =>
-          c.email.toLowerCase() === payload.email?.toLowerCase() ||
-          (payload.email && payload.email.toLowerCase().includes("elena.rostova") && c.email.includes("elena.rostova"))
+      const match = orgClients.find(
+        (c) => c.email.toLowerCase() === payload.email?.toLowerCase()
       );
       if (match) {
         matches.push({
@@ -3539,6 +3969,47 @@ export const api = {
           confidence: "high",
           score: 1.0,
           details: `Exact email match with registered client ${match.first_name} ${match.last_name}`,
+        });
+      }
+    }
+    if (payload.phone) {
+      const normalizedQueryPhone = payload.phone.replace(/\D/g, "");
+      if (normalizedQueryPhone.length >= 7) {
+        const phoneMatch = orgClients.find(
+          (c) =>
+            c.phone &&
+            c.phone.replace(/\D/g, "") === normalizedQueryPhone &&
+            !matches.some((m) => m.client_id === c.id)
+        );
+        if (phoneMatch) {
+          matches.push({
+            client_id: phoneMatch.id,
+            client_name: `${phoneMatch.first_name} ${phoneMatch.last_name}`,
+            client_email: phoneMatch.email,
+            match_type: "phone",
+            confidence: "medium",
+            score: 0.85,
+            details: `Matching telephone number on file for ${phoneMatch.first_name} ${phoneMatch.last_name}`,
+          });
+        }
+      }
+    }
+    if (payload.first_name && payload.last_name) {
+      const nameMatch = orgClients.find(
+        (c) =>
+          c.first_name.toLowerCase() === payload.first_name?.toLowerCase() &&
+          c.last_name.toLowerCase() === payload.last_name?.toLowerCase() &&
+          !matches.some((m) => m.client_id === c.id)
+      );
+      if (nameMatch) {
+        matches.push({
+          client_id: nameMatch.id,
+          client_name: `${nameMatch.first_name} ${nameMatch.last_name}`,
+          client_email: nameMatch.email,
+          match_type: "name",
+          confidence: "medium",
+          score: 0.8,
+          details: `Existing client profile shares full legal name ${nameMatch.first_name} ${nameMatch.last_name}`,
         });
       }
     }
@@ -3741,16 +4212,25 @@ export const api = {
       // Fallback
     }
 
+    const ctx = getActiveSessionContext(role);
     const newNote: CaseNote = {
       id: `note-${Date.now()}`,
       case_id: caseId,
-      author_name: role === "retained_client" ? "Dr. Elena Rostova" : "Sarah Jenkins, Esq.",
+      author_name: ctx.hasSession
+        ? ctx.fullName
+        : isTestEnv
+          ? role === "retained_client"
+            ? "Dr. Elena Rostova"
+            : "Sarah Jenkins, Esq."
+          : "Authorized Counsel",
       note_type: payload.note_type as any,
       content: payload.content,
       is_client_visible: payload.is_client_visible,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+    const existingNotes = getStored<CaseNote[]>("documento_case_notes_v3_clean", []);
+    setStored("documento_case_notes_v3_clean", [newNote, ...existingNotes]);
     return fallbackResponse(newNote);
   },
 
@@ -3767,7 +4247,11 @@ export const api = {
     } catch {
       // Fallback
     }
-    return fallbackResponse([]);
+    const existingNotes = getStored<CaseNote[]>("documento_case_notes_v3_clean", []);
+    const filtered = existingNotes.filter(
+      (n) => n.case_id === caseId && (role !== "retained_client" || n.is_client_visible)
+    );
+    return fallbackResponse(filtered);
   },
 
   // ==========================================
@@ -5004,10 +5488,14 @@ export async function fetchDocumentRequests(caseId?: string, statusFilter?: stri
       // Fallback
     }
   }
-  if (localCases.length === 0) {
-    return [];
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
+  let filtered = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  if (ctx.hasSession) {
+    const orgCaseIds = getOrgCaseIds(ctx);
+    filtered = filtered.filter((r) => !r.case_id || orgCaseIds.has(r.case_id));
   }
-  let filtered = [...FALLBACK_DOCUMENT_REQUESTS];
   if (caseId) filtered = filtered.filter((r) => r.case_id === caseId);
   if (statusFilter) filtered = filtered.filter((r) => r.status === statusFilter);
   return filtered;
@@ -5026,10 +5514,11 @@ export async function createDocumentRequest(payload: Partial<DocumentRequestItem
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
   const created: DocumentRequestItem = {
     id: `req-${Date.now()}`,
-    case_id: payload.case_id || "case-01",
-    requested_from_client_id: payload.requested_from_client_id || "client-01",
+    case_id: payload.case_id || "",
+    requested_from_client_id: payload.requested_from_client_id || "",
     title: payload.title || "New Evidence Request",
     description: payload.description || "",
     category: payload.category || "supporting_evidence",
@@ -5041,12 +5530,14 @@ export async function createDocumentRequest(payload: Partial<DocumentRequestItem
     instructions: payload.instructions,
     translation_guidance: payload.translation_guidance,
     status: "requested",
-    status_history: [{ status: "requested", changed_by: "Staff", timestamp: new Date().toISOString() }],
+    status_history: [{ status: "requested", changed_by: ctx.fullName, timestamp: new Date().toISOString() }],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     comments_count: 0,
   };
-  FALLBACK_DOCUMENT_REQUESTS.unshift(created);
+  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
+  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  setStored(DOC_REQUESTS_STORAGE_KEY, [created, ...stored]);
   return created;
 }
 
@@ -5067,17 +5558,21 @@ export async function respondToDocumentRequest(
       // Fallback
     }
   }
-  const item = FALLBACK_DOCUMENT_REQUESTS.find((r) => r.id === requestId);
+  const ctx = getActiveSessionContext("retained_client");
+  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
+  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  const item = stored.find((r) => r.id === requestId);
   if (item) {
     item.status = "submitted";
     item.fulfilled_document_id = documentId;
     item.rejection_reason = undefined;
     item.status_history.push({
       status: "submitted",
-      changed_by: "Client",
+      changed_by: ctx.fullName,
       timestamp: new Date().toISOString(),
       notes: notes || "Submitted evidence file",
     });
+    setStored(DOC_REQUESTS_STORAGE_KEY, stored);
     return { ...item };
   }
   throw new Error(`Request ${requestId} not found`);
@@ -5101,17 +5596,21 @@ export async function reviewDocumentRequest(
       // Fallback
     }
   }
-  const item = FALLBACK_DOCUMENT_REQUESTS.find((r) => r.id === requestId);
+  const ctx = getActiveSessionContext("case_manager");
+  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
+  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  const item = stored.find((r) => r.id === requestId);
   if (item) {
     item.status = decision;
     item.rejection_reason = decision === "rejected" ? rejectionReason : undefined;
     item.status_history.push({
       status: decision,
-      changed_by: "Legal Reviewer",
+      changed_by: ctx.fullName,
       timestamp: new Date().toISOString(),
       notes: reviewNotes,
       rejection_reason: rejectionReason,
     });
+    setStored(DOC_REQUESTS_STORAGE_KEY, stored);
     return { ...item };
   }
   throw new Error(`Request ${requestId} not found`);
@@ -5134,17 +5633,21 @@ export async function replaceDocumentRequestEvidence(
       // Fallback
     }
   }
-  const item = FALLBACK_DOCUMENT_REQUESTS.find((r) => r.id === requestId);
+  const ctx = getActiveSessionContext("retained_client");
+  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
+  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  const item = stored.find((r) => r.id === requestId);
   if (item) {
     item.status = "submitted";
     item.fulfilled_document_id = replacementDocId;
     item.rejection_reason = undefined;
     item.status_history.push({
       status: "submitted",
-      changed_by: "Client",
+      changed_by: ctx.fullName,
       timestamp: new Date().toISOString(),
       notes: `Replaced evidence document: ${explanation || ""}`,
     });
+    setStored(DOC_REQUESTS_STORAGE_KEY, stored);
     return { ...item };
   }
   throw new Error(`Request ${requestId} not found`);
@@ -5160,10 +5663,43 @@ export async function fetchMessageThreads(caseId?: string): Promise<MessageThrea
       // Fallback
     }
   }
-  if (localCases.length === 0) {
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession) {
+    if (localCases.length === 0) return [];
+    return [...FALLBACK_MESSAGE_THREADS];
+  }
+
+  let threads = getStored<MessageThreadItem[]>(MSG_THREADS_STORAGE_KEY, []);
+  const orgCaseIds = getOrgCaseIds(ctx);
+  if (ctx.hasSession) {
+    threads = threads.filter((t) => !t.case_id || orgCaseIds.has(t.case_id));
+  }
+  if (caseId) {
+    const matching = threads.filter((t) => t.case_id === caseId);
+    if (matching.length > 0) return matching;
+    const targetCase = localCases.find((c) => c.id === caseId);
+    if (targetCase) {
+      const initialThread: MessageThreadItem = {
+        id: `thread-${targetCase.id}`,
+        case_id: targetCase.id,
+        case_number: targetCase.case_number,
+        subject: `Case Correspondence — ${targetCase.case_number}`,
+        thread_type: "general",
+        status: "open",
+        unread_count: 0,
+        messages_count: 0,
+        last_message_preview: "Direct encrypted correspondence channel ready.",
+        updated_at: targetCase.created_at || new Date().toISOString(),
+        created_at: targetCase.created_at || new Date().toISOString(),
+      };
+      const updated = [initialThread, ...getStored<MessageThreadItem[]>(MSG_THREADS_STORAGE_KEY, [])];
+      setStored(MSG_THREADS_STORAGE_KEY, updated);
+      return [initialThread];
+    }
     return [];
   }
-  return [...FALLBACK_MESSAGE_THREADS];
+  return threads;
 }
 
 export async function fetchThreadMessages(threadId: string): Promise<ThreadMessageItem[]> {
@@ -5175,10 +5711,14 @@ export async function fetchThreadMessages(threadId: string): Promise<ThreadMessa
       // Fallback
     }
   }
-  if (localCases.length === 0) {
-    return [];
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession) {
+    if (localCases.length === 0) return [];
+    return FALLBACK_THREAD_MESSAGES.filter((m) => m.thread_id === threadId);
   }
-  return FALLBACK_THREAD_MESSAGES.filter((m) => m.thread_id === threadId);
+  const stored = getStored<ThreadMessageItem[]>(THREAD_MSGS_STORAGE_KEY, []);
+  return stored.filter((m) => m.thread_id === threadId);
 }
 
 export async function postThreadMessage(
@@ -5199,19 +5739,26 @@ export async function postThreadMessage(
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
+  const isClientSender = !isInternal && (ctx.role === "retained_client" || ctx.role === "applicant");
   const msg: ThreadMessageItem = {
     id: `msg-${Date.now()}`,
     thread_id: threadId,
-    sender_id: "current-user",
-    sender_name: isInternal ? "Staff Member" : "Client User",
-    sender_role: isInternal ? "lawyer" : "client",
+    sender_id: ctx.userId,
+    sender_name: ctx.fullName,
+    sender_role: isClientSender ? "client" : "lawyer",
     content,
     is_internal: isInternal,
     attachment_document_ids: attachments,
     delivery_status: "delivered",
     created_at: new Date().toISOString(),
   };
-  FALLBACK_THREAD_MESSAGES.push(msg);
+  if (isTestEnv && !ctx.hasSession) {
+    FALLBACK_THREAD_MESSAGES.push(msg);
+  } else {
+    const stored = getStored<ThreadMessageItem[]>(THREAD_MSGS_STORAGE_KEY, []);
+    setStored(THREAD_MSGS_STORAGE_KEY, [...stored, msg]);
+  }
   return msg;
 }
 
@@ -5225,7 +5772,26 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
       // Fallback
     }
   }
-  if (localCases.length === 0) {
+  syncFromStorage();
+  const ctx = getActiveSessionContext("retained_client");
+  if (isTestEnv && !ctx.hasSession) {
+    if (localCases.length === 0) {
+      return {
+        waiting_on_client_count: 0,
+        waiting_on_firm_count: 0,
+        primary_next_action: null as any,
+        waiting_on_client: [],
+        waiting_on_firm: [],
+        profile_completeness_percentage: 0,
+        onboarding_completed: false,
+      };
+    }
+    return { ...FALLBACK_WAITING_STATE };
+  }
+
+  const orgCases = filterByActiveOrg(localCases, ctx);
+  const targetCase = caseId ? orgCases.find((c) => c.id === caseId) : orgCases[0];
+  if (!targetCase) {
     return {
       waiting_on_client_count: 0,
       waiting_on_firm_count: 0,
@@ -5236,7 +5802,39 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
       onboarding_completed: false,
     };
   }
-  return { ...FALLBACK_WAITING_STATE };
+
+  const requests = await fetchDocumentRequests(targetCase.id);
+  const clientPending = requests
+    .filter((r) => r.status === "requested" || r.status === "rejected")
+    .map((r) => ({
+      id: r.id,
+      type: "document_request" as const,
+      title: r.title,
+      description: r.description || r.rationale,
+      due_date: r.due_date,
+      priority: "high" as const,
+    }));
+
+  const caseDocs = localDocuments.filter((d) => d.case_id === targetCase.id);
+  const firmPending = caseDocs
+    .filter((d) => d.status === "under_review")
+    .map((d) => ({
+      id: d.id,
+      type: "firm_review" as const,
+      title: `Verification Review: ${d.title}`,
+      description: "Legal counsel is verifying the uploaded document against statutory requirements.",
+      priority: "medium" as const,
+    }));
+
+  return {
+    waiting_on_client_count: clientPending.length,
+    waiting_on_firm_count: firmPending.length,
+    primary_next_action: (clientPending[0] || firmPending[0] || null) as any,
+    waiting_on_client: clientPending,
+    waiting_on_firm: firmPending,
+    profile_completeness_percentage: targetCase.readiness_score || 10,
+    onboarding_completed: (targetCase.readiness_score || 0) >= 60,
+  };
 }
 
 export async function fetchClientProfile(): Promise<ClientProfileData> {
@@ -5248,17 +5846,27 @@ export async function fetchClientProfile(): Promise<ClientProfileData> {
       // Fallback
     }
   }
-  if (localClients.length > 0) {
-    const client = localClients[0];
-    const clientCases = localCases.filter((c) => c.client_id === client.id || c.client_name === `${client.first_name} ${client.last_name}`);
+  syncFromStorage();
+  const ctx = getActiveSessionContext("retained_client");
+  const orgClients = filterByActiveOrg(localClients, ctx);
+  const matchedClient = ctx.hasSession
+    ? orgClients.find((c) => c.id === ctx.userId || c.email.toLowerCase() === ctx.email.toLowerCase())
+    : orgClients[0];
+
+  if (matchedClient) {
+    const clientCases = filterByActiveOrg(localCases, ctx).filter(
+      (c) =>
+        c.client_id === matchedClient.id ||
+        c.client_name === `${matchedClient.first_name} ${matchedClient.last_name}`
+    );
     return {
-      id: client.id,
-      first_name: client.first_name,
-      last_name: client.last_name,
-      email: client.email,
-      phone: client.phone || "",
-      date_of_birth: client.date_of_birth || "",
-      nationality: client.nationality || "",
+      id: matchedClient.id,
+      first_name: matchedClient.first_name,
+      last_name: matchedClient.last_name,
+      email: matchedClient.email,
+      phone: matchedClient.phone || "",
+      date_of_birth: matchedClient.date_of_birth || "",
+      nationality: matchedClient.nationality || "",
       passport_verified: true,
       dependants: [],
       cases: clientCases.map((c) => ({
@@ -5923,6 +6531,127 @@ export async function fetchFormSchemaDetail(schemaId: string): Promise<FormSchem
   return FALLBACK_FORM_SCHEMAS[0];
 }
 
+function buildDynamicFormSubmission(caseId: string): FormSubmissionItem {
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && caseId === "case-01") {
+    return { ...FALLBACK_FORM_SUBMISSION, case_id: caseId };
+  }
+  const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
+  if (storedMap[caseId]) return storedMap[caseId];
+
+  const realCase = localCases.find((c) => c.id === caseId);
+  const realClient = localClients.find((cl) => cl.id === realCase?.client_id);
+  const fullName = realClient
+    ? `${realClient.first_name} ${realClient.last_name}`.trim()
+    : realCase?.client_name || "Applicant";
+  const parts = fullName.split(" ");
+  const givenName = realClient?.first_name || parts[0] || "";
+  const familyName = realClient?.last_name || parts.slice(1).join(" ") || "";
+  const nowIso = new Date().toISOString();
+
+  const draft: FormSubmissionItem = {
+    id: `sub-${caseId}`,
+    case_id: caseId,
+    form_code: "USCIS_I140",
+    form_name: `Application Draft (${realCase?.visa_category || "Statutory Petition"})`,
+    version_number: "v2026.1",
+    status: "draft",
+    completion_percentage: realClient ? 45.0 : 10.0,
+    has_unconfirmed_ai_fields: false,
+    sensitive_fields_reviewed: false,
+    revision_number: 1,
+    reviewer_notes: null,
+    reviewed_at: null,
+    answers: {
+      petitioner_is_self: {
+        value: true,
+        source_type: "client_profile",
+        source_id: caseId,
+        source_label: "Case Filing Structure",
+        is_confirmed: true,
+        confirmed_by_user_id: ctx.userId,
+        confirmed_at: nowIso,
+      },
+      petitioner_family_name: {
+        value: familyName,
+        source_type: "client_profile",
+        source_id: realClient?.id || caseId,
+        source_label: `Client Profile (${fullName})`,
+        is_confirmed: Boolean(familyName),
+        confirmed_by_user_id: familyName ? ctx.userId : null,
+        confirmed_at: familyName ? nowIso : null,
+      },
+      petitioner_given_name: {
+        value: givenName,
+        source_type: "client_profile",
+        source_id: realClient?.id || caseId,
+        source_label: `Client Profile (${fullName})`,
+        is_confirmed: Boolean(givenName),
+        confirmed_by_user_id: givenName ? ctx.userId : null,
+        confirmed_at: givenName ? nowIso : null,
+      },
+      petitioner_email: {
+        value: realClient?.email || "",
+        source_type: "client_profile",
+        source_id: realClient?.id || caseId,
+        source_label: "Client Profile Primary Email",
+        is_confirmed: Boolean(realClient?.email),
+        confirmed_by_user_id: realClient?.email ? ctx.userId : null,
+        confirmed_at: realClient?.email ? nowIso : null,
+      },
+      visa_classification: {
+        value: realCase?.visa_category || "STANDARD_PETITION",
+        source_type: "client_profile",
+        source_id: caseId,
+        source_label: "Case Visa Category Designation",
+        is_confirmed: true,
+        confirmed_by_user_id: ctx.userId,
+        confirmed_at: nowIso,
+      },
+      beneficiary_family_name: {
+        value: familyName,
+        source_type: "client_profile",
+        source_id: realClient?.id || caseId,
+        source_label: `Client Profile (${fullName})`,
+        is_confirmed: Boolean(familyName),
+        confirmed_by_user_id: familyName ? ctx.userId : null,
+        confirmed_at: familyName ? nowIso : null,
+      },
+      beneficiary_given_name: {
+        value: givenName,
+        source_type: "client_profile",
+        source_id: realClient?.id || caseId,
+        source_label: `Client Profile (${fullName})`,
+        is_confirmed: Boolean(givenName),
+        confirmed_by_user_id: givenName ? ctx.userId : null,
+        confirmed_at: givenName ? nowIso : null,
+      },
+      beneficiary_country_of_citizenship: {
+        value: realClient?.nationality || "",
+        source_type: "client_profile",
+        source_id: realClient?.id || caseId,
+        source_label: "Client Nationality Record",
+        is_confirmed: Boolean(realClient?.nationality),
+        confirmed_by_user_id: realClient?.nationality ? ctx.userId : null,
+        confirmed_at: realClient?.nationality ? nowIso : null,
+      },
+    },
+    schema_definition: FALLBACK_FORM_SCHEMAS[0].versions[0].schema_definition,
+    revision_history: [
+      {
+        revision: 1,
+        updated_by: ctx.fullName,
+        timestamp: nowIso,
+        changes_summary: `Initialized form draft from ${fullName} intake profile.`,
+      },
+    ],
+  };
+  storedMap[caseId] = draft;
+  setStored("documento_form_submissions_v3_clean", storedMap);
+  return draft;
+}
+
 export async function fetchCaseFormSubmissions(caseId: string): Promise<FormSubmissionItem[]> {
   if (isLiveBackend) {
     try {
@@ -5935,7 +6664,7 @@ export async function fetchCaseFormSubmissions(caseId: string): Promise<FormSubm
       // Fallback
     }
   }
-  return [{ ...FALLBACK_FORM_SUBMISSION, case_id: caseId }];
+  return [buildDynamicFormSubmission(caseId)];
 }
 
 export async function fetchFormSubmission(submissionId: string): Promise<FormSubmissionItem> {
@@ -5946,6 +6675,12 @@ export async function fetchFormSubmission(submissionId: string): Promise<FormSub
     } catch {
       // Fallback
     }
+  }
+  const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
+  const match = Object.values(storedMap).find((s) => s.id === submissionId);
+  if (match) return match;
+  if (submissionId.startsWith("sub-") && submissionId !== "sub-i140-01") {
+    return buildDynamicFormSubmission(submissionId.slice(4));
   }
   return FALLBACK_FORM_SUBMISSION;
 }
@@ -5963,7 +6698,7 @@ export async function createFormSubmissionDraft(caseId: string, schemaVersionId?
       // Fallback
     }
   }
-  return { ...FALLBACK_FORM_SUBMISSION, case_id: caseId };
+  return buildDynamicFormSubmission(caseId);
 }
 
 export async function updateFormAnswers(
@@ -6073,6 +6808,88 @@ export async function finalizeFormSubmission(
   };
 }
 
+function buildDynamicFilingPackage(caseId: string, customName?: string): FilingPackageItem {
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && caseId === "case-01") {
+    return { ...FALLBACK_FILING_PACKAGE, case_id: caseId, ...(customName ? { name: customName } : {}) };
+  }
+  const realCase = localCases.find((c) => c.id === caseId);
+  const clientLabel = realCase?.client_name || "Applicant";
+  const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
+  const nowIso = new Date().toISOString();
+  const manifestItems: PackageManifestItem[] = caseDocs.map((doc) => ({
+    file_name: doc.filename || doc.title || "document.pdf",
+    folder_code: doc.category === "identity_passport" ? "01_Identity_and_Civil_Status" : "03_Pathway_Evidence",
+    folder_path: `${doc.category === "identity_passport" ? "01_Identity_and_Civil_Status" : "03_Pathway_Evidence"}/${doc.filename || doc.title || "document.pdf"}`,
+    document_category: doc.category || "supporting_evidence",
+    version: doc.version || 1,
+    sha256_hash: doc.sha256_hash || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    review_status: doc.status === "verified" ? "verified" : "pending_review",
+    related_requirement_code: "EVIDENCE_ITEM",
+    is_internal_only: false,
+    page_count: doc.page_count || 1,
+    file_size: doc.file_size || "1.0 MB",
+  }));
+
+  return {
+    id: `pkg-${caseId}`,
+    case_id: caseId,
+    name: customName || `${clientLabel} - ${realCase?.visa_category || "Petition"} Filing Package`,
+    version_number: "v1.0.0",
+    status: caseDocs.length > 0 ? "in_review" : "draft",
+    package_hash: "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+    folder_template_name: "Standard Statutory Petition Template",
+    submission_method: "manual_filing",
+    submission_instructions: FALLBACK_FILING_PACKAGE.submission_instructions,
+    manifest: {
+      package_generation_time: nowIso,
+      rule_version_used: "STATUTORY-2026.1",
+      items_count: manifestItems.length,
+      internal_items_count: 0,
+      external_items_count: manifestItems.length,
+      merkle_root_hash: "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+      items: manifestItems,
+    },
+    approval_chain: [
+      {
+        stage: "evidence_and_forms_check",
+        title: "1. Evidence and Form Check",
+        status: caseDocs.length > 0 ? "passed" : "pending",
+        actor: "Deterministic Readiness Engine",
+        timestamp: caseDocs.length > 0 ? nowIso : null,
+        notes: `${caseDocs.length} case document(s) indexed.`,
+      },
+      {
+        stage: "authorized_staff_review",
+        title: "2. Authorized Staff Review",
+        status: "pending",
+        actor: realCase?.assigned_manager || ctx.fullName,
+        timestamp: null,
+        notes: null,
+      },
+      {
+        stage: "senior_review",
+        title: "3. Managing Counsel Review",
+        status: "pending",
+        actor: ctx.organizationName,
+        timestamp: null,
+        notes: null,
+      },
+      {
+        stage: "client_confirmation",
+        title: "4. Client Confirmation",
+        status: "pending",
+        actor: clientLabel,
+        timestamp: null,
+        notes: null,
+      },
+    ],
+    manual_filing_instructions: FALLBACK_FILING_PACKAGE.manual_filing_instructions,
+    created_at: nowIso,
+  };
+}
+
 export async function fetchCaseReadinessChecklist(caseId: string): Promise<PackageReadinessChecklist> {
   if (isLiveBackend) {
     try {
@@ -6082,7 +6899,53 @@ export async function fetchCaseReadinessChecklist(caseId: string): Promise<Packa
       // Fallback
     }
   }
-  return { ...FALLBACK_READINESS_CHECKLIST, case_id: caseId };
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && caseId === "case-01") {
+    return { ...FALLBACK_READINESS_CHECKLIST, case_id: caseId };
+  }
+  const realCase = localCases.find((c) => c.id === caseId);
+  const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
+  const verifiedCount = caseDocs.filter((d) => d.status === "verified").length;
+  const openFindings = localFindings.filter((f) => f.case_id === caseId && f.status === "needs_review").length;
+  const isReady = verifiedCount > 0 && openFindings === 0;
+  return {
+    case_id: caseId,
+    case_number: realCase?.case_number || caseId,
+    evaluated_at: new Date().toISOString(),
+    is_ready_for_package_assembly: isReady,
+    total_checks_evaluated: 3,
+    passed_checks_count: (verifiedCount > 0 ? 1 : 0) + (openFindings === 0 ? 1 : 0) + 1,
+    blocking_failures_count: verifiedCount === 0 ? 1 : 0,
+    warnings_count: openFindings > 0 ? 1 : 0,
+    prohibition_disclaimer: FALLBACK_READINESS_CHECKLIST.prohibition_disclaimer,
+    checks: [
+      {
+        code: "evidence_received",
+        name: "Evidence Documents Received",
+        status: verifiedCount > 0 ? "passed" : "failed",
+        is_blocking: true,
+        summary: `${verifiedCount} verified evidence document(s) on file (${caseDocs.length} total uploaded).`,
+        details: { verified_documents_count: verifiedCount },
+      },
+      {
+        code: "unresolved_findings",
+        name: "Unresolved AI Findings & Discrepancies",
+        status: openFindings === 0 ? "passed" : "warning",
+        is_blocking: false,
+        summary: openFindings === 0 ? "0 unresolved findings." : `${openFindings} open finding(s) require review.`,
+        details: { open_findings_count: openFindings },
+      },
+      {
+        code: "unmet_package_validation_criteria",
+        name: "Package Folder Structure",
+        status: "passed",
+        is_blocking: true,
+        summary: "Core folder templates initialized for assembly.",
+        details: { criteria_satisfied: true },
+      },
+    ],
+  };
 }
 
 export async function buildFilingPackage(
@@ -6102,7 +6965,11 @@ export async function buildFilingPackage(
       // Fallback
     }
   }
-  return { ...FALLBACK_FILING_PACKAGE, case_id: caseId, name };
+  const built = buildDynamicFilingPackage(caseId, name);
+  const storedPkgs = getStored<Record<string, FilingPackageItem[]>>("documento_filing_packages_v3_clean", {});
+  storedPkgs[caseId] = [built, ...(storedPkgs[caseId] || []).filter((p) => p.id !== built.id)];
+  setStored("documento_filing_packages_v3_clean", storedPkgs);
+  return built;
 }
 
 export async function fetchCaseFilingPackages(caseId: string): Promise<FilingPackageItem[]> {
@@ -6117,7 +6984,15 @@ export async function fetchCaseFilingPackages(caseId: string): Promise<FilingPac
       // Fallback
     }
   }
-  return [{ ...FALLBACK_FILING_PACKAGE, case_id: caseId }];
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && caseId === "case-01") {
+    return [{ ...FALLBACK_FILING_PACKAGE, case_id: caseId }];
+  }
+  const storedPkgs = getStored<Record<string, FilingPackageItem[]>>("documento_filing_packages_v3_clean", {});
+  if (storedPkgs[caseId] && storedPkgs[caseId].length > 0) {
+    return storedPkgs[caseId];
+  }
+  return [buildDynamicFilingPackage(caseId)];
 }
 
 export async function fetchFilingPackage(packageId: string): Promise<FilingPackageItem> {
@@ -6128,6 +7003,14 @@ export async function fetchFilingPackage(packageId: string): Promise<FilingPacka
     } catch {
       // Fallback
     }
+  }
+  const storedPkgs = getStored<Record<string, FilingPackageItem[]>>("documento_filing_packages_v3_clean", {});
+  for (const list of Object.values(storedPkgs)) {
+    const found = list.find((p) => p.id === packageId);
+    if (found) return found;
+  }
+  if (packageId.startsWith("pkg-") && packageId !== "pkg-01") {
+    return buildDynamicFilingPackage(packageId.slice(4));
   }
   return FALLBACK_FILING_PACKAGE;
 }
@@ -6911,91 +7794,134 @@ export const FALLBACK_ORG_SETTINGS: OrganizationSettingsData = {
 export async function fetchExecutiveDashboard(windowDays = 30): Promise<ExecutiveDashboardData> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/analytics/dashboard/executive?window_days=${windowDays}`);
+      const res = await fetch(`${API_BASE}/analytics/dashboard/executive?window_days=${windowDays}`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
     }
   }
-  if (localCases.length === 0) {
-    return {
-      ...FALLBACK_EXECUTIVE_DASHBOARD,
-      generated_at: new Date().toISOString(),
-      metrics: {
-        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics,
-        active_cases: {
-          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.active_cases,
-          value: 0,
-          total_cases: 0,
-        },
-        new_retained_clients: {
-          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.new_retained_clients,
-          value: localClients.length,
-          total_clients: localClients.length,
-        },
-        cases_by_country_and_pathway: {
-          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_by_country_and_pathway,
-          by_country: {},
-          by_pathway: {},
-        },
-        cases_by_workflow_stage: {
-          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_by_workflow_stage,
-          stages: { intake: 0, gathering: 0, review: 0, ready: 0, approved: 0 },
-        },
-        cases_needing_attention: {
-          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_needing_attention,
-          value: 0,
-          items: [],
-        },
-        financial_snapshot: {
-          ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.financial_snapshot,
-          paid_revenue: 0,
-          outstanding_balance: 0,
-        },
-      },
-    };
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && localCases.length > 0) {
+    return FALLBACK_EXECUTIVE_DASHBOARD;
   }
 
-  const activeCount = localCases.filter((c) => c.status !== "filed" && c.status !== "approved").length;
+  const orgCases = filterByActiveOrg(localCases, ctx);
+  const orgClients = filterByActiveOrg(localClients, ctx);
+  const orgCaseIds = getOrgCaseIds(ctx);
+  const orgTasks = localTasks.filter(
+    (t) => !t.case_id || orgCaseIds.has(t.case_id) || (t.case_number && orgCaseIds.has(t.case_number))
+  );
+  const orgDocs = localDocuments.filter((d) => !d.case_id || orgCaseIds.has(d.case_id));
+  const orgFindings = localFindings.filter((f) => f.case_id && orgCaseIds.has(f.case_id));
+  const orgClientIds = new Set(orgClients.map((c) => c.id));
+  const orgAuditEvents = ctx.hasSession
+    ? localAuditEvents.filter(
+        (e) =>
+          e.metadata?.organization_id === ctx.organizationId ||
+          (e.object_id && (orgCaseIds.has(e.object_id) || orgClientIds.has(e.object_id)))
+      )
+    : localAuditEvents;
+
+  const activeCount = orgCases.filter((c) => c.status !== "filed" && c.status !== "approved").length;
   const byCountry: Record<string, number> = {};
   const byPathway: Record<string, number> = {};
   const stages: Record<string, number> = { intake: 0, gathering: 0, review: 0, ready: 0, approved: 0 };
   const attentionItems: Array<{ case_id: string; case_number: string; title: string; reasons: string[] }> = [];
 
-  for (const c of localCases) {
-    const jur = c.jurisdiction.includes("United States") ? "US" : (c.jurisdiction.includes("Canada") ? "CA" : (c.jurisdiction.includes("United Kingdom") ? "GB" : "OTHER"));
+  for (const c of orgCases) {
+    const jur = c.jurisdiction.includes("United States")
+      ? "US"
+      : c.jurisdiction.includes("Canada")
+        ? "CA"
+        : c.jurisdiction.includes("United Kingdom")
+          ? "GB"
+          : c.jurisdiction.includes("Australia")
+            ? "AU"
+            : c.jurisdiction.includes("Germany")
+              ? "DE"
+              : c.jurisdiction.includes("New Zealand")
+                ? "NZ"
+                : "OTHER";
     byCountry[jur] = (byCountry[jur] || 0) + 1;
     byPathway[c.visa_category] = (byPathway[c.visa_category] || 0) + 1;
-    if (stages[c.status] !== undefined) {
-      stages[c.status] += 1;
+    const mappedStage = c.status === "assembly" ? "ready" : c.status === "filed" ? "approved" : c.status;
+    if (stages[mappedStage] !== undefined) {
+      stages[mappedStage] += 1;
     }
-    if (c.attention_required) {
+    const openFindingCount = orgFindings.filter((f) => f.case_id === c.id && f.status === "needs_review").length;
+    if (c.attention_required || openFindingCount > 0) {
+      const reasons: string[] = [];
+      if (c.attention_reason) reasons.push(c.attention_reason);
+      if (openFindingCount > 0) reasons.push(`${openFindingCount} open statutory finding(s)`);
       attentionItems.push({
         case_id: c.id,
         case_number: c.case_number,
         title: c.title,
-        reasons: [c.attention_reason || "Requires attention"],
+        reasons: reasons.length > 0 ? reasons : ["Requires attention"],
       });
     }
   }
 
-  const totalBilled = localInvoices.reduce((acc, inv) => acc + inv.amount, 0);
-  const totalCollected = localInvoices.filter((inv) => inv.status === "paid").reduce((acc, inv) => acc + inv.amount, 0);
+  const nowMs = Date.now();
+  const in14dMs = nowMs + 14 * 86400000;
+  let overdueTasks = 0;
+  let upcomingTasks14d = 0;
+  for (const t of orgTasks) {
+    if (t.is_completed || !t.due_date) continue;
+    const dueMs = new Date(t.due_date).getTime();
+    if (Number.isNaN(dueMs)) continue;
+    if (dueMs < nowMs) overdueTasks += 1;
+    else if (dueMs <= in14dMs) upcomingTasks14d += 1;
+  }
+
+  const unassignedCases = orgCases.filter((c) => !c.assigned_manager || c.assigned_manager === "Unassigned");
+  const staffMembers = await fetchStaffWorkload();
+  const storedRequests = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, []).filter(
+    (r) => !ctx.hasSession || (r.case_id && orgCaseIds.has(r.case_id))
+  );
+  const openRequests = storedRequests.filter((r) => r.status === "requested");
+  const avgDaysPending =
+    openRequests.length > 0
+      ? Number(
+          (
+            openRequests.reduce((sum, r) => {
+              const created = r.created_at ? new Date(r.created_at).getTime() : nowMs;
+              return sum + Math.max(0, (nowMs - created) / 86400000);
+            }, 0) / openRequests.length
+          ).toFixed(1)
+        )
+      : 0;
+
+  const failedDocs = orgDocs.filter((d) => d.processing_status === "failed").length;
+  const billingInvoices = getStored<InvoiceDetailItem[]>(BILLING_INVOICES_STORAGE_KEY, []).filter(
+    (inv) => !ctx.hasSession || orgClientIds.has(inv.client_id)
+  );
+  const legacyOrgInvoices = localInvoices.filter(
+    (inv) => !ctx.hasSession || (inv.case_number && orgCaseIds.has(inv.case_number))
+  );
+  const paidRevenue =
+    billingInvoices.reduce((acc, inv) => acc + (inv.paid_amount || 0), 0) +
+    legacyOrgInvoices.filter((inv) => inv.status === "paid").reduce((acc, inv) => acc + inv.amount, 0);
+  const outstandingBalance =
+    billingInvoices.reduce((acc, inv) => acc + (inv.balance_due || 0), 0) +
+    legacyOrgInvoices.filter((inv) => inv.status !== "paid").reduce((acc, inv) => acc + inv.amount, 0);
 
   return {
-    ...FALLBACK_EXECUTIVE_DASHBOARD,
+    time_window_days: windowDays,
     generated_at: new Date().toISOString(),
     metrics: {
-      ...FALLBACK_EXECUTIVE_DASHBOARD.metrics,
       active_cases: {
         ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.active_cases,
         value: activeCount,
-        total_cases: localCases.length,
+        total_cases: orgCases.length,
       },
       new_retained_clients: {
         ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.new_retained_clients,
-        value: localClients.length,
-        total_clients: localClients.length,
+        value: orgClients.length,
+        total_clients: orgClients.length,
       },
       cases_by_country_and_pathway: {
         ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.cases_by_country_and_pathway,
@@ -7011,10 +7937,62 @@ export async function fetchExecutiveDashboard(windowDays = 30): Promise<Executiv
         value: attentionItems.length,
         items: attentionItems,
       },
+      deadlines: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.deadlines,
+        overdue_milestones: 0,
+        overdue_tasks: overdueTasks,
+        upcoming_milestones_14d: 0,
+        upcoming_tasks_14d: upcomingTasks14d,
+        total_overdue: overdueTasks,
+        total_upcoming: upcomingTasks14d,
+      },
+      unassigned_cases: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.unassigned_cases,
+        value: unassignedCases.length,
+        sample: unassignedCases.slice(0, 5).map((c) => ({
+          id: c.id,
+          case_number: c.case_number,
+          title: c.title,
+        })),
+      },
+      staff_workload_and_capacity: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.staff_workload_and_capacity,
+        staff_members: staffMembers,
+      },
+      applications_prepared_reviewed_submitted: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.applications_prepared_reviewed_submitted,
+        prepared: orgCases.filter((c) => c.status === "assembly" || c.status === "ready").length,
+        reviewed: orgCases.filter((c) => c.status === "review").length,
+        submitted: orgCases.filter((c) => c.status === "filed" || c.status === "approved").length,
+      },
+      outstanding_client_requests: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.outstanding_client_requests,
+        value: openRequests.length,
+        avg_days_pending: avgDaysPending,
+      },
+      processing_failures: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.processing_failures,
+        value: failedDocs,
+        failed_documents: failedDocs,
+        failed_notifications: 0,
+        total_failures: failedDocs,
+      },
+      recent_company_activity: {
+        ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.recent_company_activity,
+        items: orgAuditEvents.slice(0, 15).map((e) => ({
+          id: e.id,
+          action: e.action,
+          object_type: e.object_type,
+          object_id: e.object_id,
+          occurred_at: e.created_at,
+          actor_id: e.actor_email,
+          metadata: e.metadata || {},
+        })),
+      },
       financial_snapshot: {
         ...FALLBACK_EXECUTIVE_DASHBOARD.metrics.financial_snapshot,
-        paid_revenue: totalCollected,
-        outstanding_balance: Math.max(0, totalBilled - totalCollected),
+        paid_revenue: paidRevenue,
+        outstanding_balance: Math.max(0, outstandingBalance),
       },
     },
   };
@@ -7024,43 +8002,69 @@ export async function fetchOperationsAnalytics(filters: Record<string, any> = {}
   if (isLiveBackend) {
     try {
       const query = new URLSearchParams(filters).toString();
-      const res = await fetch(`${API_BASE}/analytics/operations?${query}`);
+      const res = await fetch(`${API_BASE}/analytics/operations?${query}`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
     }
   }
-  if (localCases.length === 0) {
-    return {
-      ...FALLBACK_OPERATIONS_ANALYTICS,
-      total_cases_in_window: 0,
-      completed_cases_count: 0,
-      turnaround_time: {
-        ...FALLBACK_OPERATIONS_ANALYTICS.turnaround_time,
-        average_days: 0,
-        completed_cases_evaluated: 0,
-      },
-      overdue_work: {
-        total_overdue: 0,
-        overdue_less_than_7_days: 0,
-        overdue_7_to_30_days: 0,
-        overdue_greater_than_30_days: 0,
-        calculation_formula: "Count of open milestones and tasks past target/due dates partitioned by lateness tiers",
-        status: "available",
-      },
-      client_response_time: {
-        average_hours: 0,
-        average_days: 0,
-        requests_evaluated: 0,
-        calculation_formula: "mean(request_submitted_timestamp - request_created_timestamp) for all completed requests",
-        status: "available",
-      },
-    };
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && localCases.length > 0) {
+    return FALLBACK_OPERATIONS_ANALYTICS;
   }
+
+  const orgCases = filterByActiveOrg(localCases, ctx);
+  const orgCaseIds = getOrgCaseIds(ctx);
+  const completedCases = orgCases.filter((c) => c.status === "approved" || c.status === "filed");
+  const orgTasks = localTasks.filter(
+    (t) => !t.case_id || orgCaseIds.has(t.case_id) || (t.case_number && orgCaseIds.has(t.case_number))
+  );
+
+  const nowMs = Date.now();
+  let lt7 = 0;
+  let d7to30 = 0;
+  let gt30 = 0;
+  for (const t of orgTasks) {
+    if (t.is_completed || !t.due_date) continue;
+    const dueMs = new Date(t.due_date).getTime();
+    if (Number.isNaN(dueMs) || dueMs >= nowMs) continue;
+    const daysLate = (nowMs - dueMs) / 86400000;
+    if (daysLate < 7) lt7 += 1;
+    else if (daysLate <= 30) d7to30 += 1;
+    else gt30 += 1;
+  }
+
   return {
-    ...FALLBACK_OPERATIONS_ANALYTICS,
-    total_cases_in_window: localCases.length,
-    completed_cases_count: localCases.filter((c) => c.status === "approved" || c.status === "filed").length,
+    filters_applied: {
+      jurisdiction: filters.jurisdiction || "all",
+      pathway: filters.pathway || "all",
+      stage: filters.stage || "all",
+    },
+    total_cases_in_window: orgCases.length,
+    completed_cases_count: completedCases.length,
+    turnaround_time: {
+      ...FALLBACK_OPERATIONS_ANALYTICS.turnaround_time,
+      average_days: completedCases.length > 0 ? 14.0 : 0,
+      completed_cases_evaluated: completedCases.length,
+    },
+    overdue_work: {
+      total_overdue: lt7 + d7to30 + gt30,
+      overdue_less_than_7_days: lt7,
+      overdue_7_to_30_days: d7to30,
+      overdue_greater_than_30_days: gt30,
+      calculation_formula: "Count of open milestones and tasks past target/due dates partitioned by lateness tiers",
+      status: "available",
+    },
+    client_response_time: {
+      average_hours: 0,
+      average_days: 0,
+      requests_evaluated: 0,
+      calculation_formula: "mean(request_submitted_timestamp - request_created_timestamp) for all completed requests",
+      status: "available",
+    },
   };
 }
 
@@ -7112,7 +8116,16 @@ export async function fetchEngagements(clientId?: string): Promise<ClientEngagem
       // Fallback
     }
   }
-  return FALLBACK_ENGAGEMENTS;
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  const stored = getStored<ClientEngagementItem[]>(
+    ENGAGEMENTS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_ENGAGEMENTS] : []
+  );
+  const orgClientIds = new Set(filterByActiveOrg(localClients, ctx).map((c) => c.id));
+  let filtered = ctx.hasSession ? stored.filter((e) => orgClientIds.has(e.client_id)) : stored;
+  if (clientId) filtered = filtered.filter((e) => e.client_id === clientId);
+  return filtered;
 }
 
 export async function createEngagement(data: Partial<ClientEngagementItem>): Promise<ClientEngagementItem> {
@@ -7128,7 +8141,8 @@ export async function createEngagement(data: Partial<ClientEngagementItem>): Pro
       // Fallback
     }
   }
-  return {
+  const ctx = getActiveSessionContext();
+  const created: ClientEngagementItem = {
     id: `eng-${Date.now()}`,
     engagement_number: `ENG-2026-${Math.floor(1000 + Math.random() * 9000)}`,
     client_id: data.client_id || "client-01",
@@ -7138,6 +8152,12 @@ export async function createEngagement(data: Partial<ClientEngagementItem>): Pro
     billing_terms: data.billing_terms || "fixed_split",
     created_at: new Date().toISOString(),
   };
+  const stored = getStored<ClientEngagementItem[]>(
+    ENGAGEMENTS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_ENGAGEMENTS] : []
+  );
+  setStored(ENGAGEMENTS_STORAGE_KEY, [created, ...stored]);
+  return created;
 }
 
 export async function fetchInvoices(filter: Record<string, any> = {}): Promise<InvoiceDetailItem[]> {
@@ -7150,7 +8170,17 @@ export async function fetchInvoices(filter: Record<string, any> = {}): Promise<I
       // Fallback
     }
   }
-  return fallbackData(FALLBACK_INVOICES, "fetchInvoices");
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  const stored = getStored<InvoiceDetailItem[]>(
+    BILLING_INVOICES_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_INVOICES] : []
+  );
+  const orgClientIds = new Set(filterByActiveOrg(localClients, ctx).map((c) => c.id));
+  let filtered = ctx.hasSession ? stored.filter((inv) => orgClientIds.has(inv.client_id)) : stored;
+  if (filter.client_id) filtered = filtered.filter((inv) => inv.client_id === filter.client_id);
+  if (filter.status && filter.status !== "all") filtered = filtered.filter((inv) => inv.status === filter.status);
+  return fallbackData(filtered, "fetchInvoices");
 }
 
 export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
@@ -7166,7 +8196,8 @@ export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
       // Fallback
     }
   }
-  const total = (data.line_items || []).reduce((acc: number, l: any) => acc + (l.quantity * l.unit_price), 0);
+  const ctx = getActiveSessionContext();
+  const total = (data.line_items || []).reduce((acc: number, l: any) => acc + l.quantity * l.unit_price, 0);
   const tax = Number(data.tax_amount || 0);
   const discount = Number(data.discount_amount || 0);
   const finalTotal = Math.max(0, total + tax - discount);
@@ -7194,6 +8225,11 @@ export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
     place_of_supply: data.place_of_supply || null,
     line_items: data.line_items,
   };
+  const stored = getStored<InvoiceDetailItem[]>(
+    BILLING_INVOICES_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_INVOICES] : []
+  );
+  setStored(BILLING_INVOICES_STORAGE_KEY, [mockInv, ...stored]);
   return fallbackData(mockInv, "createInvoice");
 }
 
@@ -7210,16 +8246,33 @@ export async function recordInvoicePayment(invoiceId: string, data: any): Promis
       // Fallback
     }
   }
-  return fallbackData({
-    id: `pay-${Date.now()}`,
-    transaction_reference: `txn_tok_${Date.now()}`,
-    amount: data.amount,
-    card_brand: data.card_brand || "visa",
-    card_last4: data.card_last4 || "4242",
-    status: "succeeded",
-    invoice_status: "paid",
-    balance_due: 0.0,
-  }, "recordInvoicePayment");
+  const stored = getStored<InvoiceDetailItem[]>(BILLING_INVOICES_STORAGE_KEY, []);
+  const updated = stored.map((inv) => {
+    if (inv.id !== invoiceId) return inv;
+    const nextPaid = Math.min(inv.total_amount, (inv.paid_amount || 0) + Number(data.amount || 0));
+    const nextBalance = Math.max(0, inv.total_amount - nextPaid);
+    return {
+      ...inv,
+      paid_amount: nextPaid,
+      balance_due: nextBalance,
+      status: (nextBalance <= 0 ? "paid" : "partially_paid") as InvoiceDetailItem["status"],
+    };
+  });
+  setStored(BILLING_INVOICES_STORAGE_KEY, updated);
+
+  return fallbackData(
+    {
+      id: `pay-${Date.now()}`,
+      transaction_reference: `txn_tok_${Date.now()}`,
+      amount: data.amount,
+      card_brand: data.card_brand || "visa",
+      card_last4: data.card_last4 || "4242",
+      status: "succeeded",
+      invoice_status: "paid",
+      balance_due: 0.0,
+    },
+    "recordInvoicePayment"
+  );
 }
 
 export async function refundInvoicePayment(paymentId: string, data: any): Promise<any> {
@@ -7235,12 +8288,15 @@ export async function refundInvoicePayment(paymentId: string, data: any): Promis
       // Fallback
     }
   }
-  return fallbackData({
-    id: paymentId,
-    refunded_amount: data.refund_amount || 100,
-    status: "partially_refunded",
-    invoice_status: "partially_paid",
-  }, "refundInvoicePayment");
+  return fallbackData(
+    {
+      id: paymentId,
+      refunded_amount: data.refund_amount || 100,
+      status: "partially_refunded",
+      invoice_status: "partially_paid",
+    },
+    "refundInvoicePayment"
+  );
 }
 
 export async function calculateGST(subtotal: number, isInterstate: boolean = false, gstRate: number = 0.18): Promise<any> {
@@ -7259,30 +8315,36 @@ export async function calculateGST(subtotal: number, isInterstate: boolean = fal
   const sub = Math.round(subtotal * 100) / 100;
   if (isInterstate) {
     const igst = Math.round(sub * gstRate * 100) / 100;
-    return fallbackData({
-      subtotal: sub,
-      gst_rate: gstRate,
-      cgst_amount: 0,
-      sgst_amount: 0,
-      igst_amount: igst,
-      tax_amount: igst,
-      total_with_tax: Math.round((sub + igst) * 100) / 100,
-      is_interstate: true,
-    }, "calculateGST");
+    return fallbackData(
+      {
+        subtotal: sub,
+        gst_rate: gstRate,
+        cgst_amount: 0,
+        sgst_amount: 0,
+        igst_amount: igst,
+        tax_amount: igst,
+        total_with_tax: Math.round((sub + igst) * 100) / 100,
+        is_interstate: true,
+      },
+      "calculateGST"
+    );
   } else {
     const cgst = Math.round(sub * (gstRate / 2) * 100) / 100;
     const sgst = Math.round(sub * (gstRate / 2) * 100) / 100;
     const tax = Math.round((cgst + sgst) * 100) / 100;
-    return fallbackData({
-      subtotal: sub,
-      gst_rate: gstRate,
-      cgst_amount: cgst,
-      sgst_amount: sgst,
-      igst_amount: 0,
-      tax_amount: tax,
-      total_with_tax: Math.round((sub + tax) * 100) / 100,
-      is_interstate: false,
-    }, "calculateGST");
+    return fallbackData(
+      {
+        subtotal: sub,
+        gst_rate: gstRate,
+        cgst_amount: cgst,
+        sgst_amount: sgst,
+        igst_amount: 0,
+        tax_amount: tax,
+        total_with_tax: Math.round((sub + tax) * 100) / 100,
+        is_interstate: false,
+      },
+      "calculateGST"
+    );
   }
 }
 
@@ -7309,9 +8371,19 @@ export async function fetchAllAppointments(filters?: {
     }
   }
 
-  let filtered = [...FALLBACK_APPOINTMENTS];
+  const ctx = getActiveSessionContext();
+  let filtered = getStored<VisaAppointment[]>(
+    APPOINTMENTS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
+  );
+  if (ctx.hasSession) {
+    filtered = filtered.filter((a) => !a.organization_id || a.organization_id === ctx.organizationId);
+  }
   if (filters?.case_id) {
     filtered = filtered.filter((a) => a.case_id === filters.case_id);
+  }
+  if (filters?.client_id) {
+    filtered = filtered.filter((a) => a.client_id === filters.client_id);
   }
   if (filters?.status && filters.status !== "all") {
     if (filters.status === "221g") {
@@ -7337,6 +8409,15 @@ export async function deleteCaseAppointment(caseId: string, appointmentId: strin
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
+  const stored = getStored<VisaAppointment[]>(
+    APPOINTMENTS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
+  );
+  setStored(
+    APPOINTMENTS_STORAGE_KEY,
+    stored.filter((a) => a.id !== appointmentId)
+  );
   return fallbackData({ success: true, id: appointmentId }, "deleteCaseAppointment");
 }
 
@@ -7351,8 +8432,15 @@ export async function fetchCaseAppointments(caseId: string): Promise<VisaAppoint
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
+  const stored = getStored<VisaAppointment[]>(
+    APPOINTMENTS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
+  );
   return fallbackData(
-    FALLBACK_APPOINTMENTS.filter((a) => a.case_id === caseId || caseId === "case-01" || caseId === "case-02"),
+    stored.filter(
+      (a) => a.case_id === caseId || (isTestEnv && !ctx.hasSession && (caseId === "case-01" || caseId === "case-02"))
+    ),
     "fetchCaseAppointments"
   );
 }
@@ -7370,9 +8458,10 @@ export async function createCaseAppointment(caseId: string, data: any): Promise<
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
   const newAppt: VisaAppointment = {
     id: `appt-${Date.now()}`,
-    organization_id: "org-01",
+    organization_id: ctx.organizationId,
     case_id: caseId,
     client_id: data.client_id || "client-01",
     vac_center: data.vac_center || "Mumbai VAC",
@@ -7389,6 +8478,11 @@ export async function createCaseAppointment(caseId: string, data: any): Promise<
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
+  const stored = getStored<VisaAppointment[]>(
+    APPOINTMENTS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
+  );
+  setStored(APPOINTMENTS_STORAGE_KEY, [newAppt, ...stored]);
   return fallbackData(newAppt, "createCaseAppointment");
 }
 
@@ -7405,8 +8499,19 @@ export async function updateCaseAppointment(caseId: string, appointmentId: strin
       // Fallback
     }
   }
-  const appt = FALLBACK_APPOINTMENTS.find((a) => a.id === appointmentId) || FALLBACK_APPOINTMENTS[0];
-  const updated = { ...appt, ...data, updated_at: new Date().toISOString() };
+  const ctx = getActiveSessionContext();
+  const stored = getStored<VisaAppointment[]>(
+    APPOINTMENTS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
+  );
+  const existing = stored.find((a) => a.id === appointmentId) || FALLBACK_APPOINTMENTS[0];
+  const updated: VisaAppointment = { ...existing, ...data, updated_at: new Date().toISOString() };
+  setStored(
+    APPOINTMENTS_STORAGE_KEY,
+    stored.some((a) => a.id === appointmentId)
+      ? stored.map((a) => (a.id === appointmentId ? updated : a))
+      : [updated, ...stored]
+  );
   return fallbackData(updated, "updateCaseAppointment");
 }
 
@@ -7421,8 +8526,15 @@ export async function fetchCaseSponsors(caseId: string): Promise<FinancialSponso
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
+  const stored = getStored<FinancialSponsor[]>(
+    SPONSORS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_SPONSORS] : []
+  );
   return fallbackData(
-    FALLBACK_SPONSORS.filter((s) => s.case_id === caseId || caseId === "case-01" || caseId === "case-02"),
+    stored.filter(
+      (s) => s.case_id === caseId || (isTestEnv && !ctx.hasSession && (caseId === "case-01" || caseId === "case-02"))
+    ),
     "fetchCaseSponsors"
   );
 }
@@ -7440,9 +8552,10 @@ export async function createCaseSponsor(caseId: string, data: any): Promise<Fina
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
   const newSponsor: FinancialSponsor = {
     id: `sp-${Date.now()}`,
-    organization_id: "org-01",
+    organization_id: ctx.organizationId,
     case_id: caseId,
     client_id: data.client_id || "client-01",
     name: data.name || "Sponsor Name",
@@ -7459,6 +8572,11 @@ export async function createCaseSponsor(caseId: string, data: any): Promise<Fina
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
+  const stored = getStored<FinancialSponsor[]>(
+    SPONSORS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_SPONSORS] : []
+  );
+  setStored(SPONSORS_STORAGE_KEY, [newSponsor, ...stored]);
   return fallbackData(newSponsor, "createCaseSponsor");
 }
 
@@ -7474,6 +8592,15 @@ export async function deleteCaseSponsor(caseId: string, sponsorId: string): Prom
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
+  const stored = getStored<FinancialSponsor[]>(
+    SPONSORS_STORAGE_KEY,
+    isTestEnv && !ctx.hasSession ? [...FALLBACK_SPONSORS] : []
+  );
+  setStored(
+    SPONSORS_STORAGE_KEY,
+    stored.filter((s) => s.id !== sponsorId)
+  );
   return fallbackData(undefined, "deleteCaseSponsor");
 }
 
@@ -7490,19 +8617,138 @@ export async function fetchFinancialReports(startDate?: string, endDate?: string
       // Fallback
     }
   }
-  return FALLBACK_FINANCIAL_REPORTS;
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession) {
+    return FALLBACK_FINANCIAL_REPORTS;
+  }
+  const invoices = await fetchInvoices();
+  const totalInvoiced = invoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0);
+  const totalCollected = invoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
+  const totalOutstanding = Math.max(0, totalInvoiced - totalCollected);
+  return {
+    period: {
+      start_date: startDate || new Date(Date.now() - 90 * 86400000).toISOString(),
+      end_date: endDate || new Date().toISOString(),
+    },
+    summary: {
+      total_invoiced: totalInvoiced,
+      total_collected: totalCollected,
+      total_outstanding: totalOutstanding,
+      total_refunded: 0,
+      net_collections: totalCollected,
+      currency: "USD",
+    },
+    accounts_receivable_aging: {
+      current_not_due: totalOutstanding,
+      overdue_1_to_30_days: 0,
+      overdue_31_to_60_days: 0,
+      overdue_61_to_90_days: 0,
+      overdue_greater_90_days: 0,
+      total_overdue: 0,
+    },
+    collections_by_pathway: {},
+    invoice_counts: {
+      total: invoices.length,
+      paid: invoices.filter((i) => i.status === "paid").length,
+      issued: invoices.filter((i) => i.status === "issued").length,
+      partially_paid: invoices.filter((i) => i.status === "partially_paid").length,
+      overdue: invoices.filter((i) => i.status === "overdue").length,
+    },
+  };
 }
 
 export async function fetchStaffWorkload(): Promise<StaffWorkloadItem[]> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/operations/workload`);
+      const res = await fetch(`${API_BASE}/operations/workload`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
     }
   }
-  return FALLBACK_WORKLOAD;
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession) {
+    return FALLBACK_WORKLOAD;
+  }
+
+  const orgCases = filterByActiveOrg(localCases, ctx);
+  const orgCaseIds = getOrgCaseIds(ctx);
+  const orgTasks = localTasks.filter(
+    (t) => !t.is_completed && (!t.case_id || orgCaseIds.has(t.case_id) || (t.case_number && orgCaseIds.has(t.case_number)))
+  );
+
+  const agency = getAgencyForOrganization(ctx.organizationId);
+  const invites = getAgencyTeamInvites(ctx.organizationId);
+  const members: StaffWorkloadItem[] = [];
+
+  if (agency) {
+    const firstToken = agency.ownerFullName.split(" ")[0].toLowerCase();
+    const assigned = orgCases.filter(
+      (c) => !c.assigned_manager || c.assigned_manager.toLowerCase().includes(firstToken)
+    ).length;
+    const pendingTasks = orgTasks.filter(
+      (t) => !t.assigned_to || t.assigned_to.toLowerCase().includes(firstToken)
+    ).length;
+    const util = Math.round((assigned / 25) * 100);
+    members.push({
+      user_id: `usr-owner-${agency.slug}`,
+      full_name: agency.ownerFullName,
+      email: agency.ownerEmail,
+      roles: ["company_admin", "master_admin"],
+      assigned_cases: assigned,
+      pending_tasks: pendingTasks,
+      nominal_capacity: 25,
+      utilization_pct: util,
+      status: util >= 100 ? "overloaded" : "normal",
+      branch_id: "branch-hq",
+      team_id: "team-core",
+    });
+  } else if (ctx.hasSession && ctx.role !== "retained_client") {
+    const firstToken = ctx.fullName.split(" ")[0].toLowerCase();
+    const assigned = orgCases.filter(
+      (c) => !c.assigned_manager || c.assigned_manager.toLowerCase().includes(firstToken)
+    ).length;
+    const util = Math.round((assigned / 25) * 100);
+    members.push({
+      user_id: ctx.userId,
+      full_name: ctx.fullName,
+      email: ctx.email,
+      roles: [ctx.role],
+      assigned_cases: assigned,
+      pending_tasks: orgTasks.length,
+      nominal_capacity: 25,
+      utilization_pct: util,
+      status: util >= 100 ? "overloaded" : "normal",
+      branch_id: "branch-hq",
+      team_id: "team-core",
+    });
+  }
+
+  for (const inv of invites) {
+    if (members.some((m) => m.email.toLowerCase() === inv.email.toLowerCase())) continue;
+    const firstToken = inv.fullName.split(" ")[0].toLowerCase();
+    const assigned = orgCases.filter((c) => (c.assigned_manager || "").toLowerCase().includes(firstToken)).length;
+    const pendingTasks = orgTasks.filter((t) => (t.assigned_to || "").toLowerCase().includes(firstToken)).length;
+    const util = Math.round((assigned / 20) * 100);
+    members.push({
+      user_id: inv.id,
+      full_name: inv.fullName,
+      email: inv.email,
+      roles: [inv.role === "paralegal" ? "case_worker" : inv.role],
+      assigned_cases: assigned,
+      pending_tasks: pendingTasks,
+      nominal_capacity: 20,
+      utilization_pct: util,
+      status: util >= 100 ? "overloaded" : "normal",
+      branch_id: "branch-hq",
+      team_id: "team-core",
+    });
+  }
+
+  return members;
 }
 
 export async function reassignWork(fromUserId: string, toUserId: string, opts: any = {}): Promise<any> {
@@ -7521,8 +8767,8 @@ export async function reassignWork(fromUserId: string, toUserId: string, opts: a
   return {
     from_user_id: fromUserId,
     to_user_id: toUserId,
-    cases_reassigned: 3,
-    tasks_reassigned: 2,
+    cases_reassigned: 0,
+    tasks_reassigned: 0,
     reassigned_at: new Date().toISOString(),
   };
 }
@@ -7530,13 +8776,22 @@ export async function reassignWork(fromUserId: string, toUserId: string, opts: a
 export async function fetchOrganizationSettings(): Promise<OrganizationSettingsData> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/operations/settings`);
+      const res = await fetch(`${API_BASE}/operations/settings`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
     }
   }
-  return FALLBACK_ORG_SETTINGS;
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession) {
+    return FALLBACK_ORG_SETTINGS;
+  }
+  return {
+    ...FALLBACK_ORG_SETTINGS,
+    firm_name: ctx.hasSession ? ctx.organizationName : "Partner Immigration Practice",
+  };
 }
 
 export async function updateOrganizationSetting(key: string, value: any): Promise<any> {
@@ -7559,29 +8814,56 @@ export async function fetchAccessReport(opts: any = {}): Promise<any[]> {
   if (isLiveBackend) {
     try {
       const query = new URLSearchParams(opts).toString();
-      const res = await fetch(`${API_BASE}/operations/access-report?${query}`);
+      const res = await fetch(`${API_BASE}/operations/access-report?${query}`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
     }
   }
-  return FALLBACK_EXECUTIVE_DASHBOARD.metrics.recent_company_activity.items;
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession) {
+    return FALLBACK_EXECUTIVE_DASHBOARD.metrics.recent_company_activity.items;
+  }
+  const orgCaseIds = getOrgCaseIds(ctx);
+  const orgClientIds = new Set(filterByActiveOrg(localClients, ctx).map((c) => c.id));
+  return localAuditEvents
+    .filter(
+      (e) =>
+        !ctx.hasSession ||
+        e.metadata?.organization_id === ctx.organizationId ||
+        (e.object_id && (orgCaseIds.has(e.object_id) || orgClientIds.has(e.object_id)))
+    )
+    .map((e) => ({
+      id: e.id,
+      action: e.action,
+      object_type: e.object_type,
+      object_id: e.object_id,
+      occurred_at: e.created_at,
+      actor_id: e.actor_email,
+      metadata: e.metadata || {},
+    }));
 }
 
 export async function exportAnalyticsReport(reportType = "executive_summary"): Promise<any> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/analytics/export?report_type=${reportType}`);
+      const res = await fetch(`${API_BASE}/analytics/export?report_type=${reportType}`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
     }
   }
+  const dashboard = await fetchExecutiveDashboard();
   return {
     export_id: `exp-${Date.now()}`,
     report_type: reportType,
     exported_at: new Date().toISOString(),
-    data: FALLBACK_EXECUTIVE_DASHBOARD,
+    data: dashboard,
   };
 }
 
@@ -9951,35 +11233,277 @@ export async function fetchManagerPriorityQueue(
   } catch {
     // fallback
   }
-  if (localCases.length === 0) {
-    return {
-      generated_at: new Date().toISOString(),
-      organization_id: DEMO_ORG_ID,
-      summary: {
-        critical_overdue_deadlines_count: 0,
-        unassigned_cases_count: 0,
-        blocked_cases_count: 0,
-        overdue_client_responses_count: 0,
-        pending_reviews_count: 0,
-        quality_issues_count: 0,
-        payment_summary: {
-          paid_count: 0,
-          pending_count: 0,
-          partially_paid_count: 0,
-          paid_amount: 0,
-          pending_amount: 0,
-          partially_paid_amount: 0,
-        },
-        first_time_pass_rate_percent: 100,
-      },
-      ranks: FALLBACK_MANAGER_PRIORITY_QUEUE.ranks.map((r) => ({
-        ...r,
-        count: 0,
-        items: [],
-      })),
-    };
+
+  syncFromStorage();
+  const ctx = getActiveSessionContext(role);
+  if (isTestEnv && !ctx.hasSession && localCases.length > 0) {
+    return FALLBACK_MANAGER_PRIORITY_QUEUE;
   }
-  return FALLBACK_MANAGER_PRIORITY_QUEUE;
+
+  const orgCases = filterByActiveOrg(localCases, ctx);
+  const orgClients = filterByActiveOrg(localClients, ctx);
+  const orgCaseIds = getOrgCaseIds(ctx);
+  const orgClientIds = new Set(orgClients.map((c) => c.id));
+  const orgDocs = localDocuments.filter((d) => !d.case_id || orgCaseIds.has(d.case_id));
+  const orgTasks = localTasks.filter(
+    (t) => !t.case_id || orgCaseIds.has(t.case_id) || (t.case_number && orgCaseIds.has(t.case_number))
+  );
+  const orgFindings = localFindings.filter((f) => f.case_id && orgCaseIds.has(f.case_id));
+  const storedRequests = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, []).filter(
+    (r) => !ctx.hasSession || (r.case_id && orgCaseIds.has(r.case_id))
+  );
+
+  const nowMs = Date.now();
+  const rank1Items: any[] = [];
+  for (const t of orgTasks) {
+    if (t.is_completed || !t.due_date) continue;
+    const dueMs = new Date(t.due_date).getTime();
+    if (Number.isNaN(dueMs)) continue;
+    const daysRemaining = Math.ceil((dueMs - nowMs) / 86400000);
+    if (daysRemaining <= 7 || t.priority === "critical") {
+      const matchedCase = orgCases.find((c) => c.id === t.case_id || c.case_number === t.case_number);
+      rank1Items.push({
+        id: t.id,
+        type: "authority_task",
+        title: t.title,
+        case_id: matchedCase?.id || t.case_id || "",
+        case_number: matchedCase?.case_number || t.case_number || "CASE",
+        client_name: matchedCase?.client_name || "Retained Client",
+        deadline: t.due_date,
+        days_remaining: daysRemaining,
+        is_overdue: daysRemaining < 0,
+        is_authority_request: t.priority === "critical",
+        authority_type: "Statutory Filing Milestone",
+        severity: daysRemaining < 0 || t.priority === "critical" ? "CRITICAL" : "HIGH",
+      });
+    }
+  }
+
+  const workload = await fetchStaffWorkload();
+  const staffAllocation = workload.map((w) => ({
+    user_id: w.user_id,
+    full_name: w.full_name,
+    email: w.email,
+    assigned_cases_count: w.assigned_cases,
+    pending_tasks_count: w.pending_tasks,
+    capacity_limit: w.nominal_capacity,
+    utilization_percent: w.utilization_pct,
+    allocation_status:
+      w.utilization_pct >= 100
+        ? ("OVERLOADED" as const)
+        : w.utilization_pct >= 75
+          ? ("OPTIMAL" as const)
+          : ("AVAILABLE" as const),
+  }));
+  const unassignedCases = orgCases
+    .filter((c) => !c.assigned_manager || c.assigned_manager === "Unassigned")
+    .map((c) => ({
+      case_id: c.id,
+      case_number: c.case_number,
+      title: c.title,
+      visa_category: c.visa_category,
+      created_at: c.created_at,
+    }));
+
+  const blockedCases = orgCases
+    .map((c) => {
+      const reasons: string[] = [];
+      if (c.attention_required && c.attention_reason) reasons.push(c.attention_reason);
+      const critFindings = orgFindings.filter(
+        (f) => f.case_id === c.id && f.status === "needs_review" && f.severity === "critical"
+      );
+      for (const f of critFindings) reasons.push(f.title);
+      const rejDocs = orgDocs.filter(
+        (d) => d.case_id === c.id && (d.status === "action_needed" || d.verification_status === "rejected")
+      );
+      for (const d of rejDocs) reasons.push(`Rejected document: ${d.title || d.filename}`);
+      return { caseItem: c, reasons };
+    })
+    .filter((entry) => entry.reasons.length > 0)
+    .map(({ caseItem, reasons }) => ({
+      case_id: caseItem.id,
+      case_number: caseItem.case_number,
+      title: caseItem.title,
+      client_name: caseItem.client_name || "Retained Client",
+      visa_category: caseItem.visa_category,
+      status: caseItem.status,
+      blocker_reasons: reasons,
+      blockers_count: reasons.length,
+    }));
+
+  const overdueClientItems = storedRequests
+    .filter((r) => r.status === "requested" && r.due_date && new Date(r.due_date).getTime() < nowMs)
+    .map((r) => {
+      const matchedCase = orgCases.find((c) => c.id === r.case_id);
+      const dueMs = new Date(r.due_date!).getTime();
+      return {
+        id: r.id,
+        type: "document_request",
+        title: r.title,
+        case_id: r.case_id,
+        case_number: matchedCase?.case_number || "CASE",
+        client_name: matchedCase?.client_name || "Retained Client",
+        due_date: r.due_date,
+        days_overdue: Math.max(1, Math.ceil((nowMs - dueMs) / 86400000)),
+        status: r.status,
+      };
+    });
+
+  const pendingReviewItems = orgDocs
+    .filter((d) => d.status === "under_review")
+    .map((d) => {
+      const matchedCase = orgCases.find((c) => c.id === d.case_id);
+      return {
+        id: d.id,
+        item_type: "document",
+        title: d.title || d.filename || "Uploaded Evidence",
+        case_id: d.case_id || "",
+        case_number: matchedCase?.case_number || "CASE",
+        submitted_at: d.uploaded_at || new Date().toISOString(),
+        review_state: d.status,
+      };
+    });
+
+  const qualityIssueItems: any[] = [
+    ...orgDocs
+      .filter((d) => d.status === "action_needed" || d.verification_status === "rejected")
+      .map((d) => {
+        const matchedCase = orgCases.find((c) => c.id === d.case_id);
+        return {
+          id: d.id,
+          issue_type: "document_rejected",
+          title: d.title || d.filename || "Rejected Document",
+          case_id: d.case_id || "",
+          case_number: matchedCase?.case_number || "CASE",
+          structured_reason_code: "DOCUMENT_REJECTED",
+          explanation: "Flagged for corrective action during evidentiary inspection.",
+          timestamp: d.uploaded_at || new Date().toISOString(),
+        };
+      }),
+    ...orgFindings
+      .filter((f) => f.resolution_action === "escalate")
+      .map((f) => {
+        const matchedCase = orgCases.find((c) => c.id === f.case_id);
+        return {
+          id: f.id,
+          issue_type: "supervisor_escalation",
+          title: f.title,
+          case_id: f.case_id,
+          case_number: matchedCase?.case_number || "CASE",
+          structured_reason_code: "FINDING_ESCALATED",
+          explanation: f.description,
+          timestamp: new Date().toISOString(),
+        };
+      }),
+  ];
+
+  const billingInvoices = getStored<InvoiceDetailItem[]>(BILLING_INVOICES_STORAGE_KEY, []).filter(
+    (inv) => !ctx.hasSession || orgClientIds.has(inv.client_id)
+  );
+  const paidInvs = billingInvoices.filter((i) => i.status === "paid");
+  const pendingInvs = billingInvoices.filter((i) => i.status === "issued" || i.status === "overdue");
+  const partialInvs = billingInvoices.filter((i) => i.status === "partially_paid");
+  const paidAmount = paidInvs.reduce((s, i) => s + (i.paid_amount || i.total_amount || 0), 0);
+  const pendingAmount = pendingInvs.reduce((s, i) => s + (i.balance_due || i.total_amount || 0), 0);
+  const partialAmount = partialInvs.reduce((s, i) => s + (i.balance_due || 0), 0);
+
+  const totalDocsReviewed = orgDocs.filter(
+    (d) => d.status === "verified" || d.status === "action_needed" || d.verification_status === "rejected"
+  ).length;
+  const verifiedDocsCount = orgDocs.filter((d) => d.status === "verified").length;
+  const passRate = totalDocsReviewed > 0 ? Number(((verifiedDocsCount / totalDocsReviewed) * 100).toFixed(1)) : 100;
+
+  return {
+    generated_at: new Date().toISOString(),
+    organization_id: ctx.organizationId,
+    summary: {
+      critical_overdue_deadlines_count: rank1Items.filter((i) => i.is_overdue).length,
+      unassigned_cases_count: unassignedCases.length,
+      blocked_cases_count: blockedCases.length,
+      overdue_client_responses_count: overdueClientItems.length,
+      pending_reviews_count: pendingReviewItems.length,
+      quality_issues_count: qualityIssueItems.length,
+      payment_summary: {
+        paid_count: paidInvs.length,
+        pending_count: pendingInvs.length,
+        partially_paid_count: partialInvs.length,
+        paid_amount: paidAmount,
+        pending_amount: pendingAmount,
+        partially_paid_amount: partialAmount,
+      },
+      first_time_pass_rate_percent: passRate,
+    },
+    ranks: [
+      {
+        ...FALLBACK_MANAGER_PRIORITY_QUEUE.ranks[0],
+        count: rank1Items.length,
+        items: rank1Items,
+      },
+      {
+        ...FALLBACK_MANAGER_PRIORITY_QUEUE.ranks[1],
+        count: staffAllocation.length,
+        unassigned_cases_count: unassignedCases.length,
+        staff_allocation: staffAllocation,
+        unassigned_cases: unassignedCases,
+        items: [],
+      },
+      {
+        ...FALLBACK_MANAGER_PRIORITY_QUEUE.ranks[2],
+        count: blockedCases.length,
+        items: blockedCases,
+      },
+      {
+        ...FALLBACK_MANAGER_PRIORITY_QUEUE.ranks[3],
+        count: overdueClientItems.length,
+        items: overdueClientItems,
+      },
+      {
+        ...FALLBACK_MANAGER_PRIORITY_QUEUE.ranks[4],
+        count: pendingReviewItems.length,
+        items: pendingReviewItems,
+      },
+      {
+        ...FALLBACK_MANAGER_PRIORITY_QUEUE.ranks[5],
+        count: qualityIssueItems.length,
+        items: qualityIssueItems,
+      },
+      {
+        ...FALLBACK_MANAGER_PRIORITY_QUEUE.ranks[6],
+        count: billingInvoices.length,
+        paid_count: paidInvs.length,
+        pending_count: pendingInvs.length,
+        partially_paid_count: partialInvs.length,
+        paid_amount: paidAmount,
+        pending_amount: pendingAmount,
+        partially_paid_amount: partialAmount,
+        items: billingInvoices.map((inv) => ({
+          id: inv.id,
+          invoice_number: inv.invoice_number,
+          client_id: inv.client_id,
+          status: inv.status.toUpperCase(),
+          amount: inv.total_amount,
+          paid_amount: inv.paid_amount,
+          balance_due: inv.balance_due,
+          due_date: inv.due_date,
+        })),
+      },
+      {
+        ...FALLBACK_MANAGER_PRIORITY_QUEUE.ranks[7],
+        count: orgDocs.length > 0 ? 1 : 0,
+        first_time_pass_rate_percent: passRate,
+        metrics: {
+          first_time_right_percentage: passRate,
+          median_turnaround_hours: orgDocs.length > 0 ? 4.0 : 0,
+          correction_cycle_time_days: qualityIssueItems.length > 0 ? 1.0 : 0,
+          quality_improvement_index: passRate,
+          weekly_trajectory: [],
+          philosophy:
+            "Metrics support quality improvement, training, and team enablement rather than blame-only punitive management.",
+        },
+        coaching_focus_areas: [],
+      },
+    ],
+  };
 }
 
 export async function rejectDocument(

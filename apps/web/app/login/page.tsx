@@ -3,8 +3,8 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DocumentoLogo } from "../../components/common/DocumentoLogo";
-import { DEMO_USERS, authenticateUser } from "../../lib/auth";
-import { UserExperience } from "../../lib/types";
+import { authenticateUser } from "../../lib/auth";
+import { RoleCode, UserContext } from "../../lib/types";
 import { api } from "../../lib/api";
 
 export default function LoginPage() {
@@ -48,19 +48,19 @@ export default function LoginPage() {
           const isClient =
             portal === "client" ||
             (liveRes.user?.roles && liveRes.user.roles.includes("retained_client"));
-          const defaultUserContext = isClient
-            ? DEMO_USERS.client_applicant
-            : DEMO_USERS.master_admin;
-          const userObj = {
-            ...defaultUserContext,
-            ...(fallbackUser || {}),
-            id: String(liveRes.user?.user_id || fallbackUser?.id || defaultUserContext.id),
+          const normalizedEmail = email.trim().toLowerCase();
+          const userObj: UserContext = {
+            id: String(liveRes.user?.user_id || fallbackUser?.id || `usr-${normalizedEmail}`),
+            email: normalizedEmail,
+            full_name: fallbackUser?.full_name || normalizedEmail,
             organization_id: String(
-              liveRes.user?.organization_id || fallbackUser?.organization_id || defaultUserContext.organization_id
+              liveRes.user?.organization_id || fallbackUser?.organization_id || "org-active"
             ),
-            email: email.trim().toLowerCase(),
-            role: isClient ? ("retained_client" as any) : (fallbackUser?.role || (liveRes.user?.roles?.[0] as any) || "master_admin"),
-            experience: isClient ? ("client_applicant" as any) : (fallbackUser?.experience || "master_admin"),
+            organization_name: fallbackUser?.organization_name || "Partner Immigration Practice",
+            role: isClient ? "retained_client" : (fallbackUser?.role || (liveRes.user?.roles?.[0] as RoleCode) || "master_admin"),
+            experience: isClient ? "client_applicant" : (fallbackUser?.experience || "master_admin"),
+            permissions: fallbackUser?.permissions || (isClient ? ["portal:access", "documents:upload", "messages:send", "questionnaire:submit"] : ["*"]),
+            agency_slug: fallbackUser?.agency_slug,
           };
           if (typeof window !== "undefined") {
             if (rememberMe) {
@@ -75,7 +75,6 @@ export default function LoginPage() {
           return;
         }
 
-        // Fallback to client portal credentials or dev role authentication
         const res = authenticateUser(email, portal, password);
         if (res.success && res.user) {
           if (typeof window !== "undefined") {
@@ -118,22 +117,12 @@ export default function LoginPage() {
 
   const handleSsoClick = (provider: string) => {
     if (portal === "client") {
-      setErrorMessage("Retained client portal access is locked until temporary credentials are provided directly by your law firm Owner or Lead Paralegal.");
+      setErrorMessage("Retained client portal access requires credentials issued directly by your law firm Owner or Lead Paralegal.");
       return;
     }
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      const targetUser = DEMO_USERS.master_admin;
-      const user = {
-        ...targetUser,
-        email: `${provider.toLowerCase().replace(/\s+/g, "")}@sso.vanguardlegal.com`,
-      };
-      if (typeof window !== "undefined") {
-        localStorage.setItem("documento_user", JSON.stringify(user));
-      }
-      router.push("/");
-    }, 600);
+    setErrorMessage(
+      `${provider} SAML/OIDC SSO requires domain federation configured for an active agency workspace. Please sign in with your registered email and password.`
+    );
   };
 
   return (

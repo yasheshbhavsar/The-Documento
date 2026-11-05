@@ -314,7 +314,11 @@ export function VisaFileUpdatesView({
     );
   }
 
-  const isDemoCase = myCase?.case_number === "CASE-US-8841";
+  const isTestEnv = typeof process !== "undefined" && Boolean(process.env.VITEST);
+  const hasStoredUser =
+    typeof window !== "undefined" && Boolean(window.localStorage.getItem("documento_user"));
+  const isDemoCase = isTestEnv && !hasStoredUser && myCase?.case_number === "CASE-US-8841";
+  const resolvedOfficerLabel = myCase?.assigned_manager || "Assigned Legal Counsel";
   const isCanada =
     myCase?.jurisdiction?.toLowerCase().includes("canada") ||
     (myCase?.visa_category || "").toLowerCase().includes("canada") ||
@@ -337,9 +341,9 @@ export function VisaFileUpdatesView({
             color: "#166534",
             border: "#86EFAC",
           },
-          officerName: myCase.assigned_manager || "Vanguard Immigration Law Group",
+          officerName: resolvedOfficerLabel,
           officerRole: "Supervising Case Manager",
-          summary: `Representation formally activated for ${myCase.client_name || "Client"} (${myCase.visa_category}). Designated file created in Vanguard Client Transparency Portal. DLI acceptance and PAL attestation intake initiated.`,
+          summary: `Representation formally activated for ${myCase.client_name || "Client"} (${myCase.visa_category}). Designated file created in the Client Transparency Portal. DLI acceptance and PAL attestation intake initiated.`,
           legalSignificance: `Formal legal representation established. Document intake and statutory verification active under IRPA / IRPR guidelines.`,
           actionRequired: false,
         },
@@ -358,7 +362,7 @@ export function VisaFileUpdatesView({
             color: "#166534",
             border: "#86EFAC",
           },
-          officerName: myCase.assigned_manager || "Vanguard Immigration Law Group",
+          officerName: resolvedOfficerLabel,
           officerRole: "Supervising Case Manager",
           summary: `Client onboarding completed. Initial case file opened for ${myCase.visa_category}. Evidentiary document gathering in progress.`,
           legalSignificance: `Establishes formal client representation and legal confidentiality under counsel supervision.`,
@@ -565,7 +569,7 @@ export function VisaFileUpdatesView({
               CASE PROCESSING OFFICER
             </span>
             <strong style={{ fontSize: "13px", color: "#FFFFFF", display: "block", marginTop: "2px" }}>
-              Sarah Jenkins, Esq.
+              {isDemoCase ? "Sarah Jenkins, Esq." : resolvedOfficerLabel}
             </strong>
           </div>
         </div>

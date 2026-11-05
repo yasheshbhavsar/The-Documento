@@ -212,18 +212,20 @@ describe("Phase 8 — Client Portal, Staff Workspace & Manager Priority Board", 
       expect(screen.getByRole("button", { name: /Filing Deadlines/i })).toBeDefined();
       expect(screen.getByRole("button", { name: /Pending Reviews/i })).toBeDefined();
 
-      // Verify exception cards
-      expect(screen.getByText("Missing Mandatory Regulatory Criteria (O-1A)")).toBeDefined();
-      expect(screen.getByText("Potential J-1 2-Year Foreign Residence Requirement")).toBeDefined();
-      expect(screen.getByText("Passport Identity Page Rejected")).toBeDefined();
-      expect(screen.getByText("USCIS Premium Processing 15-Day Milestone")).toBeDefined();
+      // Verify dynamic exception cards derived from real findings & documents
+      expect(screen.getByText("Cyrillic Transliteration Name Variation")).toBeDefined();
+      expect(
+        screen.getByText("Pending Verification: Stanford_PhD_Diploma_Certificate.pdf")
+      ).toBeDefined();
 
       // Filter specifically by Hard Blockers
       act(() => {
         fireEvent.click(screen.getByRole("button", { name: /Hard Blockers/i }));
       });
-      expect(screen.getByText("Missing Mandatory Regulatory Criteria (O-1A)")).toBeDefined();
-      expect(screen.queryByText("Passport Identity Page Rejected")).toBeNull();
+      expect(screen.getByText("Cyrillic Transliteration Name Variation")).toBeDefined();
+      expect(
+        screen.queryByText("Pending Verification: Stanford_PhD_Diploma_Certificate.pdf")
+      ).toBeNull();
     });
 
     it("renders All-in-One Studio with unified Checklist, Tasks, Quarantined Notes, Package Manifest, and Timeline", async () => {
@@ -411,18 +413,15 @@ describe("Phase 8 — Client Portal, Staff Workspace & Manager Priority Board", 
       // Verify executive oversight clearance banner
       expect(screen.getByText(/Managing Partner Oversight Clearance/i)).toBeDefined();
 
-      // Verify transcript messages
-      expect(screen.getByText("Dr. Elena Rostova")).toBeDefined();
-      expect(screen.getAllByText("Sarah Vance, Esq.").length).toBeGreaterThan(0);
-      expect(screen.getByText(/INTERNAL WORK NOTE/i)).toBeDefined();
-
-      // Add a supervisory partner directive
+      // Add a supervisory partner directive and verify it appears in the live transcript
       const directiveInput = screen.getByPlaceholderText(/Enter confidential managing partner direction/i);
       fireEvent.change(directiveInput, { target: { value: "Approved for premium processing upgrade." } });
       const postBtn = screen.getByRole("button", { name: /Post Directive/i });
       act(() => {
         fireEvent.click(postBtn);
       });
+      expect(screen.getByText("Approved for premium processing upgrade.")).toBeDefined();
+      expect(screen.getByText(/SUPERVISORY PARTNER DIRECTIVE/i)).toBeDefined();
     });
   });
 });

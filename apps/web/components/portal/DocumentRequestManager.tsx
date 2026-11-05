@@ -49,6 +49,7 @@ export function DocumentRequestManager({
   const [reviewNotes, setReviewNotes] = useState("");
   const [commentInput, setCommentInput] = useState("");
   const [isInternalComment, setIsInternalComment] = useState(false);
+  const [commentsByRequestId, setCommentsByRequestId] = useState<Record<string, DocumentRequestCommentItem[]>>({});
 
   // Staff creation form state
   const [newTitle, setNewTitle] = useState("");
@@ -135,6 +136,31 @@ export function DocumentRequestManager({
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRequest || !commentInput.trim()) return;
+    let senderName = isStaffMode ? "Assigned Counsel" : "Applicant";
+    if (typeof window !== "undefined") {
+      try {
+        const rawUser = window.localStorage.getItem("documento_user");
+        if (rawUser) {
+          const parsed = JSON.parse(rawUser);
+          if (parsed?.full_name) senderName = parsed.full_name;
+        }
+      } catch {
+        // Ignore storage read issue
+      }
+    }
+    const createdComment: DocumentRequestCommentItem = {
+      id: `req-cmt-${Date.now()}`,
+      request_id: selectedRequest.id,
+      user_id: isStaffMode ? "staff" : "client",
+      author_name: senderName,
+      content: commentInput.trim(),
+      is_internal: isStaffMode ? isInternalComment : false,
+      created_at: new Date().toISOString(),
+    };
+    setCommentsByRequestId((prev) => ({
+      ...prev,
+      [selectedRequest.id]: [...(prev[selectedRequest.id] || []), createdComment],
+    }));
     await onPostComment?.(selectedRequest.id, commentInput, isInternalComment);
     setCommentInput("");
   };
@@ -633,10 +659,20 @@ export function DocumentRequestManager({
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "10px 0", display: "flex", flexDirection: "column", gap: "10px" }}>
-              <div style={{ padding: "10px", background: "var(--surface-subtle)", borderRadius: "6px", fontSize: "13px" }}>
-                <strong style={{ fontSize: "12px", color: "var(--accent)" }}>Sarah Jenkins, Esq.</strong>
-                <p style={{ margin: "2px 0 0" }}>Please let us know if you need help contacting the IEEE chapter secretary.</p>
-              </div>
+              {(commentsByRequestId[selectedRequest.id] || []).filter((c) => isStaffMode || !c.is_internal).length > 0 ? (
+                (commentsByRequestId[selectedRequest.id] || [])
+                  .filter((c) => isStaffMode || !c.is_internal)
+                  .map((c) => (
+                    <div key={c.id} style={{ padding: "10px", background: "var(--surface-subtle)", borderRadius: "6px", fontSize: "13px" }}>
+                      <strong style={{ fontSize: "12px", color: "var(--accent)" }}>{c.author_name || "Case Team"}</strong>
+                      <p style={{ margin: "2px 0 0" }}>{c.content}</p>
+                    </div>
+                  ))
+              ) : (
+                <div style={{ padding: "12px", background: "var(--surface-subtle)", borderRadius: "6px", fontSize: "13px", color: "var(--muted)" }}>
+                  No Q&amp;A messages on this document request yet. Post a question below to notify your case team.
+                </div>
+              )}
             </div>
 
             <form onSubmit={handleCommentSubmit} style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>

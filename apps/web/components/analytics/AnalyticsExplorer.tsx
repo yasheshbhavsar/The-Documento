@@ -3,8 +3,8 @@ import { Card } from "../common/Card";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
 import { MetricCard } from "../common/MetricCard";
-import { OperationsAnalyticsData } from "../../lib/types";
-import { fetchOperationsAnalytics, exportAnalyticsReport } from "../../lib/api";
+import { OperationsAnalyticsData, StaffWorkloadItem } from "../../lib/types";
+import { fetchOperationsAnalytics, exportAnalyticsReport, fetchStaffWorkload } from "../../lib/api";
 
 interface AnalyticsExplorerProps {
   initialData?: OperationsAnalyticsData;
@@ -16,6 +16,7 @@ export function AnalyticsExplorer({
   isLiveBackend,
 }: AnalyticsExplorerProps) {
   const [data, setData] = useState<OperationsAnalyticsData | null>(initialData || null);
+  const [staffOptions, setStaffOptions] = useState<StaffWorkloadItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(!initialData);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
@@ -47,6 +48,9 @@ export function AnalyticsExplorer({
 
   useEffect(() => {
     loadAnalytics();
+    fetchStaffWorkload()
+      .then((res) => setStaffOptions(res || []))
+      .catch(() => setStaffOptions([]));
   }, []);
 
   const handleFilterChange = (key: string, value: string) => {
@@ -291,10 +295,11 @@ export function AnalyticsExplorer({
               }}
             >
               <option value="all">All Team Members</option>
-              <option value="user-atty-01">Sarah Jenkins (Managing Attorney)</option>
-              <option value="user-para-01">Michael Chang (Senior Paralegal)</option>
-              <option value="user-spec-01">Elena Rostova (Compliance Specialist)</option>
-              <option value="user-atty-02">David Vance (Associate Attorney)</option>
+              {staffOptions.map((member) => (
+                <option key={member.user_id} value={member.user_id}>
+                  {member.full_name} ({member.roles.join(", ")})
+                </option>
+              ))}
             </select>
           </div>
 

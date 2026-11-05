@@ -39,7 +39,7 @@ export function AgencyGrowthAndSetupDesk({
   onOpenCreateClient,
   onConvertLeadToClient,
 }: AgencyGrowthAndSetupDeskProps) {
-  const organizationId = currentUser?.organization_id || "ten-vanguard";
+  const organizationId = currentUser?.organization_id || "";
   const [agency, setAgency] = useState<AgencyTenantRecord | null>(null);
   const [sandboxApp, setSandboxApp] = useState<AgencyKybApplication | null>(null);
   const [leads, setLeads] = useState<CalculatorAgencyLeadRecord[]>([]);

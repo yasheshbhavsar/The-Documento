@@ -374,10 +374,14 @@ export interface ClientProfile {
   credentials_provisioned_at?: string;
   credentials_provisioned_by?: string;
   portal_temporary_password?: string;
+  organization_name?: string;
 }
 
 export interface RetainedClientCredential {
   client_id?: string;
+  client_name?: string;
+  organization_id?: string;
+  organization_name?: string;
   email: string;
   password?: string;
   portal_access_enabled: boolean;

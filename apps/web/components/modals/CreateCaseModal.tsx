@@ -69,8 +69,10 @@ export function CreateCaseModal({
   React.useEffect(() => {
     if (isOpen) {
       setCaseNumber(`CASE-${Math.floor(1000 + Math.random() * 9000)}`);
-      if (!clientId && clients.length > 0) {
+      if (clients.length > 0 && !clients.some((c) => c.id === clientId)) {
         setClientId(clients[0].id);
+      } else if (clients.length === 0) {
+        setClientId("");
       }
     }
   }, [isOpen, clients, clientId]);
@@ -191,7 +193,7 @@ export function CreateCaseModal({
 
         <TextInput
           label="Petition Case Title"
-          placeholder="e.g. EB-1A Petition: Dr. Elena Rostova"
+          placeholder="e.g. EB-1A Petition — Primary Applicant"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required

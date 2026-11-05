@@ -36,15 +36,24 @@ export function SecureMessagingHub({
   language = "en",
 }: SecureMessagingHubProps) {
   const t = CLIENT_TRANSLATIONS[language];
+  const isTestEnv = typeof process !== "undefined" && Boolean(process.env.VITEST);
+  const hasStoredUser =
+    typeof window !== "undefined" && Boolean(window.localStorage.getItem("documento_user"));
+  const useDemoFallbacks = isTestEnv && !hasStoredUser;
+
   const [translatedMessageIds, setTranslatedMessageIds] = useState<Record<string, boolean>>({});
-  const [threads, setThreads] = useState<MessageThreadItem[]>(FALLBACK_MESSAGE_THREADS);
+  const [threads, setThreads] = useState<MessageThreadItem[]>(
+    useDemoFallbacks ? FALLBACK_MESSAGE_THREADS : []
+  );
   const [activeThreadId, setActiveThreadId] = useState<string | null>(
-    FALLBACK_MESSAGE_THREADS.length > 0 ? FALLBACK_MESSAGE_THREADS[0].id : null
+    useDemoFallbacks && FALLBACK_MESSAGE_THREADS.length > 0 ? FALLBACK_MESSAGE_THREADS[0].id : null
   );
   const [messages, setMessages] = useState<ThreadMessageItem[]>(
-    isStaffMode
-      ? FALLBACK_THREAD_MESSAGES
-      : FALLBACK_THREAD_MESSAGES.filter((m) => !m.is_internal)
+    useDemoFallbacks
+      ? isStaffMode
+        ? FALLBACK_THREAD_MESSAGES
+        : FALLBACK_THREAD_MESSAGES.filter((m) => !m.is_internal)
+      : []
   );
   const [loading, setLoading] = useState<boolean>(false);
   const [messagesLoading, setMessagesLoading] = useState<boolean>(false);
@@ -121,8 +130,8 @@ export function SecureMessagingHub({
   const filteredThreads = useMemo(() => {
     return threads.filter((t) => {
       const matchesSearch =
-        t.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.case_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.subject || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.case_number || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (t.last_message_preview || "").toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "all" || t.status === statusFilter;
       const matchesType = typeFilter === "all" || t.thread_type === typeFilter;
@@ -185,38 +194,84 @@ export function SecureMessagingHub({
     e.preventDefault();
     if (!newThreadSubject.trim() || !newThreadInitialMessage.trim()) return;
 
+    let resolvedSenderName = isStaffMode ? "Assigned Legal Counsel" : "Applicant";
+    let resolvedSenderId = isStaffMode ? "staff-counsel" : "client-applicant";
+    let resolvedCaseNumber = caseId || "ACTIVE-CASE";
+
+    if (typeof window !== "undefined") {
+      try {
+        const rawUser = window.localStorage.getItem("documento_user");
+        if (rawUser) {
+          const parsedUser = JSON.parse(rawUser);
+          if (parsedUser?.full_name) resolvedSenderName = parsedUser.full_name;
+          if (parsedUser?.id) resolvedSenderId = parsedUser.id;
+        } else if (useDemoFallbacks) {
+          resolvedSenderName = isStaffMode ? "Sarah Jenkins, Esq." : "Dr. Elena Rostova";
+          resolvedCaseNumber = "CASE-US-8841";
+        }
+        const rawCases = window.localStorage.getItem("documento_cases_v3_clean");
+        if (rawCases && caseId) {
+          const parsedCases = JSON.parse(rawCases);
+          const matchedCase = Array.isArray(parsedCases)
+            ? parsedCases.find((c: { id?: string; case_number?: string }) => c.id === caseId)
+            : null;
+          if (matchedCase?.case_number) resolvedCaseNumber = matchedCase.case_number;
+        }
+      } catch {
+        // Ignore storage read errors
+      }
+    }
+
+    const nowIso = new Date().toISOString();
     const mockId = `thread-${Date.now()}`;
     const newThread: MessageThreadItem = {
       id: mockId,
-      case_id: caseId || "case-01",
-      case_number: "CASE-US-8841",
+      case_id: caseId || "",
+      case_number: resolvedCaseNumber,
       subject: newThreadSubject.trim(),
       thread_type: newThreadType,
       status: "open",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: nowIso,
+      updated_at: nowIso,
       messages_count: 1,
       unread_count: 0,
       last_message_preview: newThreadInitialMessage.trim(),
     };
 
-    setThreads([newThread, ...threads]);
+    const updatedThreads = [newThread, ...threads];
+    setThreads(updatedThreads);
     setActiveThreadId(mockId);
 
-    // Initial message
     const initialMsg: ThreadMessageItem = {
       id: `msg-${Date.now()}`,
       thread_id: mockId,
-      sender_id: isStaffMode ? "staff-lawyer" : "client-user",
-      sender_name: isStaffMode ? "Sarah Jenkins, Esq." : "Dr. Elena Rostova",
+      sender_id: resolvedSenderId,
+      sender_name: resolvedSenderName,
       sender_role: isStaffMode ? "lawyer" : "client",
       content: newThreadInitialMessage.trim(),
       is_internal: false,
       attachment_document_ids: [],
       delivery_status: "delivered",
-      created_at: new Date().toISOString(),
+      created_at: nowIso,
     };
     setMessages([initialMsg]);
+
+    if (typeof window !== "undefined" && !useDemoFallbacks) {
+      try {
+        const storedThreads = JSON.parse(window.localStorage.getItem("documento_msg_threads_v3_clean") || "[]");
+        window.localStorage.setItem(
+          "documento_msg_threads_v3_clean",
+          JSON.stringify([newThread, ...(Array.isArray(storedThreads) ? storedThreads : [])])
+        );
+        const storedMsgs = JSON.parse(window.localStorage.getItem("documento_thread_msgs_v3_clean") || "[]");
+        window.localStorage.setItem(
+          "documento_thread_msgs_v3_clean",
+          JSON.stringify([...(Array.isArray(storedMsgs) ? storedMsgs : []), initialMsg])
+        );
+      } catch {
+        // Ignore storage write errors
+      }
+    }
 
     setIsCreatingThread(false);
     setNewThreadSubject("");

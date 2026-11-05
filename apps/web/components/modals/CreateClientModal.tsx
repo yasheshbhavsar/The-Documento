@@ -258,7 +258,7 @@ export function CreateClientModal({
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: "12px" }}>
           <TextInput
             label="First Name"
-            placeholder="e.g. Marcus"
+            placeholder="e.g. First name"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
             required
@@ -266,7 +266,7 @@ export function CreateClientModal({
 
           <TextInput
             label="Last Name"
-            placeholder="e.g. Thorne"
+            placeholder="e.g. Last name"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
             required
@@ -276,7 +276,7 @@ export function CreateClientModal({
         <TextInput
           label="Email Address"
           type="email"
-          placeholder="e.g. marcus@example.com"
+          placeholder="e.g. applicant@domain.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required

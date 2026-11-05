@@ -83,38 +83,73 @@ export function OwnerMasterDashboard({
     | "stage9_release_governance"
     | "stage10_pathway_expansion"
     | "partner_growth"
-  >(
-    currentUser?.is_sandbox_agency ||
-      (currentUser?.organization_id && currentUser.organization_id !== "ten-vanguard")
-      ? "partner_growth"
-      : "overview"
-  );
+  >(currentUser?.is_sandbox_agency ? "partner_growth" : "overview");
 
   React.useEffect(() => {
-    if (
-      currentUser?.is_sandbox_agency ||
-      (currentUser?.organization_id && currentUser.organization_id !== "ten-vanguard")
-    ) {
+    if (currentUser?.is_sandbox_agency) {
       setActiveTab("partner_growth");
     }
-  }, [currentUser?.organization_id, currentUser?.is_sandbox_agency]);
+  }, [currentUser?.is_sandbox_agency]);
+
+  const firmDisplayName = currentUser?.organization_name || "Partner Immigration Practice";
+  const ownerDisplayName = currentUser?.full_name || "Managing Partner";
+  const ownerInitials = ownerDisplayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "MP";
 
   const [selectedClientForCredentials, setSelectedClientForCredentials] = useState<ClientProfile | null>(null);
   const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
 
-  const [priorityQueueData, setPriorityQueueData] = useState<ManagerPriorityQueueResponse>(FALLBACK_MANAGER_PRIORITY_QUEUE);
+  const [priorityQueueData, setPriorityQueueData] = useState<ManagerPriorityQueueResponse>(() => ({
+    generated_at: new Date().toISOString(),
+    organization_id: currentUser?.organization_id || "",
+    summary: {
+      critical_overdue_deadlines_count: 0,
+      unassigned_cases_count: 0,
+      blocked_cases_count: 0,
+      overdue_client_responses_count: 0,
+      pending_reviews_count: 0,
+      quality_issues_count: 0,
+      payment_summary: {
+        paid_count: 0,
+        pending_count: 0,
+        partially_paid_count: 0,
+        paid_amount: 0,
+        pending_amount: 0,
+        partially_paid_amount: 0,
+      },
+      first_time_pass_rate_percent: 100,
+    },
+    ranks: FALLBACK_MANAGER_PRIORITY_QUEUE.ranks.map((r) => ({
+      ...r,
+      count: 0,
+      items: [],
+      staff_allocation: [],
+      unassigned_cases: [],
+    })),
+  }));
   const [selectedInspectorCaseId, setSelectedInspectorCaseId] = useState<string>(cases[0]?.id || "");
   const [inspectorChannelFilter, setInspectorChannelFilter] = useState<"all" | "client_chat" | "internal_notes">("all");
+  const [inspectorMessages, setInspectorMessages] = useState<Array<{ id: string; sender: string; role: "client" | "staff" | "internal_note"; text: string; time: string }>>([]);
   const [supervisoryNoteInput, setSupervisoryNoteInput] = useState("");
   const [supervisoryNotes, setSupervisoryNotes] = useState<Array<{ id: string; author: string; note: string; timestamp: string }>>(() => {
     if (typeof window !== "undefined") {
       try {
-        const stored = localStorage.getItem("documento_supervisory_notes");
+        const stored = localStorage.getItem("documento_supervisory_notes_v3_clean");
         if (stored) return JSON.parse(stored);
       } catch {}
     }
     return [];
   });
+
+  React.useEffect(() => {
+    if (!selectedInspectorCaseId && cases[0]?.id) {
+      setSelectedInspectorCaseId(cases[0].id);
+    }
+  }, [cases, selectedInspectorCaseId]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -124,13 +159,38 @@ export function OwnerMasterDashboard({
           setPriorityQueueData(res);
         }
       })
-      .catch(() => {
-        // Fallback already assigned
-      });
+      .catch(() => {});
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [cases.length, clients.length, invoices.length]);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    Promise.all([api.getMessages(), selectedInspectorCaseId ? api.getCaseNotes(selectedInspectorCaseId, "master_admin") : Promise.resolve({ data: [] })])
+      .then(([msgRes, notesRes]) => {
+        if (!isMounted) return;
+        const mappedMsgs = (msgRes.data || []).map((m) => ({
+          id: m.id,
+          sender: m.sender,
+          role: (m.sender_role === "client" ? "client" : "staff") as "client" | "staff",
+          text: m.content,
+          time: m.timestamp,
+        }));
+        const mappedNotes = (notesRes.data || []).map((n) => ({
+          id: n.id,
+          sender: n.author_name,
+          role: (n.is_client_visible ? "staff" : "internal_note") as "staff" | "internal_note",
+          text: n.content,
+          time: new Date(n.created_at).toLocaleString(),
+        }));
+        setInspectorMessages([...mappedMsgs, ...mappedNotes]);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedInspectorCaseId]);
 
   // Filtered metrics
   const activeCasesCount = cases.filter((c) => c.status !== "filed" && c.status !== "approved").length;
@@ -253,17 +313,23 @@ export function OwnerMasterDashboard({
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const firmAgency = getAgencyForOrganization(currentUser?.organization_id || "ten-vanguard");
+  const firmAgency = getAgencyForOrganization(currentUser?.organization_id || "");
   const unreadCalculatorLeadsCount = firmAgency
     ? getCalculatorAgencyLeads(firmAgency.organizationId).filter((l) => l.leadStatus === "new_lead").length
     : 0;
+
+  const priorityActionCount =
+    (priorityQueueData.summary?.critical_overdue_deadlines_count || 0) +
+    (priorityQueueData.summary?.unassigned_cases_count || 0) +
+    (priorityQueueData.summary?.blocked_cases_count || 0) +
+    (priorityQueueData.summary?.pending_reviews_count || 0);
 
   const navItems = [
     { key: "overview", id: "tab-btn-overview", label: "Company Overview", icon: "🏢", count: null },
     { key: "partner_growth", id: "tab-btn-partner-growth", label: "Partner Onboarding & Leads", icon: "🔗", count: unreadCalculatorLeadsCount || null },
     { key: "firm_config", id: "tab-btn-firm-config", label: "Firm Governance & Configuration", icon: "🏛️", count: null },
     { key: "reliability_ops", id: "tab-btn-reliability-ops", label: "Reliability, Privacy & Security", icon: "🛡️", count: null },
-    { key: "manager_priority", id: "tab-btn-manager-priority", label: "Priority Command Board", icon: "🚨", count: 8 },
+    { key: "manager_priority", id: "tab-btn-manager-priority", label: "Priority Command Board", icon: "🚨", count: priorityActionCount || null },
     { key: "conversation_inspector", id: "tab-btn-conversation-inspector", label: "Conversation Inspector", icon: "💬", count: null },
     { key: "executive", id: "tab-btn-executive", label: "Executive Command Center", icon: "⚡", count: null },
     { key: "analytics", id: "tab-btn-analytics", label: "Deep Analytics", icon: "📈", count: null },
@@ -282,7 +348,7 @@ export function OwnerMasterDashboard({
   const activeTabInfo = {
     overview: {
       title: "Company Overview",
-      subtitle: "Executive Command & Operational Health • Vanguard Immigration Law Group LLP",
+      subtitle: `Executive Command & Operational Health • ${firmDisplayName}`,
     },
     firm_config: {
       title: "Firm Governance & Configuration Hub",
@@ -409,7 +475,7 @@ export function OwnerMasterDashboard({
                   letterSpacing: "0.02em",
                 }}
               >
-                Vanguard Law Group
+                {firmDisplayName}
               </span>
               <span
                 style={{
@@ -565,11 +631,11 @@ export function OwnerMasterDashboard({
                 border: "1px solid #B9DED4",
               }}
             >
-              SJ
+              {ownerInitials}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: "12px", fontWeight: 650, color: "#063C3D", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                Sarah Jenkins (Partner)
+                {ownerDisplayName}
               </div>
               <div style={{ fontSize: "11px", color: "#6E7F7C", lineHeight: 1.2 }}>
                 Managing Partner
@@ -1403,7 +1469,7 @@ export function OwnerMasterDashboard({
               >
                 {cases.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.case_number} — {c.client_name} ({c.visa_category}) • Lead: {c.assigned_manager || "Sarah Vance, Esq."}
+                    {c.case_number} — {c.client_name} ({c.visa_category}) • Lead: {c.assigned_manager || "Unassigned"}
                   </option>
                 ))}
               </select>
@@ -1465,50 +1531,19 @@ export function OwnerMasterDashboard({
             subtitle="Immutable transcript of applicant messaging, caseworker updates, and managing partner directives."
           >
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {cases.length === 0 ? (
+              {cases.length === 0 || (inspectorMessages.length === 0 && supervisoryNotes.length === 0) ? (
                 <div style={{ padding: "36px 20px", textAlign: "center", color: "#6E7F7C", background: "#F8F7F2", borderRadius: "8px" }}>
                   <div style={{ fontSize: "24px", marginBottom: "6px" }}>💬</div>
                   <strong style={{ fontSize: "14px", color: "#063C3D", display: "block" }}>No Conversation Messages Recorded</strong>
                   <p style={{ margin: "4px 0 0 0", fontSize: "12px" }}>
-                    Day 0 Initial State: Retain a client or open a case to record immutable communications and supervisory directives.
+                    {cases.length === 0
+                      ? "Day 0 Initial State: Retain a client or open a case to record immutable communications and supervisory directives."
+                      : "No client messages, caseworker notes, or supervisory directives have been posted on this file yet."}
                   </p>
                 </div>
               ) : (
                 <>
-                  {[
-                    {
-                      id: "msg-1",
-                      sender: cases.find((c) => c.id === selectedInspectorCaseId)?.client_name || "Dr. Elena Rostova",
-                      role: "client",
-                      text: "Hello Sarah, I have uploaded the revised Google Scholar citation analysis and our university press release for the O-1A filing.",
-                      time: "March 24, 2026 at 10:15 AM",
-                      avatar: "ER",
-                    },
-                    {
-                      id: "msg-2",
-                      sender: "Sarah Vance, Esq.",
-                      role: "staff",
-                      text: "Thank you Dr. Rostova. I have confirmed your citation count (h-index 24). Our paralegal Marcus is checking the referee independence documentation.",
-                      time: "March 24, 2026 at 11:30 AM",
-                      avatar: "SV",
-                    },
-                    {
-                      id: "msg-3",
-                      sender: "Marcus Jenkin",
-                      role: "staff",
-                      text: "Notice: The translation certificate for Dmitri's marriage record needs a certified translator signature. I have flagged this on the portal checklist.",
-                      time: "March 24, 2026 at 02:45 PM",
-                      avatar: "MJ",
-                    },
-                    {
-                      id: "msg-4",
-                      sender: "Sarah Vance, Esq.",
-                      role: "internal_note",
-                      text: "🔒 [QUARANTINED INTERNAL NOTE] Client's referee letters look solid for Criterion 5 (Major Significance). We need to ensure we distinguish referee independence under Kazarian v. USCIS.",
-                      time: "March 24, 2026 at 04:00 PM",
-                      avatar: "SV",
-                    },
-                  ]
+                  {inspectorMessages
                     .filter((m) => {
                       if (inspectorChannelFilter === "client_chat") return m.role !== "internal_note";
                       if (inspectorChannelFilter === "internal_notes") return m.role === "internal_note";
@@ -1561,7 +1596,7 @@ export function OwnerMasterDashboard({
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                           <strong style={{ fontSize: "12px", color: "#063C3D" }}>{n.author}</strong>
-                          <Badge variant="warning" size="sm">SUPERVISORY DIRECTIVE</Badge>
+                          <Badge variant="warning" size="sm">SUPERVISORY PARTNER DIRECTIVE</Badge>
                         </div>
                         <span style={{ fontSize: "11px", color: "#64748B" }}>{new Date(n.timestamp).toLocaleDateString()}</span>
                       </div>
@@ -1599,14 +1634,14 @@ export function OwnerMasterDashboard({
                       if (!supervisoryNoteInput.trim()) return;
                       const newNote = {
                         id: `sup-${Date.now()}`,
-                        author: "Managing Partner",
+                        author: ownerDisplayName,
                         note: supervisoryNoteInput.trim(),
                         timestamp: new Date().toISOString(),
                       };
                       const updated = [...supervisoryNotes, newNote];
                       setSupervisoryNotes(updated);
                       if (typeof window !== "undefined") {
-                        localStorage.setItem("documento_supervisory_notes", JSON.stringify(updated));
+                        localStorage.setItem("documento_supervisory_notes_v3_clean", JSON.stringify(updated));
                       }
                       setSupervisoryNoteInput("");
                     }}

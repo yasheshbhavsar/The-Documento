@@ -10,6 +10,7 @@ import {
   RoleCode,
 } from '../../lib/types';
 import {
+  api,
   queryGovernedRAG,
   getAIEvaluationReport,
   getAITokenUsage,
@@ -263,44 +264,50 @@ export const GovernedAIAssistantDesk: React.FC<GovernedAIAssistantDeskProps> = (
       );
       setRagResult(response);
     } catch (err: any) {
-      // Deterministic client fallback simulation if backend is not locally reachable
+      // Deterministic client fallback when FastAPI RAG service is offline
+      const caseDocsRes = await api.getDocuments({ caseId }, userRole).catch(() => ({ data: [] }));
+      const uploadedDocs = caseDocsRes.data || [];
       setRagError(null);
       setRagResult({
         query: queryInput,
         answer:
-          'Based strictly on the verified case file records and statutory authority under 8 CFR § 204.5(h)(3)(vi), Dr. Marcus Vance has documented 1,450 scholarly citations in peer-reviewed journals. Under step one of Kazarian v. USCIS, this fulfills the objective threshold for authorship of scholarly articles. However, under final merits determination, USCIS requires evidence demonstrating major significance within the wider field beyond raw citation totals.',
+          uploadedDocs.length > 0
+            ? `Offline Statutory Advisory (${jurisdiction} • ${visaCategory}): ${uploadedDocs.length} evidentiary document(s) are currently indexed on Case ${caseNumber} (${uploadedDocs.map((d) => d.title).slice(0, 3).join(', ')}). Connect the live FastAPI RAG backend to execute full semantic vector retrieval across uploaded PDFs; human legal review remains mandatory prior to filing.`
+            : `Offline Statutory Advisory (${jurisdiction} • ${visaCategory}): Zero evidentiary documents are currently uploaded on Case ${caseNumber}. Upload primary identity, academic, or employment evidence first so grounded citations can be cross-referenced against ${jurisdiction} statutory criteria.`,
         jurisdiction,
         visa_category: visaCategory,
-        is_grounded: true,
-        evidence_found: true,
-        confidence_score: 0.96,
+        is_grounded: uploadedDocs.length > 0,
+        evidence_found: uploadedDocs.length > 0,
+        confidence_score: uploadedDocs.length > 0 ? 0.88 : 0.0,
         citations: [
           {
             citation_type: 'statute_authority',
-            source_title: '8 CFR § 204.5(h)(3) & Kazarian v. USCIS (9th Cir. 2010)',
-            section_reference: '8 CFR § 204.5(h)(3)(vi)',
+            source_title: `${jurisdiction} Statutory & Regulatory Schedule (${visaCategory})`,
+            section_reference: `${visaCategory} Evidentiary Standard`,
             snippet:
-              'Two-part analysis: (1) determine whether petitioner submitted evidence satisfying 3 criteria; (2) consider evidence in totality for final merits evaluation.',
+              'All eligibility claims must be corroborated by primary documentary evidence verified by credentialed legal staff.',
             reliability_tier: 'high',
           },
-          {
-            citation_type: 'case_evidence_document',
-            source_title: 'Google Scholar Citation Benchmark',
-            page_number: 2,
-            snippet: 'Total verified citations: 1,450 across 18 publications.',
-            reliability_tier: 'high',
-          },
+          ...uploadedDocs.slice(0, 2).map((d) => ({
+            citation_type: 'case_evidence_document' as const,
+            source_title: d.title,
+            page_number: 1,
+            snippet: `Indexed case record (${d.filename || d.category}) — status: ${d.verification_status || d.status}.`,
+            reliability_tier: 'high' as const,
+          })),
         ],
         uncertainty_disclosures: [
-          'Direct proof of independent researcher citations (non-self-citations) is missing from current uploads.',
-          'Physical letters of support or field impact corroborations have not yet been provided.',
+          'Live cloud LLM inference is currently offline; displaying deterministic case-inventory grounding.',
+          uploadedDocs.length === 0
+            ? 'No applicant documents have been uploaded to this petition yet.'
+            : 'Verify all extracted dates, names, and credential numbers against original scans before signoff.',
         ],
         prompt_guard_defanged: false,
         token_usage: {
-          prompt_tokens: 380,
-          completion_tokens: 210,
-          total_tokens: 590,
-          estimated_cost_usd: 0.00085,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0,
+          estimated_cost_usd: 0,
         },
         legal_sufficiency_disclaimer:
           'Governed RAG Output: Vetted against statutory authority. Staff review mandatory before client submission.',
@@ -419,26 +426,19 @@ export const GovernedAIAssistantDesk: React.FC<GovernedAIAssistantDeskProps> = (
       const res = await getAITokenUsage(userRole);
       setTokenMetrics(res);
     } catch (err) {
-      // Deterministic fallback metrics
+      // Clean-slate fallback metrics when backend is offline
       setTokenMetrics({
-        organization_id: 'demo-org-stage8',
+        organization_id: 'active-workspace',
         monthly_token_quota: 1000000,
-        tokens_used_this_month: 42800,
-        quota_remaining_tokens: 957200,
-        quota_percentage_used: 4.28,
+        tokens_used_this_month: 0,
+        quota_remaining_tokens: 1000000,
+        quota_percentage_used: 0,
         quota_exceeded: false,
-        estimated_cost_usd_this_month: 0.12,
+        estimated_cost_usd_this_month: 0,
         monthly_cost_cap_usd: 50.0,
-        total_operations_recorded: 48,
-        model_distribution: {
-          'gemini-1.5-pro': 28400,
-          'gemini-1.5-flash': 14400,
-        },
-        operation_breakdown: {
-          rag_query: 24,
-          document_extraction: 18,
-          case_summary: 6,
-        },
+        total_operations_recorded: 0,
+        model_distribution: {},
+        operation_breakdown: {},
       });
     } finally {
       setIsLoadingTokens(false);
@@ -452,52 +452,32 @@ export const GovernedAIAssistantDesk: React.FC<GovernedAIAssistantDeskProps> = (
       const res = await getCaseEvidenceBrief(caseId, userRole);
       setBrief(res);
     } catch (err) {
-      // Deterministic fallback brief
+      // Dynamic case-document grounded brief when backend is offline
+      const caseDocsRes = await api.getDocuments({ caseId }, userRole).catch(() => ({ data: [] }));
+      const uploadedDocs = caseDocsRes.data || [];
       setBrief({
         case_number: caseNumber,
         jurisdiction,
         visa_category: visaCategory,
         generated_at: new Date().toISOString(),
-        verified_facts: [
-          {
-            field_label: 'Date of Birth',
-            value: '1985-06-20',
-            source_document: 'Foreign Passport Identity Page',
-            source_page: 1,
-            confidence: 0.99,
-          },
-          {
-            field_label: 'Total Scholarly Citations',
-            value: '1,450 Citations',
-            source_document: 'Google Scholar Citation Benchmark',
-            source_page: 2,
-            confidence: 0.98,
-          },
-        ],
-        potential_discrepancies: [
-          {
-            severity: 'major',
-            title: 'Uncorroborated First-Author Role',
-            description:
-              'Google scholar profile lists 18 publications, but evidence of primary lead research contribution has not been corroborated by independent co-author declarations.',
-            is_confirmed_contradiction: false,
-            status: 'needs_review',
-          },
-        ],
+        verified_facts: uploadedDocs.map((d) => ({
+          field_label: d.category ? d.category.replace(/_/g, ' ').toUpperCase() : 'CASE DOCUMENT',
+          value: `${d.title} (${d.verification_status || d.status})`,
+          source_document: d.filename || d.title,
+          source_page: 1,
+          confidence: d.verification_status === 'verified' ? 1.0 : 0.9,
+        })),
+        potential_discrepancies: [],
         uncertainty_disclosures: [
-          'Automated case extractions are advisory aids for legal staff only; USCIS adjudication requires physical proof under Kazarian two-part final merits review.',
-          'Confidence grounded solely in Google Scholar snapshot; independent verification recommended.',
+          uploadedDocs.length === 0
+            ? 'Zero evidentiary files have been uploaded to this petition yet. Upload primary documents to populate verified facts.'
+            : 'Automated case extractions are advisory aids for legal staff only; credentialed staff verification is mandatory prior to filing.',
         ],
-        suggested_clarification_questions: [
-          {
-            finding_id: 'gap-01',
-            question:
-              'Could you provide recommendation letters or statements from senior collaborators detailing your specific intellectual contribution to the high-citation papers?',
-            severity: 'major',
-            recommended_action: 'Submit expert opinion letters and author attribution attestations.',
-          },
-        ],
-        summary_markdown: `### Evidentiary Summary for Case ${caseNumber}\n\n- **Applicant Identity:** Verified via Foreign Passport Page 1.\n- **Scholarly Citations:** 1,450 verified citations documented.\n- **Status:** Requires additional evidence of original contributions of major significance under 8 CFR § 204.5(h)(3)(v).`,
+        suggested_clarification_questions: [],
+        summary_markdown:
+          uploadedDocs.length === 0
+            ? `### Evidentiary Summary for Case ${caseNumber}\n\n- **Jurisdiction / Pathway:** ${jurisdiction} — ${visaCategory}\n- **Indexed Evidence:** 0 documents uploaded.\n- **Next Step:** Upload applicant identity and pathway-specific evidence to begin review.`
+            : `### Evidentiary Summary for Case ${caseNumber}\n\n- **Jurisdiction / Pathway:** ${jurisdiction} — ${visaCategory}\n- **Indexed Evidence:** ${uploadedDocs.length} document(s) uploaded (${uploadedDocs.map((d) => d.title).join(', ')}).\n- **Review Gate:** Confirm human caseworker verification on each uploaded document prior to package signoff.`,
       });
     } finally {
       setIsLoadingBrief(false);

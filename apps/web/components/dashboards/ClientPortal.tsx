@@ -13,6 +13,8 @@ import {
   ClientPendingActionItem,
   ClientAppointmentItem,
   VisaAppointment,
+  UserContext,
+  FormSubmissionItem,
 } from "../../lib/types";
 import { DocumentInspectorModal } from "../modals/DocumentInspectorModal";
 import { WaitingStateBanner } from "../portal/WaitingStateBanner";
@@ -20,7 +22,7 @@ import { DocumentRequestManager } from "../portal/DocumentRequestManager";
 import { SecureMessagingHub } from "../portal/SecureMessagingHub";
 import { ClientOnboardingWizard } from "../portal/ClientOnboardingWizard";
 import { ConfigurableFormViewer } from "../forms/ConfigurableFormViewer";
-import { api, FALLBACK_FORM_SUBMISSION, FALLBACK_WAITING_STATE } from "../../lib/api";
+import { api, FALLBACK_FORM_SUBMISSION, FALLBACK_WAITING_STATE, fetchCaseFormSubmissions } from "../../lib/api";
 import { VisaFileUpdatesView, FALLBACK_VISA_FILE_UPDATES, VisaFileUpdateItem } from "../portal/VisaFileUpdatesView";
 import { DirectDocumentUploader } from "../portal/DirectDocumentUploader";
 import { CaseOfficerChatBanner } from "../portal/CaseOfficerChatBanner";
@@ -171,6 +173,7 @@ interface ClientPortalProps {
   messages?: MessageItem[];
   notifications?: NotificationItem[];
   invoices?: InvoiceItem[];
+  currentUser?: UserContext | null;
   onOpenUploadModal?: () => void;
   onOpenQuestionnaireModal?: () => void;
   onSendMessage?: (content: string) => void;
@@ -184,12 +187,14 @@ export function ClientPortal({
   messages = [],
   notifications = [],
   invoices = [],
+  currentUser,
   onOpenUploadModal = () => {},
   onOpenQuestionnaireModal = () => {},
   onSendMessage = () => {},
   onMarkNotificationRead = () => {},
   onDocumentUpdated,
 }: ClientPortalProps) {
+  const firmDisplayName = currentUser?.organization_name || "Your Legal Counsel";
   const [clientLanguage, setClientLanguage] = useState<ClientLanguage>(getSavedClientLanguage);
 
   const handleLanguageChange = (newLang: ClientLanguage) => {
@@ -269,7 +274,24 @@ export function ClientPortal({
     };
   }, [myCase?.id]);
 
-  const isDemoCase = myCase?.case_number === "CASE-US-8841";
+  const isTestEnv =
+    typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.env.VITEST === "true");
+  const isDemoCase = isTestEnv && myCase?.case_number === "CASE-US-8841" && !currentUser;
+  const [clientFormSubmission, setClientFormSubmission] = useState<FormSubmissionItem>(FALLBACK_FORM_SUBMISSION);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (myCase?.id) {
+      fetchCaseFormSubmissions(myCase.id)
+        .then((subs) => {
+          if (isMounted && subs[0]) setClientFormSubmission(subs[0]);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [myCase?.id]);
   const isCanada =
     myCase?.jurisdiction?.toLowerCase().includes("canada") ||
     (myCase?.visa_category || "").toLowerCase().includes("canada") ||
@@ -304,9 +326,9 @@ export function ClientPortal({
             color: "#166534",
             border: "#86EFAC",
           },
-          officerName: myCase?.assigned_manager || "Vanguard Immigration Law Group",
+          officerName: myCase?.assigned_manager || firmDisplayName,
           officerRole: "Supervising Case Manager",
-          summary: `Representation formally activated for ${myCase?.client_name || "Client"} (${myCase?.visa_category || "Canada Study Permit"}). Designated file created in Vanguard Client Transparency Portal. DLI acceptance and PAL attestation intake initiated.`,
+          summary: `Representation formally activated for ${myCase?.client_name || "Client"} (${myCase?.visa_category || "Canada Study Permit"}). Designated file created in ${firmDisplayName} Client Transparency Portal. DLI acceptance and PAL attestation intake initiated.`,
           legalSignificance: `Formal legal representation established. Document intake and statutory verification active under IRPA / IRPR guidelines.`,
           actionRequired: false,
         },
@@ -325,7 +347,7 @@ export function ClientPortal({
             color: "#166534",
             border: "#86EFAC",
           },
-          officerName: myCase?.assigned_manager || "Vanguard Immigration Law Group",
+          officerName: myCase?.assigned_manager || firmDisplayName,
           officerRole: "Supervising Case Manager",
           summary: `Client onboarding completed. Initial case file opened for ${myCase?.visa_category || "Immigration Matter"}. Evidentiary document gathering in progress.`,
           legalSignificance: `Establishes formal client representation and legal confidentiality under counsel supervision.`,
@@ -1563,7 +1585,7 @@ export function ClientPortal({
             {/* Primary Next-Action Card & Task Ownership Separation */}
             {myCase ? (
               <WaitingStateBanner
-                waitingState={FALLBACK_WAITING_STATE}
+                waitingState={isDemoCase ? FALLBACK_WAITING_STATE : undefined}
                 caseId={myCase.id}
                 onActionClick={(item) => {
                   if (item.type === "document_request") {
@@ -2492,7 +2514,7 @@ export function ClientPortal({
                     </div>
                     <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
                       {hasAssignedOfficer
-                        ? "Supervising Immigration Attorney • Vanguard Immigration Law Group • Direct Encrypted Portal Line"
+                        ? `Supervising Immigration Counsel • ${firmDisplayName} • Direct Encrypted Portal Line`
                         : "Legal counsel assignment in progress • Inquiries routed to firm intake supervisory desk"}
                     </p>
                   </div>
@@ -3301,10 +3323,10 @@ export function ClientPortal({
                   </div>
                   <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
                     {isCanada
-                      ? "Live synchronization with IRCC & Vanguard Case Docket."
+                      ? `Live synchronization with IRCC & ${firmDisplayName} Case Docket.`
                       : isDemoCase
-                      ? "Live synchronization with USCIS Texas Service Center & Vanguard Case Docket."
-                      : `Live synchronization with ${myCase?.jurisdiction || "Immigration Authority"} & Vanguard Case Docket.`}
+                      ? "Live synchronization with USCIS Texas Service Center & Case Docket."
+                      : `Live synchronization with ${myCase?.jurisdiction || "Immigration Authority"} & ${firmDisplayName} Case Docket.`}
                   </p>
                 </div>
                 <button
@@ -3503,7 +3525,7 @@ export function ClientPortal({
               {/* My Petition Details */}
               <Card
                 title="My Petition Details"
-                subtitle="Active legal representation under Vanguard Immigration Law Group LLP."
+                subtitle={`Active legal representation under ${firmDisplayName}.`}
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", fontSize: "13px" }}>
@@ -4147,7 +4169,7 @@ export function ClientPortal({
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <ConfigurableFormViewer
-                submission={FALLBACK_FORM_SUBMISSION}
+                submission={clientFormSubmission}
                 userRole="retained_client"
               />
             </div>

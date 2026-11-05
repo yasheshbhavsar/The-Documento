@@ -35,7 +35,7 @@ import {
   updateAgencyGovernanceLocal,
   updateKybVerificationChecklist,
 } from "../../lib/agencyPlatformStore";
-import { DEMO_USERS, authenticateUser } from "../../lib/auth";
+import { authenticateUser } from "../../lib/auth";
 import { UserContext } from "../../lib/types";
 
 type ControlPlaneView =
@@ -58,7 +58,7 @@ const FREE_EMAIL_DOMAINS = new Set([
 export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void } = {}) {
   const [operator, setOperator] = useState<UserContext | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [loginEmail, setLoginEmail] = useState("hq.admin@documento.ai");
+  const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -268,7 +268,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
   const handleOperatorSignIn = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
-    const res = authenticateUser(loginEmail, "firm", loginPassword || "DocumentoHQ2026!");
+    const res = authenticateUser(loginEmail, "firm", loginPassword);
     if (res.success && res.user && res.user.role === "platform_super_admin") {
       setOperator(res.user);
       if (typeof window !== "undefined") {
@@ -277,16 +277,9 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
       return;
     }
     setLoginError(
-      "Control Plane access requires a Documento HQ Platform Super-Admin account (e.g. hq.admin@documento.ai)."
+      res.error ||
+        "Control Plane access requires an authorized Documento HQ Platform Super-Admin account and passphrase."
     );
-  };
-
-  const handleInstantHqDemoAuth = () => {
-    const hq = DEMO_USERS.platform_super_admin;
-    setOperator(hq);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("documento_hq_operator", JSON.stringify(hq));
-    }
   };
 
   const handleOperatorSignOut = () => {
@@ -601,6 +594,8 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
               <input
                 id="hq-email"
                 type="email"
+                required
+                placeholder="hq.admin@documento.ai"
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
                 style={{
@@ -623,6 +618,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
               <input
                 id="hq-password"
                 type="password"
+                required
                 placeholder="Enter HQ operator passphrase..."
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
@@ -665,24 +661,10 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
               flexWrap: "wrap",
             }}
           >
-            <button
-              type="button"
-              data-testid="hq-instant-auth-btn"
-              onClick={handleInstantHqDemoAuth}
-              style={{
-                background: "#F3FAF7",
-                border: "1px solid #B9DED4",
-                color: "#063C3D",
-                padding: "7px 12px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 650,
-                cursor: "pointer",
-              }}
-            >
-              Quick Enter as HQ Founder (hq.admin@documento.ai)
-            </button>
-            <Link href="/" style={{ fontSize: "12.5px", color: "#526663", textDecoration: "none" }}>
+            <span style={{ fontSize: "11.5px", color: "#526663" }}>
+              Authorized Platform Governance Operators Only
+            </span>
+            <Link href="/" style={{ fontSize: "12.5px", color: "#063C3D", fontWeight: 600, textDecoration: "none" }}>
               ← Back to Site
             </Link>
           </div>
