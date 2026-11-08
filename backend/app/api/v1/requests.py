@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from backend.app.core.errors import EntityNotFoundError, PermissionDeniedError
 from backend.app.db.session import get_db
@@ -239,7 +239,11 @@ def list_document_requests(
     Lists document requests.
     CRITICAL AUTHORIZATION: Retained clients are strictly limited to their own requests.
     """
-    query = db.query(DocumentRequest).filter(DocumentRequest.organization_id == ctx.organization_id)
+    query = (
+        db.query(DocumentRequest)
+        .options(selectinload(DocumentRequest.comments))
+        .filter(DocumentRequest.organization_id == ctx.organization_id)
+    )
 
     if ctx.is_retained_client():
         # Resolve client profile for the authenticated user
@@ -678,7 +682,11 @@ def list_request_comments(
         if not client or req.requested_from_client_id != client.id:
             raise PermissionDeniedError("Cannot view comments on another client's request")
 
-    query = db.query(DocumentRequestComment).filter(DocumentRequestComment.request_id == req.id)
+    query = (
+        db.query(DocumentRequestComment)
+        .options(joinedload(DocumentRequestComment.user))
+        .filter(DocumentRequestComment.request_id == req.id)
+    )
     if ctx.is_retained_client():
         query = query.filter(DocumentRequestComment.is_internal == False)
 

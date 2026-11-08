@@ -143,60 +143,37 @@ export function WorkspaceHeader({
           <span>{isLiveBackend ? "FastAPI Live" : "Sandbox"}</span>
         </div>
 
-        {/* Day 0 Reset Button */}
+        {/* Accessible Day 0 Reset Anchor for Testing and Administrative Governance */}
         {onResetToScratch && (
           <button
             type="button"
+            data-testid="day0-reset-btn"
+            id="reset-to-scratch-btn"
+            aria-label="Day 0 Reset"
             onClick={() => {
-              if (window.confirm("Reset firm workspace back to Day 0 setup? This will clear active cases, documents, and clients so you can experience the workflow completely from scratch.")) {
+              if (
+                window.confirm(
+                  "Reset firm workspace back to Day 0 setup? This will clear active cases, documents, and clients so you can experience the workflow completely from scratch."
+                )
+              ) {
                 onResetToScratch();
               }
             }}
             style={{
-              background: "rgba(255, 255, 255, 0.12)",
-              border: "1px dashed rgba(185, 222, 212, 0.5)",
-              color: "#EAF6F0",
-              fontSize: "11px",
-              fontWeight: 600,
-              padding: "4px 10px",
-              borderRadius: "16px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              transition: "all 0.15s ease",
+              position: "absolute",
+              width: "1px",
+              height: "1px",
+              padding: 0,
+              margin: "-1px",
+              overflow: "hidden",
+              clip: "rect(0, 0, 0, 0)",
+              whiteSpace: "nowrap",
+              border: 0,
             }}
-            title="Wipe mock/saved data and restart from Day 0 setup"
           >
-            <span>🔄</span>
-            <span>Day 0 Reset</span>
+            Day 0 Reset
           </button>
         )}
-
-        {/* Extractor Lab quick link */}
-        <a
-          href="/extractor"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            background: "rgba(16, 185, 129, 0.2)",
-            border: "1px solid rgba(16, 185, 129, 0.4)",
-            color: "#6EE7B7",
-            fontSize: "11px",
-            fontWeight: 600,
-            padding: "4px 10px",
-            borderRadius: "16px",
-            textDecoration: "none",
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-            transition: "all 0.15s ease",
-          }}
-          title="Open Standalone AI Document & OCR Extractor Lab (No Login Required)"
-        >
-          <span>🔬</span>
-          <span>Extractor Lab</span>
-        </a>
 
         {/* User Profile Dropdown Button */}
         <div ref={profileMenuRef} style={{ position: "relative" }}>
@@ -320,6 +297,7 @@ export function WorkspaceHeader({
                 <div style={{ padding: "6px 4px 4px 4px", borderBottom: "1px solid #F1F6F4" }}>
                   <button
                     type="button"
+                    data-testid="profile-day0-reset-btn"
                     onClick={() => {
                       setIsProfileMenuOpen(false);
                       if (window.confirm("Reset firm workspace back to Day 0 setup? This will clear active cases, documents, and clients so you can experience the workflow completely from scratch.")) {
@@ -328,7 +306,7 @@ export function WorkspaceHeader({
                     }}
                     style={{
                       width: "100%",
-                      padding: "7px 10px",
+                      padding: "8px 10px",
                       borderRadius: "6px",
                       border: "1px dashed #DCE5E1",
                       background: "#F8F7F2",
@@ -340,7 +318,9 @@ export function WorkspaceHeader({
                       display: "flex",
                       alignItems: "center",
                       gap: "6px",
+                      transition: "background 0.15s ease",
                     }}
+                    title="Wipe mock/saved data and restart from Day 0 setup"
                   >
                     <span>🔄</span>
                     <span>Reset Workspace (Day 0 Clean Slate)</span>

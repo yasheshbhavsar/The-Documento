@@ -2,9 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.core.config import get_settings
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
 from backend.app.core.errors import (
     AppException,
     app_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
     unhandled_exception_handler,
 )
 from backend.app.core.logging import setup_logging
@@ -71,6 +75,8 @@ app = FastAPI(
 
 # Exception Handlers
 app.add_exception_handler(AppException, app_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
 # Middlewares

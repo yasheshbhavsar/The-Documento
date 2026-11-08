@@ -146,6 +146,27 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
     );
   });
 
+  const fallbackManifestForPkg: Phase7CanonicalManifest = {
+    case_reference: packageItem.case_id || packageItem.id,
+    generated_at: packageItem.manifest?.package_generation_time || new Date().toISOString(),
+    generated_by: "authorized-counsel",
+    package_template_version: packageItem.version_number || "v1.0.0",
+    checklist_rule_version: packageItem.manifest?.rule_version_used || "STATUTORY-2026.1",
+    documents: (packageItem.manifest?.items || []).map((it, idx) => ({
+      document_version_id: `doc-${idx + 1}:v${it.version || 1}`,
+      relative_path: it.folder_path,
+      sha256: it.sha256_hash,
+      review_status: it.review_status === "verified" ? "HUMAN_VERIFIED" : "PENDING_REVIEW",
+    })),
+    exclusions: (((packageItem as any).excluded_documents || (packageItem.manifest as any)?.excluded_items || []) as any[]).map((ex: any) => ({
+      document_version_id: `${ex.document_id}:v1`,
+      reason_code: ex.reason_code,
+    })),
+    folder_structure: FALLBACK_PHASE7_MANIFEST.folder_structure,
+    retention_policy: "seven_days",
+    immutable_disclaimer: FALLBACK_PHASE7_MANIFEST.immutable_disclaimer,
+  };
+
   // Load canonical manifest on demand
   const handleOpenManifestModal = async () => {
     setIsManifestModalOpen(true);
@@ -154,7 +175,7 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
       const data = await fetchCanonicalManifest(packageItem.id);
       setCanonicalManifest(data);
     } catch {
-      setCanonicalManifest(FALLBACK_PHASE7_MANIFEST);
+      setCanonicalManifest(fallbackManifestForPkg);
     } finally {
       setIsLoadingManifest(false);
     }
@@ -351,7 +372,7 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
               flexWrap: "wrap",
             }}
           >
-            <span>Root Merkle Hash:</span>
+            <span>Tamper-Evident Digital Audit Trail — Root Merkle Hash:</span>
             <span
               style={{
                 color: "#EAF6F0",
@@ -1347,7 +1368,7 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
                     wordBreak: "break-all",
                   }}
                 >
-                  {JSON.stringify(canonicalManifest || FALLBACK_PHASE7_MANIFEST, null, 2)}
+                  {JSON.stringify(canonicalManifest || fallbackManifestForPkg, null, 2)}
                 </pre>
               )}
             </div>

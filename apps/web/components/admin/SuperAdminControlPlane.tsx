@@ -34,8 +34,10 @@ import {
   replyAndResolveSupportTicket,
   updateAgencyGovernanceLocal,
   updateKybVerificationChecklist,
+  deleteAgencyTenant,
+  deleteAgencyApplication,
 } from "../../lib/agencyPlatformStore";
-import { authenticateUser } from "../../lib/auth";
+import { authenticateUser, PLATFORM_HQ_OPERATOR_EMAIL } from "../../lib/auth";
 import { UserContext } from "../../lib/types";
 
 type ControlPlaneView =
@@ -515,6 +517,36 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
         ? `Frozen ${tenant.tradingName} — active staff sessions revoked while preserving encrypted records.`
         : `Reactivated ${tenant.tradingName} production tenant.`
     );
+  };
+
+  const handleDeleteTenant = (tenant: AgencyTenantRecord) => {
+    const ok = window.confirm(
+      `Permanently delete partner agency tenant "${tenant.tradingName}" (${tenant.organizationId})?\n\nThis will cascade-delete all associated invoices, team invites, support tickets, and calculator leads. This action cannot be undone.`
+    );
+    if (!ok) return;
+
+    const actorEmail = operator?.email || PLATFORM_HQ_OPERATOR_EMAIL;
+    deleteAgencyTenant(tenant.organizationId, actorEmail, "Deleted via SuperAdmin Control Plane");
+    if (selectedTenantId === tenant.organizationId) {
+      setSelectedTenantId(null);
+    }
+    setToastBanner(`Agency tenant "${tenant.tradingName}" and associated records successfully deleted.`);
+    refreshData();
+  };
+
+  const handleDeleteApplication = (app: AgencyKybApplication) => {
+    const ok = window.confirm(
+      `Permanently delete KYB application "${app.tradingName}" (${app.id})?\n\nThis action cannot be undone.`
+    );
+    if (!ok) return;
+
+    const actorEmail = operator?.email || PLATFORM_HQ_OPERATOR_EMAIL;
+    deleteAgencyApplication(app.id, actorEmail, "Deleted via SuperAdmin Control Plane");
+    if (selectedAppId === app.id) {
+      setSelectedAppId(null);
+    }
+    setToastBanner(`KYB application "${app.tradingName}" successfully deleted.`);
+    refreshData();
   };
 
   if (!authChecked) return null;
@@ -1773,12 +1805,19 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                 {applications.map((app) => {
                   const selected = selectedApp?.id === app.id;
                   return (
-                    <button
+                    <div
                       key={app.id}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         setSelectedAppId(app.id);
                         setKybDecisionError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          setSelectedAppId(app.id);
+                          setKybDecisionError(null);
+                        }
                       }}
                       style={{
                         display: "block",
@@ -1792,30 +1831,53 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                         cursor: "pointer",
                       }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
                         <span style={{ fontSize: "13.5px", fontWeight: 650, color: "#172322" }}>
                           {app.tradingName}
                         </span>
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            color:
-                              app.kybStatus === "approved"
-                                ? "#176B50"
-                                : app.kybStatus === "pending_kyb"
-                                  ? "#8A5A10"
-                                  : "#5C6E6A",
-                          }}
-                        >
-                          {app.kybStatus.toUpperCase().replace("_", " ")}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              color:
+                                app.kybStatus === "approved"
+                                  ? "#176B50"
+                                  : app.kybStatus === "pending_kyb"
+                                    ? "#8A5A10"
+                                    : "#5C6E6A",
+                            }}
+                          >
+                            {app.kybStatus.toUpperCase().replace("_", " ")}
+                          </span>
+                          <button
+                            type="button"
+                            data-testid={`delete-kyb-app-btn-${app.id}`}
+                            title={`Delete application for ${app.tradingName}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteApplication(app);
+                            }}
+                            style={{
+                              padding: "2px 6px",
+                              fontSize: "11px",
+                              borderRadius: "4px",
+                              border: "1px solid #FECACA",
+                              background: "#FFFFFF",
+                              color: "#991B1B",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </div>
                       <div style={{ fontSize: "11.5px", color: "#5C6E6A", marginTop: "3px" }}>
                         {app.dossierCode} · {app.regulatoryBody} ({app.licenseNumber}) ·{" "}
                         {(app.uploadedDocuments || []).length} doc(s)
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -2203,6 +2265,23 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                         >
                           Reject Dossier
                         </button>
+                        <button
+                          type="button"
+                          data-testid="delete-kyb-app-panel-btn"
+                          onClick={() => handleDeleteApplication(selectedApp)}
+                          style={{
+                            padding: "9px 14px",
+                            borderRadius: "6px",
+                            border: "1px solid #FECACA",
+                            background: "#FEF2F2",
+                            color: "#991B1B",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          🗑️ Delete Dossier
+                        </button>
                       </div>
                     </div>
                   )}
@@ -2422,6 +2501,24 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                               }}
                             >
                               {t.status === "active" ? "Freeze" : "Reactivate"}
+                            </button>
+                            <button
+                              type="button"
+                              data-testid={`delete-tenant-btn-${t.organizationId}`}
+                              onClick={() => handleDeleteTenant(t)}
+                              style={{
+                                padding: "5px 10px",
+                                borderRadius: "4px",
+                                border: "1px solid #FECACA",
+                                background: "#FFFFFF",
+                                color: "#991B1B",
+                                fontSize: "11.5px",
+                                fontWeight: 650,
+                                cursor: "pointer",
+                                marginLeft: "6px",
+                              }}
+                            >
+                              Delete
                             </button>
                           </td>
                         </tr>
@@ -2645,6 +2742,23 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                       }}
                     >
                       Save Quota &amp; Plan Changes
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="delete-tenant-drawer-btn"
+                      onClick={() => handleDeleteTenant(selectedTenant)}
+                      style={{
+                        padding: "9px 18px",
+                        borderRadius: "6px",
+                        border: "1px solid #FECACA",
+                        background: "#FEF2F2",
+                        color: "#991B1B",
+                        fontSize: "13px",
+                        fontWeight: 650,
+                        cursor: "pointer",
+                      }}
+                    >
+                      🗑️ Delete Agency Tenant
                     </button>
                   </div>
                 </section>

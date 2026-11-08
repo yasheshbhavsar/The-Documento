@@ -14,11 +14,16 @@ import {
   AIFinding,
   CaseInterimReport,
   RouteFindingPayload,
+  UserContext,
 } from "../../lib/types";
 import { api, FIXTURE_AI_FINDINGS, fetchCaseInterimReports, resolveDocumentAnomaly } from "../../lib/api";
+import { canDeleteClient } from "../../lib/auth";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 import { CaseMilestoneTimeline } from "./CaseMilestoneTimeline";
 import { CaseDiscrepancyAlertCenter } from "./CaseDiscrepancyAlertCenter";
 import { ApprovalGatesCard } from "./ApprovalGatesCard";
+import { getJurisdictionRepresentationInfo } from "../../lib/jurisdictionForms";
+import { getCaseStageInfo } from "../../lib/caseLifecycle";
 
 interface CaseDetailModalProps {
   isOpen: boolean;
@@ -26,22 +31,19 @@ interface CaseDetailModalProps {
   caseItem: ImmigrationCase | null;
   onCaseUpdated?: (updatedCase: ImmigrationCase) => void;
   activeRole?: RoleCode;
+  currentUser?: UserContext | null;
+  onDeleteClient?: (clientId: string) => void | Promise<void>;
 }
 
 const LIFECYCLE_STAGES: { stage: CaseStage; label: string }[] = [
-  { stage: "inquiry", label: "1. Inquiry" },
-  { stage: "intake", label: "2. Intake & Retainer" },
-  { stage: "awaiting_documents", label: "3. Awaiting Documents" },
-  { stage: "processing", label: "4. Processing" },
-  { stage: "internal_review", label: "5. Internal Review" },
-  { stage: "awaiting_client", label: "6. Awaiting Client" },
-  { stage: "ready_for_approval", label: "7. Ready for Approval" },
-  { stage: "approved_for_submission", label: "8. Approved for Submission" },
-  { stage: "submitted", label: "9. Submitted to Agency" },
-  { stage: "decision_received", label: "10. Decision Received" },
-  { stage: "closed", label: "11. Closed" },
-  { stage: "archived", label: "12. Archived" },
-  { stage: "reopened", label: "Reopened" },
+  { stage: "intake", label: "1. Intake" },
+  { stage: "awaiting_documents", label: "2. Evidence Gathering" },
+  { stage: "processing", label: "3. Caseworker Review" },
+  { stage: "ready_for_approval", label: "4. Package Assembly" },
+  { stage: "approved_for_submission", label: "5. Attorney Signoff" },
+  { stage: "submitted", label: "6. Filed with Agency" },
+  { stage: "closed", label: "Closed" },
+  { stage: "archived", label: "Archived" },
 ];
 
 export function CaseDetailModal({
@@ -50,7 +52,20 @@ export function CaseDetailModal({
   caseItem,
   onCaseUpdated,
   activeRole = "case_manager",
+  currentUser,
+  onDeleteClient,
 }: CaseDetailModalProps) {
+  const ws = useWorkspaceSafe();
+  const effectiveUser =
+    currentUser !== undefined
+      ? currentUser
+      : ws?.currentUser !== undefined
+        ? ws.currentUser
+        : (activeRole
+          ? ({ role: activeRole, experience: activeRole } as UserContext)
+          : null);
+  const isDeleteClientAllowed = canDeleteClient(effectiveUser);
+
   const [activeTab, setActiveTab] = useState<
     "overview" | "approval_gates" | "milestones" | "tasks" | "dependants" | "notes" | "audit" | "interim_reports"
   >("overview");
@@ -234,8 +249,8 @@ export function CaseDetailModal({
               title: "Client Intake & Representation Retainer",
               stage: "intake",
               target_date: createdAtIso,
-              completed_at: createdAtIso,
-              status: "completed",
+              completed_at: caseItem.status !== "intake" ? createdAtIso : undefined,
+              status: caseItem.status !== "intake" ? "completed" : "pending",
               created_at: createdAtIso,
             },
             {
@@ -642,6 +657,23 @@ export function CaseDetailModal({
     }
   };
 
+  const handleDeleteClientClick = async () => {
+    if (!currentCase?.client_id) return;
+    const ok = window.confirm(
+      `Permanently delete client "${currentCase.client_name || currentCase.client_id}" and all associated cases, documents, and tasks? This action cannot be undone.`
+    );
+    if (!ok) return;
+
+    if (onDeleteClient) {
+      await onDeleteClient(currentCase.client_id);
+    } else if (ws?.handleDeleteClient) {
+      await ws.handleDeleteClient(currentCase.client_id);
+    } else {
+      await api.deleteClient(currentCase.client_id, activeRole, true);
+    }
+    onClose();
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -651,7 +683,7 @@ export function CaseDetailModal({
       subtitle={`Principal Client: ${currentCase.client_name} • Destination: ${currentCase.jurisdiction} (${currentCase.visa_category})`}
       footer={
         <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
             {!isClient && currentCase.status !== "closed" && currentCase.status !== "archived" && (
               <Button variant="outline" size="sm" onClick={handleCloseCase}>
                 🔒 Close Case
@@ -665,6 +697,17 @@ export function CaseDetailModal({
             {!isClient && currentCase.status === "closed" && (
               <Button variant="outline" size="sm" onClick={handleArchiveCase}>
                 🗄️ Archive Case
+              </Button>
+            )}
+            {isDeleteClientAllowed && currentCase.client_id && (
+              <Button
+                variant="danger"
+                size="sm"
+                data-testid="delete-client-modal-btn"
+                aria-label={`Delete client ${currentCase.client_name || ""}`.trim()}
+                onClick={handleDeleteClientClick}
+              >
+                🗑️ Delete Client
               </Button>
             )}
           </div>
@@ -728,11 +771,11 @@ export function CaseDetailModal({
               Current Controlled Lifecycle Stage
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
-              <Badge variant={currentCase.status === "closed" || currentCase.status === "archived" ? "neutral" : "review"}>
-                {currentCase.status.toUpperCase()}
+              <Badge variant={getCaseStageInfo(currentCase.status).badgeVariant}>
+                {getCaseStageInfo(currentCase.status).label}
               </Badge>
               <span style={{ fontSize: "13px", color: "var(--text)" }}>
-                {LIFECYCLE_STAGES.find((s) => s.stage === currentCase.status)?.label || currentCase.status}
+                {getCaseStageInfo(currentCase.status).shortLabel}: {getCaseStageInfo(currentCase.status).label}
               </span>
             </div>
           </div>
@@ -843,7 +886,7 @@ export function CaseDetailModal({
                   <div><strong>Immigration Pathway:</strong> {currentCase.visa_category}</div>
                   <div><strong>Priority Date:</strong> {currentCase.priority_date || "2026-08-10 (Direct Filing)"}</div>
                   <div><strong>Statutory Deadline:</strong> {currentCase.deadline || "2026-11-15"}</div>
-                  <div><strong>Filing Readiness Score:</strong> {currentCase.readiness_score || 82}% Complete</div>
+                  <div><strong>Filing Readiness Score:</strong> {currentCase.readiness_score ?? 0}% Complete</div>
                 </div>
               </div>
 
@@ -1001,7 +1044,7 @@ export function CaseDetailModal({
                   👤 Principal: <strong>{currentCase.client_name}</strong>
                 </span>
                 <span style={{ padding: "4px 8px", background: "#f0fdf4", color: "#166534", borderRadius: "4px" }}>
-                  ✓ Form G-28 Legal Representation Recorded
+                  {getJurisdictionRepresentationInfo(currentCase.jurisdiction).recordedBadge}
                 </span>
                 <span style={{ padding: "4px 8px", background: "#f0fdf4", color: "#166534", borderRadius: "4px" }}>
                   ✓ GDPR Data Processing Consent Active

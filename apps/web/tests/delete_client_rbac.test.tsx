@@ -381,5 +381,77 @@ describe("Retained Client Deletion RBAC & Access Control", () => {
         /Paralegals and retained clients do not have permission to delete client records/i
       );
     });
+
+    it("falls back cleanly with zero console.error when backend returns HTTP 500 on client creation and deletion, while still surfacing 4xx validation errors", async () => {
+      window.localStorage.setItem("documento_user", JSON.stringify(OWNER_USER));
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const originalFetch = globalThis.fetch;
+
+      try {
+        // Simulate running backend returning HTTP 500 InternalServerError (e.g. local Postgres offline)
+        globalThis.fetch = vi.fn().mockImplementation(async () =>
+          new Response(
+            JSON.stringify({
+              error: "InternalServerError",
+              message: "An unexpected server error occurred. Please contact support.",
+            }),
+            { status: 500, headers: { "Content-Type": "application/json" } }
+          )
+        ) as any;
+
+        const createRes = await api.createClient(
+          {
+            first_name: "Rohan",
+            last_name: "Desai",
+            email: "rohan.desai@example.com",
+            nationality: "India",
+            portal_credentials_provided: true,
+            portal_access_enabled: true,
+            temporary_password: "ClientLogin2026!",
+          },
+          "master_admin"
+        );
+
+        expect(createRes.isLiveBackend).toBe(false);
+        expect(createRes.data.first_name).toBe("Rohan");
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+        // Client can immediately sign in and appears in getClients()
+        const clientAuth = authenticateUser("rohan.desai@example.com", "client", "ClientLogin2026!");
+        expect(clientAuth.success).toBe(true);
+
+        const listRes = await api.getClients("master_admin");
+        expect(listRes.data.some((c) => c.email === "rohan.desai@example.com")).toBe(true);
+
+        // Deletion also succeeds cleanly when backend returns HTTP 500
+        const delRes = await api.deleteClient(createRes.data.id, "master_admin");
+        expect(delRes.data.success).toBe(true);
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+        // True 422 validation error still surfaces cleanly without console.error
+        globalThis.fetch = vi.fn().mockImplementation(async () =>
+          new Response(
+            JSON.stringify({ detail: "Invalid email domain format" }),
+            { status: 422, headers: { "Content-Type": "application/json" } }
+          )
+        ) as any;
+
+        await expect(
+          api.createClient(
+            {
+              first_name: "Bad",
+              last_name: "Input",
+              email: "bad@invalid",
+              nationality: "IND",
+            },
+            "master_admin"
+          )
+        ).rejects.toThrow(/Invalid email domain format/i);
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+      } finally {
+        globalThis.fetch = originalFetch;
+        consoleErrorSpy.mockRestore();
+      }
+    });
   });
 });

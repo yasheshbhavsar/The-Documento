@@ -38,6 +38,7 @@ import {
 } from "../../lib/api";
 import { ManagerPriorityQueueView, FALLBACK_PRIORITY_QUEUE } from "./ManagerPriorityQueueView";
 import { DocumentInspectorModal } from "../modals/DocumentInspectorModal";
+import { formatCaseStageBadge } from "../../lib/caseLifecycle";
 import { AIFindingInspectorModal } from "../modals/AIFindingInspectorModal";
 import { EvidenceSummaryModal } from "../modals/EvidenceSummaryModal";
 import { CaseRequirementEvaluationView } from "../rules/CaseRequirementEvaluationView";
@@ -55,18 +56,89 @@ import { VisaAppointmentDesk } from "../cases/VisaAppointmentDesk";
 import { GovernedAIAssistantDesk } from "../ai/GovernedAIAssistantDesk";
 import { PilotReleaseGovernanceDesk } from "../operations/PilotReleaseGovernanceDesk";
 import { PathwayExpansionDesk } from "../pathways/PathwayExpansionDesk";
+import { DocumentExtractorLab } from "../tools/DocumentExtractorLab";
+import { getCaseKickoffProgress } from "../../lib/caseKickoffStore";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
+import { DashboardErrorBoundary } from "../common/DashboardErrorBoundary";
 
-interface EmployeeWorkspaceProps {
-  cases: ImmigrationCase[];
-  clients: ClientProfile[];
-  documents: DocumentItem[];
-  tasks: CaseTask[];
-  aiFindings: AIFinding[];
-  messages: MessageItem[];
-  onToggleTask: (taskId: string) => void;
-  onSendMessage: (content: string) => void;
-  onSelectCase: (c: ImmigrationCase) => void;
-  onOpenUploadModal: (caseId: string) => void;
+export type CaseworkerView = "casework" | "triage" | "studio" | "communications";
+
+export type LegacyTabKey =
+  | "my_work"
+  | "exception_queue"
+  | "all_in_one_workspace"
+  | "assigned_cases"
+  | "team_queues"
+  | "clients"
+  | "documents"
+  | "ai_findings"
+  | "tasks"
+  | "messages"
+  | "visa_appointments"
+  | "form_prep"
+  | "package_review"
+  | "rules_requirements"
+  | "rules_admin"
+  | "client_requests"
+  | "ai_assistant"
+  | "release_governance"
+  | "pathway_expansion"
+  | "extractor_lab";
+
+export type EmployeeTabKey = LegacyTabKey | CaseworkerView;
+
+export const TAB_TO_VIEW_MAP: Record<LegacyTabKey, CaseworkerView> = {
+  my_work: "casework",
+  assigned_cases: "casework",
+  tasks: "casework",
+  clients: "casework",
+  team_queues: "casework",
+
+  exception_queue: "triage",
+  ai_findings: "triage",
+  rules_requirements: "triage",
+  rules_admin: "triage",
+  release_governance: "triage",
+  pathway_expansion: "triage",
+
+  all_in_one_workspace: "studio",
+  documents: "studio",
+  form_prep: "studio",
+  package_review: "studio",
+  ai_assistant: "studio",
+  extractor_lab: "studio",
+
+  messages: "communications",
+  client_requests: "communications",
+  visa_appointments: "communications",
+};
+
+export function getCaseworkerViewForTab(tab: EmployeeTabKey): CaseworkerView {
+  if (tab === "casework" || tab === "triage" || tab === "studio" || tab === "communications") {
+    return tab;
+  }
+  return TAB_TO_VIEW_MAP[tab] || "casework";
+}
+
+export function resolveEmployeeEffectiveTab(tab: EmployeeTabKey): LegacyTabKey {
+  if (tab === "casework") return "my_work";
+  if (tab === "triage") return "exception_queue";
+  if (tab === "studio") return "all_in_one_workspace";
+  if (tab === "communications") return "messages";
+  return tab;
+}
+
+export interface EmployeeWorkspaceProps {
+  cases?: ImmigrationCase[];
+  clients?: ClientProfile[];
+  documents?: DocumentItem[];
+  tasks?: CaseTask[];
+  aiFindings?: AIFinding[];
+  messages?: MessageItem[];
+  onToggleTask?: (taskId: string) => void;
+  onSendMessage?: (content: string) => void;
+  onSelectCase?: (c: ImmigrationCase) => void;
+  onOpenUploadModal?: (caseId: string) => void;
   onOpenCreateClient?: () => void;
   onDocumentUpdated?: (doc: DocumentItem) => void;
   onResolveFinding?: (findingId: string, note: string) => Promise<void>;
@@ -76,29 +148,38 @@ interface EmployeeWorkspaceProps {
   onClientUpdated?: (c: ClientProfile) => void;
   onDeleteClient?: (clientId: string) => Promise<void> | void;
   currentUser?: UserContext;
+  onOpenCaseKickoff?: (c: ImmigrationCase) => void;
+  kickoffVersion?: number;
 }
 
-export function EmployeeWorkspace({
-  cases,
-  clients,
-  documents,
-  tasks,
-  aiFindings,
-  messages,
-  onToggleTask,
-  onSendMessage,
-  onSelectCase,
-  onOpenUploadModal,
-  onOpenCreateClient,
-  onDocumentUpdated,
-  onClientUpdated,
-  onDeleteClient,
-  currentUser,
-  onResolveFinding,
-  onDismissFinding,
-  onEscalateFinding,
-  onTriggerAnalysis,
-}: EmployeeWorkspaceProps) {
+export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
+  const ws = useWorkspaceSafe();
+
+  const cases = props.cases ?? ws?.cases ?? [];
+  const clients = props.clients ?? ws?.clients ?? [];
+  const documents = props.documents ?? ws?.documents ?? [];
+  const tasks = props.tasks ?? ws?.tasks ?? [];
+  const aiFindings = props.aiFindings ?? ws?.aiFindings ?? [];
+  const messages = props.messages ?? ws?.messages ?? [];
+  const currentUser = props.currentUser ?? ws?.currentUser ?? undefined;
+  const onToggleTask = props.onToggleTask ?? ws?.handleToggleTask ?? ((_id: string) => {});
+  const onSendMessage = props.onSendMessage ?? ws?.handleSendMessage ?? ((_msg: string) => {});
+  const onSelectCase = props.onSelectCase ?? ((_c: ImmigrationCase) => {});
+  const onOpenUploadModal = props.onOpenUploadModal ?? ((_caseId: string) => {});
+  const onOpenCreateClient = props.onOpenCreateClient;
+  const onDocumentUpdated = props.onDocumentUpdated ?? ws?.handleDocumentUpdated;
+  const onResolveFinding = props.onResolveFinding ?? ws?.handleResolveFinding;
+  const onDismissFinding = props.onDismissFinding ?? ws?.handleDismissFinding;
+  const onEscalateFinding = props.onEscalateFinding ?? ws?.handleEscalateFinding;
+  const onTriggerAnalysis = props.onTriggerAnalysis;
+  const onClientUpdated = props.onClientUpdated ?? ws?.handleClientUpdated;
+  const onDeleteClient = props.onDeleteClient ?? ws?.handleDeleteClient;
+  const onOpenCaseKickoff =
+    props.onOpenCaseKickoff ??
+    ((c: ImmigrationCase) => {
+      ws?.setSelectedCaseForKickoff?.(c);
+    });
+  const kickoffVersion = props.kickoffVersion ?? ws?.kickoffVersion ?? 0;
   const firmDisplayName = currentUser?.organization_name || "Partner Immigration Practice";
   const staffDisplayName = currentUser?.full_name || "Case Specialist";
   const staffRoleLabel = currentUser?.experience === "paralegal" ? "Lead Paralegal" : "Case Manager";
@@ -182,27 +263,7 @@ export function EmployeeWorkspace({
       }
     }
   };
-  const [activeTab, setActiveTab] = useState<
-    | "my_work"
-    | "exception_queue"
-    | "all_in_one_workspace"
-    | "assigned_cases"
-    | "team_queues"
-    | "clients"
-    | "documents"
-    | "ai_findings"
-    | "tasks"
-    | "messages"
-    | "visa_appointments"
-    | "form_prep"
-    | "package_review"
-    | "rules_requirements"
-    | "rules_admin"
-    | "client_requests"
-    | "ai_assistant"
-    | "release_governance"
-    | "pathway_expansion"
-  >("my_work");
+  const [activeTab, setActiveTab] = useState<EmployeeTabKey>("my_work");
 
   const [messageInput, setMessageInput] = useState("");
   const [selectedCaseForWorkspace, setSelectedCaseForWorkspace] = useState<ImmigrationCase | null>(cases[0] || null);
@@ -371,7 +432,7 @@ export function EmployeeWorkspace({
               {
                 timestamp: new Date().toISOString(),
                 action: "resolve",
-                reviewer_email: "attorney@lexai.com",
+                reviewer_email: currentUser?.email || "counsel@firm.local",
                 note,
               },
             ],
@@ -403,7 +464,7 @@ export function EmployeeWorkspace({
                 timestamp: new Date().toISOString(),
                 action: "dismiss",
                 reason,
-                reviewer_email: "attorney@lexai.com",
+                reviewer_email: currentUser?.email || "counsel@firm.local",
                 note,
               },
             ],
@@ -503,11 +564,14 @@ export function EmployeeWorkspace({
     {
       key: "status",
       header: "Status",
-      render: (c) => (
-        <Badge variant={c.status === "ready" || c.status === "filed" ? "success" : "review"}>
-          {c.status.toUpperCase()}
-        </Badge>
-      ),
+      render: (c) => {
+        const stage = formatCaseStageBadge(c.status);
+        return (
+          <Badge variant={stage.variant}>
+            {stage.label}
+          </Badge>
+        );
+      },
       sortable: true,
     },
     {
@@ -519,25 +583,38 @@ export function EmployeeWorkspace({
     {
       key: "actions",
       header: "Actions",
-      render: (c) => (
-        <div style={{ display: "flex", gap: "6px" }}>
-          <Button variant="outline" size="sm" onClick={() => onSelectCase(c)}>
-            View Details
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setSelectedCaseForWorkspace(c);
-              setActiveTab("form_prep");
-            }}
-          >
-            Review Forms
-          </Button>
-        </div>
-      ),
+      render: (c) => {
+        const kp = onOpenCaseKickoff ? getCaseKickoffProgress(c.id) : null;
+        return (
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {onOpenCaseKickoff && kp && !kp.isComplete && (
+              <Button variant="primary" size="sm" onClick={() => onOpenCaseKickoff(c)}>
+                Kickoff ({kp.completedCount}/4)
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => onSelectCase(c)}>
+              View Details
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setSelectedCaseForWorkspace(c);
+                setActiveTab("form_prep");
+              }}
+            >
+              Review Forms
+            </Button>
+          </div>
+        );
+      },
     },
   ];
+
+  const pendingKickoffCases = React.useMemo(() => {
+    if (!onOpenCaseKickoff) return [];
+    return cases.filter((c) => !getCaseKickoffProgress(c.id).isComplete);
+  }, [cases, onOpenCaseKickoff, kickoffVersion]);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -552,27 +629,85 @@ export function EmployeeWorkspace({
     tasks.filter((t) => !t.is_completed && (t.priority === "critical" || t.priority === "high")).length +
     cases.filter((c) => c.attention_required).length;
 
-  const navItems = [
-    { key: "my_work", label: "My Work", icon: "💼", count: null },
-    { key: "exception_queue", label: "Exception-First Queue", icon: "🚨", count: liveExceptionCount },
-    { key: "all_in_one_workspace", label: "All-in-One Studio", icon: "⚡", count: null },
-    { key: "assigned_cases", label: "Assigned Cases", icon: "📁", count: visibleCases.length },
-    { key: "team_queues", label: "Team Queues", icon: "⏳", count: null },
-    { key: "clients", label: "Client Directory", icon: "👤", count: clients.length },
-    { key: "documents", label: "Requirements & Evidence", icon: "📄", count: documents.length },
-    { key: "ai_findings", label: "AI Findings", icon: "🤖", count: aiFindings.length },
-    { key: "tasks", label: "Tasks", icon: "✓", count: tasks.filter((t) => !t.is_completed).length },
-    { key: "messages", label: "Client Messages", icon: "💬", count: messages.length },
-    { key: "visa_appointments", label: "Visa Appointments", icon: "🏛️", count: null },
-    { key: "client_requests", label: "Document Requests", icon: "📥", count: null },
-    { key: "form_prep", label: "Form Preparation", icon: "📝", count: null },
-    { key: "package_review", label: "Package Review", icon: "📦", count: null },
-    { key: "rules_requirements", label: "Case Requirements", icon: "⚖️", count: null },
-    { key: "rules_admin", label: "Rule Registry & Pilot", icon: "📜", count: null },
-    { key: "ai_assistant", label: "Governed AI Desk", icon: "✨", count: null },
-    { key: "release_governance", label: "Release & Pilot Desk", icon: "🚀", count: null },
-    { key: "pathway_expansion", label: "Pathway Expansion", icon: "🌐", count: null },
-  ] as const;
+  interface CaseworkerNavItem {
+    key: LegacyTabKey;
+    label: string;
+    icon: string;
+    count?: number | null;
+  }
+
+  interface CaseworkerViewConfig {
+    id: CaseworkerView;
+    label: string;
+    icon: string;
+    description: string;
+    defaultTab: LegacyTabKey;
+    tabs: CaseworkerNavItem[];
+  }
+
+  const CASEWORK_VIEWS_CONFIG: CaseworkerViewConfig[] = [
+    {
+      id: "casework",
+      label: "My Casework",
+      icon: "💼",
+      description: "Daily active matters, assigned tasks, client directory, and team queues",
+      defaultTab: "my_work",
+      tabs: [
+        { key: "my_work", label: "My Work", icon: "💼", count: null },
+        { key: "assigned_cases", label: "Assigned Cases", icon: "📁", count: visibleCases.length },
+        { key: "tasks", label: "Tasks", icon: "✓", count: tasks.filter((t) => !t.is_completed).length },
+        { key: "clients", label: "Client Directory", icon: "👤", count: clients.length },
+        { key: "team_queues", label: "Team Queues", icon: "⏳", count: null },
+      ],
+    },
+    {
+      id: "triage",
+      label: "Priority Triage & Exceptions",
+      icon: "🚨",
+      description: "Exception-first triage, discrepancy alerts, statutory requirements, and compliance audits",
+      defaultTab: "exception_queue",
+      tabs: [
+        { key: "exception_queue", label: "Exception-First Queue", icon: "🚨", count: liveExceptionCount },
+        { key: "ai_findings", label: "AI Findings", icon: "🤖", count: aiFindings.length },
+        { key: "rules_requirements", label: "Case Requirements", icon: "⚖️", count: null },
+        { key: "rules_admin", label: "Rule Registry & Pilot", icon: "📜", count: null },
+        { key: "release_governance", label: "Release & Pilot Desk", icon: "🚀", count: null },
+        { key: "pathway_expansion", label: "Pathway Expansion", icon: "🌐", count: null },
+      ],
+    },
+    {
+      id: "studio",
+      label: "Casework Studio",
+      icon: "⚡",
+      description: "Comprehensive case drafting, document inspection, form preparation, and package readiness",
+      defaultTab: "all_in_one_workspace",
+      tabs: [
+        { key: "all_in_one_workspace", label: "All-in-One Studio", icon: "⚡", count: null },
+        { key: "documents", label: "Requirements & Evidence", icon: "📄", count: documents.length },
+        { key: "form_prep", label: "Form Preparation", icon: "📝", count: null },
+        { key: "package_review", label: "Package Review", icon: "📦", count: null },
+        { key: "ai_assistant", label: "Governed AI Desk", icon: "✨", count: null },
+        { key: "extractor_lab", label: "Extractor Lab", icon: "🔬", count: null },
+      ],
+    },
+    {
+      id: "communications",
+      label: "Communications Hub",
+      icon: "💬",
+      description: "Direct client messaging, evidentiary requests, and consular appointments",
+      defaultTab: "messages",
+      tabs: [
+        { key: "messages", label: "Client Messages", icon: "💬", count: messages.length },
+        { key: "client_requests", label: "Document Requests", icon: "📥", count: null },
+        { key: "visa_appointments", label: "Visa Appointments", icon: "🏛️", count: null },
+      ],
+    },
+  ];
+
+  const navItems = CASEWORK_VIEWS_CONFIG.flatMap((v) => v.tabs);
+
+  const effectiveTab = resolveEmployeeEffectiveTab(activeTab);
+  const activeView = getCaseworkerViewForTab(activeTab);
 
   const activeTabInfo = {
     my_work: {
@@ -629,14 +764,14 @@ export function EmployeeWorkspace({
     },
     package_review: {
       title: "Package Review",
-      subtitle: "Deterministic Case Readiness Checklist, Cryptographic Merkle Assembly & Export",
+      subtitle: "Deterministic Case Readiness Checklist, Tamper-Evident Package Assembly & Export",
     },
     rules_requirements: {
       title: "Case Requirements",
       subtitle: "Statutory Criteria Evaluation, Cazarian Two-Part Analysis & Evidence Mapping",
     },
     rules_admin: {
-      title: "Rule Registry & Pilot",
+      title: "Rule Registry & Authorities",
       subtitle: "Administrative Law Authority Management, Regulatory Snapshots & Rules Engine",
     },
     ai_assistant: {
@@ -644,14 +779,18 @@ export function EmployeeWorkspace({
       subtitle: "Evaluated Legal & Evidentiary RAG, Case Briefing, PromptGuard & 10 Evaluation Gates (§6.6, §6.7)",
     },
     release_governance: {
-      title: "Stage 9: Release & Pilot Operations Governance Desk",
+      title: "Practice Compliance & Quality Governance Desk",
       subtitle: "Deterministic Go/No-Go Release Gates, Narrow Pilot Cohorts, Comparative Workflow KPIs, Cryptographic Backup Drills & Runbooks",
     },
     pathway_expansion: {
-      title: "Stage 10: Pathway Expansion & Regional Localization Desk",
+      title: "Multi-Jurisdiction Pathway Expansion Desk",
       subtitle: "Multi-Jurisdiction Inventory (Priorities 1–5), 8 Broad Application Families, EU/Schengen Distinctions, Safe-Stop Principles & Multilingual Matching Engine",
     },
-  }[activeTab];
+    extractor_lab: {
+      title: "AI Document Recognition & Information Extractor",
+      subtitle: "Upload real PDFs, passport scans, bank statements, or multi-person family bundles for AI recognition, taxonomy classification, and normalized entity extraction.",
+    },
+  }[effectiveTab];
 
   return (
     <div
@@ -733,7 +872,7 @@ export function EmployeeWorkspace({
           </div>
         </div>
 
-        {/* Navigation Items List */}
+        {/* Navigation Items List Grouped by 4 Caseworker Views */}
         <nav
           aria-label="Casework Navigation"
           style={{
@@ -741,99 +880,125 @@ export function EmployeeWorkspace({
             padding: "16px 12px",
             display: "flex",
             flexDirection: "column",
-            gap: "4px",
+            gap: "12px",
+            overflowY: "auto",
           }}
         >
-          <div
-            style={{
-              fontSize: "10px",
-              fontWeight: 700,
-              color: "#6E7F7C",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              padding: "4px 10px 8px 10px",
-            }}
-          >
-            Casework Sections
-          </div>
-
-          {navItems.map((item) => {
-            const isActive = activeTab === item.key;
+          {CASEWORK_VIEWS_CONFIG.map((section) => {
+            const isSectionActive = activeView === section.id;
             return (
-              <button
-                key={item.key}
-                data-testid={`tab-btn-${item.key}`}
-                type="button"
-                aria-current={isActive ? "page" : undefined}
-                onClick={() => {
-                  setActiveTab(item.key as typeof activeTab);
-                  setIsMobileMenuOpen(false);
-                }}
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  width: "100%",
-                  padding: "9px 12px 9px 14px",
-                  borderRadius: "8px",
-                  border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
-                  background: isActive ? "#EAF6F0" : "transparent",
-                  color: isActive ? "#0D6866" : "#445451",
-                  fontSize: "13px",
-                  fontWeight: isActive ? 650 : 500,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "all 0.15s ease",
-                  overflow: "hidden",
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = "#F8F7F2";
-                    e.currentTarget.style.color = "#063C3D";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "#445451";
-                  }
-                }}
-              >
-                {isActive && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: "6px",
-                      bottom: "6px",
-                      width: "3.5px",
-                      borderRadius: "0 2px 2px 0",
-                      background: "#0D6866",
-                    }}
-                    aria-hidden="true"
-                  />
-                )}
-                <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
-                </span>
-                {item.count !== null && item.count !== undefined && item.count > 0 && (
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      padding: "2px 6px",
-                      borderRadius: "10px",
-                      background: isActive ? "#0D6866" : "#F1F6F4",
-                      color: isActive ? "#FFFFFF" : "#445451",
-                      border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
-                    }}
-                  >
-                    {item.count}
+              <div key={section.id} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                <button
+                  type="button"
+                  data-testid={`view-btn-${section.id}`}
+                  onClick={() => {
+                    setActiveTab(section.defaultTab);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    padding: "6px 10px 4px 10px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: "10px",
+                    fontWeight: 750,
+                    color: isSectionActive ? "#063C3D" : "#6E7F7C",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>{section.icon}</span>
+                    <span>{section.label}</span>
                   </span>
-                )}
-              </button>
+                </button>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  {section.tabs.map((item) => {
+                    const isActive = effectiveTab === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        data-testid={`tab-btn-${item.key}`}
+                        type="button"
+                        aria-current={isActive ? "page" : undefined}
+                        onClick={() => {
+                          setActiveTab(item.key);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        style={{
+                          position: "relative",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          width: "100%",
+                          padding: "8px 12px 8px 14px",
+                          borderRadius: "8px",
+                          border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
+                          background: isActive ? "#EAF6F0" : "transparent",
+                          color: isActive ? "#0D6866" : "#445451",
+                          fontSize: "13px",
+                          fontWeight: isActive ? 650 : 500,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          transition: "all 0.15s ease",
+                          overflow: "hidden",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = "#F8F7F2";
+                            e.currentTarget.style.color = "#063C3D";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = "transparent";
+                            e.currentTarget.style.color = "#445451";
+                          }
+                        }}
+                      >
+                        {isActive && (
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              top: "6px",
+                              bottom: "6px",
+                              width: "3.5px",
+                              borderRadius: "0 2px 2px 0",
+                              background: "#0D6866",
+                            }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span>{item.icon}</span>
+                          <span>{item.label}</span>
+                        </span>
+                        {item.count !== null && item.count !== undefined && item.count > 0 && (
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              padding: "2px 6px",
+                              borderRadius: "10px",
+                              background: isActive ? "#0D6866" : "#F1F6F4",
+                              color: isActive ? "#FFFFFF" : "#445451",
+                              border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
+                            }}
+                          >
+                            {item.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </nav>
@@ -927,7 +1092,7 @@ export function EmployeeWorkspace({
           className="documento-firm-mobile-bar"
         >
           <span style={{ fontSize: "13px", fontWeight: 650, color: "#063C3D" }}>
-            Section: {navItems.find((n) => n.key === activeTab)?.label}
+            Section: {navItems.find((n) => n.key === effectiveTab)?.label}
           </span>
           <button
             type="button"
@@ -967,7 +1132,7 @@ export function EmployeeWorkspace({
             }}
           >
             {navItems.map((item) => {
-              const isActive = activeTab === item.key;
+              const isActive = effectiveTab === item.key;
               return (
                 <button
                   key={item.key}
@@ -1110,7 +1275,12 @@ export function EmployeeWorkspace({
               </span>
               <span>{showAssignedOnly ? "Show: Assigned Cases Only (Default)" : "Show: All Office Cases"}</span>
             </button>
-            <Button variant="secondary" size="sm" onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "case-01")}>
+            {onOpenCreateClient && (
+              <Button variant="secondary" size="sm" onClick={onOpenCreateClient}>
+                + Onboard Client &amp; Case
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "")}>
               + Upload Document
             </Button>
             <Button variant="primary" size="sm" onClick={handleAssemblePackage}>
@@ -1119,9 +1289,107 @@ export function EmployeeWorkspace({
           </div>
         </div>
 
+        {/* Horizontal Sub-Navigation Pill Bar for Active Casework View */}
+        {(() => {
+          const currentSection = CASEWORK_VIEWS_CONFIG.find((v) => v.id === activeView);
+          if (!currentSection || currentSection.tabs.length <= 1) return null;
+          return (
+            <div
+              role="tablist"
+              aria-label={`${currentSection.label} Views`}
+              style={{
+                display: "flex",
+                gap: "8px",
+                padding: "6px",
+                background: "#FFFFFF",
+                border: "1px solid #DCE5E1",
+                borderRadius: "10px",
+                overflowX: "auto",
+                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.04)",
+              }}
+            >
+              {currentSection.tabs.map((subItem) => {
+                const isSubActive = effectiveTab === subItem.key;
+                return (
+                  <button
+                    key={`subnav-${subItem.key}`}
+                    role="tab"
+                    aria-selected={isSubActive}
+                    onClick={() => setActiveTab(subItem.key)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "8px 14px",
+                      borderRadius: "7px",
+                      fontSize: "13px",
+                      fontWeight: isSubActive ? 650 : 500,
+                      color: isSubActive ? "#063C3D" : "#445451",
+                      background: isSubActive ? "#EAF6F0" : "transparent",
+                      border: isSubActive ? "1px solid #B9DED4" : "1px solid transparent",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <span>{subItem.icon}</span>
+                    <span>{subItem.label}</span>
+                    {subItem.count !== null && subItem.count !== undefined && subItem.count > 0 && (
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "2px 6px",
+                          borderRadius: "10px",
+                          background: isSubActive ? "#0D6866" : "#F1F6F4",
+                          color: isSubActive ? "#FFFFFF" : "#445451",
+                        }}
+                      >
+                        {subItem.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         {/* 1. MY WORK DASHBOARD */}
-        {activeTab === "my_work" && (
+        {effectiveTab === "my_work" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {pendingKickoffCases.length > 0 && onOpenCaseKickoff && (() => {
+              const firstCase = pendingKickoffCases[0];
+              const firstProg = getCaseKickoffProgress(firstCase.id);
+              return (
+                <div
+                  data-testid="employee-pending-kickoff-banner"
+                  style={{
+                    padding: "14px 18px",
+                    borderRadius: "10px",
+                    background: "#FFFFFF",
+                    border: "1px solid #B9DED4",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ fontSize: "13px", color: "#172322" }}>
+                    <strong style={{ color: "#063C3D" }}>
+                      Post-Onboarding Case Kickoff ({firstProg.completedCount}/4 steps completed):
+                    </strong>{" "}
+                    Complete login handoff, checklist dispatch, retainer setup, and initial uploads for{" "}
+                    <strong>{firstCase.case_number}</strong> ({firstCase.client_name || firstCase.visa_category}).
+                  </div>
+                  <Button variant="primary" size="sm" onClick={() => onOpenCaseKickoff(firstCase)}>
+                    Resume 4-Step Kickoff ({firstProg.completedCount}/4) →
+                  </Button>
+                </div>
+              );
+            })()}
+
             {/* Quick stats */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
               <Card>
@@ -1232,7 +1500,7 @@ export function EmployeeWorkspace({
         )}
 
         {/* 2. EXCEPTION-FIRST QUEUE */}
-        {activeTab === "exception_queue" && (
+        {effectiveTab === "exception_queue" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* Category Filter Pills */}
             <div
@@ -1573,7 +1841,7 @@ export function EmployeeWorkspace({
         )}
 
         {/* 3. ALL-IN-ONE WORKSPACE */}
-        {activeTab === "all_in_one_workspace" && (
+        {effectiveTab === "all_in_one_workspace" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* Top Bar: Case Selector and Meta Chips */}
             <div
@@ -1625,7 +1893,9 @@ export function EmployeeWorkspace({
                     ))}
                   </select>
                   <Badge variant="review">{selectedCaseForWorkspace?.visa_category || "O-1A"}</Badge>
-                  <Badge variant="success">Readiness: {selectedCaseForWorkspace?.readiness_score || 88}%</Badge>
+                  <Badge variant={(selectedCaseForWorkspace?.readiness_score ?? 0) >= 80 ? "success" : "review"}>
+                    Readiness: {selectedCaseForWorkspace?.readiness_score ?? 0}%
+                  </Badge>
                 </div>
 
                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -2209,7 +2479,7 @@ export function EmployeeWorkspace({
         )}
 
         {/* 4. ASSIGNED CASES */}
-        {activeTab === "assigned_cases" && (
+        {effectiveTab === "assigned_cases" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             {/* Active Case Consistency & Discrepancy Alert Focus */}
             {selectedCaseForWorkspace && (
@@ -2241,7 +2511,7 @@ export function EmployeeWorkspace({
         )}
 
         {/* 3. TEAM QUEUES / MANAGER PRIORITY QUEUE (STRICT 1-8 RANKS) */}
-        {activeTab === "team_queues" && (
+        {effectiveTab === "team_queues" && (
           <ManagerPriorityQueueView
             data={managerPriorityData}
             onAction={(rank, actionType, item) => {
@@ -2261,14 +2531,14 @@ export function EmployeeWorkspace({
         )}
 
         {/* 4. CLIENT DIRECTORY */}
-        {activeTab === "clients" && (
+        {effectiveTab === "clients" && (
           <Card
             title="Retained Applicant Directory & Credentials"
             subtitle="All registered clients under organization tenancy. Credentials must be provided by Lead Paralegal or Owner for client portal sign-in."
             actions={
               onOpenCreateClient ? (
                 <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
-                  + Retain Client
+                  + Onboard Client &amp; Case
                 </Button>
               ) : undefined
             }
@@ -2293,7 +2563,7 @@ export function EmployeeWorkspace({
                 </p>
                 {onOpenCreateClient && (
                   <Button variant="primary" onClick={onOpenCreateClient}>
-                    + Retain First Client & Issue Credentials
+                    + Onboard First Client &amp; Open Case
                   </Button>
                 )}
               </div>
@@ -2379,10 +2649,10 @@ export function EmployeeWorkspace({
         )}
 
         {/* 5. REQUIREMENTS & DOCUMENTS */}
-        {activeTab === "documents" && (
+        {effectiveTab === "documents" && (
           <Card
             title="Evidence & Document Verification Matrix"
-            subtitle="Cryptographically verified evidence items stored in private immutable storage with full OCR provenance."
+            subtitle="Cryptographically verified evidence items stored in private immutable storage with full extraction provenance."
             actions={
               <Button variant="primary" size="sm" onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "")}>
                 + Upload Evidence File
@@ -2731,7 +3001,7 @@ export function EmployeeWorkspace({
                         e.currentTarget.style.background = "#0D6866";
                       }}
                     >
-                      <span>⚡ Review OCR Dossier</span>
+                      <span>⚡ Review AI Dossier</span>
                     </button>
                   ),
                 },
@@ -2754,7 +3024,7 @@ export function EmployeeWorkspace({
         )}
 
         {/* 6. AI FINDINGS */}
-        {activeTab === "ai_findings" && (
+        {effectiveTab === "ai_findings" && (
           <Card
             title="AI Document Findings & Evidentiary Gap Analysis"
             subtitle="AI document analysis and discrepancy detection with statutory checklist auditing. Non-binding advisory intelligence for authorized practitioners."
@@ -3050,7 +3320,7 @@ export function EmployeeWorkspace({
         )}
 
         {/* 7. TASKS & DEADLINES */}
-        {activeTab === "tasks" && (
+        {effectiveTab === "tasks" && (
           <Card title="Caseworker Action Items & Deadlines" subtitle="Track tasks across client evidence collection and petition assembly.">
             <DataTable
               columns={[
@@ -3076,7 +3346,7 @@ export function EmployeeWorkspace({
         )}
 
         {/* 8. MESSAGES (STAFF MODE WITH INTERNAL NOTES & DELIVERY INDICATORS) */}
-        {activeTab === "messages" && (
+        {effectiveTab === "messages" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <SecureMessagingHub
               caseId={selectedCaseForWorkspace?.id}
@@ -3086,7 +3356,7 @@ export function EmployeeWorkspace({
         )}
 
         {/* 8B. CLIENT DOCUMENT REQUESTS & EVIDENCE REVIEW */}
-        {activeTab === "client_requests" && (
+        {effectiveTab === "client_requests" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <DocumentRequestManager
               caseId={selectedCaseForWorkspace?.id}
@@ -3096,136 +3366,214 @@ export function EmployeeWorkspace({
         )}
 
         {/* 9. FORM PREPARATION (PHASE 8 CONFIGURABLE FORMS) */}
-        {activeTab === "form_prep" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {effectiveTab === "form_prep" && (
+          !selectedCaseForWorkspace && cases.length === 0 ? (
             <div
+              data-testid="form-prep-empty-state"
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: "12px",
                 background: "#FFFFFF",
-                padding: "14px 20px",
-                borderRadius: "12px",
-                border: "1px solid #DCE5E1",
-                boxShadow: "0 2px 8px rgba(6, 60, 61, 0.04)",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "32px auto",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    color: "#0D6866",
-                    background: "#EAF6F0",
-                    padding: "4px 10px",
-                    borderRadius: "6px",
-                    border: "1px solid #B9DED4",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "5px",
-                  }}
-                >
-                  <span>📁</span> Active Case
-                </span>
-                <span style={{ fontSize: "12px", color: "#6E7F7C", fontWeight: 500 }}>
-                  Active Immigration Petition Case:
-                </span>
-                <strong style={{ fontSize: "13px", color: "#172322", fontWeight: 700 }}>
-                  {selectedCaseForWorkspace?.case_number} — {selectedCaseForWorkspace?.title}
-                </strong>
-              </div>
-              <select
-                value={selectedCaseForWorkspace?.id || ""}
-                onChange={(e) => {
-                  const found = cases.find((c) => c.id === e.target.value);
-                  if (found) setSelectedCaseForWorkspace(found);
-                }}
+              <div style={{ fontSize: "38px", marginBottom: "12px" }}>📋</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                No Active Petition Selected for Form Preparation
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 18px" }}>
+                Open a new immigration case first to populate statutory government forms from verified client profiles and documents.
+              </p>
+              <Button variant="primary" onClick={() => (onOpenCreateClient ? onOpenCreateClient() : setActiveTab("assigned_cases"))}>
+                + Onboard Client &amp; Open Case
+              </Button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div
                 style={{
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  padding: "8px 14px",
-                  borderRadius: "8px",
-                  border: "1.5px solid #DCE5E1",
-                  background: "#FAFAF8",
-                  color: "#172322",
-                  outline: "none",
-                  cursor: "pointer",
-                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "12px",
+                  background: "#FFFFFF",
+                  padding: "14px 20px",
+                  borderRadius: "12px",
+                  border: "1px solid #DCE5E1",
+                  boxShadow: "0 2px 8px rgba(6, 60, 61, 0.04)",
                 }}
               >
-                {cases.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.case_number}: {c.client_name} ({c.visa_category})
-                  </option>
-                ))}
-              </select>
-            </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      color: "#0D6866",
+                      background: "#EAF6F0",
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid #B9DED4",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                    }}
+                  >
+                    <span>📁</span> Active Case
+                  </span>
+                  <span style={{ fontSize: "12px", color: "#6E7F7C", fontWeight: 500 }}>
+                    Active Immigration Petition Case:
+                  </span>
+                  <strong style={{ fontSize: "13px", color: "#172322", fontWeight: 700 }}>
+                    {selectedCaseForWorkspace?.case_number} — {selectedCaseForWorkspace?.title}
+                  </strong>
+                </div>
+                <select
+                  value={selectedCaseForWorkspace?.id || ""}
+                  onChange={(e) => {
+                    const found = cases.find((c) => c.id === e.target.value);
+                    if (found) setSelectedCaseForWorkspace(found);
+                  }}
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    border: "1.5px solid #DCE5E1",
+                    background: "#FAFAF8",
+                    color: "#172322",
+                    outline: "none",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+                  }}
+                >
+                  {cases.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.case_number}: {c.client_name} ({c.visa_category})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <ConfigurableFormViewer
-              submission={formSubmission}
-              userRole="case_manager"
-              onUpdateAnswers={handleUpdateFormAnswers}
-              onConfirmField={handleConfirmFormField}
-              onReviewSensitive={handleReviewSensitiveFields}
-            />
-          </div>
+              <ConfigurableFormViewer
+                submission={formSubmission}
+                userRole="case_manager"
+                onUpdateAnswers={handleUpdateFormAnswers}
+                onConfirmField={handleConfirmFormField}
+                onReviewSensitive={handleReviewSensitiveFields}
+              />
+            </div>
+          )
         )}
 
         {/* 10. PACKAGE REVIEW (PHASE 8 READINESS & PACKAGE BUILDER) */}
-        {activeTab === "package_review" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {exportNotice && (
-              <div style={{ padding: "12px 16px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", color: "#166534", fontSize: "13px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>✓ {exportNotice}</span>
-                <button type="button" onClick={() => setExportNotice(null)} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>×</button>
-              </div>
-            )}
+        {effectiveTab === "package_review" && (
+          !selectedCaseForWorkspace && cases.length === 0 ? (
+            <div
+              data-testid="package-review-empty-state"
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "32px auto",
+              }}
+            >
+              <div style={{ fontSize: "38px", marginBottom: "12px" }}>📦</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                No Filing Packages Ready for Assembly
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 18px" }}>
+                Create a petition matter and upload client evidence first to run readiness checks and build a filing package.
+              </p>
+              <Button variant="primary" onClick={() => (onOpenCreateClient ? onOpenCreateClient() : setActiveTab("assigned_cases"))}>
+                + Onboard Client &amp; Open Case
+              </Button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {exportNotice && (
+                <div style={{ padding: "12px 16px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", color: "#166534", fontSize: "13px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>✓ {exportNotice}</span>
+                  <button type="button" onClick={() => setExportNotice(null)} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>×</button>
+                </div>
+              )}
 
-            {/* 1. Deterministic Readiness Checklist */}
-            <DeterministicReadinessChecklist
-              checklist={readinessChecklist}
-              onAssemblePackage={handleAssemblePackage}
-            />
+              {/* 1. Deterministic Readiness Checklist */}
+              <DeterministicReadinessChecklist
+                checklist={readinessChecklist}
+                onAssemblePackage={handleAssemblePackage}
+              />
 
-            {/* 2. Configurable Folder Tree & Manifest */}
-            <PackageBuilderView
-              packageItem={filingPackage}
-              onOpenApprovalWorkflow={() => setIsApprovalModalOpen(true)}
-              onExportPackage={handleExportPackage}
-            />
+              {/* 2. Configurable Folder Tree & Manifest */}
+              <PackageBuilderView
+                packageItem={filingPackage}
+                onOpenApprovalWorkflow={() => setIsApprovalModalOpen(true)}
+                onExportPackage={handleExportPackage}
+              />
 
-            {/* 3. Approval Workflow Modal */}
-            <PackageApprovalWorkflowModal
-              isOpen={isApprovalModalOpen}
-              onClose={() => setIsApprovalModalOpen(false)}
-              packageItem={filingPackage}
-              userRole="case_manager"
-              onAdvanceApproval={handleAdvanceApproval}
-            />
-          </div>
+              {/* 3. Approval Workflow Modal */}
+              <PackageApprovalWorkflowModal
+                isOpen={isApprovalModalOpen}
+                onClose={() => setIsApprovalModalOpen(false)}
+                packageItem={filingPackage}
+                userRole="case_manager"
+                onAdvanceApproval={handleAdvanceApproval}
+              />
+            </div>
+          )
         )}
 
         {/* 11. CASE REQUIREMENTS EVALUATION */}
-        {activeTab === "rules_requirements" && (
-          <CaseRequirementEvaluationView
-            caseId={selectedCaseForWorkspace?.id || "case-01"}
-            cases={cases}
-            isLiveBackend={false}
-            onSelectCase={(c) => setSelectedCaseForWorkspace(c)}
-          />
+        {effectiveTab === "rules_requirements" && (
+          !selectedCaseForWorkspace && cases.length === 0 ? (
+            <div
+              data-testid="rules-requirements-empty-state"
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "32px auto",
+              }}
+            >
+              <div style={{ fontSize: "38px", marginBottom: "12px" }}>⚖️</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                No Case Selected for Requirement Evaluation
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 18px" }}>
+                Open an immigration case file to evaluate uploaded evidence against statutory pathway rules.
+              </p>
+              <Button variant="primary" onClick={() => (onOpenCreateClient ? onOpenCreateClient() : setActiveTab("assigned_cases"))}>
+                + Onboard Client &amp; Open Case
+              </Button>
+            </div>
+          ) : (
+            <CaseRequirementEvaluationView
+              caseId={selectedCaseForWorkspace?.id || ""}
+              cases={cases}
+              isLiveBackend={false}
+              onSelectCase={(c) => setSelectedCaseForWorkspace(c)}
+            />
+          )
         )}
 
         {/* 12. RULE REGISTRY & PILOT MANAGEMENT */}
-        {activeTab === "rules_admin" && (
+        {effectiveTab === "rules_admin" && (
           <RuleAdministrationHub isLiveBackend={false} />
         )}
 
         {/* 13. VISA APPOINTMENT & CONSULAR LOGISTICS DESK */}
-        {activeTab === "visa_appointments" && (
+        {effectiveTab === "visa_appointments" && (
           <VisaAppointmentDesk
             cases={cases}
             clients={clients}
@@ -3234,18 +3582,51 @@ export function EmployeeWorkspace({
         )}
 
         {/* 14. GOVERNED AI ASSISTANT DESK (STAGE 8 EVALUATED LLM & RAG) */}
-        {activeTab === "ai_assistant" && (
-          <GovernedAIAssistantDesk
-            caseId={selectedCaseForWorkspace?.id || "case-01"}
-            caseNumber={selectedCaseForWorkspace?.case_number || "US-EB1A-8080"}
-            jurisdiction={selectedCaseForWorkspace?.jurisdiction || "US"}
-            visaCategory={selectedCaseForWorkspace?.visa_category || "EB-1A"}
-            userRole={currentUser?.role || "case_manager"}
-          />
+        {effectiveTab === "ai_assistant" && (
+          !selectedCaseForWorkspace && cases.length === 0 ? (
+            <div
+              data-testid="ai-assistant-empty-state"
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #CBD5E1",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "32px auto",
+              }}
+            >
+              <div style={{ fontSize: "38px", marginBottom: "12px" }}>🤖</div>
+              <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
+                Open a Case File to Launch Citation-Grounded AI Assistance
+              </h3>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 18px" }}>
+                AI drafting and statutory verification operate strictly on real case documents with zero cross-client leakage.
+              </p>
+              <Button variant="primary" onClick={() => (onOpenCreateClient ? onOpenCreateClient() : setActiveTab("assigned_cases"))}>
+                + Onboard Client &amp; Open Case
+              </Button>
+            </div>
+          ) : (
+            <DashboardErrorBoundary
+              sectionTitle="Governed AI Assistant Desk"
+              sectionDescription="Statutory RAG and discrepancy evaluation desk operating under strict tenant isolation"
+              variant="full-tab"
+              isolateStateKey={selectedCaseForWorkspace?.id || "ai-desk"}
+            >
+              <GovernedAIAssistantDesk
+                caseId={selectedCaseForWorkspace?.id || ""}
+                caseNumber={selectedCaseForWorkspace?.case_number || "ACTIVE-CASE"}
+                jurisdiction={selectedCaseForWorkspace?.jurisdiction || "US"}
+                visaCategory={selectedCaseForWorkspace?.visa_category || "Skilled Pathway"}
+                userRole={currentUser?.role || "case_manager"}
+              />
+            </DashboardErrorBoundary>
+          )
         )}
 
         {/* 15. STAGE 9 RELEASE / PILOT GOVERNANCE DESK */}
-        {activeTab === "release_governance" && (
+        {effectiveTab === "release_governance" && (
           <PilotReleaseGovernanceDesk
             userRole={currentUser?.role || "case_manager"}
             onNavigateToCase={(caseId) => {
@@ -3259,8 +3640,20 @@ export function EmployeeWorkspace({
         )}
 
         {/* 16. STAGE 10 PATHWAY EXPANSION & REGIONAL LOCALIZATION DESK */}
-        {activeTab === "pathway_expansion" && (
+        {effectiveTab === "pathway_expansion" && (
           <PathwayExpansionDesk userRole={currentUser?.role || "case_manager"} />
+        )}
+
+        {/* 17. AI DOCUMENT INTELLIGENCE & PACKET SORTER LAB */}
+        {effectiveTab === "extractor_lab" && (
+          <DashboardErrorBoundary
+            sectionTitle="Document Extractor Lab"
+            sectionDescription="AI Document Recognition, Extraction Provenance, and Multi-Person Packet Sorter"
+            variant="full-tab"
+            isolateStateKey="extractor-lab"
+          >
+            <DocumentExtractorLab embedded />
+          </DashboardErrorBoundary>
         )}
       </main>
 

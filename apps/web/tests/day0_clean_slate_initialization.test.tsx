@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
 import { ClientPortal } from "../components/dashboards/ClientPortal";
@@ -14,8 +14,7 @@ describe("Day 0 Scratch Setup — Zero Mock Data & Interactive Workflow", () => 
     localStorage.clear();
   });
 
-  it("renders OwnerMasterDashboard in clean Day 0 state with 0 cases and Walkthrough Banner", () => {
-    const handleOpenCreateCase = vi.fn();
+  it("renders OwnerMasterDashboard in clean Day 0 state with single unified + Onboard Client & Case option and no duplicate Clean Slate banner", () => {
     const handleOpenCreateClient = vi.fn();
 
     render(
@@ -26,7 +25,6 @@ describe("Day 0 Scratch Setup — Zero Mock Data & Interactive Workflow", () => 
         invoices={[]}
         capacity={[]}
         isLiveBackend={false}
-        onOpenCreateCase={handleOpenCreateCase}
         onOpenCreateClient={handleOpenCreateClient}
         onSelectCase={vi.fn()}
       />
@@ -35,21 +33,16 @@ describe("Day 0 Scratch Setup — Zero Mock Data & Interactive Workflow", () => 
     // Verify Active Caseload is 0
     expect(screen.getByText("Active Caseload: 0 Petitions")).toBeDefined();
 
-    // Verify Day 0 Clean Slate Walkthrough Banner
-    expect(screen.getByText(/Clean Slate Initial Setup • Day 0 Practice Ready/i)).toBeDefined();
-    expect(screen.getByText(/Step 1: Retain Client/i)).toBeDefined();
-    expect(screen.getByText(/Step 2: Open Petition/i)).toBeDefined();
-    expect(screen.getByText(/Step 3: Upload Evidence/i)).toBeDefined();
-    expect(screen.getByText(/Step 4: Real-time Readiness/i)).toBeDefined();
+    // Verify duplicate dark Clean Slate banner & split buttons are removed
+    expect(screen.queryByText(/Clean Slate Initial Setup • Day 0 Practice Ready/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /\+ Retain Client/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /\+ New Case Record/i })).toBeNull();
 
-    // Action buttons in walkthrough banner
-    const retainBtn = screen.getByRole("button", { name: /1\. \+ Retain Client/i });
-    fireEvent.click(retainBtn);
+    // Verify unified "+ Onboard Client & Case" button triggers intake flow
+    const onboardButtons = screen.getAllByRole("button", { name: /\+ Onboard Client & Case/i });
+    expect(onboardButtons.length).toBeGreaterThan(0);
+    fireEvent.click(onboardButtons[0]);
     expect(handleOpenCreateClient).toHaveBeenCalled();
-
-    const openCaseBtn = screen.getByRole("button", { name: /2\. \+ New Case Record/i });
-    fireEvent.click(openCaseBtn);
-    expect(handleOpenCreateCase).toHaveBeenCalled();
 
     // Empty caseload table display
     expect(screen.getByText("No Active Cases in Firm Workspace")).toBeDefined();
@@ -125,59 +118,214 @@ describe("Day 0 Scratch Setup — Zero Mock Data & Interactive Workflow", () => 
     expect(screen.getByText(/No retained clients are registered in the firm directory yet/i)).toBeDefined();
   });
 
-  it("allows retaining a client and creating a case record interactively", async () => {
+  it("onboards a client and opens their initial visa case in one unified step", async () => {
     const handleClientCreated = vi.fn();
     const handleCaseCreated = vi.fn();
 
-    // 1. Render CreateClientModal
-    render(
+    const { unmount } = render(
       <CreateClientModal
         isOpen={true}
         onClose={vi.fn()}
         onClientCreated={handleClientCreated}
+        onCaseCreated={handleCaseCreated}
+        clients={[]}
       />
     );
 
-    const firstNameInput = screen.getByLabelText(/First Name/i);
-    const lastNameInput = screen.getByLabelText(/Last Name/i);
-    const emailInput = screen.getByLabelText(/Email Address/i);
+    expect(screen.getByText("Onboard Client & Open Visa Case")).toBeDefined();
+    expect(screen.getByTestId("unified-case-scope-section")).toBeDefined();
 
-    const nationalityInput = screen.getByLabelText(/Primary Nationality/i);
+    fireEvent.change(screen.getByLabelText(/First Name/i), { target: { value: "Aarav" } });
+    fireEvent.change(screen.getByLabelText(/Last Name/i), { target: { value: "Patel" } });
+    fireEvent.change(screen.getByLabelText(/Email Address/i), {
+      target: { value: "aarav.patel@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/Primary Nationality/i), {
+      target: { value: "IND" },
+    });
+    fireEvent.change(screen.getByLabelText(/Immigration Jurisdiction/i), {
+      target: { value: "Canada (IRCC)" },
+    });
 
-    fireEvent.change(firstNameInput, { target: { value: "Aarav" } });
-    fireEvent.change(lastNameInput, { target: { value: "Patel" } });
-    fireEvent.change(emailInput, { target: { value: "aarav.patel@example.com" } });
-    fireEvent.change(nationalityInput, { target: { value: "IND" } });
+    const submitUnifiedBtn = screen.getByRole("button", {
+      name: /Onboard Client & Open Case/i,
+    });
+    fireEvent.click(submitUnifiedBtn);
 
-    const submitClientBtn = screen.getByRole("button", { name: /Save Client Record/i });
-    fireEvent.click(submitClientBtn);
+    await waitFor(() => {
+      expect(handleClientCreated).toHaveBeenCalledTimes(1);
+      expect(handleCaseCreated).toHaveBeenCalledTimes(1);
+    });
 
-    // 2. Render CreateCaseModal with the newly retained client
-    const dummyClient = {
-      id: "client-aarav",
-      first_name: "Aarav",
-      last_name: "Patel",
-      email: "aarav.patel@example.com",
-      nationality: "India",
-      organization_id: "demo-org",
-      created_at: new Date().toISOString(),
+    const createdCase = handleCaseCreated.mock.calls[0][0];
+    expect(createdCase.jurisdiction).toBe("Canada (IRCC)");
+    expect(createdCase.title).toContain("Aarav Patel");
+    expect(handleCaseCreated.mock.calls[0][2]).toBe(true);
+    unmount();
+  });
+
+  it("opens a new case for an existing client via the Existing Client tab without duplicating the client", async () => {
+    const handleClientCreated = vi.fn();
+    const handleCaseCreated = vi.fn();
+    const existingClient = {
+      id: "client-existing-1",
+      first_name: "Meera",
+      last_name: "Nair",
+      email: "meera.nair@example.com",
+      nationality: "IND",
+      organization_id: "org-1",
+      created_at: "2026-11-06T00:00:00Z",
     };
 
     const { unmount } = render(
-      <CreateCaseModal
+      <CreateClientModal
         isOpen={true}
         onClose={vi.fn()}
-        clients={[dummyClient]}
+        onClientCreated={handleClientCreated}
         onCaseCreated={handleCaseCreated}
+        clients={[existingClient]}
       />
     );
 
-    const titleInput = screen.getAllByLabelText(/Petition Case Title/i)[0];
-    fireEvent.change(titleInput, { target: { value: "EB-2 NIW: Aarav Patel" } });
+    const existingTab = screen.getByRole("tab", { name: /Existing Client \(1\)/i });
+    fireEvent.click(existingTab);
 
-    const submitCaseBtn = screen.getByRole("button", { name: /Create Case Record/i });
-    fireEvent.click(submitCaseBtn);
+    fireEvent.change(screen.getByLabelText(/Immigration Jurisdiction/i), {
+      target: { value: "Germany (BAMF)" },
+    });
+
+    const openCaseBtn = screen.getByRole("button", { name: /Open Case Record/i });
+    fireEvent.click(openCaseBtn);
+
+    await waitFor(() => {
+      expect(handleCaseCreated).toHaveBeenCalledTimes(1);
+    });
+    expect(handleClientCreated).not.toHaveBeenCalled();
+    expect(handleCaseCreated.mock.calls[0][0].jurisdiction).toBe("Germany (BAMF)");
+    expect(handleCaseCreated.mock.calls[0][1].id).toBe("client-existing-1");
+    expect(handleCaseCreated.mock.calls[0][2]).toBe(false);
     unmount();
+  });
+
+  it("recovers from partial case-creation failure without creating duplicate clients on retry", async () => {
+    const { api } = await import("../lib/api");
+    const createClientSpy = vi.spyOn(api, "createClient");
+    const createCaseSpy = vi
+      .spyOn(api, "createCase")
+      .mockRejectedValueOnce(new Error("Temporary network timeout"));
+
+    const handleClientCreated = vi.fn();
+    const handleCaseCreated = vi.fn();
+
+    const { unmount } = render(
+      <CreateClientModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onClientCreated={handleClientCreated}
+        onCaseCreated={handleCaseCreated}
+        clients={[]}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/First Name/i), { target: { value: "Rohan" } });
+    fireEvent.change(screen.getByLabelText(/Last Name/i), { target: { value: "Desai" } });
+    fireEvent.change(screen.getByLabelText(/Email Address/i), {
+      target: { value: "rohan.desai@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/Primary Nationality/i), {
+      target: { value: "IND" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Onboard Client & Open Case/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("Client profile saved, but opening their case failed");
+    });
+    expect(createClientSpy).toHaveBeenCalledTimes(1);
+    expect(handleCaseCreated).not.toHaveBeenCalled();
+
+    // Retry should now say "Open Case Record" and only invoke createCase
+    const retryBtn = screen.getByRole("button", { name: /Open Case Record/i });
+    fireEvent.click(retryBtn);
+
+    await waitFor(() => {
+      expect(handleCaseCreated).toHaveBeenCalledTimes(1);
+    });
+    expect(createClientSpy).toHaveBeenCalledTimes(1);
+
+    createClientSpy.mockRestore();
+    createCaseSpy.mockRestore();
+    unmount();
+  });
+
+  it("prefills jurisdiction and visa pathway when converting a calculator lead and normalizes ISO jurisdiction on live POST /cases", async () => {
+    const { api } = await import("../lib/api");
+    const { unmount } = render(
+      <CreateClientModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onClientCreated={vi.fn()}
+        onCaseCreated={vi.fn()}
+        clients={[]}
+        initialPrefill={{
+          firstName: "Simran",
+          lastName: "Kaur",
+          email: "simran@example.com",
+          jurisdiction: "Canada (IRCC)",
+          visaCategory: "Express Entry PNP",
+          leadScoreNote: "Canada CRS — 496 pts",
+        }}
+      />
+    );
+
+    expect(
+      (screen.getByLabelText(/Immigration Jurisdiction/i) as HTMLSelectElement).value
+    ).toBe("Canada (IRCC)");
+    expect(
+      (screen.getByLabelText(/Pathway \/ Visa Category/i) as HTMLSelectElement).value
+    ).toBe("Express Entry PNP");
+    unmount();
+
+    // Verify api.createCase normalizes human-readable jurisdiction to <=3 char ISO code for FastAPI
+    const createdClient = await api.createClient({
+      first_name: "Simran",
+      last_name: "Kaur",
+      email: "simran@example.com",
+      nationality: "IND",
+    });
+
+    let capturedBody: any = null;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (_url, init) => {
+      capturedBody = JSON.parse(String(init?.body || "{}"));
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: "11111111-2222-3333-4444-555555555555",
+          client_id: createdClient.data.id,
+          case_number: "CASE-9901",
+          title: "Express Entry PNP: Simran Kaur",
+          jurisdiction: "CA",
+          visa_category: "Express Entry PNP",
+          status: "intake",
+        }),
+      } as Response;
+    });
+
+    const liveRes = await api.createCase({
+      client_id: createdClient.data.id,
+      title: "Express Entry PNP: Simran Kaur",
+      case_number: "CASE-9901",
+      jurisdiction: "Canada (IRCC)",
+      visa_category: "Express Entry PNP",
+    });
+
+    expect(capturedBody.jurisdiction).toBe("CA");
+    expect(capturedBody.jurisdiction.length).toBeLessThanOrEqual(3);
+    expect(liveRes.isLiveBackend).toBe(true);
+    expect(liveRes.data.client_name).toBe("Simran Kaur");
+    expect(liveRes.data.jurisdiction).toBe("Canada (IRCC)");
+    fetchSpy.mockRestore();
   });
 
   it("renders Day 0 Reset button in WorkspaceHeader and confirms reset callback", () => {

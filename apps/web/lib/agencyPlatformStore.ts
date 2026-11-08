@@ -358,6 +358,7 @@ export interface PlatformGovernanceLogEntry {
   actorEmail: string;
   agencyName: string;
   actionCode: string;
+  action?: string;
   detail: string;
 }
 
@@ -984,6 +985,76 @@ export function updateAgencyGovernanceLocal(
   });
 
   return updated;
+}
+
+export function deleteAgencyTenant(
+  organizationId: string,
+  operatorEmail: string = "hq.admin@documento.ai",
+  reason?: string
+): boolean {
+  const tenants = getAgencyTenants();
+  const target = tenants.find((t) => t.organizationId === organizationId);
+  if (!target) return false;
+
+  // 1. Remove from tenants
+  const remainingTenants = tenants.filter((t) => t.organizationId !== organizationId);
+  writeJsonStorage(STORAGE_KEYS.tenants, remainingTenants);
+
+  // 2. Cascade delete associated invoices
+  const invoices = getPlatformBillingInvoices();
+  const remainingInvoices = invoices.filter((i) => i.organizationId !== organizationId);
+  writeJsonStorage(STORAGE_KEYS.invoices, remainingInvoices);
+
+  // 3. Cascade delete associated team invites
+  const invites = getAgencyTeamInvites();
+  const remainingInvites = invites.filter((inv) => inv.organizationId !== organizationId);
+  writeJsonStorage(STORAGE_KEYS.teamInvites, remainingInvites);
+
+  // 4. Cascade delete associated tickets
+  const tickets = getAgencySupportTickets();
+  const remainingTickets = tickets.filter((tk) => tk.organizationId !== organizationId);
+  writeJsonStorage(STORAGE_KEYS.tickets, remainingTickets);
+
+  // 5. Cascade delete associated leads
+  const leads = getCalculatorAgencyLeads();
+  const remainingLeads = leads.filter(
+    (l) => l.organizationId !== organizationId && l.agencySlug !== target.slug
+  );
+  writeJsonStorage(STORAGE_KEYS.leads, remainingLeads);
+
+  // 6. Append governance audit log
+  appendGovernanceLog({
+    actorEmail: operatorEmail || "hq.admin@documento.ai",
+    agencyName: target.tradingName,
+    actionCode: "agency_tenant_deleted",
+    action: "agency_tenant_deleted",
+    detail: `Deleted partner agency tenant ${target.tradingName} (${target.organizationId})${reason ? `: ${reason}` : ""}. Cascaded all invoices, team invites, support tickets, and leads.`,
+  });
+
+  return true;
+}
+
+export function deleteAgencyApplication(
+  applicationId: string,
+  operatorEmail: string = "hq.admin@documento.ai",
+  reason?: string
+): boolean {
+  const apps = getAgencyApplications();
+  const target = apps.find((a) => a.id === applicationId);
+  if (!target) return false;
+
+  const remainingApps = apps.filter((a) => a.id !== applicationId);
+  writeJsonStorage(STORAGE_KEYS.applications, remainingApps);
+
+  appendGovernanceLog({
+    actorEmail: operatorEmail || "hq.admin@documento.ai",
+    agencyName: target.tradingName,
+    actionCode: "kyb_application_deleted",
+    action: "kyb_application_deleted",
+    detail: `Deleted KYB dossier application ${target.tradingName} (${target.id})${reason ? `: ${reason}` : ""}.`,
+  });
+
+  return true;
 }
 
 export function getPublicAgencyBySlug(slug: string): AgencyTenantRecord | null {

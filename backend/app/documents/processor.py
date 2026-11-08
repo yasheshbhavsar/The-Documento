@@ -139,6 +139,7 @@ def process_document_pipeline(db: Session, document_id: UUID) -> Document:
                         internal_risk_notes="Automated AI/OCR supports English, Gujarati, and Hindi. Route to Case Worker for manual handling or client translation request.",
                         is_confirmed_contradiction=False,
                         confidence_score=0.98,
+                        uncertainty_limitations="Automated language escalation: manual review required.",
                     )
                     db.add(finding)
                     task = CaseTask(

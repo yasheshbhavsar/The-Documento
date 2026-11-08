@@ -244,7 +244,7 @@ describe("Retained Client Security & Day-0 Clean Slate", () => {
 
       expect(screen.getByText(/No Retained Clients in Firm Directory \(Clean Slate\)/i)).toBeDefined();
       expect(screen.getByText(/Zero client profiles are currently registered/i)).toBeDefined();
-      expect(screen.getByRole("button", { name: /\+ Retain First Client & Issue Credentials/i })).toBeDefined();
+      expect(screen.getAllByRole("button", { name: /\+ Onboard Client & Case/i }).length).toBeGreaterThan(0);
     });
 
     it("displays clean zero-state in Employee Workspace when zero clients exist", () => {

@@ -30,12 +30,16 @@ import {
 
 interface AgencyGrowthAndSetupDeskProps {
   currentUser?: UserContext;
+  clientsCount?: number;
+  casesCount?: number;
   onOpenCreateClient?: () => void;
   onConvertLeadToClient?: (lead: CalculatorAgencyLeadRecord) => void;
 }
 
 export function AgencyGrowthAndSetupDesk({
   currentUser,
+  clientsCount = 0,
+  casesCount = 0,
   onOpenCreateClient,
   onConvertLeadToClient,
 }: AgencyGrowthAndSetupDeskProps) {
@@ -138,13 +142,13 @@ export function AgencyGrowthAndSetupDesk({
   const contactedLeadsCount = leads.filter((l) => l.leadStatus === "contacted").length;
   const convertedLeadsCount = leads.filter((l) => l.leadStatus === "converted_to_client").length;
 
-  // 4-Step Practical Launchpad Progress
-  const stepBrandDone = Boolean(agency.branding.setupCompleted || agency.branding.consultationBookingUrl);
-  const stepCorridorsDone = agency.enabledCorridors.length > 0;
+  // 4-Step Practical Launchpad Progress (starts at 0 / 4 on a fresh workspace)
   const uploadedKybDocs = sandboxApp?.uploadedDocuments || [];
-  const stepKybDone = !currentUser?.is_sandbox_agency || uploadedKybDocs.length > 0;
+  const stepBrandDone = Boolean(agency.branding.setupCompleted || agency.branding.consultationBookingUrl);
   const stepTeamDone = agency.seatsUsed > 1 || teamInvites.length > 0;
-  const completedStepsCount = [stepBrandDone, stepCorridorsDone, stepKybDone, stepTeamDone].filter(
+  const stepClientDone = clientsCount > 0 || convertedLeadsCount > 0;
+  const stepCaseDone = casesCount > 0 || agency.casesActiveCount > 0;
+  const completedStepsCount = [stepBrandDone, stepTeamDone, stepClientDone, stepCaseDone].filter(
     Boolean
   ).length;
 
@@ -483,26 +487,30 @@ export function AgencyGrowthAndSetupDesk({
             {
               done: stepBrandDone,
               title: "1. Brand & Booking URL",
-              desc: agency.branding.consultationBookingUrl
-                ? "Consultation booking CTA active"
-                : "Add Calendly / booking link below",
-            },
-            {
-              done: stepCorridorsDone,
-              title: "2. Destination Checklists",
-              desc: `${agency.enabledCorridors.join(", ")} statutory packs enabled`,
-            },
-            {
-              done: stepKybDone,
-              title: "3. License / KYB Proof",
-              desc: !currentUser?.is_sandbox_agency
-                ? `Verified (${agency.regulatoryBody})`
-                : `${uploadedKybDocs.length} verification file(s) attached`,
+              desc: stepBrandDone
+                ? "Brand & consultation CTA saved"
+                : "Save firm tagline & booking link below",
             },
             {
               done: stepTeamDone,
-              title: "4. Paralegals & Staff",
-              desc: `${agency.seatsUsed} of ${agency.seatLimit} team seats active`,
+              title: "2. Invite Paralegals & Staff",
+              desc: stepTeamDone
+                ? `${agency.seatsUsed} of ${agency.seatLimit} team seats active`
+                : "Invite your first paralegal or manager",
+            },
+            {
+              done: stepClientDone,
+              title: "3. Onboard First Client",
+              desc: stepClientDone
+                ? `${Math.max(clientsCount, convertedLeadsCount)} client(s) registered`
+                : "Create your first client profile",
+            },
+            {
+              done: stepCaseDone,
+              title: "4. Open First Visa Case",
+              desc: stepCaseDone
+                ? `${Math.max(casesCount, agency.casesActiveCount)} active case file(s)`
+                : "Open a visa docket for a client",
             },
           ].map((item) => (
             <div

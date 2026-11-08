@@ -1,23 +1,167 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
+import type { AutoFillFieldProvenance } from "../../lib/documentAutoFillEngine";
+import { normalizeDateToDDMMYYYY } from "../../lib/documentAutoFillEngine";
 
 export interface InitialInformationSheetProps {
+  storageKeyId?: string;
   onSaved?: (data: any) => void;
   onSubmitToOfficer?: (data: any) => void;
   isModal?: boolean;
   onClose?: () => void;
+  jurisdiction?: string;
+}
+
+export const INITIAL_INFO_SHEET_STORAGE_KEY = "documento_initial_info_sheet_v3_clean";
+
+export function computeInitialInfoSheetSectionStatuses(formData: any, isSubmitted: boolean = false, jurisdiction?: string | null) {
+  const f = formData || {};
+  const fam = f.family || {};
+  const sp = f.sponsor || {};
+  const hasFamilyEntry = ["mother", "father", "spouse", "sister"].some(
+    (m) => Boolean(fam[m]?.name?.trim())
+  );
+  const jur = (jurisdiction || f.jurisdiction || "").toLowerCase();
+  const isCanada = jur.includes("canada") || jur.includes("ircc");
+  return [
+    {
+      title: "1. Main Applicant Biodata",
+      detail: "Primary applicant biographical details and civil identity",
+      done: Boolean(f.family_name?.trim() && f.given_names?.trim() && f.dob?.trim()),
+    },
+    {
+      title: "2. Entry & Refusal History",
+      detail: "Authorized entry records and statutory disclosure",
+      done: Boolean(
+        isSubmitted ||
+          f.purpose_of_visit?.trim() ||
+          f.date_of_entry?.trim() ||
+          f.refusals_notes?.trim()
+      ),
+    },
+    {
+      title: "3. Relatives in Destination",
+      detail: "Immediate and extended relatives residing in destination country",
+      done: Boolean(isSubmitted || (Array.isArray(f.relatives) && f.relatives.length > 0)),
+    },
+    {
+      title: "4. 10-Yr Education History",
+      detail: "Secondary & post-secondary degrees and credentials",
+      done: Boolean(Array.isArray(f.education) && f.education.length > 0),
+    },
+    {
+      title: "5. 10-Yr Employment History",
+      detail: "Continuous verified employment records (no gaps)",
+      done: Boolean(Array.isArray(f.employment) && f.employment.length > 0),
+    },
+    {
+      title: "6. 10-Yr Travel History",
+      detail: "International departures, entries, and travel records",
+      done: Boolean(isSubmitted || (Array.isArray(f.travel) && f.travel.length > 0)),
+    },
+    {
+      title: "7. Immediate Family Register",
+      detail: isCanada
+        ? "Statutory family register declared under IRPA § 117(9)(d)"
+        : "Statutory family register and immediate relatives disclosure",
+      done: hasFamilyEntry,
+    },
+    {
+      title: "8. Passport & Language Scores",
+      detail: "Valid travel credentials and standardized examination scores",
+      done: Boolean(f.passport_number?.trim()),
+    },
+    {
+      title: "9. 10-Yr Address History (18+)",
+      detail: "Complete chronological residential history since age 18",
+      done: Boolean(Array.isArray(f.addresses) && f.addresses.length > 0),
+    },
+    {
+      title: "10. Sponsor & Relationship",
+      detail: "Sponsor eligibility, financial undertaking & relationship timeline",
+      done: Boolean(isSubmitted || sp.name?.trim() || sp.uci?.trim()),
+    },
+    {
+      title: "11. Statutory Declaration",
+      detail: "Formal electronic declaration and client sign-off",
+      done: Boolean(f.declaration_signed && f.signature?.trim()),
+    },
+  ];
+}
+
+export function getSavedInitialInfoSheetRecord(storageKeyId: string): {
+  formData: any;
+  isSubmitted: boolean;
+  fieldProvenance?: Record<string, AutoFillFieldProvenance>;
+} | null {
+  if (typeof window === "undefined" || !storageKeyId) return null;
+  try {
+    const raw = window.localStorage.getItem(INITIAL_INFO_SHEET_STORAGE_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw);
+    return map?.[storageKeyId] || null;
+  } catch {
+    return null;
+  }
 }
 
 export function InitialInformationSheet({
+  storageKeyId,
   onSaved,
   onSubmitToOfficer,
   isModal = false,
   onClose,
+  jurisdiction,
 }: InitialInformationSheetProps) {
   const [activeSection, setActiveSection] = useState<string>("applicant_biodata");
   const [isSavedNotice, setIsSavedNotice] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+  const [fieldProvenance, setFieldProvenance] = useState<Record<string, AutoFillFieldProvenance>>({});
+
+  const isCanada = Boolean(
+    (jurisdiction || "").toLowerCase().includes("canada") ||
+    (jurisdiction || "").toLowerCase().includes("ircc")
+  );
+
+  const getFieldAutoFillStyle = (fieldName: string, baseStyle: React.CSSProperties = {}) => {
+    const hasProv = Boolean(fieldProvenance[fieldName]);
+    return {
+      ...baseStyle,
+      backgroundColor: hasProv ? "#EFF6FF" : (baseStyle.backgroundColor || "#FFFFFF"),
+      borderColor: hasProv ? "#93C5FD" : (baseStyle.borderColor || "#CBD5E1"),
+      transition: "all 0.15s ease",
+    };
+  };
+
+  const renderProvenanceIndicator = (fieldName: string) => {
+    const prov = fieldProvenance[fieldName];
+    if (!prov) return null;
+    const conf = prov.confidence ? Math.round(prov.confidence * 100) : 95;
+    return (
+      <span
+        data-testid={`provenance-badge-${fieldName}`}
+        title={`Verified OCR auto-fill from ${prov.source_document_title || "Official Evidence"} (Confidence: ${conf}%)`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "4px",
+          padding: "2px 7px",
+          fontSize: "10.5px",
+          fontWeight: 700,
+          color: "#1E40AF",
+          background: "#DBEAFE",
+          borderRadius: "4px",
+          border: "1px solid #BFDBFE",
+          marginLeft: "6px",
+          verticalAlign: "middle",
+        }}
+      >
+        <span>⚡ OCR</span>
+        <span>{conf}%</span>
+      </span>
+    );
+  };
 
   // Form State initialized with clean, schema-driven empty default values (No static personal data)
   const [formData, setFormData] = useState({
@@ -390,7 +534,72 @@ export function InitialInformationSheet({
     }));
   };
 
+  useEffect(() => {
+    if (!storageKeyId) return;
+    const saved = getSavedInitialInfoSheetRecord(storageKeyId);
+    if (saved?.formData) {
+      setFormData((prev) => ({ ...prev, ...saved.formData }));
+      setIsSubmitted(Boolean(saved.isSubmitted));
+    }
+    if (saved?.fieldProvenance) {
+      setFieldProvenance(saved.fieldProvenance);
+    }
+  }, [storageKeyId]);
+
+  useEffect(() => {
+    const handleAutoFillUpdate = (e: CustomEvent<any>) => {
+      const detail = e.detail;
+      if (!detail) return;
+      if (!storageKeyId || detail.storageKeyId === storageKeyId || detail.storageKeyId === "default_client") {
+        if (detail.formData) {
+          setFormData((prev) => ({
+            ...prev,
+            ...detail.formData,
+            family: {
+              ...prev.family,
+              ...(detail.formData.family || {}),
+              mother: { ...prev.family.mother, ...(detail.formData.family?.mother || {}) },
+              father: { ...prev.family.father, ...(detail.formData.family?.father || {}) },
+              spouse: { ...prev.family.spouse, ...(detail.formData.family?.spouse || {}) },
+              sister: { ...prev.family.sister, ...(detail.formData.family?.sister || {}) },
+            },
+            sponsor: {
+              ...prev.sponsor,
+              ...(detail.formData.sponsor || {}),
+            },
+          }));
+        }
+        if (detail.provenance) {
+          setFieldProvenance((prev) => ({ ...prev, ...detail.provenance }));
+        }
+      }
+    };
+
+    window.addEventListener("documento-autofill-updated", handleAutoFillUpdate as EventListener);
+    return () => {
+      window.removeEventListener("documento-autofill-updated", handleAutoFillUpdate as EventListener);
+    };
+  }, [storageKeyId]);
+
+  const persistSheetState = (nextData: any, nextSubmitted: boolean, nextProv?: Record<string, AutoFillFieldProvenance>) => {
+    if (typeof window === "undefined" || !storageKeyId) return;
+    try {
+      const raw = window.localStorage.getItem(INITIAL_INFO_SHEET_STORAGE_KEY);
+      const map = raw ? JSON.parse(raw) : {};
+      map[storageKeyId] = {
+        formData: nextData,
+        isSubmitted: nextSubmitted,
+        fieldProvenance: nextProv || fieldProvenance,
+        updatedAt: new Date().toISOString(),
+      };
+      window.localStorage.setItem(INITIAL_INFO_SHEET_STORAGE_KEY, JSON.stringify(map));
+    } catch {
+      // ignore storage quota errors
+    }
+  };
+
   const handleSaveDraft = () => {
+    persistSheetState(formData, isSubmitted, fieldProvenance);
     setIsSavedNotice(true);
     setTimeout(() => setIsSavedNotice(false), 3000);
     if (onSaved) onSaved(formData);
@@ -398,13 +607,14 @@ export function InitialInformationSheet({
 
   const handleSubmit = () => {
     setIsSubmitted(true);
+    persistSheetState(formData, true, fieldProvenance);
     if (onSubmitToOfficer) onSubmitToOfficer(formData);
   };
 
   const sections = [
     { key: "applicant_biodata", label: "1. Main Applicant Biodata", icon: "👤" },
     { key: "entry_refusals", label: "2. Entry & Refusal History", icon: "✈️" },
-    { key: "relatives", label: "3. Relatives in Canada", icon: "👥" },
+    { key: "relatives", label: isCanada ? "3. Relatives in Canada" : "3. Relatives in Destination", icon: "👥" },
     { key: "education", label: "4. Education History", icon: "🎓" },
     { key: "employment", label: "5. Employment (10-Yr)", icon: "💼" },
     { key: "travel", label: "6. Travel History (10-Yr)", icon: "🗺️" },
@@ -458,10 +668,32 @@ export function InitialInformationSheet({
             >
               {isSubmitted ? "Submitted to Case Officer ✓" : "Intake In Progress"}
             </Badge>
+            {Object.keys(fieldProvenance).length > 0 && (
+              <span
+                data-testid="autofill-sync-badge"
+                style={{
+                  background: "#DBEAFE",
+                  color: "#1E40AF",
+                  padding: "3px 10px",
+                  borderRadius: "20px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  border: "1px solid #BFDBFE",
+                }}
+              >
+                ⚡ {Object.keys(fieldProvenance).length} Fields Auto-Synchronized (OCR)
+              </span>
+            )}
           </div>
           <h2 style={{ margin: "0 0 6px 0", fontSize: "22px", fontWeight: 800, letterSpacing: "-0.01em" }}>
-            Main Applicant Initial Information Sheet
+            Applicant Background Questionnaire
           </h2>
+          <div style={{ fontSize: "12px", color: "#B9DED4", marginBottom: "4px", fontWeight: 600 }}>
+            Main Applicant Initial Information Sheet
+          </div>
           <p style={{ margin: 0, fontSize: "13px", color: "#DCE5E1", lineHeight: 1.5, maxWidth: "720px" }}>
             Primary Applicant: <strong>{applicantDisplayName}</strong> • Dates formatted in <strong>DD/MM/YYYY</strong> • All data synchronized with official civil and travel documents.
           </p>
@@ -638,52 +870,60 @@ export function InitialInformationSheet({
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                     Family Name / Surname *
+                    {renderProvenanceIndicator("family_name")}
                   </label>
                   <input
                     type="text"
                     value={formData.family_name}
                     placeholder="Enter family name (as in passport)"
                     onChange={(e) => handleInputChange("family_name", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    style={getFieldAutoFillStyle("family_name", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                     Given Name(s) (First Name &amp; Middle Name) *
+                    {renderProvenanceIndicator("given_names")}
                   </label>
                   <input
                     type="text"
                     value={formData.given_names}
                     placeholder="Enter given name(s)"
                     onChange={(e) => handleInputChange("given_names", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    style={getFieldAutoFillStyle("given_names", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                     Date of Birth (DD/MM/YYYY) *
+                    {renderProvenanceIndicator("dob")}
                   </label>
                   <input
                     type="text"
                     value={formData.dob}
                     placeholder="DD/MM/YYYY"
                     onChange={(e) => handleInputChange("dob", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    onBlur={(e) => {
+                      const norm = normalizeDateToDDMMYYYY(e.target.value);
+                      if (norm && norm !== e.target.value) handleInputChange("dob", norm);
+                    }}
+                    style={getFieldAutoFillStyle("dob", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                     Gender *
+                    {renderProvenanceIndicator("gender")}
                   </label>
                   <select
                     value={formData.gender}
                     onChange={(e) => handleInputChange("gender", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    style={getFieldAutoFillStyle("gender", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   >
                     <option value="MALE">Male</option>
                     <option value="FEMALE">Female</option>
@@ -691,81 +931,87 @@ export function InitialInformationSheet({
                   </select>
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                     First Language *
+                    {renderProvenanceIndicator("first_language")}
                   </label>
                   <input
                     type="text"
                     value={formData.first_language}
                     placeholder="Native / first language"
                     onChange={(e) => handleInputChange("first_language", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    style={getFieldAutoFillStyle("first_language", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
               </div>
 
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                   City and Country of Birth (as per passport) *
+                  {renderProvenanceIndicator("city_country_birth")}
                 </label>
                 <input
                   type="text"
                   value={formData.city_country_birth}
                   placeholder="e.g. City, Province/State, Country"
                   onChange={(e) => handleInputChange("city_country_birth", e.target.value)}
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                  style={getFieldAutoFillStyle("city_country_birth", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                   Current Residential Address *
+                  {renderProvenanceIndicator("residential_address")}
                 </label>
                 <input
                   type="text"
                   value={formData.residential_address}
                   placeholder="Street address, unit, city, postal code, country"
                   onChange={(e) => handleInputChange("residential_address", e.target.value)}
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                  style={getFieldAutoFillStyle("residential_address", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                 />
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                     Phone Number *
+                    {renderProvenanceIndicator("phone_number")}
                   </label>
                   <input
                     type="text"
                     value={formData.phone_number}
                     placeholder="e.g. +1 (555) 000-0000"
                     onChange={(e) => handleInputChange("phone_number", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    style={getFieldAutoFillStyle("phone_number", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                     Email Address *
+                    {renderProvenanceIndicator("email")}
                   </label>
                   <input
                     type="email"
                     value={formData.email}
                     placeholder="applicant@domain.com"
                     onChange={(e) => handleInputChange("email", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    style={getFieldAutoFillStyle("email", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                     Marital Status *
+                    {renderProvenanceIndicator("marital_status")}
                   </label>
                   <select
                     value={formData.marital_status}
                     onChange={(e) => handleInputChange("marital_status", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    style={getFieldAutoFillStyle("marital_status", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   >
                     <option value="SINGLE">Single</option>
                     <option value="MARRIED">Married</option>
@@ -775,15 +1021,20 @@ export function InitialInformationSheet({
                   </select>
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
                     Date of Marriage (DD/MM/YYYY)
+                    {renderProvenanceIndicator("date_of_marriage")}
                   </label>
                   <input
                     type="text"
                     value={formData.date_of_marriage}
                     placeholder="DD/MM/YYYY (if applicable)"
                     onChange={(e) => handleInputChange("date_of_marriage", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    onBlur={(e) => {
+                      const norm = normalizeDateToDDMMYYYY(e.target.value);
+                      if (norm && norm !== e.target.value) handleInputChange("date_of_marriage", norm);
+                    }}
+                    style={getFieldAutoFillStyle("date_of_marriage", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
               </div>
@@ -918,10 +1169,10 @@ export function InitialInformationSheet({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 750, color: "#063C3D" }}>
-                    Section 3: Relatives Living in Destination Country (Canada)
+                    Section 3: Relatives Living in Destination Country {isCanada ? "(Canada)" : ""}
                   </h3>
                   <p style={{ margin: 0, fontSize: "12px", color: "#64748B" }}>
-                    Family members currently residing in Canada (e.g. Sibling, Parent, Extended Family).
+                    Family members currently residing in destination country {isCanada ? "(e.g. Sibling, Parent, Extended Family)" : ""}.
                   </p>
                 </div>
                 <Button variant="outline" size="sm" onClick={handleAddRelative} style={{ fontWeight: 650 }}>
@@ -942,7 +1193,7 @@ export function InitialInformationSheet({
                   }}
                 >
                   <div style={{ fontSize: "24px", marginBottom: "6px" }}>👥</div>
-                  No relatives currently recorded. Click <strong>&quot;+ Add Relative&quot;</strong> to declare family members residing in Canada.
+                  No relatives currently recorded. Click <strong>&quot;+ Add Relative&quot;</strong> to declare family members residing in destination country.
                 </div>
               ) : (
                 formData.relatives.map((rel, idx) => (
@@ -1004,7 +1255,9 @@ export function InitialInformationSheet({
                         />
                       </div>
                       <div>
-                        <label style={{ color: "#64748B", display: "block", marginBottom: "2px" }}>Status in Canada</label>
+                        <label style={{ color: "#64748B", display: "block", marginBottom: "2px" }}>
+                          {isCanada ? "Status in Canada" : "Status in Destination Country"}
+                        </label>
                         <input
                           type="text"
                           value={rel.status_in_canada}
@@ -1610,43 +1863,63 @@ export function InitialInformationSheet({
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>Passport Number</label>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
+                    Passport Number
+                    {renderProvenanceIndicator("passport_number")}
+                  </label>
                   <input
                     type="text"
                     value={formData.passport_number}
                     placeholder="e.g. Passport ID Number"
                     onChange={(e) => handleInputChange("passport_number", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    style={getFieldAutoFillStyle("passport_number", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>Place of Issue</label>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
+                    Place of Issue
+                    {renderProvenanceIndicator("passport_issue_place")}
+                  </label>
                   <input
                     type="text"
                     value={formData.passport_issue_place}
                     placeholder="e.g. Issuing City / Authority"
                     onChange={(e) => handleInputChange("passport_issue_place", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    style={getFieldAutoFillStyle("passport_issue_place", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>Issue Date</label>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
+                    Issue Date (DD/MM/YYYY)
+                    {renderProvenanceIndicator("passport_issue_date")}
+                  </label>
                   <input
                     type="text"
                     value={formData.passport_issue_date}
                     placeholder="DD/MM/YYYY"
                     onChange={(e) => handleInputChange("passport_issue_date", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    onBlur={(e) => {
+                      const norm = normalizeDateToDDMMYYYY(e.target.value);
+                      if (norm && norm !== e.target.value) handleInputChange("passport_issue_date", norm);
+                    }}
+                    style={getFieldAutoFillStyle("passport_issue_date", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "block", marginBottom: "4px" }}>Expiry Date</label>
+                  <label style={{ fontSize: "12px", fontWeight: 650, color: "#334155", display: "flex", alignItems: "center", marginBottom: "4px" }}>
+                    Expiry Date (DD/MM/YYYY)
+                    {renderProvenanceIndicator("passport_expiry_date")}
+                  </label>
                   <input
                     type="text"
                     value={formData.passport_expiry_date}
                     placeholder="DD/MM/YYYY"
                     onChange={(e) => handleInputChange("passport_expiry_date", e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+                    onBlur={(e) => {
+                      const norm = normalizeDateToDDMMYYYY(e.target.value);
+                      if (norm && norm !== e.target.value) handleInputChange("passport_expiry_date", norm);
+                    }}
+                    style={getFieldAutoFillStyle("passport_expiry_date", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   />
                 </div>
               </div>

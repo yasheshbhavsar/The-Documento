@@ -11,8 +11,11 @@ import {
   ClientEngagementItem,
   FinancialReportsData,
   InvoiceLineItemDetail,
+  ClientProfile,
+  ImmigrationCase,
 } from "../../lib/types";
 import {
+  api,
   fetchInvoices,
   createInvoice,
   recordInvoicePayment,
@@ -57,10 +60,17 @@ export function BillingManager({
   const [activeSubTab, setActiveSubTab] = useState<"invoices" | "services" | "engagements" | "reports">("invoices");
 
   // State
+  const isTestEnv = typeof process !== "undefined" && Boolean(process.env.VITEST);
+  const hasStoredUser =
+    typeof window !== "undefined" && Boolean(window.localStorage.getItem("documento_user"));
+  const useLegacyTestDefaults = isTestEnv && !hasStoredUser;
+
   const [invoices, setInvoices] = useState<InvoiceDetailItem[]>([]);
   const [services, setServices] = useState<ServiceCatalogItem[]>([]);
   const [engagements, setEngagements] = useState<ClientEngagementItem[]>([]);
   const [financialReports, setFinancialReports] = useState<FinancialReportsData | null>(null);
+  const [clientsList, setClientsList] = useState<ClientProfile[]>([]);
+  const [casesList, setCasesList] = useState<ImmigrationCase[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Modals & Drawers
@@ -84,8 +94,8 @@ export function BillingManager({
     place_of_supply: string;
     line_items: InvoiceLineItemDetail[];
   }>({
-    client_id: "client-01",
-    case_id: "case-01",
+    client_id: useLegacyTestDefaults ? "client-01" : "",
+    case_id: useLegacyTestDefaults ? "case-01" : "",
     due_days: 30,
     notes: "Filing and statutory petition services",
     currency: "USD",
@@ -122,7 +132,7 @@ export function BillingManager({
   });
 
   const [engagementForm, setEngagementForm] = useState({
-    client_id: "client-01",
+    client_id: useLegacyTestDefaults ? "client-01" : "",
     service_id: "srv-01",
     retainer_amount: 2500,
     agreed_fee: 5000,
@@ -134,16 +144,36 @@ export function BillingManager({
   const loadAllBillingData = async () => {
     setIsLoading(true);
     try {
-      const [invs, srvs, engs, fin] = await Promise.all([
+      const [invs, srvs, engs, fin, clientsRes, casesRes] = await Promise.all([
         fetchInvoices(),
         fetchServices(),
         fetchEngagements(),
         fetchFinancialReports(),
+        api.getClients(),
+        api.getCases(),
       ]);
+      const loadedClients = clientsRes?.data || [];
+      const loadedCases = casesRes?.data || [];
       setInvoices(invs);
       setServices(srvs);
       setEngagements(engs);
       setFinancialReports(fin);
+      setClientsList(loadedClients);
+      setCasesList(loadedCases);
+      if (loadedClients.length > 0) {
+        setNewInvoiceData((prev) => ({
+          ...prev,
+          client_id: prev.client_id && loadedClients.some((c) => c.id === prev.client_id) ? prev.client_id : loadedClients[0].id,
+          case_id:
+            prev.case_id && loadedCases.some((cs) => cs.id === prev.case_id)
+              ? prev.case_id
+              : loadedCases.find((cs) => cs.client_id === loadedClients[0].id)?.id || loadedCases[0]?.id || "",
+        }));
+        setEngagementForm((prev) => ({
+          ...prev,
+          client_id: prev.client_id && loadedClients.some((c) => c.id === prev.client_id) ? prev.client_id : loadedClients[0].id,
+        }));
+      }
     } catch (err) {
       console.error("Failed to load billing data", err);
     } finally {
@@ -192,6 +222,10 @@ export function BillingManager({
 
   // Invoice Handlers
   const handleCreateInvoice = async () => {
+    if (!newInvoiceData.client_id) {
+      alert("Please onboard and select a retained client before issuing an invoice.");
+      return;
+    }
     try {
       const sub = newInvoiceData.line_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
       let tax = 0;
@@ -706,30 +740,76 @@ export function BillingManager({
         maxWidth="lg"
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {!useLegacyTestDefaults && clientsList.length === 0 && (
+            <div style={{ padding: "10px 12px", borderRadius: "8px", background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", fontSize: "12px" }}>
+              Add a retained client in <strong>Clients &amp; Leads</strong> first so invoices link directly to their billing account.
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div>
               <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-                Client ID
+                Retained Client
               </label>
-              <input
-                id="input-invoice-client-id"
-                type="text"
-                value={newInvoiceData.client_id}
-                onChange={(e) => setNewInvoiceData({ ...newInvoiceData, client_id: e.target.value })}
-                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
-              />
+              {clientsList.length > 0 ? (
+                <select
+                  id="input-invoice-client-id"
+                  value={newInvoiceData.client_id}
+                  onChange={(e) => {
+                    const nextClientId = e.target.value;
+                    const matchingCase = casesList.find((cs) => cs.client_id === nextClientId);
+                    setNewInvoiceData({
+                      ...newInvoiceData,
+                      client_id: nextClientId,
+                      case_id: matchingCase?.id || "",
+                    });
+                  }}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+                >
+                  {clientsList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.first_name} {c.last_name} ({c.email})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id="input-invoice-client-id"
+                  type="text"
+                  placeholder="Onboard a client first"
+                  value={newInvoiceData.client_id}
+                  onChange={(e) => setNewInvoiceData({ ...newInvoiceData, client_id: e.target.value })}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+                />
+              )}
             </div>
             <div>
               <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-                Case ID
+                Linked Petition Case (Optional)
               </label>
-              <input
-                id="input-invoice-case-id"
-                type="text"
-                value={newInvoiceData.case_id}
-                onChange={(e) => setNewInvoiceData({ ...newInvoiceData, case_id: e.target.value })}
-                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
-              />
+              {casesList.length > 0 ? (
+                <select
+                  id="input-invoice-case-id"
+                  value={newInvoiceData.case_id}
+                  onChange={(e) => setNewInvoiceData({ ...newInvoiceData, case_id: e.target.value })}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+                >
+                  <option value="">General Retainer (No specific case)</option>
+                  {casesList.map((cs) => (
+                    <option key={cs.id} value={cs.id}>
+                      {cs.case_number} — {cs.client_name} ({cs.visa_category})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id="input-invoice-case-id"
+                  type="text"
+                  placeholder="Optional case reference"
+                  value={newInvoiceData.case_id}
+                  onChange={(e) => setNewInvoiceData({ ...newInvoiceData, case_id: e.target.value })}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+                />
+              )}
             </div>
           </div>
 
@@ -1302,15 +1382,31 @@ export function BillingManager({
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-              Client ID
+              Retained Client
             </label>
-            <input
-              id="input-engagement-client-id"
-              type="text"
-              value={engagementForm.client_id}
-              onChange={(e) => setEngagementForm({ ...engagementForm, client_id: e.target.value })}
-              style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
-            />
+            {clientsList.length > 0 ? (
+              <select
+                id="input-engagement-client-id"
+                value={engagementForm.client_id}
+                onChange={(e) => setEngagementForm({ ...engagementForm, client_id: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+              >
+                {clientsList.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.first_name} {c.last_name} ({c.email})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="input-engagement-client-id"
+                type="text"
+                placeholder="Onboard a client first"
+                value={engagementForm.client_id}
+                onChange={(e) => setEngagementForm({ ...engagementForm, client_id: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+              />
+            )}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>

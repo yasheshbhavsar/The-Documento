@@ -26,64 +26,129 @@ import { PathwayExpansionDesk } from "../pathways/PathwayExpansionDesk";
 import { ProvisionCredentialsModal } from "../modals/ProvisionCredentialsModal";
 import { ManagerPriorityQueueView } from "./ManagerPriorityQueueView";
 import { AgencyGrowthAndSetupDesk } from "../agency/AgencyGrowthAndSetupDesk";
+import { DocumentExtractorLab } from "../tools/DocumentExtractorLab";
+import { getCaseKickoffProgress } from "../../lib/caseKickoffStore";
+import { formatCaseStageBadge, getCaseStageInfo } from "../../lib/caseLifecycle";
 import { CalculatorAgencyLeadRecord, getAgencyForOrganization, getCalculatorAgencyLeads } from "../../lib/agencyPlatformStore";
 import {
   api,
   fetchManagerPriorityQueue,
   FALLBACK_MANAGER_PRIORITY_QUEUE,
 } from "../../lib/api";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
+import { DashboardErrorBoundary } from "../common/DashboardErrorBoundary";
+import { FirmCleanSlateEmptyState } from "../common/EmptyStates";
 
-interface OwnerMasterDashboardProps {
-  cases: ImmigrationCase[];
-  clients: ClientProfile[];
-  auditEvents: AuditEvent[];
+export type BusinessSectionKey = "overview" | "caseload" | "operations" | "growth" | "governance";
+
+export type DashboardTabKey =
+  | "overview"
+  | "firm_config"
+  | "reliability_ops"
+  | "manager_priority"
+  | "conversation_inspector"
+  | "executive"
+  | "analytics"
+  | "operations"
+  | "billing"
+  | "cases"
+  | "clients"
+  | "team"
+  | "financials"
+  | "audit"
+  | "rules"
+  | "stage9_release_governance"
+  | "stage10_pathway_expansion"
+  | "partner_growth"
+  | "extractor_lab"
+  | "caseload"
+  | "growth"
+  | "governance";
+
+export function getSectionForTab(tab: DashboardTabKey): BusinessSectionKey {
+  switch (tab) {
+    case "overview":
+    case "executive":
+    case "analytics":
+      return "overview";
+    case "caseload":
+    case "cases":
+    case "clients":
+    case "financials":
+      return "caseload";
+    case "operations":
+    case "manager_priority":
+    case "team":
+    case "conversation_inspector":
+    case "reliability_ops":
+      return "operations";
+    case "growth":
+    case "partner_growth":
+    case "stage10_pathway_expansion":
+      return "growth";
+    case "governance":
+    case "firm_config":
+    case "billing":
+    case "rules":
+    case "audit":
+    case "stage9_release_governance":
+    case "extractor_lab":
+      return "governance";
+    default:
+      return "overview";
+  }
+}
+
+export function resolveEffectiveTab(tab: DashboardTabKey): Exclude<DashboardTabKey, "caseload" | "growth" | "governance"> {
+  if (tab === "caseload") return "cases";
+  if (tab === "growth") return "partner_growth";
+  if (tab === "governance") return "firm_config";
+  return tab as Exclude<DashboardTabKey, "caseload" | "growth" | "governance">;
+}
+
+export interface OwnerMasterDashboardProps {
+  cases?: ImmigrationCase[];
+  clients?: ClientProfile[];
+  auditEvents?: AuditEvent[];
   invoices?: InvoiceItem[];
   capacity?: TeamMemberCapacity[];
   isLiveBackend?: boolean;
-  onOpenCreateCase: () => void;
-  onOpenCreateClient: () => void;
-  onSelectCase: (c: ImmigrationCase) => void;
+  onOpenCreateCase?: () => void;
+  onOpenCreateClient?: () => void;
+  onSelectCase?: (c: ImmigrationCase) => void;
   onClientUpdated?: (c: ClientProfile) => void;
   onDeleteClient?: (clientId: string) => Promise<void> | void;
   currentUser?: UserContext;
   onConvertLeadToClient?: (lead: CalculatorAgencyLeadRecord) => void;
+  onOpenCaseKickoff?: (c: ImmigrationCase) => void;
+  kickoffVersion?: number;
 }
 
-export function OwnerMasterDashboard({
-  cases = [],
-  clients = [],
-  auditEvents = [],
-  invoices = [],
-  capacity = [],
-  isLiveBackend,
-  onOpenCreateCase,
-  onOpenCreateClient,
-  onSelectCase,
-  onClientUpdated,
-  onDeleteClient,
-  currentUser,
-  onConvertLeadToClient,
-}: OwnerMasterDashboardProps) {
-  const [activeTab, setActiveTab] = useState<
-    | "overview"
-    | "firm_config"
-    | "reliability_ops"
-    | "manager_priority"
-    | "conversation_inspector"
-    | "executive"
-    | "analytics"
-    | "operations"
-    | "billing"
-    | "cases"
-    | "clients"
-    | "team"
-    | "financials"
-    | "audit"
-    | "rules"
-    | "stage9_release_governance"
-    | "stage10_pathway_expansion"
-    | "partner_growth"
-  >(currentUser?.is_sandbox_agency ? "partner_growth" : "overview");
+export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
+  const ws = useWorkspaceSafe();
+
+  const cases = props.cases ?? ws?.cases ?? [];
+  const clients = props.clients ?? ws?.clients ?? [];
+  const auditEvents = props.auditEvents ?? ws?.auditEvents ?? [];
+  const invoices = props.invoices ?? ws?.invoices ?? [];
+  const capacity = props.capacity ?? ws?.capacity ?? [];
+  const isLiveBackend = props.isLiveBackend ?? ws?.isLiveBackend ?? false;
+  const onOpenCreateCase = props.onOpenCreateCase;
+  const onOpenCreateClient = props.onOpenCreateClient ?? (() => {});
+  const onSelectCase = props.onSelectCase ?? ((_c: ImmigrationCase) => {});
+  const onClientUpdated = props.onClientUpdated ?? ws?.handleClientUpdated;
+  const onDeleteClient = props.onDeleteClient ?? ws?.handleDeleteClient;
+  const currentUser = props.currentUser ?? ws?.currentUser ?? undefined;
+  const onConvertLeadToClient = props.onConvertLeadToClient;
+  const onOpenCaseKickoff =
+    props.onOpenCaseKickoff ??
+    ((c: ImmigrationCase) => {
+      ws?.setSelectedCaseForKickoff?.(c);
+    });
+  const kickoffVersion = props.kickoffVersion ?? ws?.kickoffVersion ?? 0;
+  const [activeTab, setActiveTab] = useState<DashboardTabKey>(
+    currentUser?.is_sandbox_agency ? "partner_growth" : "overview"
+  );
 
   React.useEffect(() => {
     if (currentUser?.is_sandbox_agency) {
@@ -271,11 +336,14 @@ export function OwnerMasterDashboard({
       key: "status",
       header: "Pipeline Stage",
       sortable: true,
-      render: (c) => (
-        <Badge variant={c.status === "ready" || c.status === "filed" ? "success" : c.attention_required ? "action" : "review"}>
-          {c.status.toUpperCase()}
-        </Badge>
-      ),
+      render: (c) => {
+        const stage = formatCaseStageBadge(c.status);
+        return (
+          <Badge variant={c.attention_required ? "action" : stage.variant}>
+            {stage.label}
+          </Badge>
+        );
+      },
     },
     {
       key: "readiness_score",
@@ -303,13 +371,28 @@ export function OwnerMasterDashboard({
     {
       key: "actions",
       header: "Action",
-      render: (c) => (
-        <Button variant="outline" size="sm" onClick={() => onSelectCase(c)}>
-          Inspect
-        </Button>
-      ),
+      render: (c) => {
+        const kp = onOpenCaseKickoff ? getCaseKickoffProgress(c.id) : null;
+        return (
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+            {onOpenCaseKickoff && kp && !kp.isComplete && (
+              <Button variant="primary" size="sm" onClick={() => onOpenCaseKickoff(c)}>
+                Kickoff ({kp.completedCount}/4)
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => onSelectCase(c)}>
+              Inspect
+            </Button>
+          </div>
+        );
+      },
     },
   ];
+
+  const pendingKickoffCases = React.useMemo(() => {
+    if (!onOpenCaseKickoff) return [];
+    return cases.filter((c) => !getCaseKickoffProgress(c.id).isComplete);
+  }, [cases, onOpenCaseKickoff, kickoffVersion]);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -324,26 +407,87 @@ export function OwnerMasterDashboard({
     (priorityQueueData.summary?.blocked_cases_count || 0) +
     (priorityQueueData.summary?.pending_reviews_count || 0);
 
-  const navItems = [
-    { key: "overview", id: "tab-btn-overview", label: "Company Overview", icon: "🏢", count: null },
-    { key: "partner_growth", id: "tab-btn-partner-growth", label: "Partner Onboarding & Leads", icon: "🔗", count: unreadCalculatorLeadsCount || null },
-    { key: "firm_config", id: "tab-btn-firm-config", label: "Firm Governance & Configuration", icon: "🏛️", count: null },
-    { key: "reliability_ops", id: "tab-btn-reliability-ops", label: "Reliability, Privacy & Security", icon: "🛡️", count: null },
-    { key: "manager_priority", id: "tab-btn-manager-priority", label: "Priority Command Board", icon: "🚨", count: priorityActionCount || null },
-    { key: "conversation_inspector", id: "tab-btn-conversation-inspector", label: "Conversation Inspector", icon: "💬", count: null },
-    { key: "executive", id: "tab-btn-executive", label: "Executive Command Center", icon: "⚡", count: null },
-    { key: "analytics", id: "tab-btn-analytics", label: "Deep Analytics", icon: "📈", count: null },
-    { key: "operations", id: "tab-btn-operations", label: "Operations Hub", icon: "👥", count: null },
-    { key: "billing", id: "tab-btn-billing", label: "Billing & Retainers", icon: "💳", count: null },
-    { key: "cases", id: "tab-btn-cases", label: "All Cases", icon: "📋", count: cases.length },
-    { key: "clients", id: "tab-btn-clients", label: "Retained Clients", icon: "👥", count: clients.length },
-    { key: "team", id: "tab-btn-team", label: "Team Capacity", icon: "👥", count: capacity?.length || 0 },
-    { key: "financials", id: "tab-btn-financials", label: "Revenue & Billing", icon: "💳", count: null },
-    { key: "audit", id: "tab-btn-audit", label: "Audit Alerts", icon: "🛡️", count: auditEvents.length },
-    { key: "rules", id: "tab-btn-rules", label: "Rules & Authorities", icon: "⚖️", count: null },
-    { key: "stage9_release_governance", id: "tab-btn-stage9-release-governance", label: "Release & Pilot Desk", icon: "🚀", count: null },
-    { key: "stage10_pathway_expansion", id: "tab-btn-stage10-pathway-expansion", label: "Pathway Expansion", icon: "🌐", count: null },
-  ] as const;
+  interface DashboardNavItem {
+    key: DashboardTabKey;
+    id: string;
+    label: string;
+    icon: string;
+    count: number | null;
+  }
+
+  interface DashboardSectionConfig {
+    sectionKey: BusinessSectionKey;
+    sectionLabel: string;
+    icon: string;
+    defaultTab: DashboardTabKey;
+    items: DashboardNavItem[];
+  }
+
+  const DASHBOARD_SECTIONS: DashboardSectionConfig[] = [
+    {
+      sectionKey: "overview",
+      sectionLabel: "Executive Overview",
+      icon: "🏢",
+      defaultTab: "overview",
+      items: [
+        { key: "overview", id: "tab-btn-overview", label: "Company Overview", icon: "🏢", count: null },
+        { key: "executive", id: "tab-btn-executive", label: "Executive Command Center", icon: "⚡", count: null },
+        { key: "analytics", id: "tab-btn-analytics", label: "Deep Analytics", icon: "📈", count: null },
+      ],
+    },
+    {
+      sectionKey: "caseload",
+      sectionLabel: "Caseload & Retainers",
+      icon: "📋",
+      defaultTab: "cases",
+      items: [
+        { key: "cases", id: "tab-btn-cases", label: "All Cases", icon: "📋", count: cases.length },
+        { key: "clients", id: "tab-btn-clients", label: "Retained Clients", icon: "👥", count: clients.length },
+        { key: "financials", id: "tab-btn-financials", label: "Revenue & Billing", icon: "💳", count: null },
+      ],
+    },
+    {
+      sectionKey: "operations",
+      sectionLabel: "Casework Operations & Triage",
+      icon: "🚨",
+      defaultTab: "manager_priority",
+      items: [
+        { key: "manager_priority", id: "tab-btn-manager-priority", label: "Priority Command Board", icon: "🚨", count: priorityActionCount || null },
+        { key: "operations", id: "tab-btn-operations", label: "Operations Hub", icon: "👥", count: null },
+        { key: "team", id: "tab-btn-team", label: "Team Capacity", icon: "👥", count: capacity?.length || 0 },
+        { key: "conversation_inspector", id: "tab-btn-conversation-inspector", label: "Conversation Inspector", icon: "💬", count: null },
+        { key: "reliability_ops", id: "tab-btn-reliability-ops", label: "Reliability, Privacy & Security", icon: "🛡️", count: null },
+      ],
+    },
+    {
+      sectionKey: "growth",
+      sectionLabel: "Partner Growth",
+      icon: "🔗",
+      defaultTab: "partner_growth",
+      items: [
+        { key: "partner_growth", id: "tab-btn-partner-growth", label: "Partner Onboarding & Leads", icon: "🔗", count: unreadCalculatorLeadsCount || null },
+        { key: "stage10_pathway_expansion", id: "tab-btn-stage10-pathway-expansion", label: "Pathway Expansion", icon: "🌐", count: null },
+      ],
+    },
+    {
+      sectionKey: "governance",
+      sectionLabel: "Firm Governance",
+      icon: "🏛️",
+      defaultTab: "firm_config",
+      items: [
+        { key: "firm_config", id: "tab-btn-firm-config", label: "Firm Governance & Configuration", icon: "🏛️", count: null },
+        { key: "billing", id: "tab-btn-billing", label: "Billing & Retainers", icon: "💳", count: null },
+        { key: "rules", id: "tab-btn-rules", label: "Rules & Authorities", icon: "⚖️", count: null },
+        { key: "audit", id: "tab-btn-audit", label: "Audit Alerts", icon: "🛡️", count: auditEvents.length },
+        { key: "stage9_release_governance", id: "tab-btn-stage9-release-governance", label: "Release & Pilot Desk", icon: "🚀", count: null },
+        { key: "extractor_lab", id: "tab-btn-extractor-lab", label: "Extractor Lab", icon: "🔬", count: null },
+      ],
+    },
+  ];
+
+  const navItems = DASHBOARD_SECTIONS.flatMap((s) => s.items);
+
+  const effectiveTab = resolveEffectiveTab(activeTab);
 
   const activeTabInfo = {
     overview: {
@@ -396,7 +540,7 @@ export function OwnerMasterDashboard({
     },
     financials: {
       title: "Revenue & Billing",
-      subtitle: "Retainer Agreements, Milestone Billing & Cryptographic Trust Escrow",
+      subtitle: "Retainer Agreements, Milestone Billing & Trust Accounting",
     },
     audit: {
       title: "Audit Alerts",
@@ -407,18 +551,22 @@ export function OwnerMasterDashboard({
       subtitle: "Statutory Immigration Rule Registry, Regulatory Sources & Pilot Workflows",
     },
     stage9_release_governance: {
-      title: "Stage 9: Release & Pilot Operations Governance Desk",
+      title: "Practice Compliance & Quality Governance Desk",
       subtitle: "Deterministic Go/No-Go Release Gates, Narrow Pilot Cohorts, Comparative Workflow KPIs, Cryptographic Backup Drills & Runbooks",
     },
     stage10_pathway_expansion: {
-      title: "Stage 10: Pathway Expansion & Regional Localization Desk",
+      title: "Multi-Jurisdiction Pathway Expansion Desk",
       subtitle: "Multi-Jurisdiction Inventory (Priorities 1–5), 8 Broad Application Families, EU/Schengen Distinctions, Safe-Stop Principles & Multilingual Matching Engine",
     },
     partner_growth: {
       title: "Partner Agency Setup, Co-Branded PR Calculators & HQ Privacy Gate",
       subtitle: "Configure your verified agency calculator link (?agency=slug), convert incoming PR scorecard leads, and govern your Zero-PII Break-Glass support token.",
     },
-  }[activeTab];
+    extractor_lab: {
+      title: "AI Document Recognition & Information Extractor",
+      subtitle: "Upload real PDFs, passport scans, bank statements, or multi-person family bundles for AI recognition, taxonomy classification, and normalized entity extraction.",
+    },
+  }[effectiveTab];
 
   return (
     <div
@@ -500,7 +648,7 @@ export function OwnerMasterDashboard({
           </div>
         </div>
 
-        {/* Navigation Items List */}
+        {/* Navigation Items List Grouped by 5 Business Sections */}
         <nav
           aria-label="Executive Navigation"
           style={{
@@ -508,100 +656,116 @@ export function OwnerMasterDashboard({
             padding: "16px 12px",
             display: "flex",
             flexDirection: "column",
-            gap: "4px",
+            gap: "12px",
+            overflowY: "auto",
           }}
         >
-          <div
-            style={{
-              fontSize: "10px",
-              fontWeight: 700,
-              color: "#6E7F7C",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              padding: "4px 10px 8px 10px",
-            }}
-          >
-            Executive Sections
-          </div>
-
-          {navItems.map((item) => {
-            const isActive = activeTab === item.key;
+          {DASHBOARD_SECTIONS.map((section) => {
+            const isSectionActive = getSectionForTab(activeTab) === section.sectionKey;
             return (
-              <button
-                key={item.key}
-                id={item.id}
-                data-testid={item.id}
-                type="button"
-                aria-current={isActive ? "page" : undefined}
-                onClick={() => {
-                  setActiveTab(item.key);
-                  setIsMobileMenuOpen(false);
-                }}
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  width: "100%",
-                  padding: "9px 12px 9px 14px",
-                  borderRadius: "8px",
-                  border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
-                  background: isActive ? "#EAF6F0" : "transparent",
-                  color: isActive ? "#0D6866" : "#445451",
-                  fontSize: "13px",
-                  fontWeight: isActive ? 650 : 500,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "all 0.15s ease",
-                  overflow: "hidden",
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = "#F8F7F2";
-                    e.currentTarget.style.color = "#063C3D";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "#445451";
-                  }
-                }}
-              >
-                {isActive && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: "6px",
-                      bottom: "6px",
-                      width: "3.5px",
-                      borderRadius: "0 2px 2px 0",
-                      background: "#0D6866",
-                    }}
-                    aria-hidden="true"
-                  />
-                )}
-                <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
-                </span>
-                {item.count !== null && item.count > 0 && (
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      padding: "2px 6px",
-                      borderRadius: "10px",
-                      background: isActive ? "#0D6866" : "#F1F6F4",
-                      color: isActive ? "#FFFFFF" : "#445451",
-                      border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
-                    }}
-                  >
-                    {item.count}
+              <div key={section.sectionKey} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                <div
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 750,
+                    color: isSectionActive ? "#063C3D" : "#6E7F7C",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    padding: "6px 10px 4px 10px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>{section.icon}</span>
+                    <span>{section.sectionLabel}</span>
                   </span>
-                )}
-              </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  {section.items.map((item) => {
+                    const isActive = effectiveTab === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        id={item.id}
+                        data-testid={item.id}
+                        type="button"
+                        aria-current={isActive ? "page" : undefined}
+                        onClick={() => {
+                          setActiveTab(item.key);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        style={{
+                          position: "relative",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          width: "100%",
+                          padding: "8px 12px 8px 14px",
+                          borderRadius: "8px",
+                          border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
+                          background: isActive ? "#EAF6F0" : "transparent",
+                          color: isActive ? "#0D6866" : "#445451",
+                          fontSize: "13px",
+                          fontWeight: isActive ? 650 : 500,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          transition: "all 0.15s ease",
+                          overflow: "hidden",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = "#F8F7F2";
+                            e.currentTarget.style.color = "#063C3D";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = "transparent";
+                            e.currentTarget.style.color = "#445451";
+                          }
+                        }}
+                      >
+                        {isActive && (
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              top: "6px",
+                              bottom: "6px",
+                              width: "3.5px",
+                              borderRadius: "0 2px 2px 0",
+                              background: "#0D6866",
+                            }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span>{item.icon}</span>
+                          <span>{item.label}</span>
+                        </span>
+                        {item.count !== null && item.count > 0 && (
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              padding: "2px 6px",
+                              borderRadius: "10px",
+                              background: isActive ? "#0D6866" : "#F1F6F4",
+                              color: isActive ? "#FFFFFF" : "#445451",
+                              border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
+                            }}
+                          >
+                            {item.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </nav>
@@ -643,11 +807,8 @@ export function OwnerMasterDashboard({
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <Button variant="secondary" size="sm" onClick={onOpenCreateClient} style={{ width: "100%", justifyContent: "center" }}>
-              + Retain Client
-            </Button>
-            <Button variant="primary" size="sm" onClick={onOpenCreateCase} style={{ width: "100%", justifyContent: "center" }}>
-              + New Case Record
+            <Button variant="primary" size="sm" onClick={onOpenCreateClient} style={{ width: "100%", justifyContent: "center" }}>
+              + Onboard Client &amp; Case
             </Button>
           </div>
         </div>
@@ -684,7 +845,7 @@ export function OwnerMasterDashboard({
           className="documento-firm-mobile-bar"
         >
           <span style={{ fontSize: "13px", fontWeight: 650, color: "#063C3D" }}>
-            Section: {navItems.find((n) => n.key === activeTab)?.label}
+            Section: {navItems.find((n) => n.key === effectiveTab)?.label}
           </span>
           <button
             type="button"
@@ -724,7 +885,7 @@ export function OwnerMasterDashboard({
             }}
           >
             {navItems.map((item) => {
-              const isActive = activeTab === item.key;
+              const isActive = effectiveTab === item.key;
               return (
                 <button
                   key={item.key}
@@ -828,16 +989,79 @@ export function OwnerMasterDashboard({
           </div>
 
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            <Button variant="secondary" size="sm" onClick={onOpenCreateClient}>
-              + Retain Client
-            </Button>
-            <Button variant="primary" size="sm" onClick={onOpenCreateCase}>
-              + New Case Record
+            <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
+              + Onboard Client &amp; Case
             </Button>
           </div>
         </div>
 
-      {activeTab !== "partner_growth" &&
+        {/* Horizontal Sub-Navigation Pill Bar for Active Business Section */}
+        {(() => {
+          const currentSection = DASHBOARD_SECTIONS.find((s) => s.sectionKey === getSectionForTab(activeTab));
+          if (!currentSection || currentSection.items.length <= 1) return null;
+          return (
+            <div
+              role="tablist"
+              aria-label={`${currentSection.sectionLabel} Views`}
+              style={{
+                display: "flex",
+                gap: "8px",
+                padding: "6px",
+                background: "#FFFFFF",
+                border: "1px solid #DCE5E1",
+                borderRadius: "10px",
+                overflowX: "auto",
+                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.04)",
+              }}
+            >
+              {currentSection.items.map((subItem) => {
+                const isSubActive = effectiveTab === subItem.key;
+                return (
+                  <button
+                    key={`subnav-${subItem.key}`}
+                    role="tab"
+                    aria-selected={isSubActive}
+                    onClick={() => setActiveTab(subItem.key)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "8px 14px",
+                      borderRadius: "7px",
+                      fontSize: "13px",
+                      fontWeight: isSubActive ? 650 : 500,
+                      color: isSubActive ? "#063C3D" : "#445451",
+                      background: isSubActive ? "#EAF6F0" : "transparent",
+                      border: isSubActive ? "1px solid #B9DED4" : "1px solid transparent",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <span>{subItem.icon}</span>
+                    <span>{subItem.label}</span>
+                    {subItem.count !== null && subItem.count > 0 && (
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "2px 6px",
+                          borderRadius: "10px",
+                          background: isSubActive ? "#0D6866" : "#F1F6F4",
+                          color: isSubActive ? "#FFFFFF" : "#445451",
+                        }}
+                      >
+                        {subItem.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+      {effectiveTab !== "partner_growth" &&
         (currentUser?.is_sandbox_agency || (firmAgency && !firmAgency.branding.setupCompleted)) && (
           <div
             data-testid="day0-agency-setup-callout"
@@ -868,76 +1092,50 @@ export function OwnerMasterDashboard({
         )}
 
       {/* PARTNER ONBOARDING, CO-BRANDED CALCULATOR LEADS & BREAK-GLASS PRIVACY TAB */}
-      {activeTab === "partner_growth" && (
+      {effectiveTab === "partner_growth" && (
         <AgencyGrowthAndSetupDesk
           currentUser={currentUser}
+          clientsCount={clients.length}
+          casesCount={cases.length}
           onOpenCreateClient={onOpenCreateClient}
           onConvertLeadToClient={onConvertLeadToClient}
         />
       )}
 
       {/* OVERVIEW TAB */}
-      {activeTab === "overview" && (
+      {effectiveTab === "overview" && (
         <>
-          {cases.length === 0 && (
-            <div
-              style={{
-                padding: "24px 28px",
-                borderRadius: "12px",
-                background: "linear-gradient(135deg, #0A4A48 0%, #063C3D 100%)",
-                color: "#FFFFFF",
-                boxShadow: "0 4px 16px rgba(6, 60, 61, 0.15)",
-                display: "flex",
-                flexDirection: "column",
-                gap: "16px",
-                marginBottom: "8px",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "20px" }}>🚀</span>
-                    <h2 style={{ fontSize: "17px", fontWeight: 700, margin: 0, letterSpacing: "-0.01em" }}>
-                      Clean Slate Initial Setup • Day 0 Practice Ready
-                    </h2>
-                    <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", background: "rgba(255,255,255,0.2)" }}>
-                      0 Mock Cases Loaded
-                    </span>
-                  </div>
-                  <p style={{ margin: "6px 0 0 0", fontSize: "13px", color: "#D1E7E1", maxWidth: "800px", lineHeight: "1.5" }}>
-                    Your legal practice workspace is ready from scratch with zero pre-loaded cases or documents. Start by onboarding an applicant client, opening an immigration petition, and uploading evidence to experience the complete legal workflow.
-                  </p>
+          {pendingKickoffCases.length > 0 && onOpenCaseKickoff && (() => {
+            const firstCase = pendingKickoffCases[0];
+            const firstProg = getCaseKickoffProgress(firstCase.id);
+            return (
+              <div
+                data-testid="owner-pending-kickoff-banner"
+                style={{
+                  padding: "14px 18px",
+                  borderRadius: "10px",
+                  background: "#FFFFFF",
+                  border: "1px solid #B9DED4",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "12px",
+                }}
+              >
+                <div style={{ fontSize: "13px", color: "#172322" }}>
+                  <strong style={{ color: "#063C3D" }}>
+                    Post-Onboarding Case Kickoff ({firstProg.completedCount}/4 steps completed):
+                  </strong>{" "}
+                  Finish portal login handoff, officer &amp; checklist dispatch, retainer billing, and initial uploads for{" "}
+                  <strong>{firstCase.case_number}</strong> ({firstCase.client_name || firstCase.visa_category}).
                 </div>
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                  <Button variant="secondary" size="sm" onClick={onOpenCreateClient}>
-                    1. + Retain Client
-                  </Button>
-                  <Button variant="primary" size="sm" onClick={onOpenCreateCase}>
-                    2. + New Case Record
-                  </Button>
-                </div>
+                <Button variant="primary" size="sm" onClick={() => onOpenCaseKickoff(firstCase)}>
+                  Resume 4-Step Kickoff ({firstProg.completedCount}/4) →
+                </Button>
               </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px", borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: "14px" }}>
-                <div>
-                  <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#8AE0C8", letterSpacing: "0.05em" }}>Step 1: Retain Client</div>
-                  <div style={{ fontSize: "12px", color: "#E0F2EE", marginTop: "2px" }}>Create applicant profile with contact, nationality, and passport verification.</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#8AE0C8", letterSpacing: "0.05em" }}>Step 2: Open Petition</div>
-                  <div style={{ fontSize: "12px", color: "#E0F2EE", marginTop: "2px" }}>Select USCIS/IRCC/UK visa category, lead paralegal, and statutory deadline.</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#8AE0C8", letterSpacing: "0.05em" }}>Step 3: Upload Evidence</div>
-                  <div style={{ fontSize: "12px", color: "#E0F2EE", marginTop: "2px" }}>Upload degree certificates, job letters, or passports for automated OCR parsing.</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "#8AE0C8", letterSpacing: "0.05em" }}>Step 4: Real-time Readiness</div>
-                  <div style={{ fontSize: "12px", color: "#E0F2EE", marginTop: "2px" }}>Track dynamic readiness scores advancing as statutory criteria are verified.</div>
-                </div>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Key Metric Indicators with DEFINED MEANINGS and DRILL-DOWNS */}
           <div
@@ -966,7 +1164,7 @@ export function OwnerMasterDashboard({
               onDrilldown={() => setActiveTab("cases")}
               drilldownLabel="Filter active cases →"
               isLiveApi={isLiveBackend}
-              trend={{ value: "+3 this month", isPositive: true }}
+              trend={cases.length > 0 ? { value: `${activeCasesCount} active`, isPositive: true } : undefined}
             />
 
             <MetricCard
@@ -991,7 +1189,7 @@ export function OwnerMasterDashboard({
               onDrilldown={() => setActiveTab("financials")}
               drilldownLabel="View billing ledger →"
               isLiveApi={isLiveBackend}
-              trend={{ value: "100% Retainer Backed", isPositive: true }}
+              trend={invoices.length > 0 ? { value: "Retainer Backed", isPositive: true } : undefined}
             />
           </div>
 
@@ -1009,12 +1207,12 @@ export function OwnerMasterDashboard({
               }}
             >
               {[
-                { stage: "Intake", count: stageCounts.intake, color: "#64748b" },
+                { stage: "Intake", count: stageCounts.intake, color: "#475569" },
                 { stage: "Evidence Gathering", count: stageCounts.gathering, color: "#0284c7" },
-                { stage: "Attorney Review", count: stageCounts.review, color: "#b45309" },
+                { stage: "Caseworker Review", sub: "Attorney Review", count: stageCounts.review, color: "#b45309" },
                 { stage: "Package Assembly", count: stageCounts.assembly, color: "#1d4ed8" },
-                { stage: "Ready for Signoff", count: stageCounts.ready, color: "#15803d" },
-                { stage: "Filed with Agency", count: stageCounts.filed, color: "#475569" },
+                { stage: "Attorney Signoff", count: stageCounts.ready, color: "#047857" },
+                { stage: "Filed with Agency", count: stageCounts.filed, color: "#6d28d9" },
               ].map((item) => (
                 <div
                   key={item.stage}
@@ -1029,6 +1227,11 @@ export function OwnerMasterDashboard({
                   <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 600, display: "block" }}>
                     {item.stage}
                   </span>
+                  {item.sub && (
+                    <span style={{ fontSize: "10px", color: "var(--quiet)", display: "block" }}>
+                      {item.sub}
+                    </span>
+                  )}
                   <strong style={{ fontSize: "24px", color: item.color, display: "block", margin: "6px 0" }}>
                     {item.count}
                   </strong>
@@ -1072,33 +1275,51 @@ export function OwnerMasterDashboard({
                     No Active Cases in Firm Workspace
                   </div>
                 ) : (
-                  cases.slice(0, 3).map((c) => (
-                    <div
-                      key={c.id}
-                      onClick={() => onSelectCase(c)}
-                      style={{
-                        padding: "10px 12px",
-                        background: "var(--surface-subtle, #f8fafc)",
-                        border: "1px solid var(--border, #e2e8f0)",
-                        borderRadius: "6px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div>
-                        <strong style={{ fontSize: "13px", display: "block" }}>{c.case_number}</strong>
-                        <span style={{ fontSize: "12px", color: "var(--muted)" }}>{c.client_name}</span>
+                  cases.slice(0, 3).map((c) => {
+                    const kp = onOpenCaseKickoff ? getCaseKickoffProgress(c.id) : null;
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => onSelectCase(c)}
+                        style={{
+                          padding: "10px 12px",
+                          background: "var(--surface-subtle, #f8fafc)",
+                          border: "1px solid var(--border, #e2e8f0)",
+                          borderRadius: "6px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div>
+                          <strong style={{ fontSize: "13px", display: "block" }}>{c.case_number}</strong>
+                          <span style={{ fontSize: "12px", color: "var(--muted)" }}>{c.client_name}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          {onOpenCaseKickoff && kp && !kp.isComplete && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenCaseKickoff(c);
+                              }}
+                            >
+                              Kickoff ({kp.completedCount}/4)
+                            </Button>
+                          )}
+                          <div style={{ textAlign: "right" }}>
+                            <span style={{ fontSize: "12px", fontWeight: 700, color: c.attention_required ? "var(--critical)" : "var(--accent)" }}>
+                              {c.deadline || "Standard"}
+                            </span>
+                            <small style={{ display: "block", color: "var(--quiet)" }}>Deadline</small>
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ textAlign: "right" }}>
-                        <span style={{ fontSize: "12px", fontWeight: 700, color: c.attention_required ? "var(--critical)" : "var(--accent)" }}>
-                          {c.deadline || "Standard"}
-                        </span>
-                        <small style={{ display: "block", color: "var(--quiet)" }}>Deadline</small>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </Card>
@@ -1107,7 +1328,7 @@ export function OwnerMasterDashboard({
       )}
 
       {/* EXECUTIVE COMMAND CENTER TAB */}
-      {activeTab === "executive" && (
+      {effectiveTab === "executive" && (
         <ExecutiveCommandCenter
           isLiveBackend={isLiveBackend}
           onNavigateTab={(tab, filter) => {
@@ -1129,22 +1350,22 @@ export function OwnerMasterDashboard({
       )}
 
       {/* ANALYTICS TAB */}
-      {activeTab === "analytics" && (
+      {effectiveTab === "analytics" && (
         <AnalyticsExplorer isLiveBackend={isLiveBackend} />
       )}
 
       {/* OPERATIONS & WORKLOAD TAB */}
-      {activeTab === "operations" && (
+      {effectiveTab === "operations" && (
         <BusinessOperationsHub isLiveBackend={isLiveBackend} />
       )}
 
       {/* RELIABILITY, PRIVACY & SECURITY TAB */}
-      {activeTab === "reliability_ops" && (
+      {effectiveTab === "reliability_ops" && (
         <OperationalReliabilityHub isLiveBackend={isLiveBackend} cases={cases} staff={capacity} />
       )}
 
       {/* STAGE 9 RELEASE & PILOT GOVERNANCE TAB */}
-      {activeTab === "stage9_release_governance" && (
+      {effectiveTab === "stage9_release_governance" && (
         <PilotReleaseGovernanceDesk
           userRole="company_admin"
           onNavigateToCase={(caseId) => {
@@ -1155,18 +1376,31 @@ export function OwnerMasterDashboard({
       )}
 
       {/* STAGE 10 PATHWAY EXPANSION & REGIONAL LOCALIZATION TAB */}
-      {activeTab === "stage10_pathway_expansion" && (
+      {effectiveTab === "stage10_pathway_expansion" && (
         <PathwayExpansionDesk userRole="master_admin" />
       )}
 
       {/* BILLING & RETAINERS TAB */}
-      {activeTab === "billing" && (
+      {effectiveTab === "billing" && (
         <BillingManager userRole="owner" isLiveBackend={isLiveBackend} />
       )}
 
       {/* ALL CASES TAB */}
-      {activeTab === "cases" && (
-        <Card title="Comprehensive Firm Caseload" subtitle="Filter and inspect all active, filed, and in-review immigration petitions.">
+      {effectiveTab === "cases" && (
+        <Card
+          title="Comprehensive Firm Caseload"
+          subtitle="Filter and inspect all active, filed, and in-review immigration petitions."
+          actions={
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <Button variant="outline" size="sm" onClick={onOpenCreateCase || onOpenCreateClient}>
+                + Create Case
+              </Button>
+              <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
+                + Onboard Client &amp; Case
+              </Button>
+            </div>
+          }
+        >
           <DataTable
             columns={caseColumns}
             data={cases}
@@ -1191,13 +1425,13 @@ export function OwnerMasterDashboard({
       )}
 
       {/* RETAINED CLIENTS TAB */}
-      {activeTab === "clients" && (
+      {effectiveTab === "clients" && (
         <Card
           title="Retained Applicant Directory & Portal Access Control"
           subtitle="All registered clients under organization representation. Credentials must be provided by Owner or Lead Paralegal for client portal sign-in."
           actions={
             <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
-              + Retain Client
+              + Onboard Client &amp; Case
             </Button>
           }
         >
@@ -1220,7 +1454,7 @@ export function OwnerMasterDashboard({
                 Zero client profiles are currently registered. Retained clients cannot log into Documento until an Owner or Lead Paralegal retains their record and provides their secure portal credentials.
               </p>
               <Button variant="primary" onClick={onOpenCreateClient}>
-                + Retain First Client & Issue Credentials
+                + Onboard First Client &amp; Open Case
               </Button>
             </div>
           ) : (
@@ -1325,7 +1559,7 @@ export function OwnerMasterDashboard({
       )}
 
       {/* TEAM CAPACITY TAB */}
-      {activeTab === "team" && (
+      {effectiveTab === "team" && (
         <Card title="Caseworker Workload & Review Capacity" subtitle="Monitor attorney caseload distribution and open peer reviews.">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
             {capacity.map((member) => (
@@ -1371,7 +1605,7 @@ export function OwnerMasterDashboard({
       )}
 
       {/* FINANCIALS TAB */}
-      {activeTab === "financials" && (
+      {effectiveTab === "financials" && (
         <Card title="Retainers, Invoices & Escrow Ledger" subtitle="Filing retainers and escrow balances where authorized by firm owner permissions.">
           <DataTable
             columns={[
@@ -1389,7 +1623,7 @@ export function OwnerMasterDashboard({
       )}
 
       {/* AUDIT ALERTS TAB */}
-      {activeTab === "audit" && (
+      {effectiveTab === "audit" && (
         <Card title="Append-Only Cryptographic Audit Log" subtitle="Tamper-evident system activity and multi-tenant boundary verifications.">
           <DataTable
             columns={[
@@ -1406,17 +1640,17 @@ export function OwnerMasterDashboard({
       )}
 
       {/* FIRM GOVERNANCE & CONFIGURATION TAB */}
-      {activeTab === "firm_config" && (
+      {effectiveTab === "firm_config" && (
         <FirmConfigurationHub />
       )}
 
       {/* RULES & AUTHORITIES TAB */}
-      {activeTab === "rules" && (
+      {effectiveTab === "rules" && (
         <RuleAdministrationHub isLiveBackend={isLiveBackend} />
       )}
 
       {/* MANAGER PRIORITY COMMAND BOARD (STRICT RANKS 1 TO 8) */}
-      {activeTab === "manager_priority" && (
+      {effectiveTab === "manager_priority" && (
         <ManagerPriorityQueueView
           data={priorityQueueData}
           onAction={(rank, actionType, item) => {
@@ -1432,7 +1666,7 @@ export function OwnerMasterDashboard({
       )}
 
       {/* OFFICER-CLIENT CONVERSATION INSPECTOR */}
-      {activeTab === "conversation_inspector" && (
+      {effectiveTab === "conversation_inspector" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {/* Header & Case Selector */}
           <div
@@ -1653,6 +1887,18 @@ export function OwnerMasterDashboard({
             </div>
           </Card>
         </div>
+      )}
+
+      {/* AI DOCUMENT INTELLIGENCE & PACKET SORTER LAB */}
+      {effectiveTab === "extractor_lab" && (
+        <DashboardErrorBoundary
+          sectionTitle="Document Extractor Lab"
+          sectionDescription="AI Document Recognition, Extraction Provenance, and Multi-Person Packet Sorter"
+          variant="full-tab"
+          isolateStateKey="extractor-lab"
+        >
+          <DocumentExtractorLab embedded />
+        </DashboardErrorBoundary>
       )}
     </main>
 

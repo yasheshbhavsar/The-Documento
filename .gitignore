@@ -31,3 +31,9 @@ coverage/
 *.db
 .taste-skill/
 
+# Teamwork / Multi-Agent Artifacts & Tracking Docs
+.agents/teamwork/
+PROJECT.md
+TEST_INFRA.md
+TEST_READY.md
+

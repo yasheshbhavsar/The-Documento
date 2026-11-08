@@ -2,6 +2,8 @@ import React, { useState, useRef } from "react";
 import { calculateSHA256, formatBytes } from "../../lib/crypto";
 import { DocumentItem, DocumentCategory } from "../../lib/types";
 import { ClientLanguage, CLIENT_TRANSLATIONS } from "../../lib/clientLocalization";
+import { analyzeDocumentStandalone } from "../../lib/api/extractor";
+import { mapAnalysisToInitialInfoSheet, persistAndBroadcastAutoFill } from "../../lib/documentAutoFillEngine";
 
 interface DirectDocumentUploaderProps {
   caseId?: string;
@@ -122,6 +124,36 @@ export function DirectDocumentUploader({
     setError(null);
 
     try {
+      // Analyze document and extract intelligence
+      let extractedList: any[] = [];
+      let analysisResult: any = null;
+      try {
+        analysisResult = await analyzeDocumentStandalone({
+          file: selectedFile,
+          filename: selectedFile.name,
+          declaredCategory: category,
+        });
+        if (analysisResult?.extracted_fields?.length) {
+          extractedList = analysisResult.extracted_fields.map((f: any, idx: number) => ({
+            id: `field-${Date.now()}-${idx + 4}`,
+            field_name: f.field_name,
+            field_label: f.field_label || f.field_name,
+            original_value: f.original_value,
+            normalized_value: f.normalized_value || f.original_value,
+            field_value: f.normalized_value || f.original_value,
+            source_page: f.source_page || 1,
+            extraction_method: f.extraction_method || "client_portal_direct_uploader",
+            ocr_confidence: f.ocr_confidence || 0.96,
+            extraction_confidence: f.extraction_confidence || 0.95,
+            confidence: f.calibrated_confidence || 0.95,
+            validation_status: "unvalidated",
+            is_manually_corrected: false,
+          }));
+        }
+      } catch {
+        // Fallback gracefully to default extraction list
+      }
+
       // Simulate rapid server transmission and immediate local reactivity
       await new Promise((res) => setTimeout(res, 600));
 
@@ -185,8 +217,24 @@ export function DirectDocumentUploader({
             validation_status: "unvalidated",
             is_manually_corrected: false,
           },
+          ...extractedList,
         ],
       };
+
+      // Broadcast auto-fill intelligence to intake sheets and forms
+      if (analysisResult) {
+        try {
+          const sheetRes = mapAnalysisToInitialInfoSheet(analysisResult);
+          persistAndBroadcastAutoFill(caseId || "default_client", {
+            formData: sheetRes.updatedData,
+            provenance: sheetRes.provenance,
+            sourceDocId: newDoc.id,
+            sourceFilename: selectedFile.name,
+          });
+        } catch {
+          // ignore
+        }
+      }
 
       onDocumentUploaded(newDoc);
       const officerText = assignedOfficer && !assignedOfficer.toLowerCase().includes("unassigned")

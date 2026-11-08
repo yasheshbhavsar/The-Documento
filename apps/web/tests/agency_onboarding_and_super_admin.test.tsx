@@ -26,7 +26,20 @@ import {
   submitCobrandedCalculatorLead,
 } from "../lib/agencyPlatformStore";
 import { authenticateUser, PLATFORM_HQ_OPERATOR_EMAIL } from "../lib/auth";
-import { api } from "../lib/api";
+import {
+  api,
+  createEngagement,
+  createInvoice,
+  fetchCaseInterimReports,
+  fetchEngagements,
+  fetchFirmConfigAuditLog,
+  fetchInvoices,
+  fetchOrganizationSettings,
+  fetchQuestionnaires,
+  fetchStaffWorkload,
+  inviteStaffMember,
+  updateOrganizationSetting,
+} from "../lib/api";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -630,5 +643,155 @@ describe("Visa Agency KYB Onboarding, Documento HQ Super-Admin & End-to-End Zero
     expect(document.body.textContent).toContain("MapleCrest Immigration");
     expect(document.body.textContent).not.toContain("Vanguard Immigration Law");
     expect(document.body.textContent).not.toContain("Sarah Jenkins");
+  });
+
+  it("verifies Operations staff invites create real login credentials, Billing invoices persist for retained clients, and empty/client tabs leak zero sample personas", async () => {
+    const app = await seedPendingKybAgency({
+      slug: "horizon-counsel",
+      tradingName: "Horizon Immigration Counsel",
+      email: "meera@horizoncounsel.ca",
+    });
+    const approved = adjudicateAgencyKybApplication(
+      app.id,
+      "approve",
+      "Verified CICC registry standing.",
+      PLATFORM_HQ_OPERATOR_EMAIL
+    );
+    const ownerAuth = authenticateUser(
+      "meera@horizoncounsel.ca",
+      "firm",
+      approved.provisionedTenant?.temporaryPassword || ""
+    );
+    expect(ownerAuth.success).toBe(true);
+    window.localStorage.setItem("documento_user", JSON.stringify(ownerAuth.user));
+
+    // 1. Operations Hub invite creates real login credentials & updates workload immediately
+    const invited = await inviteStaffMember({
+      full_name: "Karan Mehta",
+      email: "karan@horizoncounsel.ca",
+      role_code: "paralegal",
+      branch: "Primary Office",
+    });
+    expect(invited.temporary_password).toBeTruthy();
+
+    const staffLogin = authenticateUser(
+      "karan@horizoncounsel.ca",
+      "firm",
+      invited.temporary_password
+    );
+    expect(staffLogin.success).toBe(true);
+    expect(staffLogin.user?.organization_id).toBe(ownerAuth.user?.organization_id);
+
+    const workload = await fetchStaffWorkload();
+    expect(workload.some((w) => w.email === "karan@horizoncounsel.ca")).toBe(true);
+
+    // Organization settings persist across reloads
+    await updateOrganizationSetting("invoice_prefix", "HRZ");
+    const savedSettings = await fetchOrganizationSettings();
+    expect(savedSettings.invoice_prefix).toBe("HRZ");
+    expect(savedSettings.firm_name).toContain("Horizon Immigration Counsel");
+
+    // 2. Day-0 empty EmployeeWorkspace Form Prep & Package Review show clean empty states (zero Elena Rostova)
+    const { unmount: unmountEmptyStaff } = render(
+      <EmployeeWorkspace
+        cases={[]}
+        clients={[]}
+        documents={[]}
+        tasks={[]}
+        aiFindings={[]}
+        messages={[]}
+        currentUser={staffLogin.user}
+        onToggleTask={vi.fn()}
+        onSendMessage={vi.fn()}
+        onSelectCase={vi.fn()}
+        onOpenUploadModal={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Form Preparation/i }));
+    expect(screen.getByTestId("form-prep-empty-state")).toBeDefined();
+    expect(document.body.textContent).not.toContain("Elena Rostova");
+
+    fireEvent.click(screen.getByRole("button", { name: /Package Review/i }));
+    expect(screen.getByTestId("package-review-empty-state")).toBeDefined();
+    expect(document.body.textContent).not.toContain("Elena Rostova");
+    unmountEmptyStaff();
+
+    // 3. Real retained client invoice & engagement persist without vanishing
+    const clientRes = await api.createClient({
+      first_name: "Rohan",
+      last_name: "Desai",
+      email: "rohan.desai@proton.me",
+      nationality: "India",
+      portal_access_enabled: true,
+      portal_credentials_provided: true,
+      temporary_password: "RohanPortalPassword2026!",
+    });
+    const caseRes = await api.createCase({
+      case_number: "CASE-CA-2026-99",
+      title: "Canada Express Entry — Rohan Desai",
+      client_id: clientRes.data.id,
+      jurisdiction: "Canada",
+      visa_category: "Express Entry",
+    });
+
+    const createdInv = await createInvoice({
+      client_id: clientRes.data.id,
+      case_id: caseRes.data.id,
+      currency: "CAD",
+      line_items: [{ description: "Express Entry Legal Representation", quantity: 1, unit_price: 2800 }],
+    });
+    const fetchedInvoices = await fetchInvoices();
+    expect(fetchedInvoices.some((inv) => inv.id === createdInv.id)).toBe(true);
+
+    const createdEng = await createEngagement({
+      client_id: clientRes.data.id,
+      retainer_amount: 1400,
+      agreed_fee: 2800,
+    });
+    const fetchedEngs = await fetchEngagements();
+    expect(fetchedEngs.some((e) => e.id === createdEng.id)).toBe(true);
+
+    // Firm audit log & interim reports start clean (zero fake baseline entries)
+    expect(await fetchFirmConfigAuditLog()).toEqual([]);
+    expect(await fetchCaseInterimReports(caseRes.data.id)).toEqual([]);
+
+    expect(caseRes.data.readiness_score).toBe(0);
+
+    // 4. Retained client signs in -> Overview, Questionnaire & Milestones show 0% completed until work is actually done
+    const clientLogin = authenticateUser("rohan.desai@proton.me", "client", "RohanPortalPassword2026!");
+    expect(clientLogin.success).toBe(true);
+    window.localStorage.setItem("documento_user", JSON.stringify(clientLogin.user));
+
+    const questionnaires = await fetchQuestionnaires(caseRes.data.id);
+    expect(questionnaires[0].responses).toEqual({});
+    expect(JSON.stringify(questionnaires)).not.toContain("Stanford");
+
+    render(
+      <ClientPortal
+        myCase={caseRes.data}
+        documents={[]}
+        messages={[]}
+        notifications={[]}
+        invoices={[]}
+        currentUser={clientLogin.user}
+        onOpenUploadModal={vi.fn()}
+        onOpenQuestionnaireModal={vi.fn()}
+        onSendMessage={vi.fn()}
+        onMarkNotificationRead={vi.fn()}
+      />
+    );
+    expect(document.body.textContent).toContain("0 of 11 Sections Completed");
+    expect(document.body.textContent).not.toContain("10 of 11 Sections Completed");
+    expect(document.body.textContent).not.toContain("95% Complete");
+    expect(document.body.textContent).not.toContain("82% Readiness Complete");
+    await waitFor(() => {
+      expect(document.body.textContent).not.toContain("All required evidentiary items submitted");
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: /Guided Questionnaire/i })[0]);
+    await waitFor(() => {
+      expect(document.body.textContent).not.toContain("14 papers submitted");
+      expect(document.body.textContent).not.toContain("28 verified reviews");
+      expect(document.body.textContent).not.toContain("Elena Rostova");
+    });
   });
 });

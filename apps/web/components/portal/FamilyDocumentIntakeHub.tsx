@@ -22,6 +22,8 @@ import {
   FALLBACK_UPLOAD_GUIDANCE,
 } from "../../lib/api";
 import { calculateSHA256, formatBytes } from "../../lib/crypto";
+import { analyzeDocumentStandalone } from "../../lib/api/extractor";
+import { mapAnalysisToInitialInfoSheet, persistAndBroadcastAutoFill } from "../../lib/documentAutoFillEngine";
 
 interface FamilyDocumentIntakeHubProps {
   caseId?: string;
@@ -139,6 +141,28 @@ export function FamilyDocumentIntakeHub({
       setUploadProgress(100);
       setLastBatchReceipt(receipt);
       setQueuedFiles([]);
+
+      // Trigger automatic extraction and broadcast auto-fill intelligence per Requirement R1
+      try {
+        for (let i = 0; i < rawFiles.length; i++) {
+          const rawFile = rawFiles[i];
+          const receiptItem = receipt.items?.[i];
+          const analysis = await analyzeDocumentStandalone({
+            file: rawFile,
+            filename: rawFile.name,
+            declaredCategory: selectedCategory,
+          });
+          const sheetRes = mapAnalysisToInitialInfoSheet(analysis);
+          persistAndBroadcastAutoFill(caseId || "default_client", {
+            formData: sheetRes.updatedData,
+            provenance: sheetRes.provenance,
+            sourceDocId: receiptItem?.document_id,
+            sourceFilename: rawFile.name,
+          });
+        }
+      } catch {
+        // Fallback gracefully without interrupting upload flow
+      }
 
       // Refresh family summary
       const updatedSummary = await fetchFamilyDocumentsSummary(caseId);
@@ -745,7 +769,7 @@ export function FamilyDocumentIntakeHub({
                       </span>
                     ) : item.status === "uploaded" ? (
                       <span style={{ background: "#EAF6F0", color: "#176B50", padding: "2px 8px", borderRadius: "4px", fontWeight: 650 }}>
-                        Queued for OCR &amp; Verification
+                        Queued for AI Recognition &amp; Verification
                       </span>
                     ) : (
                       <span style={{ background: "#FED7D7", color: "#C53030", padding: "2px 8px", borderRadius: "4px", fontWeight: 650 }}>

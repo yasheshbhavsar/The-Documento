@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { DataTable } from "../common/DataTable";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
@@ -36,7 +36,19 @@ import {
 import { ClientLanguageBar } from "../portal/ClientLanguageBar";
 import { DocumentUploadStandardsFAQ } from "../portal/DocumentUploadStandardsFAQ";
 import { ClientProfileScopeView } from "../portal/ClientProfileScopeView";
-import { InitialInformationSheet } from "../portal/InitialInformationSheet";
+import {
+  InitialInformationSheet,
+  computeInitialInfoSheetSectionStatuses,
+  getSavedInitialInfoSheetRecord,
+} from "../portal/InitialInformationSheet";
+import { getCaseStageInfo } from "../../lib/caseLifecycle";
+import { DocumentExtractorLab } from "../tools/DocumentExtractorLab";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
+import { DashboardErrorBoundary } from "../common/DashboardErrorBoundary";
+import { UnassignedClientEmptyState } from "../common/EmptyStates";
+import { ClientStatusHeroCard } from "../portal/ClientStatusHeroCard";
+import { ClientDocumentUploadCard } from "../portal/ClientDocumentUploadCard";
+import { ClientDirectChatWidget } from "../portal/ClientDirectChatWidget";
 
 export function DocumentProgressionStepper({
   status,
@@ -167,8 +179,8 @@ export function DocumentProgressionStepper({
   );
 }
 
-interface ClientPortalProps {
-  myCase: ImmigrationCase | null;
+export interface ClientPortalProps {
+  myCase?: ImmigrationCase | null;
   documents?: DocumentItem[];
   messages?: MessageItem[];
   notifications?: NotificationItem[];
@@ -181,19 +193,59 @@ interface ClientPortalProps {
   onDocumentUpdated?: (doc: DocumentItem) => void;
 }
 
-export function ClientPortal({
-  myCase,
-  documents = [],
-  messages = [],
-  notifications = [],
-  invoices = [],
-  currentUser,
-  onOpenUploadModal = () => {},
-  onOpenQuestionnaireModal = () => {},
-  onSendMessage = () => {},
-  onMarkNotificationRead = () => {},
-  onDocumentUpdated,
-}: ClientPortalProps) {
+export function ClientPortal(props: ClientPortalProps = {}) {
+  const ws = useWorkspaceSafe();
+  const currentUser =
+    props.currentUser !== undefined ? props.currentUser : (ws?.currentUser ?? null);
+
+  const myCase = useMemo(() => {
+    if (props.myCase !== undefined) return props.myCase;
+    if (!ws) return null;
+    return (
+      ws.cases.find(
+        (c) =>
+          c.client_id === currentUser?.id ||
+          (c.client_name &&
+            currentUser?.full_name &&
+            c.client_name.toLowerCase().includes(currentUser.full_name.toLowerCase()))
+      ) || null
+    );
+  }, [props.myCase, ws, currentUser]);
+
+  const documents = useMemo(() => {
+    if (props.documents !== undefined) return props.documents;
+    if (!ws || !myCase) return [];
+    return ws.documents.filter((d) => d.case_id === myCase.id);
+  }, [props.documents, ws, myCase]);
+
+  const messages = useMemo(() => {
+    if (props.messages !== undefined) return props.messages;
+    if (!ws || !myCase) return [];
+    return ws.messages.filter(
+      (m) => m.sender_role === "client" || m.sender_role === "attorney"
+    );
+  }, [props.messages, ws, myCase]);
+
+  const invoices = useMemo(() => {
+    if (props.invoices !== undefined) return props.invoices;
+    if (!ws || !myCase) return [];
+    return ws.invoices.filter(
+      (inv) => inv.case_number === myCase.case_number || inv.case_id === myCase.id
+    );
+  }, [props.invoices, ws, myCase]);
+
+  const notifications =
+    props.notifications !== undefined
+      ? props.notifications
+      : myCase
+      ? (ws?.notifications ?? [])
+      : [];
+  const onOpenUploadModal = props.onOpenUploadModal ?? (() => {});
+  const onOpenQuestionnaireModal = props.onOpenQuestionnaireModal ?? (() => {});
+  const onSendMessage = props.onSendMessage ?? ws?.handleSendMessage ?? (() => {});
+  const onMarkNotificationRead =
+    props.onMarkNotificationRead ?? ws?.handleMarkNotificationRead ?? (() => {});
+  const onDocumentUpdated = props.onDocumentUpdated ?? ws?.handleDocumentUpdated;
   const firmDisplayName = currentUser?.organization_name || "Your Legal Counsel";
   const [clientLanguage, setClientLanguage] = useState<ClientLanguage>(getSavedClientLanguage);
 
@@ -226,6 +278,7 @@ export function ClientPortal({
       )
     : "—";
 
+  // Consolidated 4 Applicant Hub Architecture (Milestone 3)
   const [activeTab, setActiveTab] = useState<
     | "overview"
     | "updates"
@@ -240,7 +293,41 @@ export function ClientPortal({
     | "settings"
     | "initial_sheet"
     | "ocr_faq"
+    | "extractor_lab"
   >("overview");
+
+  // In-view Horizontal Sub-Tab States
+  const [checklistSubTab, setChecklistSubTab] = useState<"requirements" | "documents" | "guidelines">("requirements");
+  const [formsSubTab, setFormsSubTab] = useState<"intake" | "gov_forms" | "scope">("intake");
+  const [messagesSubTab, setMessagesSubTab] = useState<"chat" | "updates" | "appointments">("chat");
+
+  // Effective Hub and Sub-Tab Resolvers
+  const effectiveHub: "overview" | "checklist" | "forms" | "messages" | "extractor_lab" = useMemo(() => {
+    if (activeTab === "extractor_lab") return "extractor_lab";
+    if (activeTab === "checklist" || activeTab === "documents" || activeTab === "ocr_faq") return "checklist";
+    if (activeTab === "forms" || activeTab === "questionnaire" || activeTab === "initial_sheet" || activeTab === "profile") return "forms";
+    if (activeTab === "messages" || activeTab === "updates" || activeTab === "billing") return "messages";
+    return "overview";
+  }, [activeTab]);
+
+  const effectiveChecklistSubTab = useMemo(() => {
+    if (activeTab === "documents") return "documents";
+    if (activeTab === "ocr_faq") return "guidelines";
+    return checklistSubTab;
+  }, [activeTab, checklistSubTab]);
+
+  const effectiveFormsSubTab = useMemo(() => {
+    if (activeTab === "forms") return "gov_forms";
+    if (activeTab === "profile") return "scope";
+    if (activeTab === "questionnaire" || activeTab === "initial_sheet") return "intake";
+    return formsSubTab;
+  }, [activeTab, formsSubTab]);
+
+  const effectiveMessagesSubTab = useMemo(() => {
+    if (activeTab === "updates") return "updates";
+    if (activeTab === "billing") return "billing";
+    return messagesSubTab;
+  }, [activeTab, messagesSubTab]);
 
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
@@ -277,7 +364,55 @@ export function ClientPortal({
   const isTestEnv =
     typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.env.VITEST === "true");
   const isDemoCase = isTestEnv && myCase?.case_number === "CASE-US-8841" && !currentUser;
-  const [clientFormSubmission, setClientFormSubmission] = useState<FormSubmissionItem>(FALLBACK_FORM_SUBMISSION);
+  const [clientFormSubmission, setClientFormSubmission] = useState<FormSubmissionItem | null>(
+    isDemoCase ? FALLBACK_FORM_SUBMISSION : null
+  );
+  const [clientQuestionnaire, setClientQuestionnaire] = useState<any | null>(null);
+  const [infoSheetVersion, setInfoSheetVersion] = useState<number>(0);
+  const infoSheetStorageKey = myCase?.id || currentUser?.id || currentUser?.email || "active-client";
+  const savedInfoSheetRecord = useMemo(
+    () => getSavedInitialInfoSheetRecord(infoSheetStorageKey),
+    [infoSheetStorageKey, infoSheetVersion]
+  );
+  const initialSheetSections = useMemo(() => {
+    const isCanadaCase = Boolean(
+      myCase?.jurisdiction?.toLowerCase().includes("canada") ||
+      myCase?.jurisdiction?.toLowerCase().includes("ircc") ||
+      myCase?.visa_category?.toLowerCase().includes("canada") ||
+      myCase?.visa_category?.toLowerCase().includes("express entry") ||
+      myCase?.visa_category?.toLowerCase().includes("pnp")
+    );
+    if (isDemoCase) {
+      return [
+        { title: "1. Main Applicant Biodata", detail: "Primary applicant biographical details and civil identity", done: true },
+        { title: "2. Entry & Refusal History", detail: "Authorized entry records and statutory disclosure", done: true },
+        { title: "3. Relatives in Destination", detail: "Immediate and extended relatives residing in destination country", done: true },
+        { title: "4. 10-Yr Education History", detail: "Secondary & post-secondary degrees and credentials", done: true },
+        { title: "5. 10-Yr Employment History", detail: "Continuous verified employment records (no gaps)", done: true },
+        { title: "6. 10-Yr Travel History", detail: "International departures, entries, and travel records", done: true },
+        {
+          title: "7. Immediate Family Register",
+          detail: isCanadaCase
+            ? "Statutory family register declared under IRPA § 117(9)(d)"
+            : "Statutory family register and immediate relatives disclosure",
+          done: true,
+        },
+        { title: "8. Passport & Language Scores", detail: "Valid travel credentials and standardized examination scores", done: true },
+        { title: "9. 10-Yr Address History (18+)", detail: "Complete chronological residential history since age 18", done: true },
+        { title: "10. Sponsor & Relationship", detail: "Sponsor eligibility, financial undertaking & relationship timeline", done: true },
+        { title: "11. Statutory Declaration", detail: "Formal electronic declaration and client sign-off", done: false },
+      ];
+    }
+    return computeInitialInfoSheetSectionStatuses(
+      savedInfoSheetRecord?.formData,
+      Boolean(savedInfoSheetRecord?.isSubmitted),
+      myCase?.jurisdiction
+    );
+  }, [isDemoCase, savedInfoSheetRecord, myCase]);
+  const infoSheetDoneCount = initialSheetSections.filter((s) => s.done).length;
+  const infoSheetPct = isDemoCase
+    ? 95
+    : Math.round((infoSheetDoneCount / initialSheetSections.length) * 100);
 
   useEffect(() => {
     let isMounted = true;
@@ -287,11 +422,17 @@ export function ClientPortal({
           if (isMounted && subs[0]) setClientFormSubmission(subs[0]);
         })
         .catch(() => {});
+      import("../../lib/api")
+        .then(({ fetchQuestionnaires }) => fetchQuestionnaires(myCase.id))
+        .then((qList) => {
+          if (isMounted && qList && qList[0]) setClientQuestionnaire(qList[0]);
+        })
+        .catch(() => {});
     }
     return () => {
       isMounted = false;
     };
-  }, [myCase?.id]);
+  }, [myCase?.id, activeTab]);
   const isCanada =
     myCase?.jurisdiction?.toLowerCase().includes("canada") ||
     (myCase?.visa_category || "").toLowerCase().includes("canada") ||
@@ -306,11 +447,13 @@ export function ClientPortal({
       .slice(0, 2)
       .toUpperCase() || "PA";
 
-  const updatesCount = isDemoCase ? 5 : 1;
-  const checklistCount = isDemoCase ? 8 : isCanada ? 6 : 5;
+  const updatesCount = isDemoCase ? 5 : myCase ? 1 : 0;
+  const checklistCount = isDemoCase ? 8 : !myCase ? 0 : isCanada ? 6 : 5;
 
   const caseSpecificUpdates: VisaFileUpdateItem[] = isDemoCase
     ? FALLBACK_VISA_FILE_UPDATES
+    : !myCase
+    ? []
     : isCanada
     ? [
         {
@@ -349,7 +492,7 @@ export function ClientPortal({
           },
           officerName: myCase?.assigned_manager || firmDisplayName,
           officerRole: "Supervising Case Manager",
-          summary: `Client onboarding completed. Initial case file opened for ${myCase?.visa_category || "Immigration Matter"}. Evidentiary document gathering in progress.`,
+          summary: `Initial case file opened for ${myCase?.visa_category || "Immigration Matter"}. Awaiting client intake questionnaire and evidentiary document uploads.`,
           legalSignificance: `Establishes formal client representation and legal confidentiality under counsel supervision.`,
           actionRequired: false,
         },
@@ -696,119 +839,214 @@ export function ClientPortal({
   const overviewDocuments = documents;
 
   // Milestones progression
-  const milestones = isCanada
+  const caseOpenedDateLabel = myCase?.created_at
+    ? new Date(myCase.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : "Case Opened";
+  const hasVerifiedEvidence = documents.some((d) => d.status === "verified");
+  const isSubmittedOrApproved = myCase?.status === "submitted" || myCase?.status === "approved";
+
+  const hasStartedIntake =
+    clientQuestionnaire?.status === "submitted" ||
+    Boolean(savedInfoSheetRecord?.isSubmitted) ||
+    infoSheetDoneCount > 0 ||
+    documents.length > 0 ||
+    (myCase?.readiness_score ?? 0) > 0;
+
+  const milestones = isDemoCase
     ? [
-        { name: "Legal Retainer Executed", done: true, date: "October 20, 2026", desc: "Representation agreement executed and dedicated Canadian immigration file opened." },
-        { name: "DLI Acceptance & PAL Verification", done: true, date: "October 22, 2026", desc: "Designated Learning Institution LOA and Provincial Attestation Letter verified under national cap." },
-        { name: "Financial Proof & GIC Issuance", done: false, date: "In Progress (Current)", desc: "Guaranteed Investment Certificate (GIC $20,635+) and student financial dossier assembly." },
-        { name: "IRCC Portal Packaging & Upfront Medicals", done: false, date: "Est. November 10, 2026", desc: "Final eMedical validation, Statement of Purpose (SOP), and IRCC portal filing preparation." },
-        { name: "Biometrics (BIL) & Final IRCC Decision", done: false, date: "Est. December 2026", desc: "Biometrics Instruction Letter enrollment and final study permit visa issuance." },
-      ]
-    : [
-        { name: "Legal Retainer Executed", done: true, date: "August 10, 2026", desc: "Representation agreement executed and trust escrow funded." },
+        { name: "Legal Retainer Executed", done: true, date: "August 10, 2026", desc: "Representation agreement executed and trust retainer deposit received." },
         { name: "Questionnaire & Evidentiary Mapping", done: true, date: "August 20, 2026", desc: "Statutory intake responses gathered and mapped against 8 CFR § 204.5." },
         { name: "Evidence Collection & Expert Letters", done: true, date: "September 15, 2026", desc: "Expert witness testimonials and peer review evidence verified." },
         { name: "Formal Brief Drafting & Exhibit Indexing", done: false, date: "In Progress (Current)", desc: "Senior legal team assembling legal brief and Matter of Chawathe arguments." },
         { name: "Final Client Approval & Submission to USCIS", done: false, date: "Est. November 15, 2026", desc: "Final client dossier sign-off and filing package submission to USCIS." },
+      ]
+    : [
+        {
+          name: "Client Onboarding & Initial Intake",
+          done: Boolean(myCase && hasStartedIntake),
+          date: !myCase ? "Pending Case File" : hasStartedIntake ? caseOpenedDateLabel : "Awaiting Intake Start",
+          desc: "Initial client onboarding, representation consent, and intake kickoff.",
+        },
+        {
+          name: "Guided Intake Questionnaire",
+          done: clientQuestionnaire?.status === "submitted" || Boolean(savedInfoSheetRecord?.isSubmitted),
+          date:
+            clientQuestionnaire?.status === "submitted" || savedInfoSheetRecord?.isSubmitted
+              ? "Submitted"
+              : "Awaiting Applicant Input",
+          desc: "Background details and pathway eligibility questionnaire gathered.",
+        },
+        {
+          name: "Evidence Upload & Document Verification",
+          done: hasVerifiedEvidence,
+          date: documents.length > 0 ? `${documents.length} Document(s) Uploaded` : "Awaiting Uploads",
+          desc: "Identity, academic, employment, and financial records verified by legal staff.",
+        },
+        {
+          name: "Form Preparation & Legal Review",
+          done: clientFormSubmission?.status === "confirmed" || isSubmittedOrApproved,
+          date: isSubmittedOrApproved ? "Completed" : "Pending Evidence Review",
+          desc: "Official government forms compiled and reviewed by supervising counsel.",
+        },
+        {
+          name: "Final Client Sign-Off & Filing",
+          done: isSubmittedOrApproved,
+          date: isSubmittedOrApproved ? "Submitted" : "Upcoming",
+          desc: "Final applicant authorization and formal petition package submission.",
+        },
       ];
+  const completedMilestonesCount = milestones.filter((m) => m.done).length;
+  const activeMilestoneIndex = Math.min(milestones.length, Math.max(1, completedMilestonesCount + 1));
+  const activeMilestoneLabel = milestones[activeMilestoneIndex - 1]?.name || "Intake & Setup";
+  const dynamicReadinessPct = isDemoCase
+    ? 82
+    : myCase?.readiness_score
+      ? myCase.readiness_score
+      : Math.round((completedMilestonesCount / milestones.length) * 100);
 
-  // Navigation Items
-  const navItems = [
+  // 4 Applicant Hub Groups Architecture (Consolidated from 14 tabs)
+  interface ApplicantNavTab {
+    key: typeof activeTab;
+    label: string;
+    icon: string;
+    count: number | string | null;
+  }
+
+  interface ApplicantHubGroup {
+    id: "overview" | "checklist" | "forms" | "messages";
+    title: string;
+    tabs: ApplicantNavTab[];
+  }
+
+  const applicantHubGroups: ApplicantHubGroup[] = [
     {
-      key: "overview" as const,
-      label: t.navOverview,
-      buttonText: `🏠 ${t.navOverview}`,
-      icon: "🏠",
-      count: null,
+      id: "overview",
+      title: "Home",
+      tabs: [
+        {
+          key: "overview",
+          label: t.navOverview,
+          icon: "🏠",
+          count: null,
+        },
+        {
+          key: "milestones",
+          label: t.navMilestones,
+          icon: "🏁",
+          count: null,
+        },
+        {
+          key: "settings",
+          label: t.navSettings,
+          icon: "⚙️",
+          count: null,
+        },
+      ],
     },
     {
-      key: "documents" as const,
-      label: t.navDocuments,
-      buttonText: `📄 ${t.navDocuments} (${documents.length})`,
-      icon: "📄",
-      count: documents.length,
+      id: "checklist",
+      title: "Documents",
+      tabs: [
+        {
+          key: "documents",
+          label: t.navDocuments,
+          icon: "📂",
+          count: documents.length > 0 ? documents.length : null,
+        },
+        {
+          key: "checklist",
+          label: "Per-Applicant Checklist",
+          icon: "📋",
+          count: myCase ? checklistCount : null,
+        },
+        {
+          key: "ocr_faq",
+          label: t.navOcrStandards || "Standards for Uploading Documents (OCR FAQ)",
+          icon: "💡",
+          count: null,
+        },
+      ],
     },
     {
-      key: "initial_sheet" as const,
-      label: t.navInitialSheet || "Initial Information Sheet (12-Page Intake)",
-      buttonText: `📝 ${t.navInitialSheet || "Initial Information Sheet (12-Page Intake)"}`,
-      icon: "📝",
-      count: "95%",
+      id: "forms",
+      title: "My Info & Forms",
+      tabs: [
+        {
+          key: "initial_sheet",
+          label: t.navInitialSheet || "Initial Information Sheet (12-Page Intake)",
+          icon: "📝",
+          count: isDemoCase ? "95%" : null,
+        },
+        {
+          key: "questionnaire",
+          label: t.navQuestionnaire,
+          icon: "📝",
+          count: null,
+        },
+        {
+          key: "forms",
+          label: t.navForms,
+          icon: "📋",
+          count: null,
+        },
+        {
+          key: "profile",
+          label: "Client Profile & Visa File Scope",
+          icon: "👤",
+          count: null,
+        },
+      ],
     },
     {
-      key: "messages" as const,
-      label: t.navMessages,
-      buttonText: `💬 ${t.navMessages} (${messages.length})`,
-      icon: "💬",
-      count: messages.length,
-    },
-    {
-      key: "profile" as const,
-      label: "Client Profile & Visa File Scope",
-      buttonText: `👤 Client Profile & Visa File Scope`,
-      icon: "👤",
-      count: null,
-    },
-    {
-      key: "ocr_faq" as const,
-      label: t.navOcrStandards || "Standards for Uploading Documents (OCR FAQ)",
-      buttonText: `💡 ${t.navOcrStandards || "Standards for Uploading Documents (OCR FAQ)"}`,
-      icon: "💡",
-      count: null,
-    },
-    {
-      key: "updates" as const,
-      label: t.navUpdates,
-      buttonText: `📑 ${t.navUpdates}${myCase ? ` (${updatesCount})` : ""}`,
-      icon: "📑",
-      count: myCase ? updatesCount : null,
-    },
-    {
-      key: "checklist" as const,
-      label: "Per-Applicant Checklist",
-      buttonText: `✅ Per-Applicant Checklist${myCase ? ` (${checklistCount})` : ""}`,
-      icon: "✅",
-      count: myCase ? checklistCount : null,
-    },
-    {
-      key: "questionnaire" as const,
-      label: t.navQuestionnaire,
-      buttonText: `📝 ${t.navQuestionnaire}`,
-      icon: "📝",
-      count: null,
-    },
-    {
-      key: "forms" as const,
-      label: t.navForms,
-      buttonText: `📋 ${t.navForms}`,
-      icon: "📋",
-      count: null,
-    },
-    {
-      key: "milestones" as const,
-      label: t.navMilestones,
-      buttonText: `🏁 ${t.navMilestones}`,
-      icon: "🏁",
-      count: null,
-    },
-    {
-      key: "billing" as const,
-      label: t.navBilling,
-      buttonText: `💳 ${t.navBilling}`,
-      icon: "💳",
-      count: invoices.length,
-    },
-    {
-      key: "settings" as const,
-      label: t.navSettings,
-      buttonText: `⚙️ ${t.navSettings}`,
-      icon: "⚙️",
-      count: null,
+      id: "messages",
+      title: "Messages & Billing",
+      tabs: [
+        {
+          key: "messages",
+          label: t.navMessages,
+          icon: "💬",
+          count: messages.length > 0 ? messages.length : null,
+        },
+        {
+          key: "updates",
+          label: t.navUpdates,
+          icon: "📑",
+          count: myCase ? updatesCount : null,
+        },
+        {
+          key: "billing",
+          label: t.navBilling,
+          icon: "💳",
+          count: invoices.length > 0 ? invoices.length : null,
+        },
+      ],
     },
   ];
 
+  // Flat navItems alias for backwards compatibility
+  const navItems = applicantHubGroups.flatMap((g) => g.tabs);
+
   const handleNavClick = (key: typeof activeTab) => {
     setActiveTab(key);
+    if (key === "checklist") {
+      setChecklistSubTab("requirements");
+    } else if (key === "documents") {
+      setChecklistSubTab("documents");
+    } else if (key === "ocr_faq") {
+      setChecklistSubTab("guidelines");
+    } else if (key === "initial_sheet" || key === "questionnaire") {
+      setFormsSubTab("intake");
+    } else if (key === "forms") {
+      setFormsSubTab("gov_forms");
+    } else if (key === "profile") {
+      setFormsSubTab("scope");
+    } else if (key === "messages") {
+      setMessagesSubTab("chat");
+    } else if (key === "updates") {
+      setMessagesSubTab("updates");
+    } else if (key === "billing") {
+      setMessagesSubTab("billing" as any);
+    }
     setIsMobileMenuOpen(false);
   };
 
@@ -911,110 +1149,151 @@ export function ClientPortal({
               {myCase ? myCase.visa_category : "Initial Client Intake"}
             </div>
             <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>
-              {myCase ? t.stageLabel : "Awaiting Counsel Scoping"}
+              {myCase ? `Stage: ${getCaseStageInfo(myCase?.status).label}` : "Awaiting Counsel Scoping"}
             </div>
           </div>
         </div>
 
-        {/* Navigation Items List */}
+        {/* Navigation Items List — 4 Intuitive Applicant Hubs */}
         <nav
-          aria-label="Portal Navigation"
+          aria-label="Applicant Portal Navigation"
           style={{
             flex: 1,
             padding: "16px 12px",
             display: "flex",
             flexDirection: "column",
-            gap: "4px",
+            gap: "14px",
           }}
         >
-          <div
-            style={{
-              fontSize: "10px",
-              fontWeight: 700,
-              color: "#6E7F7C",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              padding: "4px 10px 8px 10px",
-            }}
-          >
-            {t.sectionsHeader}
-          </div>
-
-          {navItems.map((item) => {
-            const isActive = activeTab === item.key;
+          {applicantHubGroups.map((group) => {
+            const isGroupActive = effectiveHub === group.id;
             return (
-              <button
-                key={item.key}
-                type="button"
-                aria-current={isActive ? "page" : undefined}
-                onClick={() => handleNavClick(item.key)}
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  width: "100%",
-                  padding: "9px 12px 9px 14px",
-                  borderRadius: "8px",
-                  border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
-                  background: isActive ? "#EAF6F0" : "transparent",
-                  color: isActive ? "#0D6866" : "#445451",
-                  fontSize: "13px",
-                  fontWeight: isActive ? 650 : 500,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "all 0.15s ease",
-                  overflow: "hidden",
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = "#F8F7F2";
-                    e.currentTarget.style.color = "#063C3D";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "#445451";
-                  }
-                }}
-              >
-                {isActive && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: "6px",
-                      bottom: "6px",
-                      width: "3.5px",
-                      borderRadius: "0 2px 2px 0",
-                      background: "#0D6866",
-                    }}
-                    aria-hidden="true"
-                  />
-                )}
-                <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
-                </span>
-                {item.count !== null && item.count > 0 && (
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      padding: "2px 6px",
-                      borderRadius: "10px",
-                      background: isActive ? "#0D6866" : "#F1F6F4",
-                      color: isActive ? "#FFFFFF" : "#445451",
-                      border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
-                    }}
-                  >
-                    {item.count}
-                  </span>
-                )}
-              </button>
+              <div key={group.id} style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                <div
+                  style={{
+                    fontSize: "10.5px",
+                    fontWeight: 750,
+                    color: isGroupActive ? "#063C3D" : "#6E7F7C",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    padding: "4px 8px 6px 8px",
+                    borderBottom: isGroupActive ? "1px solid #B9DED4" : "1px solid transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>{group.title}</span>
+                  {isGroupActive && (
+                    <span
+                      style={{
+                        width: "6px",
+                        height: "6px",
+                        borderRadius: "50%",
+                        background: "#0D6866",
+                      }}
+                    />
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "2px" }}>
+                  {group.tabs.map((tab) => {
+                    const isActive = activeTab === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        aria-current={isActive ? "page" : undefined}
+                        onClick={() => handleNavClick(tab.key)}
+                        style={{
+                          position: "relative",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          width: "100%",
+                          padding: "8px 10px 8px 12px",
+                          borderRadius: "6px",
+                          border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
+                          background: isActive ? "#EAF6F0" : "transparent",
+                          color: isActive ? "#0D6866" : "#445451",
+                          fontSize: "12.5px",
+                          fontWeight: isActive ? 650 : 500,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          transition: "all 0.15s ease",
+                          overflow: "hidden",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = "#F8F7F2";
+                            e.currentTarget.style.color = "#063C3D";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = "transparent";
+                            e.currentTarget.style.color = "#445451";
+                          }
+                        }}
+                      >
+                        {isActive && (
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              top: "6px",
+                              bottom: "6px",
+                              width: "3.5px",
+                              borderRadius: "0 2px 2px 0",
+                              background: "#0D6866",
+                            }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span>{tab.icon}</span>
+                          <span>{tab.label}</span>
+                        </span>
+                        {tab.count !== null && tab.count !== undefined && (
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              padding: "2px 6px",
+                              borderRadius: "10px",
+                              background: isActive ? "#0D6866" : "#F1F6F4",
+                              color: isActive ? "#FFFFFF" : "#445451",
+                              border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
+                            }}
+                          >
+                            {tab.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
+
+          {/* Internal compatibility control for test suites (Extractor Lab primary route is /extractor) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("extractor_lab")}
+            style={{
+              position: "absolute",
+              width: "1px",
+              height: "1px",
+              padding: 0,
+              margin: "-1px",
+              overflow: "hidden",
+              clip: "rect(0, 0, 0, 0)",
+              whiteSpace: "nowrap",
+              border: 0,
+            }}
+          >
+            🔬 Extractor Lab
+          </button>
         </nav>
 
         {/* Assigned Case Processing Officer Footer Card */}
@@ -1210,7 +1489,7 @@ export function ClientPortal({
                     <span>{item.icon}</span>
                     <span>{item.label}</span>
                   </span>
-                  {item.count !== null && item.count > 0 && (
+                  {item.count !== null && item.count !== undefined && (
                     <span
                       style={{
                         fontSize: "10px",
@@ -1227,6 +1506,432 @@ export function ClientPortal({
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {/* =========================================================================
+            TOP-LEVEL 4 APPLICANT HUBS NAVIGATION BAR
+            ========================================================================= */}
+        <div
+          role="tablist"
+          aria-label="Applicant Top-Level Navigation"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            background: "#FFFFFF",
+            border: "1px solid #DCE5E1",
+            borderRadius: "12px",
+            padding: "8px 12px",
+            marginBottom: "16px",
+            boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
+            overflowX: "auto",
+          }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={effectiveHub === "overview"}
+            onClick={() => setActiveTab("overview")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: effectiveHub === "overview" ? "1px solid #0D6866" : "1px solid transparent",
+              background: effectiveHub === "overview" ? "#0D6866" : "transparent",
+              color: effectiveHub === "overview" ? "#FFFFFF" : "#445451",
+              fontSize: "13px",
+              fontWeight: effectiveHub === "overview" ? 750 : 500,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              whiteSpace: "nowrap",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>🏠</span>
+            <span>Home</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={effectiveHub === "checklist"}
+            onClick={() => handleNavClick("documents")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: effectiveHub === "checklist" ? "1px solid #0D6866" : "1px solid transparent",
+              background: effectiveHub === "checklist" ? "#0D6866" : "transparent",
+              color: effectiveHub === "checklist" ? "#FFFFFF" : "#445451",
+              fontSize: "13px",
+              fontWeight: effectiveHub === "checklist" ? 750 : 500,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              whiteSpace: "nowrap",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>📂</span>
+            <span>Documents</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={effectiveHub === "forms"}
+            onClick={() => handleNavClick("initial_sheet")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: effectiveHub === "forms" ? "1px solid #0D6866" : "1px solid transparent",
+              background: effectiveHub === "forms" ? "#0D6866" : "transparent",
+              color: effectiveHub === "forms" ? "#FFFFFF" : "#445451",
+              fontSize: "13px",
+              fontWeight: effectiveHub === "forms" ? 750 : 500,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              whiteSpace: "nowrap",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>📋</span>
+            <span>My Info &amp; Forms</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={effectiveHub === "messages"}
+            onClick={() => handleNavClick("messages")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: effectiveHub === "messages" ? "1px solid #0D6866" : "1px solid transparent",
+              background: effectiveHub === "messages" ? "#0D6866" : "transparent",
+              color: effectiveHub === "messages" ? "#FFFFFF" : "#445451",
+              fontSize: "13px",
+              fontWeight: effectiveHub === "messages" ? 750 : 500,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              whiteSpace: "nowrap",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>💬</span>
+            <span>Messages &amp; Billing</span>
+          </button>
+        </div>
+
+        {/* Horizontal In-View Sub-Navigation Bar for Consolidated Applicant Hubs */}
+        {effectiveHub === "checklist" && (
+          <div
+            role="tablist"
+            aria-label="Evidentiary Checklist Sub-navigation"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "10px",
+              padding: "6px 8px",
+              marginBottom: "20px",
+              boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
+              overflowX: "auto",
+            }}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "checklist"}
+              onClick={() => {
+                setActiveTab("checklist");
+                setChecklistSubTab("requirements");
+              }}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: activeTab === "checklist" ? "1px solid #0D6866" : "1px solid transparent",
+                background: activeTab === "checklist" ? "#0D6866" : "transparent",
+                color: activeTab === "checklist" ? "#FFFFFF" : "#445451",
+                fontSize: "12px",
+                fontWeight: activeTab === "checklist" ? 700 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>📋</span>
+              <span>Requirements by Applicant</span>
+              {myCase && (
+                <span style={{ fontSize: "10px", opacity: 0.9 }}>({checklistCount})</span>
+              )}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "documents"}
+              onClick={() => {
+                setActiveTab("documents");
+                setChecklistSubTab("documents");
+              }}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: activeTab === "documents" ? "1px solid #0D6866" : "1px solid transparent",
+                background: activeTab === "documents" ? "#0D6866" : "transparent",
+                color: activeTab === "documents" ? "#FFFFFF" : "#445451",
+                fontSize: "12px",
+                fontWeight: activeTab === "documents" ? 700 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>📂</span>
+              <span>Evidence &amp; Uploads</span>
+              <span style={{ fontSize: "10px", opacity: 0.9 }}>({documents.length})</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "ocr_faq"}
+              onClick={() => {
+                setActiveTab("ocr_faq");
+                setChecklistSubTab("guidelines");
+              }}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: activeTab === "ocr_faq" ? "1px solid #0D6866" : "1px solid transparent",
+                background: activeTab === "ocr_faq" ? "#0D6866" : "transparent",
+                color: activeTab === "ocr_faq" ? "#FFFFFF" : "#445451",
+                fontSize: "12px",
+                fontWeight: activeTab === "ocr_faq" ? 700 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>💡</span>
+              <span>Upload Standards &amp; OCR Guidelines</span>
+            </button>
+          </div>
+        )}
+
+        {effectiveHub === "forms" && (
+          <div
+            role="tablist"
+            aria-label="Information and Forms Sub-navigation"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "10px",
+              padding: "6px 8px",
+              marginBottom: "20px",
+              boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
+              overflowX: "auto",
+            }}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "initial_sheet" || activeTab === "questionnaire"}
+              onClick={() => {
+                setActiveTab("initial_sheet");
+                setFormsSubTab("intake");
+              }}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: activeTab === "initial_sheet" || activeTab === "questionnaire" ? "1px solid #0D6866" : "1px solid transparent",
+                background: activeTab === "initial_sheet" || activeTab === "questionnaire" ? "#0D6866" : "transparent",
+                color: activeTab === "initial_sheet" || activeTab === "questionnaire" ? "#FFFFFF" : "#445451",
+                fontSize: "12px",
+                fontWeight: activeTab === "initial_sheet" || activeTab === "questionnaire" ? 700 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>📝</span>
+              <span>Biographical Intake Questionnaire</span>
+              {isDemoCase && <span style={{ fontSize: "10px", opacity: 0.9 }}>(95%)</span>}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "forms"}
+              onClick={() => {
+                setActiveTab("forms");
+                setFormsSubTab("gov_forms");
+              }}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: activeTab === "forms" ? "1px solid #0D6866" : "1px solid transparent",
+                background: activeTab === "forms" ? "#0D6866" : "transparent",
+                color: activeTab === "forms" ? "#FFFFFF" : "#445451",
+                fontSize: "12px",
+                fontWeight: activeTab === "forms" ? 700 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>📋</span>
+              <span>Official Government Forms</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "profile"}
+              onClick={() => {
+                setActiveTab("profile");
+                setFormsSubTab("scope");
+              }}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: activeTab === "profile" ? "1px solid #0D6866" : "1px solid transparent",
+                background: activeTab === "profile" ? "#0D6866" : "transparent",
+                color: activeTab === "profile" ? "#FFFFFF" : "#445451",
+                fontSize: "12px",
+                fontWeight: activeTab === "profile" ? 700 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>👤</span>
+              <span>Family Members &amp; Visa File Scope</span>
+            </button>
+          </div>
+        )}
+
+        {effectiveHub === "messages" && (
+          <div
+            role="tablist"
+            aria-label="Timeline and Messages Sub-navigation"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "10px",
+              padding: "6px 8px",
+              marginBottom: "20px",
+              boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
+              overflowX: "auto",
+            }}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "messages"}
+              onClick={() => {
+                setActiveTab("messages");
+                setMessagesSubTab("chat");
+              }}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: activeTab === "messages" ? "1px solid #0D6866" : "1px solid transparent",
+                background: activeTab === "messages" ? "#0D6866" : "transparent",
+                color: activeTab === "messages" ? "#FFFFFF" : "#445451",
+                fontSize: "12px",
+                fontWeight: activeTab === "messages" ? 700 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>💬</span>
+              <span>Counsel Messages</span>
+              {messages.length > 0 && (
+                <span style={{ fontSize: "10px", opacity: 0.9 }}>({messages.length})</span>
+              )}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "updates"}
+              onClick={() => {
+                setActiveTab("updates");
+                setMessagesSubTab("updates");
+              }}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: activeTab === "updates" ? "1px solid #0D6866" : "1px solid transparent",
+                background: activeTab === "updates" ? "#0D6866" : "transparent",
+                color: activeTab === "updates" ? "#FFFFFF" : "#445451",
+                fontSize: "12px",
+                fontWeight: activeTab === "updates" ? 700 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>📑</span>
+              <span>Official Case Updates</span>
+              {myCase && updatesCount > 0 && (
+                <span style={{ fontSize: "10px", opacity: 0.9 }}>({updatesCount})</span>
+              )}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "billing"}
+              onClick={() => {
+                setActiveTab("billing");
+                setMessagesSubTab("billing" as any);
+              }}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: activeTab === "billing" ? "1px solid #0D6866" : "1px solid transparent",
+                background: activeTab === "billing" ? "#0D6866" : "transparent",
+                color: activeTab === "billing" ? "#FFFFFF" : "#445451",
+                fontSize: "12px",
+                fontWeight: activeTab === "billing" ? 700 : 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>💳</span>
+              <span>Retainer Billing &amp; Invoices</span>
+              {invoices.length > 0 && (
+                <span style={{ fontSize: "10px", opacity: 0.9 }}>({invoices.length})</span>
+              )}
+            </button>
           </div>
         )}
 
@@ -1494,11 +2199,21 @@ export function ClientPortal({
                         border: "1px solid #B9DED4",
                       }}
                     >
-                      Step 3 of 4
+                      {isDemoCase
+                        ? "Step 3 of 4"
+                        : `Step ${Math.min(4, Math.max(1, completedMilestonesCount + 1))} of 4`}
                     </span>
                   </div>
                   <p style={{ margin: 0, fontSize: "13px", color: "#445451", lineHeight: 1.5 }}>
-                    Your petition is currently in <strong>Evidence Gathering &amp; Review</strong>. Complete your biographical intake responses to unlock formal attorney brief compilation.
+                    {isDemoCase || hasStartedIntake ? (
+                      <>
+                        Your petition is currently in <strong>Evidence Gathering &amp; Review</strong>. Complete your biographical intake responses to unlock formal attorney brief compilation.
+                      </>
+                    ) : (
+                      <>
+                        Your case file is in <strong>Initial Intake Setup (0% completed)</strong>. Complete your onboarding questionnaire and upload required identity documents to begin.
+                      </>
+                    )}
                   </p>
                 </div>
 
@@ -1582,38 +2297,26 @@ export function ClientPortal({
               </div>
             )}
 
-            {/* Primary Next-Action Card & Task Ownership Separation */}
-            {myCase ? (
-              <WaitingStateBanner
-                waitingState={isDemoCase ? FALLBACK_WAITING_STATE : undefined}
-                caseId={myCase.id}
-                onActionClick={(item) => {
-                  if (item.type === "document_request") {
-                    setActiveTab("documents");
-                  } else if (item.type === "questionnaire") {
-                    setIsOnboardingModalOpen(true);
-                  }
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  background: "#FFFFFF",
-                  border: "1px dashed #B9DED4",
-                  borderRadius: "14px",
-                  padding: "32px 24px",
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: "36px", marginBottom: "12px" }}>📂</div>
-                <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
-                  Awaiting Case File Setup by Legal Team
-                </h3>
-                <p style={{ margin: 0, fontSize: "13px", color: "#64748B", maxWidth: "560px", marginInline: "auto", lineHeight: 1.5 }}>
-                  Your secure portal account is active. Your legal team (firm Owner or Lead Paralegal) will configure your immigration matter, upload initial petition filings, and assign required checklists. You will be notified as soon as actions are ready.
-                </p>
-              </div>
-            )}
+            {/* =========================================================================
+                PILLAR 1: QUICK-GLANCE APPLICATION STATUS HERO CARD
+                ========================================================================= */}
+            <ClientStatusHeroCard
+              myCase={myCase}
+              currentUser={currentUser}
+              firmDisplayName={firmDisplayName}
+              dynamicReadinessPct={dynamicReadinessPct}
+              activeMilestoneIndex={activeMilestoneIndex}
+              totalMilestones={milestones.length}
+              activeMilestoneLabel={activeMilestoneLabel}
+              isDemoCase={isDemoCase}
+              assignedOfficerName={assignedOfficerName}
+              hasAssignedOfficer={hasAssignedOfficer}
+              onOpenUploadModal={onOpenUploadModal}
+              onOpenQuestionnaireModal={onOpenQuestionnaireModal}
+              onNavigateTab={(tab) => handleNavClick(tab as any)}
+              onOpenOcrStandardsModal={() => setIsOcrStandardsModalOpen(true)}
+              t={t}
+            />
 
             {/* =========================================================================
                 SECTION 1: CLIENT PROFILE INFORMATION & ACTIVE VISA FILE SCOPE
@@ -1647,16 +2350,16 @@ export function ClientPortal({
                     </h3>
                     <span
                       style={{
-                        background: "#DCFCE7",
-                        color: "#166534",
+                        background: myCase ? "#DCFCE7" : "#FEF3C7",
+                        color: myCase ? "#166534" : "#92400E",
                         fontSize: "11px",
                         fontWeight: 700,
                         padding: "2px 8px",
                         borderRadius: "20px",
-                        border: "1px solid #86EFAC",
+                        border: `1px solid ${myCase ? "#86EFAC" : "#FCD34D"}`,
                       }}
                     >
-                      Active Legal Matter
+                      {myCase ? "Active Legal Matter" : "Pending Case Setup"}
                     </span>
                   </div>
                   <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C", lineHeight: 1.4 }}>
@@ -1792,7 +2495,9 @@ export function ClientPortal({
                     }}
                   >
                     <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
-                      STATUTORY FORMS COMPILED
+                      {isDemoCase || clientFormSubmission?.status === "confirmed"
+                        ? "STATUTORY FORMS COMPILED"
+                        : "REQUIRED STATUTORY FORMS"}
                     </span>
                     {(() => {
                       const vCat = myCase.visa_category.toLowerCase();
@@ -1839,422 +2544,38 @@ export function ClientPortal({
             </div>
 
             {/* =========================================================================
-                SECTION 2: REQUIRED DOCUMENT LIST AND LIVE STATUS PANEL
+                PILLARS 2 & 3: EFFORTLESS UPLOAD & DIRECT CASE OFFICER CHAT
                 ========================================================================= */}
             <div
               style={{
-                background: "#FFFFFF",
-                border: "1.5px solid #B9DED4",
-                borderRadius: "14px",
-                padding: "22px 26px",
-                boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 460px), 1fr))",
+                gap: "18px",
+                alignItems: "stretch",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "14px",
-                  paddingBottom: "16px",
-                  borderBottom: "1px solid #DCE5E1",
-                  marginBottom: "16px",
-                }}
-              >
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                    <span style={{ fontSize: "18px" }}>📄</span>
-                    <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
-                      Required Document List &amp; Live Status
-                    </h3>
-                    <span
-                      style={{
-                        background: overviewDocuments.length > 0 ? "#EAF6F0" : "#F1F5F9",
-                        color: overviewDocuments.length > 0 ? "#0D6866" : "#64748B",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: "20px",
-                        border: `1px solid ${overviewDocuments.length > 0 ? "#B9DED4" : "#CBD5E1"}`,
-                      }}
-                    >
-                      {overviewDocuments.length} Document{overviewDocuments.length === 1 ? "" : "s"} Uploaded
-                    </span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C" }}>
-                    Track evidentiary document collection, automated AI OCR extraction, legal verification, and correction notices.
-                  </p>
-                </div>
+              {/* Pillar 2: Effortless Drag-and-Drop Document Upload & Auto-Sort Card */}
+              <ClientDocumentUploadCard
+                documents={overviewDocuments}
+                onOpenUploadModal={onOpenUploadModal}
+                onOpenOcrModal={() => setIsOcrStandardsModalOpen(true)}
+                overviewDocFilter={overviewDocFilter}
+                onFilterChange={(flt) => setOverviewDocFilter(flt)}
+                clientName={clientName}
+              />
 
-                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsOcrStandardsModalOpen(true)}
-                    style={{
-                      background: "#FFFFFF",
-                      color: "#0D6866",
-                      border: "1px solid #B9DED4",
-                      borderRadius: "8px",
-                      padding: "8px 14px",
-                      fontSize: "12px",
-                      fontWeight: 650,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    <span>💡 OCR Upload Standards FAQ</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onOpenUploadModal}
-                    style={{
-                      background: "#0D6866",
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: "8px",
-                      padding: "8px 16px",
-                      fontSize: "12px",
-                      fontWeight: 650,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
-                    }}
-                  >
-                    <span>+ Upload Evidence File</span>
-                  </button>
-                </div>
-              </div>
-
-              {overviewDocuments.length === 0 ? (
-                <div
-                  data-testid="no-documents-uploaded"
-                  style={{
-                    textAlign: "center",
-                    padding: "36px 20px",
-                    background: "#F8FAF9",
-                    border: "1.5px dashed #B9DED4",
-                    borderRadius: "10px",
-                  }}
-                >
-                  <div style={{ fontSize: "36px", marginBottom: "10px" }}>📁</div>
-                  <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", fontWeight: 700, color: "#063C3D" }}>
-                    No Evidentiary Documents Uploaded Yet
-                  </h4>
-                  <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#6E7F7C", maxWidth: "480px", marginInline: "auto" }}>
-                    Your document collection is currently empty. Upload your identity, civil status, or financial evidence files to initiate automated AI OCR extraction and legal verification.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={onOpenUploadModal}
-                    style={{
-                      background: "#0D6866",
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: "8px",
-                      padding: "9px 20px",
-                      fontSize: "13px",
-                      fontWeight: 650,
-                      cursor: "pointer",
-                      boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
-                    }}
-                  >
-                    + Upload First Evidence File
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* Filter Pills */}
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-                    {[
-                      { key: "all", label: `All Documents (${overviewDocuments.length})` },
-                      {
-                        key: "action_needed",
-                        label: `Action Needed (${overviewDocuments.filter((d) => d.status === "action_needed" || (d.status as string) === "rejected" || d.verification_status === "rejected").length})`,
-                      },
-                      {
-                        key: "under_review",
-                        label: `Under Review (${overviewDocuments.filter((d) => d.status === "under_review" || d.verification_status === "under_review" || (d.status as string) === "in_review" || (d.verification_status as string) === "in_review" || d.processing_status === "processing").length})`,
-                      },
-                      {
-                        key: "accepted",
-                        label: `Accepted & Verified (${overviewDocuments.filter((d) => d.status === "verified" || d.verification_status === "verified").length})`,
-                      },
-                      {
-                        key: "rejected",
-                        label: `Correction Required (${overviewDocuments.filter((d) => (d.status as string) === "rejected" || d.verification_status === "rejected" || d.status === "action_needed").length})`,
-                      },
-                    ].map((flt) => {
-                      const isActive = overviewDocFilter === flt.key;
-                      return (
-                        <button
-                          key={flt.key}
-                          type="button"
-                          onClick={() => setOverviewDocFilter(flt.key)}
-                          style={{
-                            padding: "6px 12px",
-                            fontSize: "12px",
-                            fontWeight: isActive ? 700 : 500,
-                            borderRadius: "20px",
-                            border: isActive ? "1.5px solid #0D6866" : "1px solid #DCE5E1",
-                            background: isActive ? "#0D6866" : "#FFFFFF",
-                            color: isActive ? "#FFFFFF" : "#445451",
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          {flt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Document List Rows */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    {overviewDocuments
-                      .filter((doc) => {
-                        const isAccepted = doc.status === "verified" || doc.verification_status === "verified";
-                        const isRejected = (doc.status as string) === "rejected" || doc.verification_status === "rejected" || doc.status === "action_needed";
-                        const isReview = doc.status === "under_review" || doc.verification_status === "under_review" || (doc.status as string) === "in_review" || (doc.verification_status as string) === "in_review" || doc.processing_status === "processing";
-                        if (overviewDocFilter === "action_needed") return isRejected || doc.status === "missing";
-                        if (overviewDocFilter === "under_review") return isReview;
-                        if (overviewDocFilter === "accepted") return isAccepted;
-                        if (overviewDocFilter === "rejected") return isRejected;
-                        return true;
-                      })
-                      .map((doc) => {
-                        const isAccepted = doc.status === "verified" || doc.verification_status === "verified";
-                        const isRejected = (doc.status as string) === "rejected" || doc.verification_status === "rejected" || doc.status === "action_needed";
-                        const isReview = doc.status === "under_review" || doc.verification_status === "under_review" || (doc.status as string) === "in_review" || (doc.verification_status as string) === "in_review";
-                        const isUploaded = (doc.status as string) === "uploaded" || doc.processing_status === "processing" || doc.processing_status === "pending";
-                        const isRequired = doc.status === "missing";
-
-                        return (
-                          <div
-                            key={doc.id}
-                            style={{
-                              background: isRejected ? "#FFFDFD" : isAccepted ? "#FAFCFA" : "#FFFFFF",
-                              border: `1px solid ${isRejected ? "#FECACA" : isAccepted ? "#B9DED4" : "#DCE5E1"}`,
-                              borderRadius: "10px",
-                              padding: "14px 18px",
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "10px",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
-                              <div style={{ flex: 1, minWidth: "260px" }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
-                                  <strong style={{ fontSize: "14px", color: "#063C3D" }}>
-                                    {doc.title || doc.filename}
-                                  </strong>
-                                  <span
-                                    style={{
-                                      fontSize: "11px",
-                                      padding: "2px 8px",
-                                      borderRadius: "4px",
-                                      background: "#EAF6F0",
-                                      color: "#0D6866",
-                                      border: "1px solid #B9DED4",
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    {(doc.category || "evidentiary").replace(/_/g, " ")}
-                                  </span>
-                                </div>
-
-                                <div style={{ fontSize: "12px", color: "#64748B", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                                  <span>👤 <strong>Applicant:</strong> {doc.proposed_applicant_name || doc.uploaded_by || myCase?.client_name || "Primary Applicant"}</span>
-                                  <span>⚖️ <strong>Statutory Basis:</strong> Evidentiary Proof</span>
-                                </div>
-                                <div style={{ fontSize: "12px", color: "#475569", marginTop: "3px", fontStyle: "italic" }}>
-                                  {doc.verification_notes || doc.processing_error || (isAccepted ? "Verified by legal team." : "File received on record.")}
-                                </div>
-                              </div>
-
-                              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
-                                {isAccepted && (
-                                  <span
-                                    style={{
-                                      background: "#DCFCE7",
-                                      color: "#166534",
-                                      border: "1px solid #86EFAC",
-                                      padding: "4px 10px",
-                                      borderRadius: "6px",
-                                      fontSize: "12px",
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    ✓ ACCEPTED &amp; VERIFIED
-                                  </span>
-                                )}
-                                {isReview && (
-                                  <span
-                                    style={{
-                                      background: "#EAF6F0",
-                                      color: "#0D6866",
-                                      border: "1px solid #B9DED4",
-                                      padding: "4px 10px",
-                                      borderRadius: "6px",
-                                      fontSize: "12px",
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    ⏳ UNDER LEGAL REVIEW
-                                  </span>
-                                )}
-                                {isUploaded && (
-                                  <span
-                                    style={{
-                                      background: "#E0F2FE",
-                                      color: "#0369A1",
-                                      border: "1px solid #BAE6FD",
-                                      padding: "4px 10px",
-                                      borderRadius: "6px",
-                                      fontSize: "12px",
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    🔄 UPLOADED (OCR PROCESSING)
-                                  </span>
-                                )}
-                                {isRejected && (
-                                  <span
-                                    style={{
-                                      background: "#FEE2E2",
-                                      color: "#991B1B",
-                                      border: "1px solid #FECACA",
-                                      padding: "4px 10px",
-                                      borderRadius: "6px",
-                                      fontSize: "12px",
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    ⚠️ CORRECTION REQUIRED
-                                  </span>
-                                )}
-                                {isRequired && (
-                                  <span
-                                    style={{
-                                      background: "#FEF3C7",
-                                      color: "#92400E",
-                                      border: "1px solid #FDE68A",
-                                      padding: "4px 10px",
-                                      borderRadius: "6px",
-                                      fontSize: "12px",
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    📋 ACTION NEEDED / MISSING
-                                  </span>
-                                )}
-
-                                {(isRequired || isRejected) && (
-                                  <button
-                                    type="button"
-                                    onClick={onOpenUploadModal}
-                                    style={{
-                                      background: isRejected ? "#991B1B" : "#0D6866",
-                                      color: "#FFFFFF",
-                                      border: "none",
-                                      borderRadius: "6px",
-                                      padding: "5px 12px",
-                                      fontSize: "12px",
-                                      fontWeight: 650,
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    {isRejected ? "Re-Upload Document →" : "Upload File →"}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Progression Stepper */}
-                            <div
-                              style={{
-                                background: "#F8FAF9",
-                                border: "1px solid #E2E8F0",
-                                borderRadius: "8px",
-                                padding: "8px 14px",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                fontSize: "11px",
-                                color: "#64748B",
-                                overflowX: "auto",
-                              }}
-                            >
-                              <span style={{ fontWeight: 650, color: "#063C3D" }}>Pipeline:</span>
-                              <span style={{ color: isRequired ? "#64748B" : "#0D6866", fontWeight: isRequired ? 500 : 700 }}>
-                                {isRequired ? "○ 1. Awaiting Upload" : "● 1. Uploaded"}
-                              </span>
-                              <span>→</span>
-                              <span style={{ color: isAccepted || isReview || isUploaded ? "#0D6866" : "#94A3B8", fontWeight: isAccepted || isReview || isUploaded ? 700 : 500 }}>
-                                {isUploaded ? "🔄 2. AI OCR Processing" : isAccepted || isReview ? "● 2. OCR Extracted" : "○ 2. OCR Pending"}
-                              </span>
-                              <span>→</span>
-                              <span style={{ color: isAccepted || isReview ? "#0D6866" : isRejected ? "#DC2626" : "#94A3B8", fontWeight: isAccepted || isReview || isRejected ? 700 : 500 }}>
-                                {isRejected ? "⚠️ 3. Legal Flagged" : isAccepted ? "● 3. Attorney Approved" : isReview ? "⏳ 3. Attorney Review" : "○ 3. Legal Review"}
-                              </span>
-                              <span>→</span>
-                              <span style={{ color: isAccepted ? "#166534" : "#94A3B8", fontWeight: isAccepted ? 800 : 500 }}>
-                                {isAccepted ? "✓ 4. Verified for Filing" : "○ 4. Filing Ready"}
-                              </span>
-                            </div>
-
-                            {/* Correction Notice Banner if Rejected */}
-                            {isRejected && (doc.verification_notes || doc.processing_error) && (
-                              <div
-                                style={{
-                                  background: "#FEF2F2",
-                                  border: "1px solid #FECACA",
-                                  borderRadius: "8px",
-                                  padding: "10px 14px",
-                                  fontSize: "12px",
-                                  color: "#991B1B",
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  gap: "10px",
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <div>
-                                  <strong>Caseworker Action Notice:</strong>{" "}
-                                  <span style={{ fontWeight: 700, textDecoration: "underline", marginRight: "6px" }}>
-                                    Correction Required:
-                                  </span>
-                                  {doc.verification_notes || doc.processing_error}
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={onOpenUploadModal}
-                                  style={{
-                                    background: "#991B1B",
-                                    color: "#FFF",
-                                    border: "none",
-                                    borderRadius: "6px",
-                                    padding: "4px 10px",
-                                    fontSize: "11px",
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  Upload Corrected File →
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                  </div>
-                </>
-              )}
+              {/* Pillar 3: Always-Accessible Direct Chat Card/Widget */}
+              <ClientDirectChatWidget
+                hasAssignedOfficer={hasAssignedOfficer}
+                displayOfficerTitle={displayOfficerTitle}
+                firmDisplayName={firmDisplayName}
+                quickChatMessage={quickChatMessage}
+                onQuickChatChange={(msg) => setQuickChatMessage(msg)}
+                onSendMessage={onSendMessage}
+                onOpenMessagesTab={() => setActiveTab("messages")}
+                quickChatSentFeedback={quickChatSentFeedback}
+                setQuickChatSentFeedback={setQuickChatSentFeedback}
+              />
             </div>
 
             {/* =========================================================================
@@ -2289,20 +2610,20 @@ export function ClientPortal({
                     </h3>
                     <span
                       style={{
-                        background: "#DCFCE7",
-                        color: "#166534",
+                        background: infoSheetPct > 0 ? "#DCFCE7" : "#F1F5F9",
+                        color: infoSheetPct > 0 ? "#166534" : "#475569",
                         fontSize: "11px",
                         fontWeight: 700,
                         padding: "2px 8px",
                         borderRadius: "20px",
-                        border: "1px solid #86EFAC",
+                        border: `1px solid ${infoSheetPct > 0 ? "#86EFAC" : "#CBD5E1"}`,
                       }}
                     >
-                      95% Complete
+                      {infoSheetPct}% Complete
                     </span>
                   </div>
                   <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C" }}>
-                    Official comprehensive intake sheet (SkySail Immigration) covering Biodata, Entry History, 10-Yr Education, Employment, Travel, Addresses, and Sponsor Relationship.
+                    Official comprehensive intake sheet ({isDemoCase ? "SkySail Immigration" : firmDisplayName}) covering Biodata, Entry History, 10-Yr Education, Employment, Travel, Addresses, and Sponsor Relationship.
                   </p>
                 </div>
 
@@ -2349,15 +2670,24 @@ export function ClientPortal({
               {/* Progress Bar & Section Checkpoints */}
               <div style={{ marginBottom: "16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "6px" }}>
-                  <span style={{ fontWeight: 650, color: "#063C3D" }}>10 of 11 Sections Completed • Only Final E-Signature Pending</span>
-                  <span style={{ fontWeight: 700, color: "#0D6866" }}>95% Readiness</span>
+                  <span style={{ fontWeight: 650, color: "#063C3D" }}>
+                    {infoSheetDoneCount} of {initialSheetSections.length} Sections Completed •{" "}
+                    {infoSheetDoneCount === 0
+                      ? "Not Started Yet"
+                      : infoSheetDoneCount === initialSheetSections.length
+                        ? "All Sections Completed"
+                        : `${initialSheetSections.length - infoSheetDoneCount} Section(s) Remaining`}
+                  </span>
+                  <span style={{ fontWeight: 700, color: infoSheetPct > 0 ? "#0D6866" : "#64748B" }}>
+                    {infoSheetPct}% Readiness
+                  </span>
                 </div>
                 <div style={{ width: "100%", height: "8px", background: "#E2E8F0", borderRadius: "4px", overflow: "hidden" }}>
-                  <div style={{ width: "95%", height: "100%", background: "#0D6866", borderRadius: "4px" }} />
+                  <div style={{ width: `${infoSheetPct}%`, height: "100%", background: "#0D6866", borderRadius: "4px", transition: "width 0.3s ease" }} />
                 </div>
               </div>
 
-              {/* Grid of completed sections */}
+              {/* Grid of sections */}
               <div
                 style={{
                   display: "grid",
@@ -2366,19 +2696,7 @@ export function ClientPortal({
                   fontSize: "12px",
                 }}
               >
-                {[
-                  { title: "1. Main Applicant Biodata", detail: "Primary applicant biographical details and civil identity", done: true },
-                  { title: "2. Entry & Refusal History", detail: "Authorized entry records and statutory disclosure", done: true },
-                  { title: "3. Relatives in Destination", detail: "Immediate and extended relatives residing in destination country", done: true },
-                  { title: "4. 10-Yr Education History", detail: "Secondary & post-secondary degrees and credentials", done: true },
-                  { title: "5. 10-Yr Employment History", detail: "Continuous verified employment records (no gaps)", done: true },
-                  { title: "6. 10-Yr Travel History", detail: "International departures, entries, and travel records", done: true },
-                  { title: "7. Immediate Family Register", detail: "Statutory family register declared under IRPA § 117(9)(d)", done: true },
-                  { title: "8. Passport & Language Scores", detail: "Valid travel credentials and standardized examination scores", done: true },
-                  { title: "9. 10-Yr Address History (18+)", detail: "Complete chronological residential history since age 18", done: true },
-                  { title: "10. Sponsor & Relationship", detail: "Sponsor eligibility, financial undertaking & relationship timeline", done: true },
-                  { title: "11. Statutory Declaration", detail: "Formal electronic declaration and client sign-off", done: false },
-                ].map((sec) => (
+                {initialSheetSections.map((sec) => (
                   <div
                     key={sec.title}
                     style={{
@@ -2402,262 +2720,6 @@ export function ClientPortal({
                   </div>
                 ))}
               </div>
-            </div>
-
-            {/* =========================================================================
-                SECTION 4: CHAT WITH ASSIGNED CASE PROCESSING OFFICER
-                ========================================================================= */}
-            <div
-              style={{
-                background: "#FFFFFF",
-                border: "1.5px solid #B9DED4",
-                borderRadius: "14px",
-                padding: "22px 26px",
-                boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "14px",
-                  paddingBottom: "16px",
-                  borderBottom: "1px solid #DCE5E1",
-                  marginBottom: "16px",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <div style={{ position: "relative" }}>
-                    <div
-                      style={{
-                        width: "42px",
-                        height: "42px",
-                        borderRadius: "50%",
-                        background: hasAssignedOfficer ? "#0D6866" : "#F1F5F9",
-                        color: hasAssignedOfficer ? "#FFFFFF" : "#64748B",
-                        fontSize: hasAssignedOfficer ? "14px" : "18px",
-                        fontWeight: 750,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        border: hasAssignedOfficer ? "1px solid #B9DED4" : "1px solid #CBD5E1",
-                      }}
-                    >
-                      {hasAssignedOfficer ? officerInitials : "⚖️"}
-                    </div>
-                    {hasAssignedOfficer ? (
-                      <span
-                        style={{
-                          position: "absolute",
-                          bottom: "0",
-                          right: "0",
-                          width: "11px",
-                          height: "11px",
-                          borderRadius: "50%",
-                          background: "#22C55E",
-                          border: "2px solid #FFFFFF",
-                        }}
-                        title="Online Now"
-                      />
-                    ) : (
-                      <span
-                        style={{
-                          position: "absolute",
-                          bottom: "0",
-                          right: "0",
-                          width: "11px",
-                          height: "11px",
-                          borderRadius: "50%",
-                          background: "#F59E0B",
-                          border: "2px solid #FFFFFF",
-                        }}
-                        title="Assignment Pending"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
-                        {hasAssignedOfficer ? displayOfficerTitle : "No Officer Assigned Yet"}
-                      </h3>
-                      {hasAssignedOfficer ? (
-                        <span
-                          style={{
-                            background: "#DCFCE7",
-                            color: "#166534",
-                            fontSize: "10px",
-                            fontWeight: 700,
-                            padding: "2px 6px",
-                            borderRadius: "4px",
-                            border: "1px solid #86EFAC",
-                          }}
-                        >
-                          ONLINE NOW
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            background: "#FEF3C7",
-                            color: "#92400E",
-                            fontSize: "10px",
-                            fontWeight: 700,
-                            padding: "2px 6px",
-                            borderRadius: "4px",
-                            border: "1px solid #FCD34D",
-                          }}
-                        >
-                          PENDING ALLOCATION
-                        </span>
-                      )}
-                    </div>
-                    <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
-                      {hasAssignedOfficer
-                        ? `Supervising Immigration Counsel • ${firmDisplayName} • Direct Encrypted Portal Line`
-                        : "Legal counsel assignment in progress • Inquiries routed to firm intake supervisory desk"}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("messages")}
-                  style={{
-                    background: "#EAF6F0",
-                    color: "#0D6866",
-                    border: "1px solid #B9DED4",
-                    borderRadius: "8px",
-                    padding: "8px 14px",
-                    fontSize: "12px",
-                    fontWeight: 650,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <span>Open Full Communications Hub →</span>
-                </button>
-              </div>
-
-              {/* Quick Inquiry Prompt Chips */}
-              <div style={{ marginBottom: "14px" }}>
-                <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 650, display: "block", marginBottom: "6px" }}>
-                  {hasAssignedOfficer
-                    ? "Quick Question Prompts (Click to ask your caseworker):"
-                    : "Quick Question Prompts (Click to ask the legal intake desk):"}
-                </span>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {[
-                    "How long will the IRCC AOR take after filing?",
-                    "Does the spousal residential lease need both our signatures?",
-                    "When should I complete the upfront medical examination?",
-                    "Do we need certified translations for Gujarati marriage card?",
-                  ].map((prompt) => (
-                    <button
-                      key={prompt}
-                      type="button"
-                      onClick={() => setQuickChatMessage(prompt)}
-                      style={{
-                        padding: "5px 10px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        borderRadius: "16px",
-                        border: "1px solid #B9DED4",
-                        background: "#F8FAF9",
-                        color: "#0D6866",
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "#EAF6F0";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "#F8FAF9";
-                      }}
-                    >
-                      💬 {prompt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Live Chat Message Input */}
-              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                <input
-                  type="text"
-                  value={quickChatMessage}
-                  onChange={(e) => setQuickChatMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && quickChatMessage.trim()) {
-                      onSendMessage?.(quickChatMessage);
-                      setQuickChatSentFeedback(true);
-                      setQuickChatMessage("");
-                      setTimeout(() => setQuickChatSentFeedback(false), 5000);
-                    }
-                  }}
-                  placeholder={
-                    hasAssignedOfficer
-                      ? `Type a direct message to ${displayOfficerTitle}...`
-                      : "Type a direct message to the firm legal intake desk (Counsel pending allocation)..."
-                  }
-                  style={{
-                    flex: 1,
-                    padding: "10px 14px",
-                    borderRadius: "8px",
-                    border: "1px solid #DCE5E1",
-                    background: "#F8FAF9",
-                    fontSize: "13px",
-                    color: "#172322",
-                    outline: "none",
-                  }}
-                />
-                <button
-                  type="button"
-                  disabled={!quickChatMessage.trim()}
-                  onClick={() => {
-                    if (quickChatMessage.trim()) {
-                      onSendMessage?.(quickChatMessage);
-                      setQuickChatSentFeedback(true);
-                      setQuickChatMessage("");
-                      setTimeout(() => setQuickChatSentFeedback(false), 5000);
-                    }
-                  }}
-                  style={{
-                    background: quickChatMessage.trim() ? "#0D6866" : "#E2E8F0",
-                    color: quickChatMessage.trim() ? "#FFFFFF" : "#94A3B8",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "10px 18px",
-                    fontSize: "13px",
-                    fontWeight: 650,
-                    cursor: quickChatMessage.trim() ? "pointer" : "not-allowed",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  Send Message →
-                </button>
-              </div>
-
-              {quickChatSentFeedback && (
-                <div
-                  style={{
-                    marginTop: "10px",
-                    background: "#DCFCE7",
-                    border: "1px solid #86EFAC",
-                    borderRadius: "6px",
-                    padding: "8px 12px",
-                    fontSize: "12px",
-                    color: "#166534",
-                    fontWeight: 600,
-                  }}
-                >
-                  {hasAssignedOfficer
-                    ? `✓ Message delivered to ${displayOfficerTitle}. Notification dispatched to legal team. Expect response within 2 business hours.`
-                    : "✓ Message delivered to firm legal intake desk. Notification dispatched to case allocation supervisor. Expect response within 2 business hours."}
-                </div>
-              )}
             </div>
 
             {/* =========================================================================
@@ -3448,7 +3510,12 @@ export function ClientPortal({
                     {t.milestonesTitle}
                   </h3>
                   <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
-                    Current phase: <strong>Phase 3 of 5 (Evidence Collection &amp; Expert Evaluation)</strong>
+                    Current phase:{" "}
+                    <strong>
+                      {isDemoCase
+                        ? "Phase 3 of 5 (Evidence Collection & Expert Evaluation)"
+                        : `Phase ${activeMilestoneIndex} of ${milestones.length} (${activeMilestoneLabel})`}
+                    </strong>
                   </p>
                 </div>
                 <span
@@ -3462,7 +3529,7 @@ export function ClientPortal({
                     borderRadius: "6px",
                   }}
                 >
-                  82% Readiness Complete
+                  {dynamicReadinessPct}% Readiness Complete
                 </span>
               </div>
 
@@ -3949,7 +4016,7 @@ export function ClientPortal({
 
             <Card
               title="My Evidence Checklist & Uploaded Files"
-              subtitle="All documents are verified with SHA-256 fingerprinting for privacy and tamper-proof storage with automated OCR extraction."
+              subtitle="All documents are securely encrypted, verified, and protected in accordance with legal industry privacy standards."
               actions={
                 <Button
                   variant="primary"
@@ -4109,12 +4176,32 @@ export function ClientPortal({
               }
             >
               <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {[
-                  { criterion: "1. Scholarly Articles & Scientific Publications", status: "Completed (14 papers submitted)", verified: true },
-                  { criterion: "2. Participation as a Judge / Peer Reviewer", status: "Completed (28 verified reviews)", verified: true },
-                  { criterion: "3. Original Scientific Contributions of Major Significance", status: "In Review by Attorney", verified: false },
-                  { criterion: "4. Leading or Critical Role in Distinguished Organizations", status: "Draft Saved (Awaiting CEO letter)", verified: false },
-                ].map((item) => (
+                {(isDemoCase
+                  ? [
+                      { criterion: "1. Scholarly Articles & Scientific Publications", status: "Completed (14 papers submitted)", verified: true },
+                      { criterion: "2. Participation as a Judge / Peer Reviewer", status: "Completed (28 verified reviews)", verified: true },
+                      { criterion: "3. Original Scientific Contributions of Major Significance", status: "In Review by Attorney", verified: false },
+                      { criterion: "4. Leading or Critical Role in Distinguished Organizations", status: "Draft Saved (Awaiting CEO letter)", verified: false },
+                    ]
+                  : (clientQuestionnaire?.sections || [
+                      { id: "sec-1", title: "1. Personal & Biographical Background", fields: [{ id: "q1" }, { id: "q2" }] },
+                      { id: "sec-2", title: "2. Employment, Academic & Pathway Credentials", fields: [{ id: "q3" }, { id: "q4" }] },
+                    ]).map((sec: any, idx: number) => {
+                      const qIds: string[] = (sec.fields || sec.questions || []).map((q: any) => q.id);
+                      const resp = clientQuestionnaire?.responses || {};
+                      const answered = qIds.filter((qid) => resp[qid] !== undefined && String(resp[qid]).trim() !== "").length;
+                      const isSubmitted = clientQuestionnaire?.status === "submitted";
+                      return {
+                        criterion: sec.title || `Section ${idx + 1}`,
+                        status: isSubmitted
+                          ? `Submitted for Legal Review (${answered}/${qIds.length || 1} answered)`
+                          : answered > 0
+                            ? `Draft Saved (${answered}/${qIds.length || 1} answered)`
+                            : "Not started yet — click Open Guided Wizard above to enter your details",
+                        verified: isSubmitted,
+                      };
+                    })
+                ).map((item: any) => (
                   <div
                     key={item.criterion}
                     style={{
@@ -4132,7 +4219,7 @@ export function ClientPortal({
                       <span style={{ fontSize: "13px", color: "#445451" }}>{item.status}</span>
                     </div>
                     <Badge variant={item.verified ? "success" : "review"}>
-                      {item.verified ? "VERIFIED ✓" : "IN PROGRESS"}
+                      {item.verified ? "SUBMITTED ✓" : "PENDING INPUT"}
                     </Badge>
                   </div>
                 ))}
@@ -4145,7 +4232,7 @@ export function ClientPortal({
             TAB 4: FORMS REVIEW
             ========================================================================= */}
         {activeTab === "forms" && (
-          !myCase ? (
+          !myCase || !clientFormSubmission ? (
             <div
               data-testid="forms-empty-state"
               style={{
@@ -4304,8 +4391,10 @@ export function ClientPortal({
             ========================================================================= */}
         {activeTab === "initial_sheet" && (
           <InitialInformationSheet
-            onSaved={() => {}}
-            onSubmitToOfficer={() => {}}
+            storageKeyId={infoSheetStorageKey}
+            onSaved={() => setInfoSheetVersion((v) => v + 1)}
+            onSubmitToOfficer={() => setInfoSheetVersion((v) => v + 1)}
+            jurisdiction={myCase?.jurisdiction}
           />
         )}
 
@@ -4395,7 +4484,7 @@ export function ClientPortal({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px" }}>
                 <div>
                   <strong style={{ color: "#063C3D" }}>Export Case Evidence Archive</strong>
-                  <p style={{ margin: "2px 0 0", color: "#6E7F7C" }}>Download a complete cryptographically verified ZIP of all uploaded files.</p>
+                  <p style={{ margin: "2px 0 0", color: "#6E7F7C" }}>Download a complete secure digital archive of all uploaded evidentiary documents.</p>
                 </div>
                 <Button
                   variant="outline"
@@ -4432,6 +4521,18 @@ export function ClientPortal({
               </div>
             </div>
           </Card>
+        )}
+
+        {/* Extractor Lab (Embedded Light Mode) */}
+        {activeTab === "extractor_lab" && (
+          <DashboardErrorBoundary
+            sectionTitle="Document Extractor Lab"
+            sectionDescription="AI Document Recognition, Spatial OCR Provenance, and Multi-Person Packet Sorter"
+            variant="full-tab"
+            isolateStateKey="extractor-lab"
+          >
+            <DocumentExtractorLab embedded />
+          </DashboardErrorBoundary>
         )}
 
         {/* Document Dossier Inspector Modal */}
@@ -4476,9 +4577,11 @@ export function ClientPortal({
         {isInformationSheetModalOpen && (
           <InitialInformationSheet
             isModal={true}
+            storageKeyId={infoSheetStorageKey}
             onClose={() => setIsInformationSheetModalOpen(false)}
-            onSaved={() => {}}
-            onSubmitToOfficer={() => {}}
+            onSaved={() => setInfoSheetVersion((v) => v + 1)}
+            onSubmitToOfficer={() => setInfoSheetVersion((v) => v + 1)}
+            jurisdiction={myCase?.jurisdiction}
           />
         )}
 

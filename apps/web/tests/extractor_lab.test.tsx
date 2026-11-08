@@ -18,28 +18,30 @@ describe("DocumentExtractorLab Standalone Component", () => {
     expect(screen.getByText(/No Authentication Required/i)).toBeDefined();
     expect(screen.getByText(/Standalone Lab/i)).toBeDefined();
     expect(
-      screen.getByText(/1-Click Realistic Presets/i)
+      screen.getByText(/Upload Document \(PDF \/ Images\)/i)
+    ).toBeDefined();
+    expect(
+      screen.getByText(/Multi-Person Packet Sorter & Splitter/i)
     ).toBeDefined();
     expect(
       screen.getByText(/Run AI Recognition & Extraction/i)
     ).toBeDefined();
   });
 
-  it("allows switching between input modes: Presets, Upload, and Text", () => {
+  it("allows switching between input modes: Upload Document and Multi-Person Packet Sorter", () => {
     render(<DocumentExtractorLab />);
 
-    const uploadTab = screen.getByText(/Upload Document/i);
-    fireEvent.click(uploadTab);
     expect(screen.getByText(/Drop document file here or click to browse/i)).toBeDefined();
 
-    const textTab = screen.getByText(/Paste Raw Text/i);
-    fireEvent.click(textTab);
-    expect(screen.getByText(/Document Content \(Raw Text \/ OCR Stream\):/i)).toBeDefined();
+    const packetTab = screen.getByText(/Multi-Person Packet Sorter & Splitter/i);
+    fireEvent.click(packetTab);
+    expect(
+      screen.getByText(/Drop a combined multi-person PDF packet here or click to browse/i)
+    ).toBeDefined();
 
-    const presetsTab = screen.getByText(/1-Click Realistic Presets/i);
-    fireEvent.click(presetsTab);
-    expect(screen.getByText(/Republic of India Passport/i)).toBeDefined();
-    expect(screen.getByText(/Chase Bank 6-Month Checking Statement/i)).toBeDefined();
+    const uploadTab = screen.getByText(/Upload Document \(PDF \/ Images\)/i);
+    fireEvent.click(uploadTab);
+    expect(screen.getByText(/Drop document file here or click to browse/i)).toBeDefined();
   });
 
   it("executes analysis and renders structured extracted fields, recognition, and JSON tabs", async () => {
@@ -124,13 +126,19 @@ describe("DocumentExtractorLab Standalone Component", () => {
       });
     }) as any;
 
-    render(<DocumentExtractorLab />);
+    const { container } = render(<DocumentExtractorLab />);
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const sampleFile = new File(["%PDF-1.4 passport"], "PASSPORT_SHARMA_AARAV.pdf", {
+      type: "application/pdf",
+    });
+    fireEvent.change(fileInput, { target: { files: [sampleFile] } });
 
     const runBtn = screen.getByText(/Run AI Recognition & Extraction/i);
     fireEvent.click(runBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/Passports and Identity Documents/i)).toBeDefined();
+      expect(screen.getAllByText(/Passports and Identity Documents/i).length).toBeGreaterThan(0);
       expect(screen.getByText(/Structured Fields \(2\)/i)).toBeDefined();
     });
 
@@ -142,5 +150,118 @@ describe("DocumentExtractorLab Standalone Component", () => {
     const jsonTab = screen.getByText(/JSON Schema Export/i);
     fireEvent.click(jsonTab);
     expect(screen.getByText(/Full Interoperable API Response Payload/i)).toBeDefined();
+  });
+
+  it("provides deterministic client-side offline fallback for sortDocumentPacket with valid decodable base64 binaries", async () => {
+    // Simulate completely offline backend network error
+    global.fetch = vi.fn().mockRejectedValue(new Error("Failed to fetch"));
+
+    const familyFile = new File(["%PDF-1.4 family content"], "family_test_packet.pdf", {
+      type: "application/pdf",
+    });
+
+    const result = await extractorApi.sortDocumentPacket(familyFile);
+
+    expect(result.status).toBe("success");
+    expect(result.total_persons_detected).toBe(2);
+    expect(result.person_folders.length).toBe(2);
+
+    const primaryFolder = result.person_folders[0];
+    expect(primaryFolder.canonical_name).toBe("Aarav Sharma");
+    expect(primaryFolder.documents.length).toBeGreaterThan(0);
+    expect(primaryFolder.id_anchors.passport).toContain("Z8492014");
+
+    const spouseFolder = result.person_folders[1];
+    expect(spouseFolder.canonical_name).toBe("Ananya Patel");
+    expect(spouseFolder.documents.length).toBeGreaterThan(0);
+
+    // Verify valid base64 strings that decode without DOMExceptions
+    expect(result.zip_archive_base64).toBeDefined();
+    expect(() => atob(result.zip_archive_base64!)).not.toThrow();
+
+    const splitDoc = primaryFolder.documents[0];
+    expect(splitDoc.pdf_base64).toBeDefined();
+    expect(() => atob(splitDoc.pdf_base64!)).not.toThrow();
+  });
+
+  it("runs unified pipeline on packet sorter trigger and synchronizes deep inspection tabs on person/document selection", async () => {
+    // Offline simulation for end-to-end fallback verification
+    global.fetch = vi.fn().mockRejectedValue(new Error("Backend unreachable"));
+
+    const { container } = render(<DocumentExtractorLab />);
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const packetFile = new File(["%PDF-1.4 family marriage packet"], "Sharma_Family_Packet.pdf", {
+      type: "application/pdf",
+    });
+    fireEvent.change(fileInput, { target: { files: [packetFile] } });
+
+    // Click "Sort & Split Multi-Person PDF Packet"
+    const sortBtn = screen.getByText(/Sort & Split Multi-Person PDF Packet/i);
+    fireEvent.click(sortBtn);
+
+    // Await packet sorter person folders rendering
+    await waitFor(() => {
+      expect(screen.getByText(/Sorted Person Folders: Sharma_Family_Packet.pdf/i)).toBeDefined();
+    });
+
+    // Verify both person folders are detected and listed
+    expect(screen.getAllByText(/Aarav Sharma/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Ananya Patel/i).length).toBeGreaterThan(0);
+
+    // Verify unified pipeline also populated the deep AI inspector
+    await waitFor(() => {
+      expect(screen.getByText(/Active Document Inspector:/i)).toBeDefined();
+      expect(screen.getAllByText(/Structured Fields/i).length).toBeGreaterThan(0);
+    });
+
+    // Select Ananya Patel's folder
+    const ananyaFolderBtn = screen.getAllByText(/Ananya Patel/i)[0];
+    fireEvent.click(ananyaFolderBtn);
+
+    // Verify that the right column documents updated for Ananya Patel
+    await waitFor(() => {
+      expect(screen.getAllByText(/ANANYA_PATEL/i).length).toBeGreaterThan(0);
+    });
+
+    // Find and click the "Inspect Entities" button for a document in Ananya's folder
+    const inspectButtons = screen.getAllByRole("button", { name: /Inspect Entities|✓ Inspecting/i });
+    expect(inspectButtons.length).toBeGreaterThan(0);
+    fireEvent.click(inspectButtons[0]);
+
+    // Verify active inspector synchronization banner reflects the selected document
+    expect(screen.getByText(/Synchronized with Packet Sorter Tree/i)).toBeDefined();
+  });
+
+  it("handles split PDF and ZIP archive downloads without network or decoding errors", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("Offline"));
+
+    const urlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock-download-url");
+    const revokeSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    const { container } = render(<DocumentExtractorLab />);
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const sampleFile = new File(["dummy packet"], "family_download_test.pdf", {
+      type: "application/pdf",
+    });
+    fireEvent.change(fileInput, { target: { files: [sampleFile] } });
+
+    const sortBtn = screen.getByText(/Sort & Split Multi-Person PDF Packet/i);
+    fireEvent.click(sortBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Download All Person Folders \(\.ZIP\)/i)).toBeDefined();
+    });
+
+    const zipBtn = screen.getByText(/Download All Person Folders \(\.ZIP\)/i);
+    expect(() => fireEvent.click(zipBtn)).not.toThrow();
+
+    const downloadPdfButtons = screen.getAllByText(/⬇️ Download PDF/i);
+    expect(downloadPdfButtons.length).toBeGreaterThan(0);
+    expect(() => fireEvent.click(downloadPdfButtons[0])).not.toThrow();
+
+    urlSpy.mockRestore();
+    revokeSpy.mockRestore();
   });
 });

@@ -349,7 +349,7 @@ export function DocumentoPreview() {
                     {bentoExhibitIdx === 0 ? "Exhibit A-1 • 2 pgs" : "Exhibit C-1 • 14 pgs"}
                   </span>
                   <span style={{ color: "#0D6866", fontWeight: 650 }}>
-                    {ocrConfidence.toFixed(1)}% OCR Confidence
+                    {ocrConfidence.toFixed(1)}% AI Extraction Confidence
                   </span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -359,7 +359,7 @@ export function DocumentoPreview() {
                     min="92.0"
                     max="99.9"
                     step="0.1"
-                    aria-label="OCR Confidence Threshold"
+                    aria-label="AI Confidence Threshold"
                     value={ocrConfidence}
                     onChange={(e) => setOcrConfidence(parseFloat(e.target.value))}
                     style={{
@@ -997,7 +997,7 @@ export function DocumentoPreview() {
 
                   <div style={{ background: "#FFFFFF", borderRadius: "6px", border: "1px solid #DCE5E1", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#445451" }}>
                     <div style={{ marginBottom: "3px" }}>• <strong>Vault Storage:</strong> Encrypted AES-256 at Rest</div>
-                    <div style={{ marginBottom: "3px" }}>• <strong>OCR Status:</strong> Parsed &amp; Coordinates Indexed</div>
+                    <div style={{ marginBottom: "3px" }}>• <strong>AI Status:</strong> Parsed &amp; Coordinates Indexed</div>
                     <div>• <strong>Integrity Audit:</strong> Immutable Hash Registered</div>
                   </div>
 

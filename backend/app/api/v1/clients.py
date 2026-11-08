@@ -211,13 +211,11 @@ def list_clients(
     ctx: AuthContext = Depends(require_permission("case:read")),
     db: Session = Depends(get_db),
 ):
-    """Lists retained clients strictly within the caller's organization, or all clients if master admin."""
+    """Lists retained clients strictly within the caller's organization."""
     if ctx.is_retained_client():
         raise PermissionDeniedError("Retained clients cannot browse firm client directories")
 
-    query = db.query(ClientProfile)
-    if not ctx.is_master_admin() and str(ctx.organization_id) != "11111111-1111-1111-1111-111111111111":
-        query = query.filter(ClientProfile.organization_id == ctx.organization_id)
+    query = db.query(ClientProfile).filter(ClientProfile.organization_id == ctx.organization_id)
 
     clients = query.order_by(ClientProfile.created_at.desc()).all()
     return [
@@ -255,9 +253,9 @@ def create_client_profile(
     now = datetime.now(timezone.utc)
 
     # 1. Resolve unique organization_id
-    target_org_id = payload.organization_id or ctx.organization_id
-    if not target_org_id or str(target_org_id) == "11111111-1111-1111-1111-111111111111":
-        target_org_id = ctx.organization_id or uuid.uuid4()
+    if payload.organization_id and payload.organization_id != ctx.organization_id:
+        ctx.assert_organization_access(payload.organization_id)
+    target_org_id = ctx.organization_id
 
     org = db.query(Organization).filter(Organization.id == target_org_id).first()
     if not org:

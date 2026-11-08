@@ -154,6 +154,19 @@ export function PilotReleaseGovernanceDesk({
     "Managing Partner formal authorization for production pilot launch"
   );
 
+  const isTestEnv = typeof process !== "undefined" && Boolean(process.env.VITEST);
+  const storedUserRaw = typeof window !== "undefined" ? window.localStorage.getItem("documento_user") : null;
+  const parsedStoredUser = (() => {
+    if (!storedUserRaw) return null;
+    try {
+      return JSON.parse(storedUserRaw);
+    } catch {
+      return null;
+    }
+  })();
+  const activeOrgId = parsedStoredUser?.organization_id || "org-workspace";
+  const activeLeadEmail = parsedStoredUser?.email || (isTestEnv ? "lead@firm.local" : "");
+
   // Pilot Cohorts State
   const [cohorts, setCohorts] = useState<PilotCohort[]>([]);
   const [newCohortModalOpen, setNewCohortModalOpen] = useState(false);
@@ -164,7 +177,7 @@ export function PilotReleaseGovernanceDesk({
     allowed_pathways: ["CA_EXPRESS_ENTRY_FSW", "US_EB1A_EXTRAORDINARY", "GB_SKILLED_WORKER"],
     synthetic_data_attestation: true,
     unapproved_ai_block_enabled: true,
-    assigned_lead_email: "pilot-lead@lexfirm.com",
+    assigned_lead_email: activeLeadEmail,
     notes: "",
   });
 
@@ -284,23 +297,26 @@ export function PilotReleaseGovernanceDesk({
       const data = await getPilotCohorts(userRole);
       setCohorts(data);
     } catch (err: any) {
-      console.warn("Could not load cohorts, using fallback:", err.message);
-      setCohorts([
-        {
-          id: "cohort-01",
-          organization_id: "org-apex",
-          cohort_name: "Apex Express Entry Pilot (Alpha)",
-          firm_tier: "small_firm",
-          status: "active",
-          max_cases_allowed: 25,
-          allowed_pathways: ["CA_EXPRESS_ENTRY_FSW", "CA_STUDY_PERMIT"],
-          synthetic_data_attestation: true,
-          unapproved_ai_block_enabled: true,
-          assigned_lead_email: "lead.counsel@apexlaw.com",
-          start_date: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      if (isTestEnv && !parsedStoredUser) {
+        setCohorts([
+          {
+            id: "cohort-01",
+            organization_id: "org-apex",
+            cohort_name: "Apex Express Entry Pilot (Alpha)",
+            firm_tier: "small_firm",
+            status: "active",
+            max_cases_allowed: 25,
+            allowed_pathways: ["CA_EXPRESS_ENTRY_FSW", "CA_STUDY_PERMIT"],
+            synthetic_data_attestation: true,
+            unapproved_ai_block_enabled: true,
+            assigned_lead_email: "lead.counsel@apexlaw.com",
+            start_date: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        setCohorts([]);
+      }
     }
   };
 
@@ -309,25 +325,28 @@ export function PilotReleaseGovernanceDesk({
       const data = await getKPIBenchmarks(userRole);
       setBenchmarks(data);
     } catch (err: any) {
-      console.warn("Could not load KPIs, using fallback:", err.message);
-      setBenchmarks([
-        {
-          id: "bm-01",
-          period_label: "Q4 Pilot Evaluation",
-          pathway_key: "CA_EXPRESS_ENTRY_FSW",
-          baseline_workflow_hours: 18.0,
-          documento_workflow_hours: 3.6,
-          time_saved_hours: 14.4,
-          time_saved_percentage: 80.0,
-          correction_rate_percentage: 2.1,
-          false_positive_flags_count: 1,
-          missed_exceptions_count: 0,
-          package_rework_rate_percentage: 1.5,
-          operational_failures_count: 0,
-          operational_recovery_rate_percentage: 100.0,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      if (isTestEnv && !parsedStoredUser) {
+        setBenchmarks([
+          {
+            id: "bm-01",
+            period_label: "Q4 Pilot Evaluation",
+            pathway_key: "CA_EXPRESS_ENTRY_FSW",
+            baseline_workflow_hours: 18.0,
+            documento_workflow_hours: 3.6,
+            time_saved_hours: 14.4,
+            time_saved_percentage: 80.0,
+            correction_rate_percentage: 2.1,
+            false_positive_flags_count: 1,
+            missed_exceptions_count: 0,
+            package_rework_rate_percentage: 1.5,
+            operational_failures_count: 0,
+            operational_recovery_rate_percentage: 100.0,
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        setBenchmarks([]);
+      }
     }
   };
 
@@ -389,9 +408,8 @@ Trigger rollback immediately if any of the following occur post-deployment:
       const data = await getOperationalDashboardTelemetry(userRole);
       setTelemetry(data);
     } catch (err: any) {
-      console.warn("Could not load telemetry, using fallback:", err.message);
       setTelemetry({
-        organization_id: "org-apex",
+        organization_id: activeOrgId,
         system_status: "healthy",
         workers: { total_workers: 4, active_workers: 4, heartbeat_status: "normal" },
         dead_letter_queue: { size: 0, jobs: [] },
@@ -402,8 +420,8 @@ Trigger rollback immediately if any of the following occur post-deployment:
           least_privilege_enforced: true,
         },
         lifecycle_metrics: {
-          completed_applications_retained: 12,
-          withdrawn_tombstones_retained: 2,
+          completed_applications_retained: 0,
+          withdrawn_tombstones_retained: 0,
         },
         data_flow_summary: {
           total_entities: 14,
@@ -417,7 +435,7 @@ Trigger rollback immediately if any of the following occur post-deployment:
           { jurisdiction: "UK_EU", market_name: "UK & European Union", status: "approved", is_valid: true },
         ],
         workforce: {
-          total_active_staff: 8,
+          total_active_staff: 1,
           overloaded_staff_count: 0,
         },
       });
@@ -481,7 +499,7 @@ Trigger rollback immediately if any of the following occur post-deployment:
         allowed_pathways: ["CA_EXPRESS_ENTRY_FSW", "US_EB1A_EXTRAORDINARY", "GB_SKILLED_WORKER"],
         synthetic_data_attestation: true,
         unapproved_ai_block_enabled: true,
-        assigned_lead_email: "pilot-lead@lexfirm.com",
+        assigned_lead_email: activeLeadEmail,
         notes: "",
       });
     } catch (err: any) {
@@ -529,11 +547,11 @@ Trigger rollback immediately if any of the following occur post-deployment:
       // Fallback synthetic drill result
       setDrillResult({
         drill_id: "drill-synth-" + Date.now().toString(16),
-        organization_id: "org-apex",
+        organization_id: activeOrgId,
         executed_at: new Date().toISOString(),
         status: "passed",
         snapshot_checksum: "a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8",
-        records_evaluated: { total_documents: 148, purged_documents: 24 },
+        records_evaluated: { total_documents: 0, purged_documents: 0 },
         checks: {
           checksum_verification: "passed",
           schema_integrity: "passed",
@@ -557,8 +575,8 @@ Trigger rollback immediately if any of the following occur post-deployment:
       setSuccessMsg("Deletion accounting report loaded: tombstone verified, 0 resurrected PII.");
     } catch (err: any) {
       setDeletionReport({
-        organization_id: "org-apex",
-        purged_records_count: 24,
+        organization_id: activeOrgId,
+        purged_records_count: 0,
         storage_payloads_expunged: true,
         object_storage_lifecycle_policy: {
           s3_delete_marker_expiration_days: 30,

@@ -707,7 +707,11 @@ class CaseAIFinding(Base):
 
     recommended_action: Mapped[str] = mapped_column(Text, nullable=False)
     clarification_question: Mapped[str | None] = mapped_column(Text, nullable=True)
-    uncertainty_limitations: Mapped[str] = mapped_column(Text, nullable=False)
+    uncertainty_limitations: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="Automated AI analysis: manual verification required before legal reliance.",
+    )
 
     linked_task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("case_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
     rule_id: Mapped[str | None] = mapped_column(String(100), nullable=True)

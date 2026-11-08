@@ -217,7 +217,7 @@ export const FALLBACK_VISA_FILE_UPDATES: VisaFileUpdateItem[] = [
     timestamp: "October 03, 2026 • 09:00 AM",
     relativeTime: "12 days ago",
     category: "officer_action",
-    title: "Representation Contract & Trust Escrow Retainer Completed",
+    title: "Representation Contract & Trust Retainer Completed",
     officialReference: "Retainer #RET-2026-8819",
     statusBadge: {
       label: "Retainer Active",
@@ -364,7 +364,7 @@ export function VisaFileUpdatesView({
           },
           officerName: resolvedOfficerLabel,
           officerRole: "Supervising Case Manager",
-          summary: `Client onboarding completed. Initial case file opened for ${myCase.visa_category}. Evidentiary document gathering in progress.`,
+          summary: `Initial case file opened for ${myCase.visa_category}. Awaiting client intake questionnaire and evidentiary document uploads.`,
           legalSignificance: `Establishes formal client representation and legal confidentiality under counsel supervision.`,
           actionRequired: false,
         },

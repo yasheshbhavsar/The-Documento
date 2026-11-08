@@ -208,9 +208,15 @@ export function WaitingStateBanner({
           </div>
 
           {waiting_on_client.length === 0 ? (
-            <p style={{ margin: 0, fontSize: "13px", color: "#176B50" }}>
-              ✓ All required evidentiary items submitted. Nothing currently pending on your end!
-            </p>
+            data?.onboarding_completed || profile_completeness_percentage > 0 ? (
+              <p style={{ margin: 0, fontSize: "13px", color: "#176B50" }}>
+                ✓ All required evidentiary items submitted. Nothing currently pending on your end!
+              </p>
+            ) : (
+              <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
+                No intake or document items have been completed yet. Complete your initial intake questionnaire and document uploads to begin.
+              </p>
+            )
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {waiting_on_client.map((item) => (

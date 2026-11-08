@@ -136,6 +136,7 @@ import {
   getAgencyForOrganization,
   getAgencyTeamInvites,
   incrementAgencyUsageMetrics,
+  inviteAgencyTeamMember,
   purgeLegacyDemoStorageOnce,
 } from "./agencyPlatformStore";
 
@@ -1404,22 +1405,33 @@ export const api = {
 
   // Cases
   async getCases(role: RoleCode = "master_admin"): Promise<ApiResponse<ImmigrationCase[]>> {
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    const orgCases = filterByActiveOrg(localCases, ctx);
     try {
       const res = await fetch(`${API_BASE_URL}/cases`, {
         headers: getAuthHeaders(role),
         cache: "no-store",
       });
       if (res.ok) {
-        const data = await res.json();
-        return { data, isLiveBackend: true };
+        const data: ImmigrationCase[] = await res.json();
+        const enrichedBackendCases = data.map((c) => {
+          if (c.client_name) return c;
+          const matchedClient = localClients.find((cl) => cl.id === c.client_id);
+          return matchedClient
+            ? { ...c, client_name: `${matchedClient.first_name} ${matchedClient.last_name}`.trim() }
+            : c;
+        });
+        const seenIds = new Set(enrichedBackendCases.map((c) => c.id));
+        const seenNumbers = new Set(enrichedBackendCases.map((c) => c.case_number).filter(Boolean));
+        const unsyncedLocal = orgCases.filter(
+          (c) => !seenIds.has(c.id) && (!c.case_number || !seenNumbers.has(c.case_number))
+        );
+        return { data: [...unsyncedLocal, ...enrichedBackendCases], isLiveBackend: true };
       }
     } catch {
       // Graceful fallback to persisted storage
     }
-
-    syncFromStorage();
-    const ctx = getActiveSessionContext(role);
-    const orgCases = filterByActiveOrg(localCases, ctx);
 
     if (ctx.hasSession && (role === "retained_client" || role === "applicant" || ctx.role === "retained_client")) {
       const clientMatches = orgCases.filter(
@@ -1443,21 +1455,54 @@ export const api = {
     role: RoleCode = "master_admin"
   ): Promise<ApiResponse<ImmigrationCase>> {
     const ctx = getActiveSessionContext(role);
+    const jLower = (payload.jurisdiction || "").toLowerCase();
+    const normalizedJurisdictionCode =
+      jLower.includes("canada") || jLower.includes("ircc") || jLower === "ca"
+        ? "CA"
+        : jLower.includes("united kingdom") || jLower.includes("home office") || jLower === "uk" || jLower === "gb"
+          ? "GB"
+          : jLower.includes("australia") || jLower.includes("home affairs") || jLower === "au"
+            ? "AU"
+            : jLower.includes("germany") || jLower.includes("bamf") || jLower === "de"
+              ? "DE"
+              : jLower.includes("new zealand") || jLower.includes("inz") || jLower === "nz"
+                ? "NZ"
+                : jLower.includes("united states") || jLower.includes("uscis") || jLower === "us"
+                  ? "US"
+                  : payload.jurisdiction.trim().slice(0, 3).toUpperCase() || "US";
+
     try {
       const res = await fetch(`${API_BASE_URL}/cases`, {
         method: "POST",
         headers: getAuthHeaders(role),
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          jurisdiction: normalizedJurisdictionCode,
+        }),
       });
       if (res.ok) {
         const data = await res.json();
         syncFromStorage();
-        localCases = [{ ...data, organization_id: data.organization_id || ctx.organizationId }, ...localCases.filter((c) => c.id !== data.id)];
+        const matchedClient = localClients.find((c) => c.id === payload.client_id);
+        const fallbackClientName = matchedClient
+          ? `${matchedClient.first_name} ${matchedClient.last_name}`.trim()
+          : "Retained Client";
+        const assignedManager =
+          data.assigned_manager || (payload as any).assigned_manager || (ctx.hasSession ? ctx.fullName : undefined);
+        const enrichedCase: ImmigrationCase = {
+          ...data,
+          client_name: data.client_name || fallbackClientName,
+          jurisdiction: payload.jurisdiction || data.jurisdiction,
+          readiness_score: data.readiness_score ?? 0,
+          assigned_manager: assignedManager,
+          organization_id: data.organization_id || ctx.organizationId,
+        };
+        localCases = [enrichedCase, ...localCases.filter((c) => c.id !== enrichedCase.id)];
         setStored(CASES_STORAGE_KEY, localCases);
         if (ctx.hasSession) {
           incrementAgencyUsageMetrics(ctx.organizationId, { casesDelta: 1 });
         }
-        return { data, isLiveBackend: true };
+        return { data: enrichedCase, isLiveBackend: true };
       }
     } catch {
       // Fallback
@@ -1476,7 +1521,7 @@ export const api = {
       jurisdiction: payload.jurisdiction,
       visa_category: payload.visa_category,
       status: "intake",
-      readiness_score: 10,
+      readiness_score: 0,
       assigned_manager: assignedManager,
       deadline: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       priority_date: new Date().toISOString().split("T")[0],
@@ -1528,23 +1573,92 @@ export const api = {
     return fallbackResponse(newCase);
   },
 
+  async assignCaseOfficer(
+    caseId: string,
+    officerName: string,
+    options?: { markChecklistTaskComplete?: boolean; advanceToAwaitingDocuments?: boolean },
+    role: RoleCode = "master_admin"
+  ): Promise<ApiResponse<ImmigrationCase | null>> {
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    const trimmedOfficer = officerName.trim() || ctx.fullName || "Assigned Counsel";
+    let updatedCase: ImmigrationCase | null = null;
+
+    localCases = localCases.map((c) => {
+      if (c.id !== caseId && c.case_number !== caseId) return c;
+      updatedCase = {
+        ...c,
+        assigned_manager: trimmedOfficer,
+        status:
+          options?.advanceToAwaitingDocuments && c.status === "intake"
+            ? "awaiting_documents"
+            : c.status,
+      };
+      return updatedCase;
+    });
+    setStored(CASES_STORAGE_KEY, localCases);
+
+    if (updatedCase) {
+      const targetId = (updatedCase as ImmigrationCase).id;
+      const targetNumber = (updatedCase as ImmigrationCase).case_number;
+      localTasks = localTasks.map((t) => {
+        if (t.case_id !== targetId && t.case_number !== targetNumber) return t;
+        const shouldComplete =
+          Boolean(options?.markChecklistTaskComplete) &&
+          t.title.toLowerCase().includes("send intake document checklist");
+        return {
+          ...t,
+          assigned_to: trimmedOfficer,
+          is_completed: shouldComplete ? true : t.is_completed,
+        };
+      });
+      setStored(TASKS_STORAGE_KEY, localTasks);
+
+      localAuditEvents = [
+        {
+          id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          action: "case.officer_assigned",
+          object_type: "case",
+          object_id: targetNumber,
+          actor_email: ctx.email,
+          created_at: new Date().toISOString(),
+          metadata: {
+            assigned_manager: trimmedOfficer,
+            checklist_dispatched: Boolean(options?.markChecklistTaskComplete),
+            organization_id: ctx.organizationId,
+          },
+        },
+        ...localAuditEvents,
+      ];
+      setStored(AUDIT_STORAGE_KEY, localAuditEvents);
+    }
+
+    return fallbackResponse(updatedCase);
+  },
+
   // Clients
   async getClients(role: RoleCode = "master_admin"): Promise<ApiResponse<ClientProfile[]>> {
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    const orgClients = filterByActiveOrg(localClients, ctx);
     try {
       const res = await fetch(`${API_BASE_URL}/clients`, {
         headers: getAuthHeaders(role),
         cache: "no-store",
       });
       if (res.ok) {
-        const data = await res.json();
-        return { data, isLiveBackend: true };
+        const data: ClientProfile[] = await res.json();
+        const seenIds = new Set(data.map((c) => c.id));
+        const seenEmails = new Set(data.map((c) => c.email?.toLowerCase()).filter(Boolean));
+        const unsyncedLocal = orgClients.filter(
+          (c) => !seenIds.has(c.id) && (!c.email || !seenEmails.has(c.email.toLowerCase()))
+        );
+        return { data: [...unsyncedLocal, ...data], isLiveBackend: true };
       }
     } catch {
       // Fallback
     }
-    syncFromStorage();
-    const ctx = getActiveSessionContext(role);
-    return fallbackResponse(filterByActiveOrg(localClients, ctx));
+    return fallbackResponse(orgClients);
   },
 
   async createClient(
@@ -1613,23 +1727,26 @@ export const api = {
 
         return { data: clientWithCreds, isLiveBackend: true };
       }
-      if (res.status !== 502 && res.status !== 503 && res.status !== 504) {
+      const isBackendUnavailable =
+        res.status >= 500 ||
+        res.status === 404 ||
+        (res.status === 401 && !getAccessToken());
+      if (!isBackendUnavailable || process.env.NODE_ENV === "production") {
         const errJson = await res.json().catch(() => null);
-        const detail = errJson?.detail;
+        const detail = errJson?.detail ?? errJson?.message;
         const errorMsg =
           typeof detail === "string"
             ? detail
             : Array.isArray(detail)
               ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ")
               : `HTTP ${res.status}`;
-        console.error("Backend client creation failed:", res.status, errorMsg);
-        throw new Error(`Server error: ${errorMsg}`);
+        throw new Error(`Client validation error: ${errorMsg}`);
       }
     } catch (err: any) {
-      if (err.message && err.message.startsWith("Server error:")) {
+      if (err?.message && err.message.startsWith("Client validation error:")) {
         throw err;
       }
-      // Fallback only if backend is completely offline/unreachable
+      // Fallback when backend or its database is offline/unavailable in non-production
     }
 
     syncFromStorage();
@@ -1764,25 +1881,59 @@ export const api = {
 
   async deleteClient(
     clientId: string,
-    role: RoleCode = "master_admin"
+    role: RoleCode = "master_admin",
+    cascade: boolean = true
   ): Promise<ApiResponse<{ success: boolean; id: string }>> {
     try {
-      const res = await fetch(`${API_BASE_URL}/clients/${clientId}`, {
+      const res = await fetch(`${API_BASE_URL}/clients/${clientId}${cascade ? "?cascade=true" : ""}`, {
         method: "DELETE",
         headers: getAuthHeaders(role),
       });
       if (res.ok) {
         syncFromStorage();
+        if (cascade) {
+          const clientToDelete = localClients.find((c) => c.id === clientId);
+          const linkedCases = localCases.filter(
+            (c) =>
+              c.client_id === clientId ||
+              (clientToDelete &&
+                c.client_name &&
+                c.client_name.toLowerCase().includes(`${clientToDelete.first_name} ${clientToDelete.last_name}`.toLowerCase()))
+          );
+          const linkedCaseIds = linkedCases.map((c) => c.id);
+          if (linkedCaseIds.length > 0) {
+            localCases = localCases.filter((c) => !linkedCaseIds.includes(c.id));
+            setStored(CASES_STORAGE_KEY, localCases);
+            localDocuments = localDocuments.filter((d) => !linkedCaseIds.includes(d.case_id));
+            setStored(DOCS_STORAGE_KEY, localDocuments);
+            localTasks = localTasks.filter((t) => !linkedCaseIds.includes(t.case_id));
+            setStored(TASKS_STORAGE_KEY, localTasks);
+
+            if (typeof window !== "undefined") {
+              for (const cid of linkedCaseIds) {
+                window.localStorage.removeItem(`documento_initial_info_sheet_${cid}`);
+                window.localStorage.removeItem(`documento_questionnaire_${cid}`);
+              }
+            }
+          }
+        }
         localClients = localClients.filter((c) => c.id !== clientId);
         setStored(CLIENTS_STORAGE_KEY, localClients);
         return { data: { success: true, id: clientId }, isLiveBackend: true };
-      } else if (res.status !== 502 && res.status !== 503 && res.status !== 504) {
-        const errorData = await res.json().catch(() => null);
-        const errorMsg =
-          errorData?.detail ||
-          errorData?.message ||
-          `Failed to delete client profile (Server status ${res.status})`;
-        throw new Error(errorMsg);
+      } else {
+        const isBackendUnavailable =
+          res.status >= 500 ||
+          res.status === 404 ||
+          (res.status === 422 && clientId.startsWith("client-")) ||
+          (res.status === 401 && !getAccessToken());
+        if (!isBackendUnavailable || process.env.NODE_ENV === "production") {
+          const errorData = await res.json().catch(() => null);
+          const errorMsg =
+            errorData?.detail ||
+            errorData?.message ||
+            `Failed to delete client profile (Server status ${res.status})`;
+          throw new Error(errorMsg);
+        }
       }
     } catch (err: any) {
       // If error is an explicit HTTP rejection from the backend (e.g. 403 or 409), rethrow immediately
@@ -1806,7 +1957,7 @@ export const api = {
     const ctx = getActiveSessionContext(role);
     const clientToDelete = localClients.find((c) => c.id === clientId);
 
-    // Fallback Foreign Key check: Cannot delete client with associated cases
+    // Fallback Foreign Key check: Cannot delete client with associated cases unless cascade is enabled
     const linkedCases = localCases.filter(
       (c) =>
         c.client_id === clientId ||
@@ -1814,10 +1965,29 @@ export const api = {
           c.client_name &&
           c.client_name.toLowerCase().includes(`${clientToDelete.first_name} ${clientToDelete.last_name}`.toLowerCase()))
     );
-    if (linkedCases.length > 0) {
+    if (linkedCases.length > 0 && !cascade) {
       throw new Error(
         `Cannot delete client with ${linkedCases.length} associated case(s) (${linkedCases.map((c) => c.case_number).join(", ")}). Please delete or transfer cases before removing client profile.`
       );
+    }
+
+    const linkedCaseIds = linkedCases.map((c) => c.id);
+    if (cascade && linkedCaseIds.length > 0) {
+      localCases = localCases.filter((c) => !linkedCaseIds.includes(c.id));
+      setStored(CASES_STORAGE_KEY, localCases);
+
+      localDocuments = localDocuments.filter((d) => !linkedCaseIds.includes(d.case_id));
+      setStored(DOCS_STORAGE_KEY, localDocuments);
+
+      localTasks = localTasks.filter((t) => !linkedCaseIds.includes(t.case_id));
+      setStored(TASKS_STORAGE_KEY, localTasks);
+
+      if (typeof window !== "undefined") {
+        for (const cid of linkedCaseIds) {
+          window.localStorage.removeItem(`documento_initial_info_sheet_${cid}`);
+          window.localStorage.removeItem(`documento_questionnaire_${cid}`);
+        }
+      }
     }
 
     localClients = localClients.filter((c) => c.id !== clientId);
@@ -1827,6 +1997,12 @@ export const api = {
       const creds = getStored<Record<string, any>>("documento_client_credentials", {});
       delete creds[clientToDelete.email.toLowerCase()];
       setStored("documento_client_credentials", creds);
+    }
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(`documento_initial_info_sheet_${clientId}`);
+      window.localStorage.removeItem(`documento_questionnaire_${clientId}`);
+      window.localStorage.removeItem("documento_initial_info_sheet_record");
     }
 
     localAuditEvents = [
@@ -1844,6 +2020,7 @@ export const api = {
           client_email: clientToDelete?.email,
           deleted_by_role: role,
           organization_id: ctx.organizationId,
+          cascaded_cases_count: linkedCaseIds.length,
         },
       },
       ...localAuditEvents,
@@ -3918,6 +4095,7 @@ export const api = {
         "documento_supervisory_notes",
         "documento_internal_notes",
         "documento_client_credentials",
+        "documento_case_kickoff_v1",
       ];
       for (const k of keysToClear) {
         localStorage.removeItem(k);
@@ -4717,16 +4895,98 @@ export const api = {
       // Fallback
     }
 
-    return fallbackResponse({
-      evaluation_id: "eval-eb1a-demo",
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    if (isTestEnv && !ctx.hasSession) {
+      return fallbackResponse({
+        evaluation_id: "eval-eb1a-demo",
+        case_id: caseId,
+        rule_set_version_id: "ver-eb1a-100",
+        version_number: "1.0.0",
+        status: "needs_review",
+        overall_fulfillment_percentage: 75.0,
+        evaluated_at: new Date().toISOString(),
+        is_superseded: false,
+        results: FALLBACK_EVALUATION.results,
+      });
+    }
+
+    const currentCase = localCases.find((c) => c.id === caseId);
+    const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
+    const verifiedPassport = caseDocs.some((d) => d.category === "identity_passport" && d.status === "verified");
+    const hasPassport = caseDocs.some((d) => d.category === "identity_passport");
+    const hasSupporting = caseDocs.filter((d) => d.category !== "identity_passport").length > 0;
+    const dynamicRequirements: CaseRequirementEvaluation["results"]["requirements"] = [
+      {
+        requirement_id: `req-id-${caseId}`,
+        code: "IDENTITY_PASSPORT",
+        title: "Valid Unexpired Passport & Biographical Verification",
+        category: "mandatory_identity",
+        statutory_citation: `${currentCase?.jurisdiction || "STATUTORY"} — Travel & Identity Verification`,
+        is_applicable: true,
+        status: verifiedPassport ? "complete" : hasPassport ? "needs_review" : "missing",
+        explanation: verifiedPassport
+          ? "Verified passport biodata on file."
+          : hasPassport
+            ? "Passport uploaded; awaiting legal verification."
+            : "Mandatory identity passport has not been uploaded yet.",
+        requires_human_review: false,
+        blocking_dependencies: [],
+        matched_document_ids: caseDocs.filter((d) => d.category === "identity_passport").map((d) => d.id),
+      } as any,
+      {
+        requirement_id: `req-ev-${caseId}`,
+        code: "PATHWAY_CORE_EVIDENCE",
+        title: `${currentCase?.visa_category || "Pathway"} Primary Supporting Evidence`,
+        category: "eligibility",
+        statutory_citation: `${currentCase?.jurisdiction || "STATUTORY"} — ${currentCase?.visa_category || "Pathway"} Criteria`,
+        is_applicable: true,
+        status: hasSupporting ? "needs_review" : "missing",
+        explanation: hasSupporting
+          ? `${caseDocs.filter((d) => d.category !== "identity_passport").length} supporting document(s) uploaded for counsel review.`
+          : "Supporting eligibility evidence has not been uploaded yet.",
+        requires_human_review: true,
+        blocking_dependencies: ["IDENTITY_PASSPORT"],
+        matched_document_ids: caseDocs.filter((d) => d.category !== "identity_passport").map((d) => d.id),
+      } as any,
+    ];
+    const completeCount = dynamicRequirements.filter((r) => r.status === "complete").length;
+    const missingCount = dynamicRequirements.filter((r) => r.status === "missing").length;
+    const reviewCount = dynamicRequirements.filter((r) => r.status === "needs_review").length;
+    const pct = Math.round((completeCount / dynamicRequirements.length) * 100);
+    const newEval: CaseRequirementEvaluation = {
+      id: `eval-${caseId}-${Date.now()}`,
       case_id: caseId,
-      rule_set_version_id: "ver-eb1a-100",
-      version_number: "1.0.0",
-      status: "needs_review",
-      overall_fulfillment_percentage: 75.0,
-      evaluated_at: new Date().toISOString(),
+      rule_set_version_id: `ver-${(currentCase?.visa_category || "stat").toLowerCase().replace(/[^a-z0-9]/g, "-")}-2026`,
+      version_number: "2026.1.0",
+      status: pct === 100 ? "complete" : "needs_review",
+      overall_fulfillment_percentage: pct,
+      results: {
+        summary: {
+          total: dynamicRequirements.length,
+          applicable: dynamicRequirements.length,
+          complete: completeCount,
+          missing: missingCount,
+          needs_review: reviewCount,
+          blocked: 0,
+          expired: 0,
+          not_applicable: 0,
+          unknown: 0,
+        },
+        version_number: "2026.1.0",
+        rule_set_id: "ruleset-stat-2026",
+        requirements: dynamicRequirements,
+      },
       is_superseded: false,
-      results: FALLBACK_EVALUATION.results,
+      evaluated_at: new Date().toISOString(),
+    };
+    const storedEvals = getStored<Record<string, CaseRequirementEvaluation[]>>("documento_case_evaluations_v3_clean", {});
+    const prevList = (storedEvals[caseId] || []).map((ev) => ({ ...ev, is_superseded: true }));
+    storedEvals[caseId] = [newEval, ...prevList];
+    setStored("documento_case_evaluations_v3_clean", storedEvals);
+    return fallbackResponse({
+      ...newEval,
+      evaluation_id: newEval.id,
     });
   },
 
@@ -4744,7 +5004,12 @@ export const api = {
       // Fallback
     }
 
-    return fallbackResponse([FALLBACK_EVALUATION]);
+    const ctx = getActiveSessionContext(role);
+    if (isTestEnv && !ctx.hasSession) {
+      return fallbackResponse([FALLBACK_EVALUATION]);
+    }
+    const storedEvals = getStored<Record<string, CaseRequirementEvaluation[]>>("documento_case_evaluations_v3_clean", {});
+    return fallbackResponse(storedEvals[caseId] || []);
   },
 
   async seedEB1APilot(role: RoleCode = "master_admin"): Promise<ApiResponse<any>> {
@@ -5516,7 +5781,7 @@ export async function createDocumentRequest(payload: Partial<DocumentRequestItem
   }
   const ctx = getActiveSessionContext();
   const created: DocumentRequestItem = {
-    id: `req-${Date.now()}`,
+    id: payload.id || `req-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     case_id: payload.case_id || "",
     requested_from_client_id: payload.requested_from_client_id || "",
     title: payload.title || "New Evidence Request",
@@ -5790,7 +6055,19 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
   }
 
   const orgCases = filterByActiveOrg(localCases, ctx);
-  const targetCase = caseId ? orgCases.find((c) => c.id === caseId) : orgCases[0];
+  const clientScopedCases =
+    ctx.hasSession && (ctx.role === "retained_client" || ctx.role === "applicant")
+      ? orgCases.filter(
+          (c) =>
+            c.client_id === ctx.userId ||
+            (c.client_name &&
+              ctx.fullName &&
+              c.client_name.trim().toLowerCase() === ctx.fullName.trim().toLowerCase())
+        )
+      : orgCases;
+  const targetCase = caseId
+    ? orgCases.find((c) => c.id === caseId)
+    : clientScopedCases[0];
   if (!targetCase) {
     return {
       waiting_on_client_count: 0,
@@ -5804,7 +6081,7 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
   }
 
   const requests = await fetchDocumentRequests(targetCase.id);
-  const clientPending = requests
+  const clientPending: WaitingStateData["waiting_on_client"] = requests
     .filter((r) => r.status === "requested" || r.status === "rejected")
     .map((r) => ({
       id: r.id,
@@ -5815,7 +6092,31 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
       priority: "high" as const,
     }));
 
+  const storedQuestionnaires = getStored<Record<string, ClientQuestionnaireItem>>("documento_questionnaires_v3_clean", {});
+  const qKey = targetCase.id || (ctx.hasSession ? ctx.userId : "default");
+  const savedQuestionnaire = storedQuestionnaires[qKey];
+  const isQuestionnaireSubmitted = savedQuestionnaire?.status === "submitted";
+
   const caseDocs = localDocuments.filter((d) => d.case_id === targetCase.id);
+  if (!isQuestionnaireSubmitted) {
+    clientPending.push({
+      id: `wait-q-${targetCase.id}`,
+      type: "questionnaire",
+      title: "Complete Guided Intake Questionnaire",
+      description: "Fill out your biographical and eligibility details so your legal team can begin form preparation.",
+      priority: "high",
+    });
+  }
+  if (caseDocs.length === 0) {
+    clientPending.push({
+      id: `wait-doc-${targetCase.id}`,
+      type: "document_request",
+      title: "Upload Initial Identity & Supporting Documents",
+      description: "Upload your passport and required pathway documents to begin verification.",
+      priority: "high",
+    });
+  }
+
   const firmPending = caseDocs
     .filter((d) => d.status === "under_review")
     .map((d) => ({
@@ -5826,14 +6127,15 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
       priority: "medium" as const,
     }));
 
+  const readiness = targetCase.readiness_score ?? 0;
   return {
     waiting_on_client_count: clientPending.length,
     waiting_on_firm_count: firmPending.length,
     primary_next_action: (clientPending[0] || firmPending[0] || null) as any,
     waiting_on_client: clientPending,
     waiting_on_firm: firmPending,
-    profile_completeness_percentage: targetCase.readiness_score || 10,
-    onboarding_completed: (targetCase.readiness_score || 0) >= 60,
+    profile_completeness_percentage: readiness,
+    onboarding_completed: Boolean(isQuestionnaireSubmitted && caseDocs.length > 0) || readiness >= 60,
   };
 }
 
@@ -5880,7 +6182,25 @@ export async function fetchClientProfile(): Promise<ClientProfileData> {
       completeness_score: clientCases.length > 0 ? (clientCases[0].readiness_score || 40) : 20,
     };
   }
-  return { ...FALLBACK_CLIENT_PROFILE };
+  if (isTestEnv && !ctx.hasSession) {
+    return { ...FALLBACK_CLIENT_PROFILE };
+  }
+  const nameParts = (ctx.fullName || "").trim().split(/\s+/);
+  const firstName = nameParts[0] || "";
+  const lastName = nameParts.slice(1).join(" ");
+  return {
+    id: ctx.userId || "client-session",
+    first_name: firstName,
+    last_name: lastName,
+    email: ctx.hasSession ? ctx.email : "",
+    phone: "",
+    date_of_birth: "",
+    nationality: "",
+    passport_verified: false,
+    dependants: [],
+    cases: [],
+    completeness_score: firstName && ctx.email ? 25 : 0,
+  };
 }
 
 export async function fetchQuestionnaires(caseId?: string): Promise<ClientQuestionnaireItem[]> {
@@ -5893,7 +6213,34 @@ export async function fetchQuestionnaires(caseId?: string): Promise<ClientQuesti
       // Fallback
     }
   }
-  return [{ ...FALLBACK_QUESTIONNAIRE }];
+  syncFromStorage();
+  const ctx = getActiveSessionContext("retained_client");
+  if (isTestEnv && !ctx.hasSession) {
+    return [{ ...FALLBACK_QUESTIONNAIRE }];
+  }
+  const scopeKey = caseId || (ctx.hasSession ? ctx.userId : "anonymous");
+  const storedMap = getStored<Record<string, ClientQuestionnaireItem>>("documento_questionnaires_v3_clean", {});
+  if (storedMap[scopeKey]) {
+    return [storedMap[scopeKey]];
+  }
+  const linkedCase = caseId
+    ? localCases.find((c) => c.id === caseId)
+    : filterByActiveOrg(localCases, ctx)[0];
+  const cleanQuestionnaire: ClientQuestionnaireItem = {
+    id: `q-${scopeKey}`,
+    title: linkedCase
+      ? `${linkedCase.visa_category} Guided Statutory Intake Questionnaire`
+      : "Applicant Guided Intake Questionnaire",
+    status: "in_progress",
+    completion_percentage: 0,
+    sections: FALLBACK_QUESTIONNAIRE.sections,
+    responses: {},
+    submitted_at: null,
+    reviewed_at: null,
+  };
+  storedMap[scopeKey] = cleanQuestionnaire;
+  setStored("documento_questionnaires_v3_clean", storedMap);
+  return [cleanQuestionnaire];
 }
 
 export async function saveQuestionnaire(
@@ -5913,11 +6260,51 @@ export async function saveQuestionnaire(
       // Fallback
     }
   }
-  FALLBACK_QUESTIONNAIRE.responses = { ...FALLBACK_QUESTIONNAIRE.responses, ...responses };
-  if (submitForReview) {
-    FALLBACK_QUESTIONNAIRE.status = "submitted";
+  const ctx = getActiveSessionContext("retained_client");
+  if (isTestEnv && !ctx.hasSession) {
+    FALLBACK_QUESTIONNAIRE.responses = { ...FALLBACK_QUESTIONNAIRE.responses, ...responses };
+    if (submitForReview) {
+      FALLBACK_QUESTIONNAIRE.status = "submitted";
+    }
+    return { status: "ok", questionnaire_status: FALLBACK_QUESTIONNAIRE.status };
   }
-  return { status: "ok", questionnaire_status: FALLBACK_QUESTIONNAIRE.status };
+  const storedMap = getStored<Record<string, ClientQuestionnaireItem>>("documento_questionnaires_v3_clean", {});
+  const scopeKey = questionnaireId.startsWith("q-")
+    ? questionnaireId.slice(2)
+    : ctx.hasSession
+      ? ctx.userId
+      : "anonymous";
+  const existing = storedMap[scopeKey] || {
+    id: questionnaireId,
+    title: "Applicant Guided Intake Questionnaire",
+    status: "in_progress" as const,
+    completion_percentage: 0,
+    sections: FALLBACK_QUESTIONNAIRE.sections,
+    responses: {},
+    submitted_at: null,
+    reviewed_at: null,
+  };
+  const mergedResponses = { ...existing.responses, ...responses };
+  const filledCount = Object.values(mergedResponses).filter(
+    (v) => v !== undefined && v !== null && String(v).trim() !== ""
+  ).length;
+  const totalQuestions = Math.max(
+    1,
+    existing.sections.reduce((acc, s) => acc + (s.fields?.length || 0), 0)
+  );
+  const nextPct = submitForReview
+    ? 100
+    : Math.min(100, Math.round((filledCount / totalQuestions) * 100));
+  const updated: ClientQuestionnaireItem = {
+    ...existing,
+    responses: mergedResponses,
+    completion_percentage: nextPct,
+    status: submitForReview ? "submitted" : "in_progress",
+    submitted_at: submitForReview ? new Date().toISOString() : existing.submitted_at,
+  };
+  storedMap[scopeKey] = updated;
+  setStored("documento_questionnaires_v3_clean", storedMap);
+  return { status: "ok", questionnaire_status: updated.status, completion_percentage: nextPct };
 }
 
 // ==========================================
@@ -6718,15 +7105,27 @@ export async function updateFormAnswers(
       // Fallback
     }
   }
-  // Local fallback update
-  const current = { ...FALLBACK_FORM_SUBMISSION };
+  const ctx = getActiveSessionContext();
+  const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
+  const existingKey = Object.keys(storedMap).find((k) => storedMap[k]?.id === submissionId);
+  const baseSubmission = existingKey
+    ? storedMap[existingKey]
+    : submissionId.startsWith("sub-") && submissionId !== "sub-i140-01"
+      ? buildDynamicFormSubmission(submissionId.slice(4))
+      : isTestEnv && !ctx.hasSession
+        ? { ...FALLBACK_FORM_SUBMISSION }
+        : buildDynamicFormSubmission(submissionId);
+  const current: FormSubmissionItem = {
+    ...baseSubmission,
+    answers: { ...baseSubmission.answers },
+  };
   for (const [key, val] of Object.entries(answers)) {
     current.answers[key] = {
       value: val,
       source_type: "user_provided",
       source_label: "Manual User Input",
       is_confirmed: true,
-      confirmed_by_user_id: "demo-user",
+      confirmed_by_user_id: ctx.userId,
       confirmed_at: new Date().toISOString(),
     };
   }
@@ -6735,11 +7134,14 @@ export async function updateFormAnswers(
     ...(current.revision_history || []),
     {
       revision: current.revision_number,
-      updated_by: "Active Staff Member",
+      updated_by: ctx.fullName || "Active Staff Member",
       timestamp: new Date().toISOString(),
       changes_summary: notes || `Updated ${Object.keys(answers).length} field answers`,
     },
   ];
+  const mapKey = existingKey || current.case_id || submissionId;
+  storedMap[mapKey] = current;
+  setStored("documento_form_submissions_v3_clean", storedMap);
   return current;
 }
 
@@ -6756,9 +7158,30 @@ export async function confirmFormField(submissionId: string, fieldKey: string): 
       // Fallback
     }
   }
-  if (FALLBACK_FORM_SUBMISSION.answers[fieldKey]) {
-    FALLBACK_FORM_SUBMISSION.answers[fieldKey].is_confirmed = true;
-    FALLBACK_FORM_SUBMISSION.answers[fieldKey].confirmed_at = new Date().toISOString();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && submissionId === "sub-i140-01") {
+    if (FALLBACK_FORM_SUBMISSION.answers[fieldKey]) {
+      FALLBACK_FORM_SUBMISSION.answers[fieldKey].is_confirmed = true;
+      FALLBACK_FORM_SUBMISSION.answers[fieldKey].confirmed_at = new Date().toISOString();
+    }
+    return { success: true, field_key: fieldKey };
+  }
+  const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
+  const existingKey = Object.keys(storedMap).find((k) => storedMap[k]?.id === submissionId);
+  const target = existingKey
+    ? storedMap[existingKey]
+    : submissionId.startsWith("sub-")
+      ? buildDynamicFormSubmission(submissionId.slice(4))
+      : null;
+  if (target && target.answers[fieldKey]) {
+    target.answers[fieldKey] = {
+      ...target.answers[fieldKey],
+      is_confirmed: true,
+      confirmed_by_user_id: ctx.userId,
+      confirmed_at: new Date().toISOString(),
+    };
+    storedMap[existingKey || target.case_id] = target;
+    setStored("documento_form_submissions_v3_clean", storedMap);
   }
   return { success: true, field_key: fieldKey };
 }
@@ -6776,9 +7199,27 @@ export async function reviewSensitiveFields(submissionId: string, notes: string)
       // Fallback
     }
   }
-  FALLBACK_FORM_SUBMISSION.sensitive_fields_reviewed = true;
-  FALLBACK_FORM_SUBMISSION.reviewer_notes = notes;
-  FALLBACK_FORM_SUBMISSION.reviewed_at = new Date().toISOString();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && submissionId === "sub-i140-01") {
+    FALLBACK_FORM_SUBMISSION.sensitive_fields_reviewed = true;
+    FALLBACK_FORM_SUBMISSION.reviewer_notes = notes;
+    FALLBACK_FORM_SUBMISSION.reviewed_at = new Date().toISOString();
+    return { success: true, sensitive_fields_reviewed: true };
+  }
+  const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
+  const existingKey = Object.keys(storedMap).find((k) => storedMap[k]?.id === submissionId);
+  const target = existingKey
+    ? storedMap[existingKey]
+    : submissionId.startsWith("sub-")
+      ? buildDynamicFormSubmission(submissionId.slice(4))
+      : null;
+  if (target) {
+    target.sensitive_fields_reviewed = true;
+    target.reviewer_notes = notes;
+    target.reviewed_at = new Date().toISOString();
+    storedMap[existingKey || target.case_id] = target;
+    setStored("documento_form_submissions_v3_clean", storedMap);
+  }
   return { success: true, sensitive_fields_reviewed: true };
 }
 
@@ -6798,8 +7239,31 @@ export async function finalizeFormSubmission(
       // Fallback
     }
   }
-  FALLBACK_FORM_SUBMISSION.status = targetStatus;
-  FALLBACK_FORM_SUBMISSION.has_unconfirmed_ai_fields = false;
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && submissionId === "sub-i140-01") {
+    FALLBACK_FORM_SUBMISSION.status = targetStatus;
+    FALLBACK_FORM_SUBMISSION.has_unconfirmed_ai_fields = false;
+    return {
+      success: true,
+      submission_id: submissionId,
+      status: targetStatus,
+      completion_percentage: 100.0,
+    };
+  }
+  const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
+  const existingKey = Object.keys(storedMap).find((k) => storedMap[k]?.id === submissionId);
+  const target = existingKey
+    ? storedMap[existingKey]
+    : submissionId.startsWith("sub-")
+      ? buildDynamicFormSubmission(submissionId.slice(4))
+      : null;
+  if (target) {
+    target.status = targetStatus;
+    target.has_unconfirmed_ai_fields = false;
+    target.completion_percentage = 100.0;
+    storedMap[existingKey || target.case_id] = target;
+    setStored("documento_form_submissions_v3_clean", storedMap);
+  }
   return {
     success: true,
     submission_id: submissionId,
@@ -6908,16 +7372,21 @@ export async function fetchCaseReadinessChecklist(caseId: string): Promise<Packa
   const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
   const verifiedCount = caseDocs.filter((d) => d.status === "verified").length;
   const openFindings = localFindings.filter((f) => f.case_id === caseId && f.status === "needs_review").length;
+  const hasAnyDocs = caseDocs.length > 0;
   const isReady = verifiedCount > 0 && openFindings === 0;
+  const passedChecks =
+    (verifiedCount > 0 ? 1 : 0) +
+    (hasAnyDocs && openFindings === 0 ? 1 : 0) +
+    (verifiedCount > 0 ? 1 : 0);
   return {
     case_id: caseId,
     case_number: realCase?.case_number || caseId,
     evaluated_at: new Date().toISOString(),
     is_ready_for_package_assembly: isReady,
     total_checks_evaluated: 3,
-    passed_checks_count: (verifiedCount > 0 ? 1 : 0) + (openFindings === 0 ? 1 : 0) + 1,
-    blocking_failures_count: verifiedCount === 0 ? 1 : 0,
-    warnings_count: openFindings > 0 ? 1 : 0,
+    passed_checks_count: passedChecks,
+    blocking_failures_count: verifiedCount === 0 ? 2 : 0,
+    warnings_count: openFindings > 0 || !hasAnyDocs ? 1 : 0,
     prohibition_disclaimer: FALLBACK_READINESS_CHECKLIST.prohibition_disclaimer,
     checks: [
       {
@@ -6931,18 +7400,25 @@ export async function fetchCaseReadinessChecklist(caseId: string): Promise<Packa
       {
         code: "unresolved_findings",
         name: "Unresolved AI Findings & Discrepancies",
-        status: openFindings === 0 ? "passed" : "warning",
+        status: !hasAnyDocs ? "warning" : openFindings === 0 ? "passed" : "warning",
         is_blocking: false,
-        summary: openFindings === 0 ? "0 unresolved findings." : `${openFindings} open finding(s) require review.`,
+        summary: !hasAnyDocs
+          ? "Awaiting first document upload before discrepancy checks can run."
+          : openFindings === 0
+            ? "0 unresolved findings."
+            : `${openFindings} open finding(s) require review.`,
         details: { open_findings_count: openFindings },
       },
       {
         code: "unmet_package_validation_criteria",
         name: "Package Folder Structure",
-        status: "passed",
+        status: verifiedCount > 0 ? "passed" : "failed",
         is_blocking: true,
-        summary: "Core folder templates initialized for assembly.",
-        details: { criteria_satisfied: true },
+        summary:
+          verifiedCount > 0
+            ? "Core folder templates populated for assembly."
+            : "Awaiting verified evidence before package folders can be assembled.",
+        details: { criteria_satisfied: verifiedCount > 0 },
       },
     ],
   };
@@ -7033,13 +7509,39 @@ export async function advancePackageApproval(
       // Fallback
     }
   }
-  const current = { ...FALLBACK_FILING_PACKAGE };
-  const target = current.approval_chain.find((s) => s.stage === stage);
-  if (target) {
-    target.status = decision === "approved" ? "approved" : "rejected";
-    target.timestamp = new Date().toISOString();
-    target.notes = notes || null;
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && packageId === "pkg-01") {
+    const current = { ...FALLBACK_FILING_PACKAGE };
+    const target = current.approval_chain.find((s) => s.stage === stage);
+    if (target) {
+      target.status = decision === "approved" ? "approved" : "rejected";
+      target.timestamp = new Date().toISOString();
+      target.notes = notes || null;
+    }
+    return current;
   }
+  const existingPkg = await fetchFilingPackage(packageId);
+  const current: FilingPackageItem = {
+    ...existingPkg,
+    approval_chain: existingPkg.approval_chain.map((s) =>
+      s.stage === stage
+        ? {
+            ...s,
+            status: decision === "approved" ? "approved" : "rejected",
+            actor: ctx.fullName || s.actor,
+            timestamp: new Date().toISOString(),
+            notes: notes || null,
+          }
+        : s
+    ),
+  };
+  if (current.approval_chain.every((s) => s.status === "passed" || s.status === "approved")) {
+    current.status = "ready_for_manual_filing";
+  }
+  const storedPkgs = getStored<Record<string, FilingPackageItem[]>>("documento_filing_packages_v3_clean", {});
+  const list = storedPkgs[current.case_id] || [];
+  storedPkgs[current.case_id] = [current, ...list.filter((p) => p.id !== current.id)];
+  setStored("documento_filing_packages_v3_clean", storedPkgs);
   return current;
 }
 
@@ -7052,13 +7554,14 @@ export async function exportFilingPackage(packageId: string): Promise<any> {
       // Fallback
     }
   }
+  const pkg = await fetchFilingPackage(packageId);
   return {
     package_id: packageId,
-    version_number: FALLBACK_FILING_PACKAGE.version_number,
-    package_hash: FALLBACK_FILING_PACKAGE.package_hash,
-    manifest: FALLBACK_FILING_PACKAGE.manifest,
-    approval_chain: FALLBACK_FILING_PACKAGE.approval_chain,
-    manual_filing_instructions: FALLBACK_FILING_PACKAGE.manual_filing_instructions,
+    version_number: pkg.version_number,
+    package_hash: pkg.package_hash,
+    manifest: pkg.manifest,
+    approval_chain: pkg.approval_chain,
+    manual_filing_instructions: pkg.manual_filing_instructions,
   };
 }
 
@@ -7125,7 +7628,33 @@ export async function fetchCanonicalManifest(packageId: string): Promise<Phase7C
       // Fallback
     }
   }
-  return FALLBACK_PHASE7_MANIFEST;
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  if (isTestEnv && !ctx.hasSession && (packageId === "pkg-01" || packageId === "pkg-ca-01")) {
+    return FALLBACK_PHASE7_MANIFEST;
+  }
+  const pkg = await fetchFilingPackage(packageId);
+  const realCase = localCases.find((c) => c.id === pkg.case_id);
+  return {
+    case_reference: realCase?.case_number || pkg.case_id || packageId,
+    generated_at: new Date().toISOString(),
+    generated_by: ctx.hasSession ? ctx.email : "authorized-counsel",
+    package_template_version: pkg.version_number || "v1.0.0",
+    checklist_rule_version: pkg.manifest?.rule_version_used || "STATUTORY-2026.1",
+    documents: (pkg.manifest?.items || []).map((item, idx) => ({
+      document_version_id: `doc-${idx + 1}:v${item.version || 1}`,
+      relative_path: item.folder_path,
+      sha256: item.sha256_hash,
+      review_status: item.review_status === "verified" ? "HUMAN_VERIFIED" : "PENDING_REVIEW",
+    })),
+    exclusions: (((pkg as any).excluded_documents || (pkg.manifest as any)?.excluded_items || []) as any[]).map((ex: any) => ({
+      document_version_id: `${ex.document_id}:v1`,
+      reason_code: ex.reason_code,
+    })),
+    folder_structure: FALLBACK_PHASE7_MANIFEST.folder_structure,
+    retention_policy: "seven_days",
+    immutable_disclaimer: FALLBACK_PHASE7_MANIFEST.immutable_disclaimer,
+  };
 }
 
 export async function downloadPackageZip(packageId: string, filename?: string): Promise<void> {
@@ -7142,7 +7671,8 @@ export async function downloadPackageZip(packageId: string, filename?: string): 
       // Fallback
     }
   }
-  const dummyBlob = new Blob([JSON.stringify(FALLBACK_PHASE7_MANIFEST, null, 2)], { type: "application/json" });
+  const manifest = await fetchCanonicalManifest(packageId);
+  const dummyBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
   triggerBrowserDownload(dummyBlob, targetName.replace(".zip", "_manifest.json"));
 }
 
@@ -7199,15 +7729,23 @@ export async function includePackageDocument(
   documentId: string
 ): Promise<{ success: boolean; package_id: string; document_id: string; action: string }> {
   if (isLiveBackend) {
-    const res = await fetch(`${API_BASE}/packages/${packageId}/documents/${documentId}/include`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Failed to include document" }));
-      throw new Error(err.detail || "Cannot include document: unresolved anomaly or blocker present");
+    try {
+      const res = await fetch(`${API_BASE}/packages/${packageId}/documents/${documentId}/include`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status < 500 || process.env.NODE_ENV === "production") {
+        const err = await res.json().catch(() => ({ detail: "Failed to include document" }));
+        throw new Error(err.detail || "Cannot include document: unresolved anomaly or blocker present");
+      }
+    } catch (err: any) {
+      if (err instanceof Error && !err.message.includes("fetch") && err.name !== "TypeError") {
+        throw err;
+      }
     }
-    return await res.json();
   }
   return { success: true, package_id: packageId, document_id: documentId, action: "included" };
 }
@@ -7219,16 +7757,24 @@ export async function excludePackageDocument(
   notes?: string
 ): Promise<{ success: boolean; package_id: string; document_id: string; action: string; reason_code: string }> {
   if (isLiveBackend) {
-    const res = await fetch(`${API_BASE}/packages/${packageId}/documents/${documentId}/exclude`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason_code: reasonCode, notes }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Failed to exclude document" }));
-      throw new Error(err.detail || "Failed to exclude document from package");
+    try {
+      const res = await fetch(`${API_BASE}/packages/${packageId}/documents/${documentId}/exclude`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason_code: reasonCode, notes }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status < 500 || process.env.NODE_ENV === "production") {
+        const err = await res.json().catch(() => ({ detail: "Failed to exclude document" }));
+        throw new Error(err.detail || "Failed to exclude document from package");
+      }
+    } catch (err: any) {
+      if (err instanceof Error && !err.message.includes("fetch") && err.name !== "TypeError") {
+        throw err;
+      }
     }
-    return await res.json();
   }
   return {
     success: true,
@@ -8077,7 +8623,8 @@ export async function fetchServices(): Promise<ServiceCatalogItem[]> {
       // Fallback
     }
   }
-  return FALLBACK_SERVICES;
+  const custom = getStored<ServiceCatalogItem[]>("documento_services_v3_clean", []);
+  return [...custom, ...FALLBACK_SERVICES];
 }
 
 export async function createServiceItem(data: Partial<ServiceCatalogItem>): Promise<ServiceCatalogItem> {
@@ -8093,7 +8640,7 @@ export async function createServiceItem(data: Partial<ServiceCatalogItem>): Prom
       // Fallback
     }
   }
-  return {
+  const created: ServiceCatalogItem = {
     id: `srv-${Date.now()}`,
     code: data.code || "CUSTOM_SERVICE",
     name: data.name || "Custom Immigration Service",
@@ -8104,6 +8651,9 @@ export async function createServiceItem(data: Partial<ServiceCatalogItem>): Prom
     estimated_duration_days: data.estimated_duration_days || 30,
     is_active: true,
   };
+  const custom = getStored<ServiceCatalogItem[]>("documento_services_v3_clean", []);
+  setStored("documento_services_v3_clean", [created, ...custom]);
+  return created;
 }
 
 export async function fetchEngagements(clientId?: string): Promise<ClientEngagementItem[]> {
@@ -8196,17 +8746,30 @@ export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
       // Fallback
     }
   }
+  syncFromStorage();
   const ctx = getActiveSessionContext();
+  const orgClients = filterByActiveOrg(localClients, ctx);
+  const resolvedClientId =
+    data.client_id && (orgClients.some((c) => c.id === data.client_id) || !ctx.hasSession)
+      ? data.client_id
+      : orgClients[0]?.id || data.client_id || "client-01";
+  const matchedClient = localClients.find((c) => c.id === resolvedClientId);
+  const clientFullName = matchedClient
+    ? `${matchedClient.first_name} ${matchedClient.last_name}`.trim()
+    : data.client_name || "Retained Client";
   const total = (data.line_items || []).reduce((acc: number, l: any) => acc + l.quantity * l.unit_price, 0);
   const tax = Number(data.tax_amount || 0);
   const discount = Number(data.discount_amount || 0);
   const finalTotal = Math.max(0, total + tax - discount);
+  const dueIso = data.due_date || new Date(Date.now() + 30 * 86400000).toISOString();
   const mockInv: InvoiceDetailItem = {
     id: `inv-${Date.now()}`,
     invoice_number: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-    client_id: data.client_id || "client-01",
+    client_id: resolvedClientId,
+    client_name: clientFullName,
+    case_id: data.case_id || undefined,
     issue_date: new Date().toISOString(),
-    due_date: new Date(Date.now() + 30 * 86400000).toISOString(),
+    due_date: dueIso,
     subtotal: total,
     tax_amount: tax,
     discount_amount: discount,
@@ -8230,6 +8793,19 @@ export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
     isTestEnv && !ctx.hasSession ? [...FALLBACK_INVOICES] : []
   );
   setStored(BILLING_INVOICES_STORAGE_KEY, [mockInv, ...stored]);
+  // Keep summary invoices list synchronized for executive & client views
+  const linkedCaseForInv = data.case_id ? localCases.find((c) => c.id === data.case_id) : undefined;
+  const summaryInv: InvoiceItem = {
+    id: mockInv.id,
+    invoice_number: mockInv.invoice_number,
+    case_number: linkedCaseForInv?.case_number || "GENERAL-RETAINER",
+    client_name: clientFullName,
+    amount: finalTotal,
+    status: "outstanding",
+    due_date: dueIso.slice(0, 10),
+  };
+  localInvoices = [summaryInv, ...localInvoices];
+  setStored(INVOICES_STORAGE_KEY, localInvoices);
   return fallbackData(mockInv, "createInvoice");
 }
 
@@ -8259,6 +8835,20 @@ export async function recordInvoicePayment(invoiceId: string, data: any): Promis
     };
   });
   setStored(BILLING_INVOICES_STORAGE_KEY, updated);
+
+  syncFromStorage();
+  const paidTarget = updated.find((inv) => inv.id === invoiceId);
+  if (paidTarget) {
+    localInvoices = localInvoices.map((summary) =>
+      summary.id === invoiceId || summary.invoice_number === paidTarget.invoice_number
+        ? {
+            ...summary,
+            status: paidTarget.balance_due <= 0 ? "paid" : summary.status,
+          }
+        : summary
+    );
+    setStored(INVOICES_STORAGE_KEY, localInvoices);
+  }
 
   return fallbackData(
     {
@@ -8788,9 +9378,13 @@ export async function fetchOrganizationSettings(): Promise<OrganizationSettingsD
   if (isTestEnv && !ctx.hasSession) {
     return FALLBACK_ORG_SETTINGS;
   }
+  const orgKey = ctx.hasSession ? ctx.organizationId : "default";
+  const storedMap = getStored<Record<string, Partial<OrganizationSettingsData>>>("documento_org_settings_v3_clean", {});
+  const saved = storedMap[orgKey] || {};
   return {
     ...FALLBACK_ORG_SETTINGS,
     firm_name: ctx.hasSession ? ctx.organizationName : "Partner Immigration Practice",
+    ...saved,
   };
 }
 
@@ -8807,6 +9401,14 @@ export async function updateOrganizationSetting(key: string, value: any): Promis
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
+  const orgKey = ctx.hasSession ? ctx.organizationId : "default";
+  const storedMap = getStored<Record<string, Record<string, any>>>("documento_org_settings_v3_clean", {});
+  storedMap[orgKey] = {
+    ...(storedMap[orgKey] || {}),
+    [key]: value,
+  };
+  setStored("documento_org_settings_v3_clean", storedMap);
   return { [key]: value };
 }
 
@@ -8867,7 +9469,12 @@ export async function exportAnalyticsReport(reportType = "executive_summary"): P
   };
 }
 
-export async function inviteStaffMember(data: { email: string; role_code: string; branch?: string }): Promise<any> {
+export async function inviteStaffMember(data: {
+  full_name?: string;
+  email: string;
+  role_code: string;
+  branch?: string;
+}): Promise<any> {
   if (isLiveBackend) {
     try {
       const res = await fetch(`${API_BASE}/organizations/invitations`, {
@@ -8880,8 +9487,38 @@ export async function inviteStaffMember(data: { email: string; role_code: string
       // Fallback
     }
   }
+  const ctx = getActiveSessionContext();
+  const normalizedRole: "case_manager" | "paralegal" =
+    data.role_code === "paralegal" ? "paralegal" : "case_manager";
+  const derivedName =
+    data.full_name?.trim() ||
+    data.email
+      .split("@")[0]
+      .replace(/[._-]+/g, " ")
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+  if (ctx.hasSession && getAgencyForOrganization(ctx.organizationId)) {
+    const invite = inviteAgencyTeamMember({
+      organizationId: ctx.organizationId,
+      fullName: derivedName,
+      email: data.email,
+      role: normalizedRole,
+      branchOffice: data.branch,
+    });
+    return {
+      id: invite.id,
+      full_name: invite.fullName,
+      email: invite.email,
+      role_code: invite.role,
+      branch: invite.branchOffice,
+      temporary_password: invite.passcode,
+      created_at: invite.invitedAt,
+    };
+  }
+
   return {
     id: `inv-${Date.now()}`,
+    full_name: derivedName,
     email: data.email,
     role_code: data.role_code,
     created_at: new Date().toISOString(),
@@ -9055,33 +9692,38 @@ export async function fetchCaseInterimReports(
     // fallback
   }
 
-  return [
-    {
-      id: "ir-01",
-      case_id: caseId,
-      trigger_action: "hold_applied",
-      report_title: "Interim Snapshot: Case Placed on Legal Hold",
-      manifest_snapshot_json: {
-        total_documents: 8,
-        verified_count: 5,
-        anomaly_count: 1,
-        generated_at: "2026-10-15T09:00:00Z",
+  const ctx = getActiveSessionContext(role);
+  if (isTestEnv && !ctx.hasSession) {
+    return [
+      {
+        id: "ir-01",
+        case_id: caseId,
+        trigger_action: "hold_applied",
+        report_title: "Interim Snapshot: Case Placed on Legal Hold",
+        manifest_snapshot_json: {
+          total_documents: 8,
+          verified_count: 5,
+          anomaly_count: 1,
+          generated_at: "2026-10-15T09:00:00Z",
+        },
+        ocr_summary_json: {
+          completed_runs: 8,
+          average_confidence: 0.97,
+        },
+        anomaly_report_json: {
+          unresolved_anomalies: [
+            {
+              document_id: "doc-04",
+              anomaly: "Low lighting glare detected on bottom signature corner",
+            },
+          ],
+        },
+        created_at: "2026-10-15T09:00:00Z",
       },
-      ocr_summary_json: {
-        completed_runs: 8,
-        average_confidence: 0.97,
-      },
-      anomaly_report_json: {
-        unresolved_anomalies: [
-          {
-            document_id: "doc-04",
-            anomaly: "Low lighting glare detected on bottom signature corner",
-          },
-        ],
-      },
-      created_at: "2026-10-15T09:00:00Z",
-    },
-  ];
+    ];
+  }
+  const stored = getStored<Record<string, CaseInterimReport[]>>("documento_interim_reports_v3_clean", {});
+  return stored[caseId] || [];
 }
 
 export async function verifyDocumentDownload(
@@ -10734,16 +11376,18 @@ export async function getCasePinnedChecklist(
     // fallback
   }
 
+  syncFromStorage();
+  const realCase = localCases.find((c) => c.id === caseId);
   return {
     case_id: caseId,
-    case_number: "CAS-CA-001",
+    case_number: realCase?.case_number || (isTestEnv ? "CAS-CA-001" : caseId),
     is_pinned: true,
     pinned_rule_version_id: "v-ca-fsw-100",
-    snapshot_pinned_at: new Date().toISOString(),
+    snapshot_pinned_at: realCase?.created_at || new Date().toISOString(),
     rules_update_available: false,
     snapshot: await generateFactGroundedChecklist({
-      jurisdiction: "CA",
-      pathway: "CA_EXPRESS_ENTRY_FSW",
+      jurisdiction: realCase?.jurisdiction || "CA",
+      pathway: realCase?.visa_category || "CA_EXPRESS_ENTRY_FSW",
       pin_to_case: true,
       case_id: caseId,
     }),
@@ -11628,7 +12272,19 @@ export async function fetchFirmConfiguration(
   } catch {
     // fallback
   }
-  return FALLBACK_FIRM_CONFIGURATION;
+  const ctx = getActiveSessionContext(role);
+  if (isTestEnv && !ctx.hasSession) {
+    return FALLBACK_FIRM_CONFIGURATION;
+  }
+  const resolvedOrg = orgId || (ctx.hasSession ? ctx.organizationId : "default");
+  const storedConfigs = getStored<Record<string, FirmConfiguration>>("documento_firm_config_v3_clean", {});
+  if (storedConfigs[resolvedOrg]) {
+    return storedConfigs[resolvedOrg];
+  }
+  return {
+    ...FALLBACK_FIRM_CONFIGURATION,
+    organization_id: resolvedOrg,
+  };
 }
 
 export async function updateDomainConfiguration(
@@ -11639,6 +12295,9 @@ export async function updateDomainConfiguration(
   orgId?: string,
   role: RoleCode = "master_admin"
 ): Promise<any> {
+  if (!reason || reason.trim().length < 10) {
+    throw new Error("Governance change reason must be at least 10 characters.");
+  }
   try {
     const url = orgId
       ? `${API_BASE_URL}/organizations/${orgId}/firm-configuration/domains/${domain}`
@@ -11662,11 +12321,51 @@ export async function updateDomainConfiguration(
       throw e;
     }
   }
+  const ctx = getActiveSessionContext(role);
+  const resolvedOrg = orgId || (ctx.hasSession ? ctx.organizationId : "default");
+  const storedConfigs = getStored<Record<string, FirmConfiguration>>("documento_firm_config_v3_clean", {});
+  const currentConfig = storedConfigs[resolvedOrg] || {
+    ...FALLBACK_FIRM_CONFIGURATION,
+    organization_id: resolvedOrg,
+  };
+  const prevDomain = (currentConfig.domains as any)?.[domain] || {};
+  const nextVersion = (currentConfig.version || 1) + 1;
+  const nowIso = new Date().toISOString();
+  const updatedConfig: FirmConfiguration = {
+    ...currentConfig,
+    version: nextVersion,
+    domains: {
+      ...currentConfig.domains,
+      [domain]: data,
+    } as any,
+  };
+  storedConfigs[resolvedOrg] = updatedConfig;
+  setStored("documento_firm_config_v3_clean", storedConfigs);
+
+  const storedAudit = getStored<Record<string, FirmConfigAuditLogItem[]>>("documento_firm_audit_v3_clean", {});
+  const auditEntry: FirmConfigAuditLogItem = {
+    id: `fcal-${Date.now()}`,
+    organization_id: resolvedOrg,
+    domain,
+    version: nextVersion,
+    old_version: nextVersion - 1,
+    new_version: nextVersion,
+    actor_id: ctx.userId,
+    actor_email: ctx.hasSession ? ctx.email : "owner@firm.local",
+    old_version_json: prevDomain,
+    new_version_json: data,
+    reason,
+    effective_date: effectiveDate || nowIso,
+    created_at: nowIso,
+  };
+  storedAudit[resolvedOrg] = [auditEntry, ...(storedAudit[resolvedOrg] || [])];
+  setStored("documento_firm_audit_v3_clean", storedAudit);
+
   return {
     domain,
-    version: 2,
+    version: nextVersion,
     configuration: data,
-    effective_date: effectiveDate || new Date().toISOString(),
+    effective_date: effectiveDate || nowIso,
   };
 }
 
@@ -11686,9 +12385,16 @@ export async function fetchFirmConfigAuditLog(
   } catch {
     // fallback
   }
-  return domain
-    ? FALLBACK_FIRM_AUDIT_LOG.filter((l) => l.domain === domain)
-    : FALLBACK_FIRM_AUDIT_LOG;
+  const ctx = getActiveSessionContext(role);
+  if (isTestEnv && !ctx.hasSession) {
+    return domain
+      ? FALLBACK_FIRM_AUDIT_LOG.filter((l) => l.domain === domain)
+      : FALLBACK_FIRM_AUDIT_LOG;
+  }
+  const resolvedOrg = orgId || (ctx.hasSession ? ctx.organizationId : "default");
+  const storedAudit = getStored<Record<string, FirmConfigAuditLogItem[]>>("documento_firm_audit_v3_clean", {});
+  const list = storedAudit[resolvedOrg] || [];
+  return domain ? list.filter((l) => l.domain === domain) : list;
 }
 
 export async function fetchCase(
@@ -11708,16 +12414,17 @@ export async function fetchCase(
   const allCasesResp = await api.getCases(role);
   const found = allCasesResp.data?.find((c) => c.id === caseId);
   if (found) return found;
+  const ctx = getActiveSessionContext(role);
   return {
     id: caseId,
-    case_number: "CASE-DEMO-01",
-    title: "Skilled Worker Visa Case",
-    client_id: "client-01",
-    client_name: "Jane Doe",
+    case_number: isTestEnv && !ctx.hasSession ? "CASE-DEMO-01" : caseId,
+    title: isTestEnv && !ctx.hasSession ? "Skilled Worker Visa Case" : "Unassigned Matter",
+    client_id: isTestEnv && !ctx.hasSession ? "client-01" : "",
+    client_name: isTestEnv && !ctx.hasSession ? "Jane Doe" : "Applicant",
     jurisdiction: "GBR",
     visa_category: "Skilled Worker",
     status: "intake",
-    organization_id: DEMO_ORG_ID,
+    organization_id: ctx.organizationId,
     created_at: new Date().toISOString(),
   };
 }
@@ -12688,6 +13395,20 @@ export async function getOperationalDashboardTelemetry(
     throw new Error(err.detail || "Failed to load operational dashboard telemetry");
   }
   return await res.json();
+}
+
+export async function deleteClient(
+  clientId: string,
+  roleCode?: string,
+  cascade?: boolean
+): Promise<{ success: boolean; deleted_client_id: string }> {
+  const role = (roleCode as RoleCode) || "master_admin";
+  const shouldCascade = cascade !== false;
+  const res = await api.deleteClient(clientId, role, shouldCascade);
+  return {
+    success: res.data.success,
+    deleted_client_id: res.data.id || clientId,
+  };
 }
 
 

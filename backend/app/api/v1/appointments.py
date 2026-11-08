@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from backend.app.db.session import get_db
 from backend.app.domain.models import (
@@ -117,6 +117,10 @@ def list_organization_appointments(
     """
     query = (
         db.query(VisaAppointment)
+        .options(
+            joinedload(VisaAppointment.case),
+            joinedload(VisaAppointment.client),
+        )
         .filter(VisaAppointment.organization_id == ctx.organization_id)
     )
 
@@ -181,10 +185,18 @@ def get_appointment(
     """
     Retrieves details of a specific visa appointment.
     """
-    appt = db.query(VisaAppointment).filter(
-        VisaAppointment.id == appointment_id,
-        VisaAppointment.organization_id == ctx.organization_id,
-    ).first()
+    appt = (
+        db.query(VisaAppointment)
+        .options(
+            joinedload(VisaAppointment.case),
+            joinedload(VisaAppointment.client),
+        )
+        .filter(
+            VisaAppointment.id == appointment_id,
+            VisaAppointment.organization_id == ctx.organization_id,
+        )
+        .first()
+    )
     if not appt:
         raise EntityNotFoundError("VisaAppointment", appointment_id)
 
@@ -201,10 +213,18 @@ def update_appointment(
     """
     Updates appointment logistics (VAC, interview slot, Blue Dart courier tracking, or 221(g) slip).
     """
-    appt = db.query(VisaAppointment).filter(
-        VisaAppointment.id == appointment_id,
-        VisaAppointment.organization_id == ctx.organization_id,
-    ).first()
+    appt = (
+        db.query(VisaAppointment)
+        .options(
+            joinedload(VisaAppointment.case),
+            joinedload(VisaAppointment.client),
+        )
+        .filter(
+            VisaAppointment.id == appointment_id,
+            VisaAppointment.organization_id == ctx.organization_id,
+        )
+        .first()
+    )
     if not appt:
         raise EntityNotFoundError("VisaAppointment", appointment_id)
 
@@ -227,10 +247,18 @@ def delete_appointment(
     """
     Deletes or cancels a visa appointment.
     """
-    appt = db.query(VisaAppointment).filter(
-        VisaAppointment.id == appointment_id,
-        VisaAppointment.organization_id == ctx.organization_id,
-    ).first()
+    appt = (
+        db.query(VisaAppointment)
+        .options(
+            joinedload(VisaAppointment.case),
+            joinedload(VisaAppointment.client),
+        )
+        .filter(
+            VisaAppointment.id == appointment_id,
+            VisaAppointment.organization_id == ctx.organization_id,
+        )
+        .first()
+    )
     if not appt:
         raise EntityNotFoundError("VisaAppointment", appointment_id)
 
@@ -291,10 +319,18 @@ def get_appointment_calendar_invite(
     Generates standard RFC 5545 iCalendar (.ics) file.
     Enables one-click import into Google Calendar, Microsoft Outlook, and Apple Calendar.
     """
-    appt = db.query(VisaAppointment).filter(
-        VisaAppointment.id == appointment_id,
-        VisaAppointment.organization_id == ctx.organization_id,
-    ).first()
+    appt = (
+        db.query(VisaAppointment)
+        .options(
+            joinedload(VisaAppointment.case),
+            joinedload(VisaAppointment.client),
+        )
+        .filter(
+            VisaAppointment.id == appointment_id,
+            VisaAppointment.organization_id == ctx.organization_id,
+        )
+        .first()
+    )
     if not appt:
         raise EntityNotFoundError("VisaAppointment", appointment_id)
 

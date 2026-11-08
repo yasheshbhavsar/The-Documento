@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     auth_required: bool = False
 
     # CORS & Security
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
     rate_limit_per_minute: int = 120
 
     model_config = SettingsConfigDict(env_file=(".env", "../.env"), env_prefix="", extra="ignore")

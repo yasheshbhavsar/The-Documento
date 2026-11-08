@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FormSchemaItem,
   FormSubmissionItem,
@@ -8,6 +8,7 @@ import {
   FormSchemaField,
   FormSchemaSection,
 } from "../../lib/types";
+import { CANONICAL_FORM_SCHEMAS, hydrateCanonicalForm } from "../../lib/documentAutoFillEngine";
 
 interface ConfigurableFormViewerProps {
   submission: FormSubmissionItem;
@@ -17,6 +18,8 @@ interface ConfigurableFormViewerProps {
   onConfirmField?: (fieldKey: string) => Promise<void>;
   onReviewSensitive?: (notes: string) => Promise<void>;
   onFinalizeSubmission?: (targetStatus?: string) => Promise<void>;
+  onHydrateFromDocuments?: () => void;
+  availableDocuments?: any[];
 }
 
 export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
@@ -27,6 +30,8 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
   onConfirmField,
   onReviewSensitive,
   onFinalizeSubmission,
+  onHydrateFromDocuments,
+  availableDocuments = [],
 }) => {
   const [submission, setSubmission] = useState<FormSubmissionItem>(initialSubmission);
   const [activeSectionId, setActiveSectionId] = useState<string>("part1_petitioner");
@@ -43,12 +48,80 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
   const [showHistoryDrawer, setShowHistoryDrawer] = useState<boolean>(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
+  const effectiveSchema: FormSchemaItem | undefined =
+    schema ||
+    CANONICAL_FORM_SCHEMAS[submission.form_code] ||
+    CANONICAL_FORM_SCHEMAS[initialSubmission.form_code];
+
   const sections: FormSchemaSection[] =
     submission.schema_definition?.sections ||
-    schema?.versions[0]?.schema_definition?.sections ||
+    effectiveSchema?.versions[0]?.schema_definition?.sections ||
     [];
 
+  // Keep activeSectionId valid when form or schema changes
+  useEffect(() => {
+    if (sections.length > 0 && !sections.some((s) => s.id === activeSectionId)) {
+      setActiveSectionId(sections[0].id);
+    }
+  }, [submission.form_code, sections, activeSectionId]);
+
+  // Synchronize when initialSubmission changes
+  useEffect(() => {
+    setSubmission(initialSubmission);
+    const initial: Record<string, any> = {};
+    Object.entries(initialSubmission.answers || {}).forEach(([k, ans]) => {
+      initial[k] = ans.value;
+    });
+    setFormData(initial);
+  }, [initialSubmission]);
+
   const activeSection = sections.find((s) => s.id === activeSectionId) || sections[0];
+
+  const handleHydrateForm = () => {
+    if (onHydrateFromDocuments) {
+      onHydrateFromDocuments();
+      return;
+    }
+
+    let clientPrefill: any = null;
+    try {
+      const raw = typeof window !== "undefined" ? window.localStorage.getItem("documento_initial_info_sheet_v3_clean") : null;
+      if (raw) {
+        const map = JSON.parse(raw);
+        const sheet = Object.values(map)[0] as any;
+        const fd = sheet?.formData;
+        if (fd) {
+          clientPrefill = {
+            first_name: fd.given_names || "",
+            last_name: fd.family_name || "",
+            email: fd.email || "",
+            phone: fd.phone_number || "",
+            nationality: "United States",
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    const hydrated = hydrateCanonicalForm(
+      submission.form_code,
+      null,
+      clientPrefill,
+      availableDocuments
+    );
+
+    setSubmission(hydrated);
+    const nextFormData: Record<string, any> = {};
+    Object.entries(hydrated.answers || {}).forEach(([k, ans]) => {
+      nextFormData[k] = ans.value;
+    });
+    setFormData(nextFormData);
+    setFeedbackMsg({
+      text: `Form ${submission.form_code} dynamically hydrated from document evidence.`,
+      type: "success",
+    });
+  };
 
   // Helper to check conditional display
   const shouldShowField = (field: FormSchemaField): boolean => {
@@ -293,6 +366,28 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
               </span>
             </div>
           </div>
+
+          <button
+            type="button"
+            data-testid="hydrate-canonical-form-btn"
+            onClick={handleHydrateForm}
+            style={{
+              padding: "9px 16px",
+              fontSize: "12px",
+              fontWeight: 650,
+              color: "#FFFFFF",
+              background: "rgba(255, 255, 255, 0.22)",
+              border: "1px solid rgba(255, 255, 255, 0.4)",
+              borderRadius: "8px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>⚡</span> Hydrate from Evidence
+          </button>
 
           <button
             type="button"

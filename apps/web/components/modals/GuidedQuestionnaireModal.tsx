@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Modal } from "../common/Modal";
 import { TextInput, TextareaInput, CheckboxInput } from "../common/FormControls";
 import { Button } from "../common/Button";
@@ -8,6 +8,15 @@ interface GuidedQuestionnaireModalProps {
   onClose: () => void;
   onSaved: () => void;
   applicantName?: string;
+  prefillData?: Partial<{
+    fullName: string;
+    currentField: string;
+    highestDegree: string;
+    criticalRoleDescription: string;
+    publicationsCount?: string;
+    citationCount?: string;
+    peerReviewCount?: string;
+  }>;
 }
 
 export function GuidedQuestionnaireModal({
@@ -15,23 +24,88 @@ export function GuidedQuestionnaireModal({
   onClose,
   onSaved,
   applicantName = "",
+  prefillData,
 }: GuidedQuestionnaireModalProps) {
   const [step, setStep] = useState(1);
   const totalSteps = 4;
 
   // Form State
   const [formData, setFormData] = useState(() => ({
-    fullName: applicantName,
-    currentField: "",
-    highestDegree: "",
-    publicationsCount: "",
-    citationCount: "",
-    peerReviewCount: "",
-    criticalRoleDescription: "",
+    fullName: prefillData?.fullName || applicantName,
+    currentField: prefillData?.currentField || "",
+    highestDegree: prefillData?.highestDegree || "",
+    publicationsCount: prefillData?.publicationsCount || "",
+    citationCount: prefillData?.citationCount || "",
+    peerReviewCount: prefillData?.peerReviewCount || "",
+    criticalRoleDescription: prefillData?.criticalRoleDescription || "",
     confirmedOriginality: false,
   }));
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (prefillData) {
+      setFormData((prev) => ({
+        ...prev,
+        fullName: prefillData.fullName || prev.fullName || applicantName,
+        currentField: prefillData.currentField || prev.currentField,
+        highestDegree: prefillData.highestDegree || prev.highestDegree,
+        criticalRoleDescription: prefillData.criticalRoleDescription || prev.criticalRoleDescription,
+        publicationsCount: prefillData.publicationsCount || prev.publicationsCount,
+        citationCount: prefillData.citationCount || prev.citationCount,
+        peerReviewCount: prefillData.peerReviewCount || prev.peerReviewCount,
+      }));
+    } else {
+      try {
+        const raw = typeof window !== "undefined" ? window.localStorage.getItem("documento_initial_info_sheet_v3_clean") : null;
+        if (raw) {
+          const map = JSON.parse(raw);
+          const sheet = Object.values(map)[0] as any;
+          const fd = sheet?.formData;
+          if (fd) {
+            const full = fd.family_name || fd.given_names ? `${fd.given_names || ""} ${fd.family_name || ""}`.trim() : "";
+            const highestEdu = Array.isArray(fd.education) && fd.education.length > 0 ? `${fd.education[0].field_of_study}, ${fd.education[0].school_name}` : "";
+            const currentRole = Array.isArray(fd.employment) && fd.employment.length > 0 ? `${fd.employment[0].job_title} at ${fd.employment[0].company_name}` : "";
+            setFormData((prev) => ({
+              ...prev,
+              fullName: prev.fullName || full || applicantName,
+              currentField: prev.currentField || (currentRole ? "Computer Science & Artificial Intelligence" : prev.currentField),
+              highestDegree: prev.highestDegree || highestEdu || prev.highestDegree,
+              criticalRoleDescription: prev.criticalRoleDescription || (currentRole ? `Serving in a critical capacity as ${currentRole}, driving key technological breakthroughs.` : prev.criticalRoleDescription),
+            }));
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [isOpen, prefillData, applicantName]);
+
+  useEffect(() => {
+    const handleUpdate = (e: CustomEvent<any>) => {
+      const detail = e.detail;
+      if (!detail?.formData) return;
+      const fd = detail.formData;
+      const full = fd.family_name || fd.given_names ? `${fd.given_names || ""} ${fd.family_name || ""}`.trim() : "";
+      const highestEdu = Array.isArray(fd.education) && fd.education.length > 0 ? `${fd.education[0].field_of_study}, ${fd.education[0].school_name}` : "";
+      const currentRole = Array.isArray(fd.employment) && fd.employment.length > 0 ? `${fd.employment[0].job_title} at ${fd.employment[0].company_name}` : "";
+
+      setFormData((prev) => ({
+        ...prev,
+        fullName: prev.fullName || full,
+        currentField: prev.currentField || "Computer Science & Artificial Intelligence",
+        highestDegree: prev.highestDegree || highestEdu,
+        criticalRoleDescription: prev.criticalRoleDescription || (currentRole ? `Serving in a critical capacity as ${currentRole}, driving key technological breakthroughs.` : prev.criticalRoleDescription),
+      }));
+    };
+
+    window.addEventListener("documento-autofill-updated", handleUpdate as EventListener);
+    return () => {
+      window.removeEventListener("documento-autofill-updated", handleUpdate as EventListener);
+    };
+  }, []);
 
   const handleNext = () => {
     if (step < totalSteps) {
@@ -103,7 +177,25 @@ export function GuidedQuestionnaireModal({
         {/* Step 1: Bio & Field */}
         {step === 1 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h4 style={{ margin: 0, fontSize: "15px", color: "var(--text)" }}>1. Field of Extraordinary Ability</h4>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h4 style={{ margin: 0, fontSize: "15px", color: "var(--text)" }}>1. Field of Extraordinary Ability</h4>
+              {(formData.currentField || formData.highestDegree) && (
+                <span
+                  data-testid="questionnaire-step1-autofill-badge"
+                  style={{
+                    padding: "2px 8px",
+                    background: "#EFF6FF",
+                    color: "#1E40AF",
+                    border: "1px solid #BFDBFE",
+                    borderRadius: "4px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚡ Auto-filled from Profile &amp; Resume
+                </span>
+              )}
+            </div>
             <TextInput
               label="Legal Name"
               value={formData.fullName}
@@ -164,7 +256,25 @@ export function GuidedQuestionnaireModal({
         {/* Step 4: Critical Role & Declaration */}
         {step === 4 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h4 style={{ margin: 0, fontSize: "15px", color: "var(--text)" }}>4. Critical Employment Role & Legal Declaration</h4>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h4 style={{ margin: 0, fontSize: "15px", color: "var(--text)" }}>4. Critical Employment Role &amp; Legal Declaration</h4>
+              {formData.criticalRoleDescription && (
+                <span
+                  data-testid="questionnaire-step4-autofill-badge"
+                  style={{
+                    padding: "2px 8px",
+                    background: "#EFF6FF",
+                    color: "#1E40AF",
+                    border: "1px solid #BFDBFE",
+                    borderRadius: "4px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚡ Auto-drafted from Employment History
+                </span>
+              )}
+            </div>
             <TextareaInput
               label="Leading or Critical Role Description (8 CFR § 204.5(h)(3)(viii))"
               value={formData.criticalRoleDescription}

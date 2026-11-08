@@ -5,6 +5,8 @@ import { Button } from "../common/Button";
 import { calculateSHA256, formatBytes } from "../../lib/crypto";
 import { DocumentItem, DocumentCategory, ImmigrationCase, RoleCode } from "../../lib/types";
 import { api } from "../../lib/api";
+import { analyzeDocumentStandalone } from "../../lib/api/extractor";
+import { mapAnalysisToInitialInfoSheet, persistAndBroadcastAutoFill } from "../../lib/documentAutoFillEngine";
 
 interface DocumentUploadModalProps {
   isOpen: boolean;
@@ -117,6 +119,24 @@ export function DocumentUploadModal({
       if (parentDocumentId) formData.append("parent_document_id", parentDocumentId);
 
       const res = await api.uploadDocumentFile(formData, activeRole);
+
+      // Trigger automatic extraction and broadcast auto-fill intelligence
+      try {
+        const analysis = await analyzeDocumentStandalone({
+          file: selectedFile,
+          filename: selectedFile.name,
+          declaredCategory: category,
+        });
+        const sheetRes = mapAnalysisToInitialInfoSheet(analysis);
+        persistAndBroadcastAutoFill(targetCaseId || "default_client", {
+          formData: sheetRes.updatedData,
+          provenance: sheetRes.provenance,
+          sourceDocId: res.data?.id,
+          sourceFilename: selectedFile.name,
+        });
+      } catch {
+        // Fallback gracefully without interrupting primary upload callback
+      }
 
       onDocumentUploaded(res.data);
       onClose();

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Badge } from "./Badge";
+import { MetricCardSkeleton } from "./Skeletons";
 
 export interface MetricCardProps {
   label: string;
@@ -14,6 +15,7 @@ export interface MetricCardProps {
   };
   isLiveApi?: boolean;
   statusBadge?: React.ReactNode;
+  isLoading?: boolean;
 }
 
 export function MetricCard({
@@ -26,8 +28,19 @@ export function MetricCard({
   trend,
   isLiveApi = false,
   statusBadge,
+  isLoading = false,
 }: MetricCardProps) {
   const [showMeaning, setShowMeaning] = useState(false);
+
+  if (isLoading) {
+    return (
+      <MetricCardSkeleton
+        hasDrilldown={Boolean(onDrilldown)}
+        hasBadge={Boolean(statusBadge)}
+        className="metric-card-box"
+      />
+    );
+  }
 
   return (
     <article

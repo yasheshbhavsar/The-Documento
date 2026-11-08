@@ -26,6 +26,8 @@ export interface DataTableProps<T> {
   emptyDescription?: string;
   actions?: React.ReactNode;
   hideSearch?: boolean;
+  isLoading?: boolean;
+  skeletonRows?: number;
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -41,6 +43,8 @@ export function DataTable<T extends Record<string, any>>({
   emptyDescription = "No data matches your current search or filter criteria.",
   actions,
   hideSearch = false,
+  isLoading = false,
+  skeletonRows,
 }: DataTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
@@ -261,7 +265,33 @@ export function DataTable<T extends Record<string, any>>({
               </tr>
             </thead>
             <tbody>
-              {paginatedData.length > 0 ? (
+              {isLoading ? (
+                Array.from({ length: skeletonRows ?? pageSize }).map((_, rIdx) => (
+                  <tr
+                    key={`dt-skeleton-row-${rIdx}`}
+                    style={{
+                      borderBottom: "1px solid var(--border, #DCE5E1)",
+                    }}
+                  >
+                    {columns.map((col, cIdx) => (
+                      <td
+                        key={`dt-skeleton-cell-${cIdx}`}
+                        style={{
+                          padding: "14px 16px",
+                          verticalAlign: "middle",
+                        }}
+                      >
+                        <div
+                          className="h-3.5 bg-slate-200/80 dark:bg-slate-700/80 rounded animate-pulse"
+                          style={{
+                            width: cIdx === 0 ? "70%" : cIdx === columns.length - 1 ? "40%" : "55%",
+                          }}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : paginatedData.length > 0 ? (
                 paginatedData.map((row, idx) => (
                   <tr
                     key={keyExtractor(row)}

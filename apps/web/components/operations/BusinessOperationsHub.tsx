@@ -43,7 +43,7 @@ export function BusinessOperationsHub({
 
   // Organization Settings Form State
   const [settingsForm, setSettingsForm] = useState<OrganizationSettingsData>({
-    firm_name: "Lex Immigration Global Law Group",
+    firm_name: "",
     billing_currency: "USD",
     default_jurisdiction: "US",
     invoice_prefix: "INV",
@@ -57,8 +57,8 @@ export function BusinessOperationsHub({
   const [inviteForm, setInviteForm] = useState({
     full_name: "",
     email: "",
-    role: "associate_attorney",
-    branch: "New York HQ",
+    role: "case_manager",
+    branch: "Primary Office",
   });
 
   const [notification, setNotification] = useState<string | null>(null);
@@ -130,16 +130,35 @@ export function BusinessOperationsHub({
   };
 
   const handleInviteStaff = async () => {
+    if (!inviteForm.email.trim() || !inviteForm.email.includes("@")) {
+      alert("Please enter a valid work email address.");
+      return;
+    }
     try {
-      await inviteStaffMember({
-        email: inviteForm.email,
+      const res = await inviteStaffMember({
+        full_name: inviteForm.full_name.trim(),
+        email: inviteForm.email.trim(),
         role_code: inviteForm.role,
         branch: inviteForm.branch,
       });
       setIsInviteModalOpen(false);
-      showNotification(`✓ Membership invitation dispatched to ${inviteForm.email}.`);
-    } catch (err) {
-      alert("Failed to send membership invitation.");
+      const invitedEmail = inviteForm.email.trim();
+      setInviteForm({
+        full_name: "",
+        email: "",
+        role: "case_manager",
+        branch: "Primary Office",
+      });
+      if (res?.temporary_password) {
+        showNotification(
+          `✓ Team account provisioned for ${invitedEmail}. Temporary sign-in password: ${res.temporary_password}`
+        );
+      } else {
+        showNotification(`✓ Membership invitation dispatched to ${invitedEmail}.`);
+      }
+      await loadData();
+    } catch (err: any) {
+      alert(err?.message || "Failed to send membership invitation.");
     }
   };
 
@@ -687,7 +706,7 @@ export function BusinessOperationsHub({
               type="text"
               value={inviteForm.full_name}
               onChange={(e) => setInviteForm({ ...inviteForm, full_name: e.target.value })}
-              placeholder="e.g. Rachel Torres, Esq."
+              placeholder="e.g. Senior Case Manager"
               style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
             />
           </div>
@@ -701,7 +720,7 @@ export function BusinessOperationsHub({
               type="email"
               value={inviteForm.email}
               onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-              placeholder="rachel.torres@lexlaw.com"
+              placeholder="colleague@youragency.com"
               style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
             />
           </div>
@@ -717,10 +736,8 @@ export function BusinessOperationsHub({
                 onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
                 style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
               >
-                <option value="associate_attorney">Associate Attorney</option>
+                <option value="case_manager">Case Manager / Associate Counsel</option>
                 <option value="paralegal">Senior Paralegal</option>
-                <option value="compliance_officer">Compliance Specialist</option>
-                <option value="finance_staff">Finance Staff</option>
               </select>
             </div>
 
@@ -734,9 +751,9 @@ export function BusinessOperationsHub({
                 onChange={(e) => setInviteForm({ ...inviteForm, branch: e.target.value })}
                 style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
               >
-                <option value="New York HQ">New York HQ</option>
-                <option value="London Office">London Office</option>
-                <option value="Toronto Branch">Toronto Branch</option>
+                <option value="Primary Office">{settings?.firm_name ? `${settings.firm_name} — Primary Office` : "Primary Office"}</option>
+                <option value="Regional Desk">Regional Desk</option>
+                <option value="Remote Practice">Remote Practice</option>
               </select>
             </div>
           </div>

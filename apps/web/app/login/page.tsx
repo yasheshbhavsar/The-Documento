@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { DocumentoLogo } from "../../components/common/DocumentoLogo";
 import { authenticateUser } from "../../lib/auth";
 import { RoleCode, UserContext } from "../../lib/types";
-import { api } from "../../lib/api";
+import { api, setAccessToken } from "../../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -77,6 +77,7 @@ export default function LoginPage() {
 
         const res = authenticateUser(email, portal, password);
         if (res.success && res.user) {
+          setAccessToken(null);
           if (typeof window !== "undefined") {
             if (rememberMe) {
               localStorage.setItem("documento_user", JSON.stringify(res.user));
@@ -99,6 +100,7 @@ export default function LoginPage() {
         }
         const res = authenticateUser(email, portal, password);
         if (res.success && res.user) {
+          setAccessToken(null);
           if (typeof window !== "undefined") {
             if (rememberMe) {
               localStorage.setItem("documento_user", JSON.stringify(res.user));

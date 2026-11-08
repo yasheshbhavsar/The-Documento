@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { UserContext, UserExperience, RoleCode, ImmigrationCase, ClientProfile, DocumentItem, CaseTask, AIFinding, MessageItem, NotificationItem, InvoiceItem, TeamMemberCapacity, AuditEvent } from "../lib/types";
+import React, { useState } from "react";
+import { UserContext, ImmigrationCase, ClientProfile } from "../lib/types";
 import { api } from "../lib/api";
-import { purgeLegacyDemoStorageOnce } from "../lib/agencyPlatformStore";
+import { WorkspaceProvider, useWorkspace } from "../lib/context/WorkspaceContext";
+import { DashboardErrorBoundary } from "../components/common/DashboardErrorBoundary";
 import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
 import { SuperAdminControlPlane } from "../components/admin/SuperAdminControlPlane";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
 import { ClientPortal } from "../components/dashboards/ClientPortal";
-import { CreateCaseModal } from "../components/modals/CreateCaseModal";
 import { CreateClientModal, ClientModalPrefill } from "../components/modals/CreateClientModal";
+import { CreateCaseModal } from "../components/modals/CreateCaseModal";
+import { PostOnboardingLaunchpadModal } from "../components/modals/PostOnboardingLaunchpadModal";
 import { CalculatorAgencyLeadRecord } from "../lib/agencyPlatformStore";
 import { CaseDrilldownDrawer } from "../components/modals/CaseDrilldownDrawer";
 import { CaseDetailModal } from "../components/cases/CaseDetailModal";
@@ -33,11 +35,48 @@ import { useAnimationOnScroll } from "../components/landing/useAnimationOnScroll
 import { useSmoothScroll } from "../components/landing/useSmoothScroll";
 
 export default function Home() {
-  const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
+  return (
+    <WorkspaceProvider>
+      <DocumentoMainApp />
+    </WorkspaceProvider>
+  );
+}
+
+function DocumentoMainApp() {
+  const {
+    currentUser,
+    activeExp,
+    currentRoleCode,
+    isLiveBackend,
+    cases,
+    clients,
+    capacity,
+    selectedCaseForKickoff,
+    setSelectedCaseForKickoff,
+    bannerAlert,
+    setBannerAlert,
+    refreshLiveTasksAndAudit,
+    handleCaseCreated,
+    handleCaseUpdated,
+    handleClientCreated,
+    handleClientUpdated,
+    handleDocumentUploaded,
+    handleLoginSuccess,
+    handleLogout,
+    handleResetToScratch,
+  } = useWorkspace();
+
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginInitialPortal, setLoginInitialPortal] = useState<"firm" | "client">("firm");
-  const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false);
-  const [bannerAlert, setBannerAlert] = useState<{ type: "success" | "info" | "warning" | "critical"; message: string } | null>(null);
+
+  // Modals state
+  const [isCreateClientOpen, setIsCreateClientOpen] = useState(false);
+  const [isCreateCaseOpen, setIsCreateCaseOpen] = useState(false);
+  const [clientModalPrefill, setClientModalPrefill] = useState<ClientModalPrefill | null>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isQuestionnaireOpen, setIsQuestionnaireOpen] = useState(false);
+  const [selectedCaseForDrawer, setSelectedCaseForDrawer] = useState<ImmigrationCase | null>(null);
+  const [selectedCaseForDetailModal, setSelectedCaseForDetailModal] = useState<ImmigrationCase | null>(null);
 
   // Initialize on-scroll reveal animations for landing page with currentUser trigger
   useAnimationOnScroll(".animate-on-scroll", true, currentUser);
@@ -45,165 +84,11 @@ export default function Home() {
   // Initialize smooth inertia scroll via Lenis strictly on the public landing page
   useSmoothScroll(!currentUser);
 
-  // Active role mapping based on authenticated user
-  const activeExp: UserExperience = currentUser ? currentUser.experience : "master_admin";
-  const currentRole: RoleCode = currentUser ? currentUser.role : "master_admin";
-
-  // Core domain state
-  const [cases, setCases] = useState<ImmigrationCase[]>([]);
-  const [clients, setClients] = useState<ClientProfile[]>([]);
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [tasks, setTasks] = useState<CaseTask[]>([]);
-  const [aiFindings, setAiFindings] = useState<AIFinding[]>([]);
-  const [messages, setMessages] = useState<MessageItem[]>([]);
-  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
-  const [capacity, setCapacity] = useState<TeamMemberCapacity[]>([]);
-
-  // Modals state
-  const [isCreateCaseOpen, setIsCreateCaseOpen] = useState(false);
-  const [isCreateClientOpen, setIsCreateClientOpen] = useState(false);
-  const [clientModalPrefill, setClientModalPrefill] = useState<ClientModalPrefill | null>(null);
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [isQuestionnaireOpen, setIsQuestionnaireOpen] = useState(false);
-  const [selectedCaseForDrawer, setSelectedCaseForDrawer] = useState<ImmigrationCase | null>(null);
-  const [selectedCaseForDetailModal, setSelectedCaseForDetailModal] = useState<ImmigrationCase | null>(null);
-
-  // Load existing session from storage if present
-  useEffect(() => {
-    purgeLegacyDemoStorageOnce();
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("documento_user") || sessionStorage.getItem("documento_user");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored) as UserContext;
-          if (parsed && parsed.id) {
-            setCurrentUser(parsed);
-          }
-        } catch {
-          // ignore corrupted local storage
-        }
-      }
-    }
-  }, []);
-
-  // Initial data loading when role or tenant organization changes
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const isHealthy = await api.checkBackendHealth();
-        setIsLiveBackend(isHealthy);
-        if (!isHealthy && process.env.NODE_ENV === "production") {
-          setBannerAlert({
-            type: "warning",
-            message: "Documento Production API is unreachable. In-memory fallback is disabled in production to protect data integrity.",
-          });
-          return;
-        }
-
-        if (!currentUser || currentUser.role === "platform_super_admin" || currentUser.role === "platform_ops") {
-          setCases([]);
-          setClients([]);
-          setDocuments([]);
-          setTasks([]);
-          setAiFindings([]);
-          setMessages([]);
-          setInvoices([]);
-          setCapacity([]);
-          return;
-        }
-
-        const casesRes = await api.getCases(currentRole);
-        setCases(casesRes.data);
-
-        const clientsRes = await api.getClients(currentRole);
-        setClients(clientsRes.data);
-
-        const docsRes = await api.getDocuments();
-        setDocuments(docsRes.data);
-
-        const auditRes = await api.getAuditEvents(currentRole);
-        setAuditEvents(auditRes.data);
-
-        const notifsRes = await api.getNotifications(currentRole);
-        setNotifications(notifsRes.data);
-
-        const tasksRes = await api.getTasks();
-        setTasks(tasksRes.data);
-
-        const findingsRes = await api.getAIFindings();
-        setAiFindings(findingsRes.data);
-
-        const msgsRes = await api.getMessages();
-        setMessages(msgsRes.data);
-
-        const invsRes = await api.getInvoices();
-        setInvoices(invsRes.data);
-
-        const capRes = await api.getTeamCapacity();
-        setCapacity(capRes.data);
-      } catch (err: any) {
-        setBannerAlert({
-          type: "warning",
-          message: err?.message || "Error communicating with Documento API",
-        });
-      }
-    }
-
-    loadData();
-  }, [currentRole, currentUser?.id, currentUser?.organization_id]);
-
   // Auth Handlers
   const handleOpenLogin = (portal: "firm" | "client" = "firm") => {
     setLoginInitialPortal(portal);
     setIsLoginModalOpen(true);
   };
-
-  const handleLoginSuccess = (user: UserContext) => {
-    setCurrentUser(user);
-    setIsLoginModalOpen(false);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("documento_user", JSON.stringify(user));
-    }
-    setBannerAlert({
-      type: "success",
-      message: `Welcome, ${user.full_name}. Authenticated to ${user.organization_name}.`,
-    });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("documento_user");
-      sessionStorage.removeItem("documento_user");
-      // Instantly reveal landing page elements on next frame upon sign-out
-      requestAnimationFrame(() => {
-        if (typeof (window as any).initInViewAnimations === "function") {
-          (window as any).initInViewAnimations();
-        }
-      });
-      try {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      } catch {
-        window.scrollTo(0, 0);
-      }
-    }
-    setBannerAlert({
-      type: "info",
-      message: "You have been safely signed out of Documento.",
-    });
-  };
-
-  // Auto-dismiss transient banner alerts after 4 seconds
-  useEffect(() => {
-    if (!bannerAlert) return;
-    const timer = setTimeout(() => {
-      setBannerAlert(null);
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [bannerAlert]);
 
   // Restricted KYB Sandbox Guardrails & Lead-to-Client Conversion
   const guardSandboxAgencyAction = (actionName: string): boolean => {
@@ -217,6 +102,11 @@ export default function Home() {
     return true;
   };
 
+  const handleOpenCreateCase = () => {
+    if (!guardSandboxAgencyAction("case docket creation")) return;
+    setIsCreateCaseOpen(true);
+  };
+
   const handleOpenCreateClient = () => {
     if (!guardSandboxAgencyAction("client retention & portal credential issuance")) return;
     setClientModalPrefill(null);
@@ -226,12 +116,44 @@ export default function Home() {
   const handleConvertLeadToClient = (lead: CalculatorAgencyLeadRecord) => {
     if (!guardSandboxAgencyAction("lead-to-client retention")) return;
     const parts = lead.applicantName.trim().split(/\s+/);
+    const code = (lead.countryCode || "").toUpperCase();
+    const titleLower = (lead.calculatorTitle || "").toLowerCase();
+
+    let prefillJurisdiction = "United States (USCIS)";
+    let prefillVisaCategory = "EB-1A Extraordinary Ability";
+
+    if (code === "CA" || titleLower.includes("canada") || titleLower.includes("crs") || titleLower.includes("express entry")) {
+      prefillJurisdiction = "Canada (IRCC)";
+      prefillVisaCategory = titleLower.includes("study") ? "Canada Study Permit" : "Express Entry PNP";
+    } else if (code === "UK" || code === "GB" || titleLower.includes("uk") || titleLower.includes("united kingdom")) {
+      prefillJurisdiction = "United Kingdom (Home Office)";
+      prefillVisaCategory = titleLower.includes("global talent")
+        ? "Global Talent Tech Nation"
+        : titleLower.includes("student")
+          ? "UK Student Visa"
+          : "UK Skilled Worker Visa";
+    } else if (code === "AU" || titleLower.includes("australia") || titleLower.includes("skillselect")) {
+      prefillJurisdiction = "Australia (Home Affairs)";
+      prefillVisaCategory = titleLower.includes("student")
+        ? "Australia Student Visa (Subclass 500)"
+        : "Australia Global Talent";
+    } else if (code === "DE" || titleLower.includes("germany") || titleLower.includes("chancenkarte") || titleLower.includes("blue card")) {
+      prefillJurisdiction = "Germany (BAMF)";
+      prefillVisaCategory = "Germany Opportunity Card (Chancenkarte)";
+    } else if (titleLower.includes("h-1b")) {
+      prefillVisaCategory = "H-1B Specialty Occupation";
+    } else if (titleLower.includes("f-1")) {
+      prefillVisaCategory = "US F-1 Academic Student";
+    }
+
     setClientModalPrefill({
       firstName: parts[0] || "",
       lastName: parts.slice(1).join(" ") || "Applicant",
       email: lead.applicantEmail,
       phone: lead.applicantPhone || "",
       nationality: "",
+      jurisdiction: prefillJurisdiction,
+      visaCategory: prefillVisaCategory,
       leadScoreNote: `${lead.calculatorTitle} — ${lead.scoreSummary}`,
     });
     setIsCreateClientOpen(true);
@@ -240,165 +162,6 @@ export default function Home() {
   const handleOpenUploadModal = () => {
     if (!guardSandboxAgencyAction("applicant PII document uploads")) return;
     setIsUploadModalOpen(true);
-  };
-
-  // Domain Handlers
-  const handleCaseCreated = (newCase: ImmigrationCase) => {
-    setCases((prev) => [newCase, ...prev]);
-    setBannerAlert({
-      type: "success",
-      message: `Immigration Case ${newCase.case_number} created and assigned to lead counsel.`,
-    });
-  };
-
-  const handleClientCreated = (newClient: ClientProfile) => {
-    setClients((prev) => [newClient, ...prev]);
-    setBannerAlert({
-      type: "success",
-      message: `Client ${newClient.first_name} ${newClient.last_name} retained and onboarding profile created.`,
-    });
-  };
-
-  const handleClientUpdated = (updatedClient: ClientProfile) => {
-    setClients((prev) => prev.map((c) => (c.id === updatedClient.id ? updatedClient : c)));
-    setBannerAlert({
-      type: "success",
-      message: `Credentials provisioned for client ${updatedClient.first_name} ${updatedClient.last_name}. Portal access status: ${updatedClient.portal_access_enabled ? "Active" : "Disabled"}.`,
-    });
-  };
-
-  const handleDeleteClient = async (clientId: string) => {
-    try {
-      await api.deleteClient(clientId, currentRole);
-      setClients((prev) => prev.filter((c) => c.id !== clientId));
-      setBannerAlert({
-        type: "success",
-        message: "Retained client profile successfully deleted from firm directory.",
-      });
-      try {
-        const auditRes = await api.getAuditEvents(currentRole);
-        setAuditEvents(auditRes.data);
-      } catch { }
-    } catch (err: any) {
-      setBannerAlert({
-        type: "critical",
-        message: err?.message || "Failed to delete client profile.",
-      });
-    }
-  };
-
-  const handleCaseUpdated = (updatedCase: ImmigrationCase) => {
-    setCases((prev) => prev.map((c) => (c.id === updatedCase.id ? updatedCase : c)));
-    setBannerAlert({
-      type: "info",
-      message: `Case ${updatedCase.case_number} details and milestone progress updated.`,
-    });
-  };
-
-  const handleDocumentUploaded = (newDoc: DocumentItem) => {
-    setDocuments((prev) => [newDoc, ...prev]);
-    setBannerAlert({
-      type: "success",
-      message: `Document "${newDoc.title}" uploaded to secure vault with SHA-256 verification.`,
-    });
-  };
-
-  const handleDocumentUpdated = (updatedDoc: DocumentItem) => {
-    setDocuments((prev) => prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d)));
-    setBannerAlert({
-      type: "info",
-      message: `Document "${updatedDoc.title}" updated. Processing status: ${updatedDoc.processing_status}.`,
-    });
-  };
-
-  const handleResolveFinding = async (findingId: string, note: string) => {
-    const finding = aiFindings.find((f) => f.id === findingId);
-    const caseId = finding?.case_id || cases[0]?.id || "case-01";
-    await api.resolveFinding(caseId, findingId, note || "Resolved by reviewer");
-    setAiFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status: "resolved" } : f)));
-    setBannerAlert({ type: "success", message: "Discrepancy marked as resolved." });
-  };
-
-  const handleDismissFinding = async (findingId: string, reason: string, note: string) => {
-    const finding = aiFindings.find((f) => f.id === findingId);
-    const caseId = finding?.case_id || cases[0]?.id || "case-01";
-    await api.dismissFinding(caseId, findingId, reason || "false_positive", note || "Dismissed by reviewer");
-    setAiFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status: "dismissed" } : f)));
-    setBannerAlert({ type: "info", message: "Finding dismissed." });
-  };
-
-  const handleEscalateFinding = async (findingId: string, note: string) => {
-    const finding = aiFindings.find((f) => f.id === findingId);
-    const caseId = finding?.case_id || cases[0]?.id || "case-01";
-    await api.escalateFinding(caseId, findingId, note || "Escalated for senior review");
-    setAiFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status: "needs_review" } : f)));
-    setBannerAlert({ type: "warning", message: "Finding escalated to supervising attorney." });
-  };
-
-  const handleSendMessage = async (content: string) => {
-    const senderRole = activeExp === "client_applicant" ? "client" : "attorney";
-    const newMsg = await api.sendMessage(content, senderRole);
-    if (newMsg) {
-      setMessages((prev) => [...prev, newMsg.data]);
-    }
-    setBannerAlert({ type: "success", message: "Message sent securely to firm legal team." });
-  };
-
-  const handleMarkNotificationRead = async (id: string) => {
-    await api.markNotificationRead(id);
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, status: "read", isRead: true } : n)));
-  };
-
-  const handleToggleTask = (taskId: string) => {
-    void api.toggleTask(taskId);
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        const nextCompleted = !t.is_completed;
-        return {
-          ...t,
-          is_completed: nextCompleted,
-          status: nextCompleted ? "completed" : "pending",
-        };
-      })
-    );
-  };
-
-  const handleResetToScratch = () => {
-    api.resetToScratch();
-    setCases([]);
-    setClients([]);
-    setDocuments([]);
-    setTasks([]);
-    setAiFindings([]);
-    setMessages([]);
-    setInvoices([]);
-    setAuditEvents([
-      {
-        id: "audit-init",
-        action: "workspace.initialized",
-        object_type: "workspace",
-        object_id: currentUser?.organization_id || "workspace",
-        actor_email: currentUser?.email || "operator@workspace.local",
-        created_at: new Date().toISOString(),
-        metadata: {
-          note: "Firm workspace started from scratch (Day 0). Zero mock cases and zero mock documents.",
-        },
-      },
-    ]);
-    setNotifications([
-      {
-        id: "notif-init",
-        title: "Initial Setup Ready",
-        body: "Firm workspace started from scratch. Onboard your first client or create your first immigration case to begin the live flow.",
-        status: "unread",
-        created_at: new Date().toISOString(),
-      },
-    ]);
-    setBannerAlert({
-      type: "info",
-      message: "Workspace successfully reset to Day 0 clean slate (0 cases, 0 documents, 0 clients).",
-    });
   };
 
   return (
@@ -451,7 +214,6 @@ export default function Home() {
           <button
             onClick={() => {
               api.checkBackendHealth().then((h) => {
-                setIsLiveBackend(h);
                 if (h) window.location.reload();
               });
             }}
@@ -507,18 +269,21 @@ export default function Home() {
           <DocumentoLoginModal
             isOpen={isLoginModalOpen}
             onClose={() => setIsLoginModalOpen(false)}
-            onLoginSuccess={handleLoginSuccess}
+            onLoginSuccess={(user: UserContext) => {
+              handleLoginSuccess(user);
+              setIsLoginModalOpen(false);
+            }}
             initialPortal={loginInitialPortal}
           />
         </WaveBackground>
       )}
 
       {/* STATE B: AUTHENTICATED ENTERPRISE WORKSPACE */}
-      {currentUser && (activeExp === "platform_super_admin" || currentRole === "platform_ops") && (
+      {currentUser && (activeExp === "platform_super_admin" || currentRoleCode === "platform_ops") && (
         <SuperAdminControlPlane onSignOut={handleLogout} />
       )}
 
-      {currentUser && activeExp !== "platform_super_admin" && currentRole !== "platform_ops" && (
+      {currentUser && activeExp !== "platform_super_admin" && currentRoleCode !== "platform_ops" && (
         <div>
           <WorkspaceHeader
             currentUser={currentUser}
@@ -528,101 +293,42 @@ export default function Home() {
           />
 
           <main style={{ padding: 0 }}>
-            {activeExp === "master_admin" && (
-              <OwnerMasterDashboard
-                cases={cases}
-                clients={clients}
-                auditEvents={auditEvents}
-                invoices={invoices}
-                capacity={capacity}
-                isLiveBackend={isLiveBackend}
-                onOpenCreateCase={() => setIsCreateCaseOpen(true)}
-                onOpenCreateClient={handleOpenCreateClient}
-                onConvertLeadToClient={handleConvertLeadToClient}
-                onSelectCase={(c) => setSelectedCaseForDrawer(c)}
-                onClientUpdated={handleClientUpdated}
-                onDeleteClient={handleDeleteClient}
-                currentUser={currentUser || undefined}
-              />
-            )}
+            <DashboardErrorBoundary
+              sectionTitle="Role Workspace"
+              sectionDescription="Role dashboard isolated view"
+              isolateStateKey={activeExp}
+            >
+              {activeExp === "master_admin" && (
+                <OwnerMasterDashboard
+                  onOpenCreateCase={handleOpenCreateCase}
+                  onOpenCreateClient={handleOpenCreateClient}
+                  onConvertLeadToClient={handleConvertLeadToClient}
+                  onSelectCase={(c) => setSelectedCaseForDrawer(c)}
+                  onOpenCaseKickoff={(c) => setSelectedCaseForKickoff(c)}
+                />
+              )}
 
-            {(activeExp === "case_manager" || activeExp === "paralegal") && (
-              <EmployeeWorkspace
-                cases={cases}
-                clients={clients}
-                documents={documents}
-                tasks={tasks}
-                aiFindings={aiFindings}
-                messages={messages}
-                onToggleTask={handleToggleTask}
-                onSendMessage={handleSendMessage}
-                onSelectCase={(c) => setSelectedCaseForDrawer(c)}
-                onOpenUploadModal={handleOpenUploadModal}
-                onOpenCreateClient={handleOpenCreateClient}
-                onDocumentUpdated={handleDocumentUpdated}
-                onClientUpdated={handleClientUpdated}
-                onDeleteClient={handleDeleteClient}
-                currentUser={currentUser || undefined}
-                onResolveFinding={handleResolveFinding}
-                onDismissFinding={handleDismissFinding}
-                onEscalateFinding={handleEscalateFinding}
-              />
-            )}
+              {(activeExp === "case_manager" || activeExp === "paralegal") && (
+                <EmployeeWorkspace
+                  onSelectCase={(c) => setSelectedCaseForDrawer(c)}
+                  onOpenUploadModal={handleOpenUploadModal}
+                  onOpenCreateClient={handleOpenCreateClient}
+                  onOpenCaseKickoff={(c) => setSelectedCaseForKickoff(c)}
+                />
+              )}
 
-            {activeExp === "client_applicant" && (() => {
-              // Retained client must only see data manually assigned/updated for them by Owner/Paralegal
-              const clientCase =
-                cases.find(
-                  (c) =>
-                    c.client_id === currentUser?.id ||
-                    (c.client_name &&
-                      currentUser?.full_name &&
-                      c.client_name.toLowerCase().includes(currentUser.full_name.toLowerCase()))
-                ) || null;
-
-              const clientDocuments = clientCase
-                ? documents.filter((d) => d.case_id === clientCase.id)
-                : [];
-              const clientMessages = clientCase
-                ? messages.filter((m) => m.sender_role === "client" || m.sender_role === "attorney")
-                : [];
-              const clientInvoices = clientCase
-                ? invoices.filter(
-                  (inv) =>
-                    inv.case_number === clientCase.case_number ||
-                    (inv.case_id && inv.case_id === clientCase.id)
-                )
-                : [];
-
-              return (
+              {activeExp === "client_applicant" && (
                 <ClientPortal
-                  myCase={clientCase}
-                  documents={clientDocuments}
-                  messages={clientMessages}
-                  notifications={clientCase ? notifications : []}
-                  invoices={clientInvoices}
-                  currentUser={currentUser}
                   onOpenUploadModal={handleOpenUploadModal}
                   onOpenQuestionnaireModal={() => setIsQuestionnaireOpen(true)}
-                  onSendMessage={handleSendMessage}
-                  onMarkNotificationRead={handleMarkNotificationRead}
-                  onDocumentUpdated={handleDocumentUpdated}
                 />
-              );
-            })()}
+              )}
+            </DashboardErrorBoundary>
           </main>
         </div>
       )}
 
-
       {/* Modals & Drawers */}
-      <CreateCaseModal
-        isOpen={isCreateCaseOpen}
-        onClose={() => setIsCreateCaseOpen(false)}
-        clients={clients}
-        onCaseCreated={handleCaseCreated}
-        activeRole={currentRole}
-      />
       <CreateClientModal
         isOpen={isCreateClientOpen}
         onClose={() => {
@@ -630,13 +336,58 @@ export default function Home() {
           setClientModalPrefill(null);
         }}
         onClientCreated={handleClientCreated}
-        activeRole={currentRole}
+        onCaseCreated={handleCaseCreated}
+        clients={clients}
+        activeRole={currentRoleCode}
         initialPrefill={clientModalPrefill}
+      />
+      <CreateCaseModal
+        isOpen={isCreateCaseOpen}
+        onClose={() => setIsCreateCaseOpen(false)}
+        clients={clients}
+        onCaseCreated={handleCaseCreated}
+        activeRole={currentRoleCode}
+      />
+      <PostOnboardingLaunchpadModal
+        isOpen={!!selectedCaseForKickoff}
+        onClose={() => setSelectedCaseForKickoff(null)}
+        caseItem={
+          selectedCaseForKickoff
+            ? cases.find((c) => c.id === selectedCaseForKickoff.id) || selectedCaseForKickoff
+            : null
+        }
+        clientItem={
+          selectedCaseForKickoff
+            ? clients.find(
+                (cl) =>
+                  cl.id === selectedCaseForKickoff.client_id ||
+                  (selectedCaseForKickoff.client_name &&
+                    `${cl.first_name} ${cl.last_name}`.trim().toLowerCase() ===
+                      selectedCaseForKickoff.client_name.trim().toLowerCase())
+              ) || null
+            : null
+        }
+        teamCapacity={capacity}
+        currentUser={currentUser}
+        activeRole={currentRoleCode}
+        onCaseUpdated={(updatedCase) => {
+          handleCaseUpdated(updatedCase);
+          setSelectedCaseForKickoff(updatedCase);
+        }}
+        onClientUpdated={handleClientUpdated}
+        onDocumentUploaded={handleDocumentUploaded}
+        onKickoffChanged={() => {
+          void refreshLiveTasksAndAudit();
+        }}
+        onOpenCaseWorkspace={(c) => {
+          setSelectedCaseForDetailModal(c);
+        }}
       />
       <CaseDrilldownDrawer
         isOpen={!!selectedCaseForDrawer}
         onClose={() => setSelectedCaseForDrawer(null)}
         caseItem={selectedCaseForDrawer}
+        onOpenCaseKickoff={(c) => setSelectedCaseForKickoff(c)}
         onOpenWorkspace={() => {
           if (selectedCaseForDrawer) {
             setSelectedCaseForDetailModal(selectedCaseForDrawer);
@@ -650,7 +401,7 @@ export default function Home() {
         onClose={() => setSelectedCaseForDetailModal(null)}
         caseItem={selectedCaseForDetailModal}
         onCaseUpdated={handleCaseUpdated}
-        activeRole={currentRole}
+        activeRole={currentRoleCode}
       />
       <DocumentUploadModal
         isOpen={isUploadModalOpen}
@@ -679,7 +430,7 @@ export default function Home() {
             : cases[0]?.id)
         }
         onDocumentUploaded={handleDocumentUploaded}
-        activeRole={currentRole}
+        activeRole={currentRoleCode}
       />
       <GuidedQuestionnaireModal
         isOpen={isQuestionnaireOpen}

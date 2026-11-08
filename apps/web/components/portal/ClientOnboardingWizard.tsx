@@ -31,17 +31,21 @@ export function ClientOnboardingWizard({
   const [saving, setSaving] = useState<boolean>(false);
   const [submitted, setSubmitted] = useState<boolean>(false);
 
+  const hasStoredUser =
+    typeof window !== "undefined" && Boolean(window.localStorage.getItem("documento_user"));
+  const useDemoDefaults = isTestEnv && !hasStoredUser;
+
   // Step 1: Consents
   const [consents, setConsents] = useState({
-    representation_g28: true,
-    data_processing_gdpr: true,
-    communication_consent: true,
-    electronic_signatures: true,
+    representation_g28: useDemoDefaults,
+    data_processing_gdpr: useDemoDefaults,
+    communication_consent: useDemoDefaults,
+    electronic_signatures: useDemoDefaults,
   });
 
   // Step 2: Applicant Biodata
   const [profile, setProfile] = useState<Partial<ClientProfileData>>(() => {
-    if (isTestEnv) {
+    if (useDemoDefaults) {
       return {
         first_name: "Elena",
         last_name: "Rostova",
@@ -62,7 +66,7 @@ export function ClientOnboardingWizard({
       passport_verified: false,
     };
   });
-  const [passportNumber, setPassportNumber] = useState(isTestEnv ? "FG891244" : "");
+  const [passportNumber, setPassportNumber] = useState(useDemoDefaults ? "FG891244" : "");
 
   // Step 3: Dependants
   const [dependants, setDependants] = useState<Array<{
@@ -75,7 +79,7 @@ export function ClientOnboardingWizard({
     nationality: string;
     is_authorized_to_view_case: boolean;
   }>>(() => {
-    if (isTestEnv) {
+    if (useDemoDefaults) {
       return [
         {
           id: "dep-01",
@@ -96,19 +100,23 @@ export function ClientOnboardingWizard({
   const [newDepLastName, setNewDepLastName] = useState("");
   const [newDepRel, setNewDepRel] = useState("child");
   const [newDepEmail, setNewDepEmail] = useState("");
-  const [newDepNationality, setNewDepNationality] = useState("UKR");
+  const [newDepNationality, setNewDepNationality] = useState(useDemoDefaults ? "UKR" : "IND");
   const [newDepAuth, setNewDepAuth] = useState(false);
   const [showAddDepForm, setShowAddDepForm] = useState(false);
 
   // Step 4: Questionnaire
   const [questionnaire, setQuestionnaire] = useState<ClientQuestionnaireItem | null>(null);
-  const [responses, setResponses] = useState<Record<string, any>>({
-    current_employer: "Stanford University School of Medicine",
-    job_title: "Senior Research Scientist in Computational Genomics",
-    field_of_expertise: "Machine Learning applied to Cancer Genomics",
-    total_articles_count: 14,
-    google_scholar_link: "https://scholar.google.com/citations?user=sample_rostova",
-  });
+  const [responses, setResponses] = useState<Record<string, any>>(
+    useDemoDefaults
+      ? {
+          current_employer: "Stanford University School of Medicine",
+          job_title: "Senior Research Scientist in Computational Genomics",
+          field_of_expertise: "Machine Learning applied to Cancer Genomics",
+          total_articles_count: 14,
+          google_scholar_link: "https://scholar.google.com/citations?user=sample_rostova",
+        }
+      : {}
+  );
 
   useEffect(() => {
     loadInitialData();
@@ -736,7 +744,10 @@ export function ClientOnboardingWizard({
                 <div>
                   <span className="text-slate-500 block text-[11px]">Nationality</span>
                   <span className="font-semibold text-slate-800 font-mono">
-                    {profile.nationality} (Passport Verified)
+                    {profile.nationality || "Pending"}{" "}
+                    {passportNumber?.trim() || profile.passport_verified
+                      ? "(Passport Entered)"
+                      : "(Passport Pending)"}
                   </span>
                 </div>
                 <div>
@@ -748,31 +759,51 @@ export function ClientOnboardingWizard({
                 <div>
                   <span className="text-slate-500 block text-[11px]">Statutory Consents</span>
                   <span className="font-semibold text-emerald-600">
-                    4 of 4 Signed Electronically
+                    {Object.values(consents).filter(Boolean).length} of 4 Signed Electronically
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-indigo-900">
-                  Profile & Intake Completeness Score
-                </span>
-                <span className="text-xs font-bold text-indigo-600">
-                  92% Ready
-                </span>
-              </div>
-              <div className="w-full bg-indigo-200/50 rounded-full h-2">
-                <div
-                  className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: "92%" }}
-                />
-              </div>
-              <p className="text-[11px] text-indigo-700 mt-2">
-                Once submitted, your case manager will review your biographical answers and initiate the formal EB-1A evidence gathering phase.
-              </p>
-            </div>
+            {(() => {
+              const signedCount = Object.values(consents).filter(Boolean).length;
+              const bioFilledCount = [
+                profile.first_name,
+                profile.last_name,
+                profile.email,
+                passportNumber,
+              ].filter((v) => Boolean(v && String(v).trim())).length;
+              const answeredQCount = Object.values(responses || {}).filter(
+                (v) => v !== "" && v !== null && v !== undefined
+              ).length;
+              const wizardPct = useDemoDefaults
+                ? 92
+                : Math.min(
+                    100,
+                    Math.round(((signedCount + bioFilledCount + Math.min(4, answeredQCount)) / 12) * 100)
+                  );
+              return (
+                <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-indigo-900">
+                      Profile &amp; Intake Completeness Score
+                    </span>
+                    <span className="text-xs font-bold text-indigo-600">
+                      {wizardPct}% Ready
+                    </span>
+                  </div>
+                  <div className="w-full bg-indigo-200/50 rounded-full h-2">
+                    <div
+                      className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${wizardPct}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-indigo-700 mt-2">
+                    Once submitted, your case manager will review your biographical answers and initiate the formal evidence gathering phase.
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

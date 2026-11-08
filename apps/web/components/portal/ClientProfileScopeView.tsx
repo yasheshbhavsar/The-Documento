@@ -2,6 +2,7 @@ import React from "react";
 import { ImmigrationCase } from "../../lib/types";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
+import { getJurisdictionRepresentationInfo } from "../../lib/jurisdictionForms";
 
 export interface ClientProfileScopeViewProps {
   myCase: ImmigrationCase | null;
@@ -112,6 +113,8 @@ export function ClientProfileScopeView({
       .slice(0, 2)
       .toUpperCase() || "PA";
 
+  const repInfo = getJurisdictionRepresentationInfo(jurisdiction);
+
   const principalApplicantForms = isSpousalOrFamily
     ? [
         "IMM 0008 (Generic Application for Canada)",
@@ -119,6 +122,7 @@ export function ClientProfileScopeView({
         "IMM 5669 (Schedule A Background/Declaration)",
         "IMM 5406 (Additional Family Information)",
         "IMM 5710 (In-Canada Open Work Permit - SOWP)",
+        repInfo.formsListEntry,
       ]
     : isStudy
     ? [
@@ -126,6 +130,7 @@ export function ClientProfileScopeView({
         "IMM 5645 (Family Information)",
         "DLI Acceptance & Provincial Attestation Letter (PAL)",
         "Proof of Financial Support (GIC / Bank Proof)",
+        repInfo.formsListEntry,
       ]
     : isUSCIS
     ? [
@@ -133,13 +138,13 @@ export function ClientProfileScopeView({
         "Form I-485 (Adjustment of Status)",
         "Form I-765 (Employment Authorization Document - EAD)",
         "Form I-131 (Advance Parole Travel Document)",
-        "Form G-28 (Notice of Attorney Representation)",
+        repInfo.formsListEntry,
       ]
     : [
         "Statutory Visa Application",
         "Biometric Instruction Records",
         "Family Information Form",
-        "Official Identity Verification Dossier",
+        repInfo.formsListEntry,
       ];
 
   const activeMembersCount = isSpousalOrFamily ? 2 : 1;
@@ -582,11 +587,15 @@ export function ClientProfileScopeView({
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
             <span style={{ fontSize: "14px" }}>📋</span>
             <strong style={{ fontSize: "13px", color: "#475569" }}>
-              Declared Immediate Family Members (IRPA § 117(9)(d) Compliance)
+              {isCanada
+                ? "Declared Immediate Family Members (IRPA § 117(9)(d) Compliance)"
+                : "Declared Immediate Family Members & Qualifying Dependents"}
             </strong>
           </div>
           <p style={{ margin: "0 0 10px 0", fontSize: "12px", color: "#64748B", lineHeight: 1.4 }}>
-            Under Canadian immigration regulations, all immediate relatives must be truthfully listed on Form IMM 5406 to prevent statutory bars:
+            {isCanada
+              ? "Under Canadian immigration regulations, all immediate relatives must be truthfully listed on Form IMM 5406 to prevent statutory bars:"
+              : "Under statutory immigration guidelines, all immediate family members and qualifying dependents must be truthfully declared on record to prevent inadmissibility bars:"}
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             <span
@@ -599,7 +608,7 @@ export function ClientProfileScopeView({
                 color: "#1E293B",
               }}
             >
-              <strong>Immediate Relatives (Parents, Children, Siblings)</strong> declared via Form IMM 5406
+              <strong>Immediate Relatives (Parents, Children, Siblings)</strong> declared {isCanada ? "via Form IMM 5406" : "on official record"}
             </span>
             <span
               style={{

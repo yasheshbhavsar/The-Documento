@@ -336,7 +336,7 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     promptChips: {
       timeline: {
         title: "આગામી તબક્કા માટે અંદાજિત સમયરેખા પૂછો",
-        prompt: "[ગુજરાતી]: નમસ્તે સારાહ, હું મારી વિઝા અરજીના આગામી તબક્કા માટે અંદાજિત સમયરેખા જાણવા માગું છું. આ તબક્કો ક્યારે પૂર્ણ થશે?\n[English for Officer]: Hello Sarah, could you please provide an estimated timeline for the next milestone in my petition? Thank you!",
+        prompt: "[ગુજરાતી]: નમસ્તે અધિકારીશ્રી, હું મારી વિઝા અરજીના આગામી તબક્કા માટે અંદાજિત સમયરેખા જાણવા માગું છું. આ તબક્કો ક્યારે પૂર્ણ થશે?\n[English for Officer]: Dear Case Officer, could you please provide an estimated timeline for the next milestone in my petition? Thank you!",
       },
       travel: {
         title: "અરજી પેન્ડિંગ હોય ત્યારે વિદેશ મુસાફરી અંગે પૂછો",
@@ -449,7 +449,7 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     promptChips: {
       timeline: {
         title: "अगले पड़ाव के लिए अनुमानित समय सीमा पूछें",
-        prompt: "[हिन्दी]: नमस्ते सारा, मैं अपनी वीज़ा याचिका के अगले चरण के लिए अनुमानित समय सीमा जानना चाहता हूँ। यह कब तक पूरा होगा?\n[English for Officer]: Hello Sarah, could you please provide an estimated timeline for the next milestone in my petition? Thank you!",
+        prompt: "[हिन्दी]: नमस्ते अधिकारी महोदय, मैं अपनी वीज़ा याचिका के अगले चरण के लिए अनुमानित समय सीमा जानना चाहता हूँ। यह कब तक पूरा होगा?\n[English for Officer]: Dear Case Officer, could you please provide an estimated timeline for the next milestone in my petition? Thank you!",
       },
       travel: {
         title: "याचिका लंबित होने पर विदेश यात्रा के बारे में पूछें",
