@@ -1,8 +1,11 @@
 import hmac
 import hashlib
 import json
+import logging
 from fastapi import Request
 from backend.app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 """Billing API Router
 
 Provides endpoints for service fees, client engagement retainers, invoices with line items,
@@ -477,7 +480,18 @@ async def stripe_webhook_receiver(
     payload_bytes = await request.body()
     sig_header = request.headers.get("stripe-signature")
 
-    if getattr(settings, "stripe_webhook_secret", None) and sig_header:
+    # Stripe Webhook Cryptographic Verification (INT-SEC-01)
+    if getattr(settings, "stripe_webhook_secret", None) or settings.environment in ("production", "staging"):
+        if not sig_header:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing required Stripe-Signature header",
+            )
+        if not getattr(settings, "stripe_webhook_secret", None):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Stripe webhook secret is not configured in production environment",
+            )
         try:
             elements = dict(item.split("=", 1) for item in sig_header.split(","))
             t = elements.get("t", "")
@@ -512,35 +526,47 @@ async def stripe_webhook_receiver(
         if invoice_id_str:
             try:
                 inv_uuid = uuid.UUID(invoice_id_str)
-                invoice = db.query(Invoice).filter(Invoice.id == inv_uuid).first()
-                if invoice:
-                    charge_id = event_data.get("id", f"ch_stripe_{uuid.uuid4().hex[:12]}")
-                    charges = event_data.get("charges", {}).get("data", [])
-                    card_brand = "visa"
-                    card_last4 = "4242"
-                    if charges and "payment_method_details" in charges[0]:
-                        pm_card = charges[0]["payment_method_details"].get("card", {})
-                        card_brand = pm_card.get("brand", "visa")
-                        card_last4 = pm_card.get("last4", "4242")
+            except (ValueError, TypeError):
+                logger.error("Invalid invoice_id format in Stripe metadata: %s", invoice_id_str)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid invoice_id format in Stripe metadata",
+                )
 
-                    payment_payload = {
-                        "amount": amount or invoice.balance_due,
-                        "currency": event_data.get("currency", invoice.currency).upper(),
-                        "payment_method": "stripe_card",
-                        "provider_charge_id": charge_id,
-                        "card_brand": card_brand,
-                        "card_last4": card_last4,
-                        "transaction_reference": f"stripe_tx_{charge_id}",
-                        "notes": f"Automated Stripe webhook reconciliation for {event_type}",
-                    }
+            invoice = db.query(Invoice).filter(Invoice.id == inv_uuid).first()
+            if invoice:
+                charge_id = event_data.get("id", f"ch_stripe_{uuid.uuid4().hex[:12]}")
+                charges = event_data.get("charges", {}).get("data", [])
+                card_brand = "visa"
+                card_last4 = "4242"
+                if charges and "payment_method_details" in charges[0]:
+                    pm_card = charges[0]["payment_method_details"].get("card", {})
+                    card_brand = pm_card.get("brand", "visa")
+                    card_last4 = pm_card.get("last4", "4242")
+
+                payment_payload = {
+                    "amount": amount or invoice.balance_due,
+                    "currency": event_data.get("currency", invoice.currency).upper(),
+                    "payment_method": "stripe_card",
+                    "provider_charge_id": charge_id,
+                    "card_brand": card_brand,
+                    "card_last4": card_last4,
+                    "transaction_reference": f"stripe_tx_{charge_id}",
+                    "notes": f"Automated Stripe webhook reconciliation for {event_type}",
+                }
+                try:
                     BillingService.record_payment(
                         db=db,
                         organization_id=invoice.organization_id,
                         invoice_id=invoice.id,
                         payment_data=payment_payload,
                     )
-            except Exception:
-                pass
+                except Exception as exc:
+                    logger.error("Failed to reconcile Stripe webhook event %s: %s", event_type, exc, exc_info=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to record webhook transaction; scheduled for retry.",
+                    )
 
     return {
         "received": True,

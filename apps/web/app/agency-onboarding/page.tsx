@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AgencyOnboardingWizard } from "../../components/agency/AgencyOnboardingWizard";
+import { DashboardErrorBoundary } from "../../components/common/DashboardErrorBoundary";
 
 export const metadata: Metadata = {
   title: "Partner Visa Agency Onboarding & KYB | Documento",
@@ -8,6 +9,13 @@ export const metadata: Metadata = {
 };
 
 export default function AgencyOnboardingPage() {
-  return <AgencyOnboardingWizard />;
+  return (
+    <DashboardErrorBoundary
+      sectionTitle="Agency Onboarding Wizard"
+      sectionDescription="Partner agency registration, KYB verification, and tenant workspace setup."
+    >
+      <AgencyOnboardingWizard />
+    </DashboardErrorBoundary>
+  );
 }
 

@@ -12,6 +12,9 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
+
+from backend.app.documents.security import MAX_ALLOWED_FILE_SIZE
 
 from backend.app.ai.financial_parser import FinancialIntelligenceEngine
 from backend.app.ai.identity_resolver import IdentityResolver
@@ -344,7 +347,16 @@ async def analyze_document_standalone(
 
     if file is not None and hasattr(file, "filename") and file.filename:
         content_filename = clean_filename or file.filename
-        document_bytes = await file.read()
+        chunk_size = 1024 * 1024  # 1MB
+        doc_bytes_acc = bytearray()
+        while chunk := await file.read(chunk_size):
+            doc_bytes_acc.extend(chunk)
+            if len(doc_bytes_acc) > MAX_ALLOWED_FILE_SIZE:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Uploaded file exceeds maximum limit of {MAX_ALLOWED_FILE_SIZE // (1024 * 1024)}MB.",
+                )
+        document_bytes = bytes(doc_bytes_acc)
         mime_type = file.content_type or "application/octet-stream"
     elif clean_raw_text:
         document_bytes = clean_raw_text.encode("utf-8")
@@ -394,9 +406,9 @@ async def analyze_document_standalone(
             )
         ]
     else:
-        # PDF or Image byte payload
+        # PDF or Image byte payload - run CPU-bound OCR in threadpool (C1)
         try:
-            pages = OCREngine.extract_document(document_bytes, mime_type=mime_type)
+            pages = await run_in_threadpool(OCREngine.extract_document, document_bytes, mime_type=mime_type)
         except Exception:
             # Fallback text representation
             text_str = document_bytes.decode("latin1", errors="ignore")
@@ -1048,7 +1060,16 @@ async def sort_and_split_packet_endpoint(
             detail="Please upload a PDF file to sort and split by person.",
         )
 
-    pdf_bytes = await file.read()
+    chunk_size = 1024 * 1024  # 1MB
+    pdf_bytes_acc = bytearray()
+    while chunk := await file.read(chunk_size):
+        pdf_bytes_acc.extend(chunk)
+        if len(pdf_bytes_acc) > MAX_ALLOWED_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Uploaded file exceeds maximum limit of {MAX_ALLOWED_FILE_SIZE // (1024 * 1024)}MB.",
+            )
+    pdf_bytes = bytes(pdf_bytes_acc)
     if not pdf_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1058,7 +1079,8 @@ async def sort_and_split_packet_endpoint(
     from backend.app.extraction.sorter import sort_and_split_document_packet
 
     try:
-        result = sort_and_split_document_packet(
+        result = await run_in_threadpool(
+            sort_and_split_document_packet,
             pdf_bytes=pdf_bytes,
             filename=file.filename or "combined_packet.pdf",
             write_to_disk_dir=None,
@@ -1067,7 +1089,7 @@ async def sort_and_split_packet_endpoint(
         return result
     except Exception as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Could not sort PDF packet: {exc}",
         )
 

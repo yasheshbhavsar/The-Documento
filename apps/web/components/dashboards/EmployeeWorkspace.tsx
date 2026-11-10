@@ -584,10 +584,10 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
       key: "actions",
       header: "Actions",
       render: (c) => {
-        const kp = onOpenCaseKickoff ? getCaseKickoffProgress(c.id) : null;
+        const kp = getCaseKickoffProgress(c.id);
         return (
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-            {onOpenCaseKickoff && kp && !kp.isComplete && (
+            {kp && !kp.isComplete && (
               <Button variant="primary" size="sm" onClick={() => onOpenCaseKickoff(c)}>
                 Kickoff ({kp.completedCount}/4)
               </Button>
@@ -612,9 +612,8 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
   ];
 
   const pendingKickoffCases = React.useMemo(() => {
-    if (!onOpenCaseKickoff) return [];
     return cases.filter((c) => !getCaseKickoffProgress(c.id).isComplete);
-  }, [cases, onOpenCaseKickoff, kickoffVersion]);
+  }, [cases, kickoffVersion]);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -1358,7 +1357,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
         {/* 1. MY WORK DASHBOARD */}
         {effectiveTab === "my_work" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {pendingKickoffCases.length > 0 && onOpenCaseKickoff && (() => {
+            {pendingKickoffCases.length > 0 && (() => {
               const firstCase = pendingKickoffCases[0];
               const firstProg = getCaseKickoffProgress(firstCase.id);
               return (

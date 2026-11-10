@@ -281,13 +281,13 @@ class CaseDetailResponse(BaseModel):
     is_retained: bool = True
     submission_authorization_status: str = "NOT_REQUESTED"
     handover_authorization_status: str = "NOT_REQUESTED"
-    substantive_authorizations: dict = {}
-    progressive_reviews: dict = {}
-    pinned_firm_config_snapshot: dict = {}
+    substantive_authorizations: dict = Field(default_factory=dict)
+    progressive_reviews: dict = Field(default_factory=dict)
+    pinned_firm_config_snapshot: dict = Field(default_factory=dict)
     firm_config_version: int = 1
     firm_config_update_available: bool = False
-    assignments: list[AssignmentResponse] = []
-    milestones: list[MilestoneResponse] = []
+    assignments: list[AssignmentResponse] = Field(default_factory=list)
+    milestones: list[MilestoneResponse] = Field(default_factory=list)
     tasks_count: int = 0
     completed_tasks_count: int = 0
 

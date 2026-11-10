@@ -372,10 +372,10 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
       key: "actions",
       header: "Action",
       render: (c) => {
-        const kp = onOpenCaseKickoff ? getCaseKickoffProgress(c.id) : null;
+        const kp = getCaseKickoffProgress(c.id);
         return (
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
-            {onOpenCaseKickoff && kp && !kp.isComplete && (
+            {kp && !kp.isComplete && (
               <Button variant="primary" size="sm" onClick={() => onOpenCaseKickoff(c)}>
                 Kickoff ({kp.completedCount}/4)
               </Button>
@@ -390,9 +390,8 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
   ];
 
   const pendingKickoffCases = React.useMemo(() => {
-    if (!onOpenCaseKickoff) return [];
     return cases.filter((c) => !getCaseKickoffProgress(c.id).isComplete);
-  }, [cases, onOpenCaseKickoff, kickoffVersion]);
+  }, [cases, kickoffVersion]);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -1105,7 +1104,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
       {/* OVERVIEW TAB */}
       {effectiveTab === "overview" && (
         <>
-          {pendingKickoffCases.length > 0 && onOpenCaseKickoff && (() => {
+          {pendingKickoffCases.length > 0 && (() => {
             const firstCase = pendingKickoffCases[0];
             const firstProg = getCaseKickoffProgress(firstCase.id);
             return (
@@ -1276,7 +1275,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                   </div>
                 ) : (
                   cases.slice(0, 3).map((c) => {
-                    const kp = onOpenCaseKickoff ? getCaseKickoffProgress(c.id) : null;
+                    const kp = getCaseKickoffProgress(c.id);
                     return (
                       <div
                         key={c.id}
@@ -1298,7 +1297,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                           <span style={{ fontSize: "12px", color: "var(--muted)" }}>{c.client_name}</span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                          {onOpenCaseKickoff && kp && !kp.isComplete && (
+                          {kp && !kp.isComplete && (
                             <Button
                               variant="secondary"
                               size="sm"

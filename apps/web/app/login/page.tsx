@@ -33,8 +33,8 @@ export default function LoginPage() {
       return;
     }
 
-    if (!password || password.length < 4) {
-      setErrorMessage("Password must be at least 4 characters.");
+    if (!password || password.length < 8) {
+      setErrorMessage("Password must be at least 8 characters.");
       return;
     }
 

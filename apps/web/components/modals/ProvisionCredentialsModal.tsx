@@ -70,8 +70,8 @@ export function ProvisionCredentialsModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password || password.length < 6) {
-      setError("Portal password must be at least 6 characters long.");
+    if (!password || password.length < 8) {
+      setError("Portal password must be at least 8 characters long.");
       return;
     }
 

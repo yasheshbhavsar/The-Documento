@@ -193,10 +193,10 @@ describe("Three Separate Role Experiences", () => {
       expect(screen.getByText("My Petition Details")).toBeDefined();
       expect(screen.getByText("CASE-US-8841")).toBeDefined();
 
-      // 2. Click Continue Questionnaire in banner
-      const continueBtn = screen.getByRole("button", { name: /Continue Questionnaire/i });
+      // 2. Click Guided Questionnaire action in header
+      const qBtns = screen.getAllByRole("button", { name: /Guided Questionnaire/i });
       act(() => {
-        fireEvent.click(continueBtn);
+        fireEvent.click(qBtns[qBtns.length - 1]);
       });
       expect(handleOpenQuestionnaire).toHaveBeenCalled();
 

@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     # Private Storage
     object_storage_endpoint: str = "http://localhost:9000"
     object_storage_bucket: str = "ai-immigration"
-    object_storage_access_key: str = "minioadmin"
-    object_storage_secret_key: str = "minioadmin"
+    object_storage_access_key: str = "localadmin"
+    object_storage_secret_key: str = "local_dev_only_change_me"
     object_storage_region: str = "us-east-1"
     use_local_storage: bool = True
     document_storage_dir: str = "./storage_data"

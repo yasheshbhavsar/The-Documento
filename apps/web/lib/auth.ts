@@ -219,7 +219,10 @@ export function authenticateUser(
 
   // 1. Documento HQ Platform Super-Admin Control Plane (strict passphrase check)
   if (normalizedEmail === PLATFORM_HQ_OPERATOR_EMAIL) {
-    if (!password || password !== "DocumentoHQ2026!") {
+    const expectedSuperAdminPassword =
+      process.env.NEXT_PUBLIC_SUPER_ADMIN_PASSWORD ||
+      (process.env.NODE_ENV !== "production" ? "DocumentoHQ2026!" : "");
+    if (!password || !expectedSuperAdminPassword || password !== expectedSuperAdminPassword) {
       return {
         success: false,
         error: "Invalid HQ operator passphrase. Enter your authorized Documento HQ Control Plane password.",

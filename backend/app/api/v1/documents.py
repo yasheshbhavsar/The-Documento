@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from backend.app.core.errors import (
     AppException,
+    AuthenticationError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
@@ -80,7 +81,7 @@ from backend.app.domain.models import (
     now_utc,
 )
 from backend.app.notifications.service import NotificationService
-from backend.app.security.auth import AuthContext, get_auth_context
+from backend.app.security.auth import AuthContext, get_auth_context, get_optional_auth_context
 from backend.app.ai.document_intelligence import (
     evaluate_document_six_dimensions,
     DocumentSixDimensionsReview,
@@ -412,6 +413,7 @@ def create_session(
 
 @router.post("/upload", response_model=DocumentDetailResponse, status_code=status.HTTP_201_CREATED)
 def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     category: str = Form("supporting_evidence"),
     title: Optional[str] = Form(None),
@@ -420,7 +422,6 @@ def upload_document(
     parent_document_id: Optional[UUID] = Form(None),
     idempotency_key: Optional[str] = Form(None),
     run_async: bool = Form(False),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
     response: Response = None,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
@@ -1127,7 +1128,7 @@ def create_download_token(
 def download_document(
     document_id: UUID,
     token: Optional[str] = Query(None),
-    auth: AuthContext = Depends(get_auth_context),
+    auth: Optional[AuthContext] = Depends(get_optional_auth_context),
     db: Session = Depends(get_db),
 ):
     """Secure streaming download with short-lived token or active authentication."""
@@ -1140,8 +1141,10 @@ def download_document(
 
     if token:
         verify_download_token(token, doc.id)
-    else:
+    elif auth:
         assert_document_access(auth, doc, db)
+    else:
+        raise AuthenticationError("Authentication required: valid session or download token missing")
 
     storage = get_storage_backend()
     content, actual_hash = storage.read_file(

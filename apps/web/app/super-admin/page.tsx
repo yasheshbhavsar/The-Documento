@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SuperAdminControlPlane } from "../../components/admin/SuperAdminControlPlane";
+import { DashboardErrorBoundary } from "../../components/common/DashboardErrorBoundary";
 
 export const metadata: Metadata = {
   title: "Documento HQ Super-Admin Control Plane | Partner Agency Governance",
@@ -8,6 +9,13 @@ export const metadata: Metadata = {
 };
 
 export default function SuperAdminPage() {
-  return <SuperAdminControlPlane />;
+  return (
+    <DashboardErrorBoundary
+      sectionTitle="Super-Admin Control Plane"
+      sectionDescription="Platform operations and partner agency governance control plane."
+    >
+      <SuperAdminControlPlane />
+    </DashboardErrorBoundary>
+  );
 }
 

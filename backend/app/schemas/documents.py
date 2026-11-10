@@ -104,8 +104,8 @@ class DocumentSummaryResponse(BaseModel):
 
 class DocumentDetailResponse(DocumentSummaryResponse):
     extracted_text: Optional[str] = None
-    layout_metadata: dict = {}
-    extracted_fields: list[ExtractedFieldResponse] = []
+    layout_metadata: dict = Field(default_factory=dict)
+    extracted_fields: list[ExtractedFieldResponse] = Field(default_factory=list)
     verification_notes: Optional[str] = None
     verified_at: Optional[datetime] = None
     verified_by_user_id: Optional[UUID] = None
@@ -117,11 +117,11 @@ class DocumentDetailResponse(DocumentSummaryResponse):
     active_run_id: Optional[UUID] = None
     active_run_stage: Optional[str] = None
     active_run_progress_percent: Optional[int] = None
-    sub_documents_metadata: list = []
+    sub_documents_metadata: list = Field(default_factory=list)
     anomaly_notes: Optional[str] = None
     review_dimensions: Optional[dict] = None
-    provenance_extractions: list[dict] = []
-    three_tier_extractions: list[dict] = []
+    provenance_extractions: list[dict] = Field(default_factory=list)
+    three_tier_extractions: list[dict] = Field(default_factory=list)
     legal_sufficiency_disclaimer: str = OCR_LEGAL_SUFFICIENCY_DISCLAIMER
 
 
@@ -208,9 +208,9 @@ class ApplicantDocumentSummary(BaseModel):
     applicant_id: Optional[UUID]
     applicant_name: str
     relationship: str
-    outstanding: list[ApplicantOutstandingItem] = []
-    received: list[ApplicantDocumentItem] = []
-    correction_required: list[ApplicantDocumentItem] = []
+    outstanding: list[ApplicantOutstandingItem] = Field(default_factory=list)
+    received: list[ApplicantDocumentItem] = Field(default_factory=list)
+    correction_required: list[ApplicantDocumentItem] = Field(default_factory=list)
 
 
 class FamilyDocumentsSummaryResponse(BaseModel):
@@ -371,5 +371,5 @@ class RetentionEvaluationItem(BaseModel):
     is_eligible: bool
     legal_hold: bool
     download_confirmed: bool = True
-    blocking_reasons: list[str] = []
+    blocking_reasons: list[str] = Field(default_factory=list)
     status: str

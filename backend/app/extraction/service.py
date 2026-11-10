@@ -174,23 +174,27 @@ def extract_structured_fields(
         if not original_value or not str(original_value).strip():
             return
 
-        # Strip dotted leader lines and leading/trailing punctuation noise
-        clean_orig = re.sub(r"(?:\.\s*){2,}", " ", str(original_value))
-        clean_orig = re.sub(r"^[\s\.:;\-_]+|[\s\.:;\-_]+$", "", clean_orig).strip()
-        if not clean_orig:
-            return
+        is_statutory = method == "statutory_identity_resolver" or field_name.startswith("single_name_")
+        if not is_statutory:
+            # Strip dotted leader lines and leading/trailing punctuation noise
+            clean_orig = re.sub(r"(?:\.\s*){2,}", " ", str(original_value))
+            clean_orig = re.sub(r"^[\s\.:;\-_]+|[\s\.:;\-_]+$", "", clean_orig).strip()
+            if not clean_orig:
+                return
 
-        # Must contain at least one English, Gujarati, or Hindi letter or digit
-        if not re.search(r"[A-Za-z0-9\u0900-\u097F\u0A80-\u0AFF]", clean_orig):
-            return
+            # Must contain at least one English, Gujarati, or Hindi letter or digit
+            if not re.search(r"[A-Za-z0-9\u0900-\u097F\u0A80-\u0AFF]", clean_orig):
+                return
 
-        # Invariant (Master Vision §4.3): Never fabricate or accept phantom placeholder values as extracted legal entities
-        clean_lower = clean_orig.lower()
-        if clean_lower in ("null", "none", "n/a", "na", "undefined", "unknown", "not applicable"):
-            return
+            # Invariant (Master Vision §4.3): Never fabricate or accept phantom placeholder values as extracted legal entities
+            clean_lower = clean_orig.lower()
+            if clean_lower in ("null", "none", "n/a", "na", "undefined", "unknown", "not applicable"):
+                return
+        else:
+            clean_orig = str(original_value).strip()
 
         # Guardrail for person name fields: reject label fragments ("Of Mother", "Of Father", etc.) or dot-heavy noise
-        if "name" in field_name or field_name in (
+        if not is_statutory and ("name" in field_name or field_name in (
             "full_name",
             "applicant_name",
             "surname",
@@ -203,7 +207,7 @@ def extract_structured_fields(
             "pan_holder_name",
             "aadhaar_holder_name",
             "account_holder_name",
-        ):
+        )):
             # Strip accidental leading 'of assessee' or 'of ' before a valid person name
             clean_orig = re.sub(r"^(?:of\s+assessee|of)[\s:]+(?=[A-Za-z]{3,})", "", clean_orig, flags=re.IGNORECASE).strip(" .:-_")
             if normalized_value is not None:
@@ -302,8 +306,18 @@ def extract_structured_fields(
             ):
                 return
 
-        clean_norm = re.sub(r"(?:\.\s*){2,}", " ", str(normalized_value if normalized_value is not None else clean_orig))
-        clean_norm = re.sub(r"^[\s\.:;\-_]+|[\s\.:;\-_]+$", "", clean_norm).strip() or clean_orig
+        if is_statutory:
+            clean_norm = str(normalized_value if normalized_value is not None else clean_orig)
+        elif normalized_value is not None:
+            clean_norm = re.sub(r"(?:\.\s*){2,}", " ", str(normalized_value))
+            clean_norm = re.sub(r"^[\s\.:;\-_]+|[\s\.:;\-_]+$", "", clean_norm).strip()
+            # Explicitly preserve empty string if normalized_value was empty (e.g., IRCC single-name)
+            if normalized_value == "" or str(normalized_value).strip() == "":
+                clean_norm = ""
+            elif not clean_norm:
+                clean_norm = clean_orig
+        else:
+            clean_norm = clean_orig
 
         loc = location or _find_block_location(pages, clean_orig, source_page)
 
@@ -1521,7 +1535,7 @@ def extract_structured_fields(
                     add_field("bride_father_name", "Bride's Father Name", raw_pbf, raw_pbf.title(), 1, 0.95)
 
             cert_no_m = re.search(
-                r"(?:Certificate\s*No\.?|Registration\s*No\.?|se?a?rial\s*No\.?)[\s:_/\-]*([0-9A-Za-z][0-9A-Za-z\s/\-_]{0,12}?)(?=\s+of\s+volume|\s+of\s+\d{4}|[\r\n]|$)",
+                r"(?:Certificate\s*No\.?|Registration\s*No\.?|se?a?rial\s*No\.?)[\s:_/\-]*([0-9A-Za-z][0-9A-Za-z\s/\-_]{0,40}?)(?=\s+of\s+volume|\s+of\s+\d{4}|[\r\n]|$)",
                 full_text,
                 re.IGNORECASE,
             )

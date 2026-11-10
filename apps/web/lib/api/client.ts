@@ -5,7 +5,21 @@ export interface ApiResponse<T> {
   isLiveBackend: boolean;
 }
 
-export const API_BASE_URL = typeof window !== "undefined" ? "/api/backend" : "http://localhost:8000/api/v1";
+export function resolveBackendBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    return "/api/backend";
+  }
+  const raw =
+    process.env.INTERNAL_BACKEND_URL ||
+    process.env.INTERNAL_API_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8000";
+  const trimmed = raw.replace(/\/+$/, "");
+  return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
+}
+
+export const API_BASE_URL = resolveBackendBaseUrl();
 
 export const DEMO_ORG_ID = "11111111-1111-1111-1111-111111111111";
 export const DEMO_USERS = {

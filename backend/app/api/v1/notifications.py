@@ -86,6 +86,7 @@ def list_notifications(
 
 
 @router.patch("/{notification_id}/read", response_model=NotificationResponse)
+@router.post("/{notification_id}/read", response_model=NotificationResponse)
 def mark_notification_read(
     notification_id: uuid.UUID,
     ctx: AuthContext = Depends(get_auth_context),

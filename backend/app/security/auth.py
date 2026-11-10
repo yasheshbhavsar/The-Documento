@@ -275,6 +275,45 @@ async def get_auth_context(
     )
 
 
+async def get_optional_auth_context(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_organization_id: str | None = Header(default=None),
+    x_org_id: str | None = Header(default=None),
+    x_user_id: str | None = Header(default=None),
+    x_user_role: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> AuthContext | None:
+    """Optional auth dependency that returns AuthContext if valid credentials exist, or None without raising 401."""
+    settings = get_settings()
+
+    token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+
+    has_sim_headers = bool(x_user_id or x_user_role)
+    if not token and not has_sim_headers:
+        cookie_val = request.cookies.get(settings.session_cookie_name)
+        if cookie_val:
+            token = cookie_val
+
+    if not token and not has_sim_headers:
+        return None
+
+    try:
+        return await get_auth_context(
+            request=request,
+            authorization=authorization,
+            x_organization_id=x_organization_id,
+            x_org_id=x_org_id,
+            x_user_id=x_user_id,
+            x_user_role=x_user_role,
+            db=db,
+        )
+    except AuthenticationError:
+        return None
+
+
 def require_permission(permission: str):
     """Enforces server-side permission check."""
     def dependency(ctx: AuthContext = Depends(get_auth_context)) -> AuthContext:

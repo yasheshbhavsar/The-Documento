@@ -140,7 +140,21 @@ import {
   purgeLegacyDemoStorageOnce,
 } from "./agencyPlatformStore";
 
-const API_BASE_URL = typeof window !== "undefined" ? "/api/backend" : "http://localhost:8000/api/v1";
+export function resolveBackendBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    return "/api/backend";
+  }
+  const raw =
+    process.env.INTERNAL_BACKEND_URL ||
+    process.env.INTERNAL_API_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8000";
+  const trimmed = raw.replace(/\/+$/, "");
+  return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
+}
+
+export const API_BASE_URL = resolveBackendBaseUrl();
 
 // Default simulation IDs for development
 export const DEMO_ORG_ID = "11111111-1111-1111-1111-111111111111";
@@ -4695,7 +4709,7 @@ export const api = {
         {
           stage: "draft",
           action: "created",
-          actor_id: DEMO_USERS[role]?.id || "system",
+          actor_id: (DEMO_USERS as Record<string, { id: string }>)[role]?.id || "system",
           timestamp: new Date().toISOString(),
           comments: payload.change_summary || "Draft version initiated",
         },
@@ -4795,7 +4809,7 @@ export const api = {
     v.status = targetStatus as any;
     v.approval_history.push({
       action: `transition_to_${targetStatus}`,
-      actor_id: DEMO_USERS[role]?.id || "admin",
+      actor_id: (DEMO_USERS as Record<string, { id: string }>)[role]?.id || "system",
       timestamp: new Date().toISOString(),
       comments: comments || `Status changed to ${targetStatus}`,
     });
@@ -7451,10 +7465,16 @@ export async function buildFilingPackage(
 export async function fetchCaseFilingPackages(caseId: string): Promise<FilingPackageItem[]> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/packages/cases/${caseId}/packages`);
+      const res = await fetch(`${API_BASE}/packages/cases/${caseId}`);
       if (res.ok) {
         const json = await res.json();
-        return json.packages || [];
+        if (Array.isArray(json)) {
+          return json;
+        }
+        if (json && Array.isArray(json.packages)) {
+          return json.packages;
+        }
+        return [];
       }
     } catch {
       // Fallback

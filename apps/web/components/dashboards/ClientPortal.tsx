@@ -247,7 +247,14 @@ export function ClientPortal(props: ClientPortalProps = {}) {
     props.onMarkNotificationRead ?? ws?.handleMarkNotificationRead ?? (() => {});
   const onDocumentUpdated = props.onDocumentUpdated ?? ws?.handleDocumentUpdated;
   const firmDisplayName = currentUser?.organization_name || "Your Legal Counsel";
-  const [clientLanguage, setClientLanguage] = useState<ClientLanguage>(getSavedClientLanguage);
+  const [clientLanguage, setClientLanguage] = useState<ClientLanguage>("en");
+
+  useEffect(() => {
+    const saved = getSavedClientLanguage();
+    if (saved !== "en") {
+      setClientLanguage(saved);
+    }
+  }, []);
 
   const handleLanguageChange = (newLang: ClientLanguage) => {
     setClientLanguage(newLang);
@@ -2165,99 +2172,6 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 </button>
               </div>
             </div>
-
-            {/* Contextual Onboarding Checklist (Only shown when genuinely incomplete and case is active) */}
-            {!onboardingDismissed && myCase && (
-              <div
-                style={{
-                  background: "#F8F7F2",
-                  border: "1.5px solid #B9DED4",
-                  borderRadius: "14px",
-                  padding: "18px 22px",
-                  boxShadow: "0 2px 8px rgba(6, 60, 61, 0.04)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "16px",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: "280px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                    <span style={{ fontSize: "14px" }}>📋</span>
-                    <strong style={{ fontSize: "14px", color: "#063C3D", fontWeight: 700 }}>
-                      Intake &amp; Onboarding Requirements
-                    </strong>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        background: "#EAF6F0",
-                        color: "#0D6866",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
-                        border: "1px solid #B9DED4",
-                      }}
-                    >
-                      {isDemoCase
-                        ? "Step 3 of 4"
-                        : `Step ${Math.min(4, Math.max(1, completedMilestonesCount + 1))} of 4`}
-                    </span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: "13px", color: "#445451", lineHeight: 1.5 }}>
-                    {isDemoCase || hasStartedIntake ? (
-                      <>
-                        Your petition is currently in <strong>Evidence Gathering &amp; Review</strong>. Complete your biographical intake responses to unlock formal attorney brief compilation.
-                      </>
-                    ) : (
-                      <>
-                        Your case file is in <strong>Initial Intake Setup (0% completed)</strong>. Complete your onboarding questionnaire and upload required identity documents to begin.
-                      </>
-                    )}
-                  </p>
-                </div>
-
-                <div style={{ display: "flex", gap: "10px", flexShrink: 0, flexWrap: "wrap" }}>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={onOpenQuestionnaireModal}
-                    style={{
-                      background: "#0D6866",
-                      color: "#FFFFFF",
-                      fontWeight: 650,
-                      borderRadius: "8px",
-                      padding: "8px 16px",
-                    }}
-                  >
-                    Continue Questionnaire →
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    style={{
-                      background: "#FFFFFF",
-                      color: "#063C3D",
-                      border: "1px solid #B9DED4",
-                      borderRadius: "8px",
-                      fontWeight: 600,
-                      padding: "8px 14px",
-                    }}
-                    onClick={() => setIsOnboardingModalOpen(true)}
-                  >
-                    Complete Onboarding Wizard →
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    style={{ color: "#6E7F7C", borderRadius: "8px" }}
-                    onClick={() => setOnboardingDismissed(true)}
-                  >
-                    Dismiss
-                  </Button>
-                </div>
-              </div>
-            )}
 
             {/* Missing Document Action Alert if any */}
             {missingDocs.length > 0 && (

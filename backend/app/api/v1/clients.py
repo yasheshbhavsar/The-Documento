@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy.orm import Session
 
@@ -111,8 +111,8 @@ class ClientProfileCreate(BaseModel):
     pan_number: str | None = Field(default=None, max_length=16)
     voter_id: str | None = Field(default=None, max_length=32)
     passport_ecr_status: str = Field(default="NON_ECR", max_length=16)
-    dependants: list[DependantCreateRequest] = []
-    consents: list[ConsentCreateRequest] = []
+    dependants: list[DependantCreateRequest] = Field(default_factory=list)
+    consents: list[ConsentCreateRequest] = Field(default_factory=list)
 
     @field_validator("nationality", mode="before")
     @classmethod
@@ -652,6 +652,7 @@ def list_client_consents(
 @router.delete("/{client_id}", status_code=status.HTTP_200_OK)
 def delete_client_profile(
     client_id: uuid.UUID,
+    cascade: bool = Query(False),
     ctx: AuthContext = Depends(require_permission("client:delete")),
     db: Session = Depends(get_db),
 ):
@@ -669,11 +670,17 @@ def delete_client_profile(
 
     ctx.assert_organization_access(client.organization_id)
 
+    cascaded_cases_count = 0
     # Check for active or linked cases - client_id has ondelete RESTRICT and is NOT NULL
     if len(client.cases) > 0:
-        raise ConflictError(
-            f"Cannot delete client with {len(client.cases)} associated case(s). Please delete or transfer cases before removing client profile."
-        )
+        if not cascade:
+            raise ConflictError(
+                f"Cannot delete client with {len(client.cases)} associated case(s). Please delete or transfer cases before removing client profile."
+            )
+        cascaded_cases_count = len(client.cases)
+        for c in list(client.cases):
+            db.delete(c)
+        db.flush()
 
     now = datetime.now(timezone.utc)
     client_name = f"{client.first_name} {client.last_name}"
@@ -690,6 +697,8 @@ def delete_client_profile(
             "client_name": client_name,
             "client_email": client_email,
             "deleted_by_roles": list(ctx.roles),
+            "cascade": cascade,
+            "cascaded_cases": cascaded_cases_count,
         },
         occurred_at=now,
     )
@@ -704,4 +713,9 @@ def delete_client_profile(
 
     db.commit()
 
-    return {"status": "success", "message": f"Client {client_name} deleted successfully", "id": str(client_id)}
+    return {
+        "status": "success",
+        "message": f"Client {client_name} deleted successfully",
+        "id": str(client_id),
+        "cascaded_cases": cascaded_cases_count,
+    }

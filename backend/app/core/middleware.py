@@ -32,20 +32,71 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class SimpleRateLimiterMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, max_requests: int = 120, window_seconds: int = 60, auth_max_requests: int = 20):
+    def __init__(
+        self,
+        app,
+        max_requests: int = 120,
+        window_seconds: int = 60,
+        auth_max_requests: int = 20,
+        cleanup_interval: int = 300,
+    ):
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.auth_max_requests = auth_max_requests
+        self.cleanup_interval = cleanup_interval
+        self.last_cleanup = time.time()
         self.request_counts = defaultdict(list)
         self.auth_request_counts = defaultdict(list)
 
+    def _get_client_ip(self, request: Request) -> str:
+        """Resolves client IP supporting reverse proxies (X-Forwarded-For, X-Real-IP) with fallback."""
+        xff = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For")
+        if xff:
+            ip = xff.split(",")[0].strip()
+            if ip:
+                return ip
+        x_real_ip = request.headers.get("x-real-ip") or request.headers.get("X-Real-IP")
+        if x_real_ip:
+            ip = x_real_ip.strip()
+            if ip:
+                return ip
+        return request.client.host if request.client else "unknown"
+
+    def _evict_expired(self, now: float) -> None:
+        """Evicts expired timestamp records to prevent unbounded memory growth."""
+        if now - self.last_cleanup < self.cleanup_interval:
+            return
+        self.last_cleanup = now
+        cutoff = now - self.window_seconds
+
+        keys_to_delete = []
+        for ip, timestamps in list(self.request_counts.items()):
+            valid = [t for t in timestamps if t > cutoff]
+            if valid:
+                self.request_counts[ip] = valid
+            else:
+                keys_to_delete.append(ip)
+        for ip in keys_to_delete:
+            self.request_counts.pop(ip, None)
+
+        auth_keys_to_delete = []
+        for ip, timestamps in list(self.auth_request_counts.items()):
+            valid = [t for t in timestamps if t > cutoff]
+            if valid:
+                self.auth_request_counts[ip] = valid
+            else:
+                auth_keys_to_delete.append(ip)
+        for ip in auth_keys_to_delete:
+            self.auth_request_counts.pop(ip, None)
+
     async def dispatch(self, request: Request, call_next) -> Response:
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = self._get_client_ip(request)
         # Exempt health check, root probe, docs, and local test client
         if request.url.path in ("/", "/api/v1/health", "/docs", "/openapi.json", "/redoc") or client_ip == "testclient":
             return await call_next(request)
         now = time.time()
+        self._evict_expired(now)
 
         # Dedicated strict rate limiting for authentication and credential-sensitive endpoints
         is_auth_endpoint = any(

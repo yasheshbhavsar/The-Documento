@@ -42,8 +42,8 @@ class AIFindingOut(BaseModel):
     internal_risk_notes: Optional[str] = None
     owner_user_id: Optional[str] = None
     due_date: Optional[str] = None
-    related_documents: list = []
-    related_fields: list = []
+    related_documents: list = Field(default_factory=list)
+    related_fields: list = Field(default_factory=list)
     relevant_requirement: Optional[str] = None
     recommended_action: str
     clarification_question: Optional[str] = None
@@ -56,7 +56,7 @@ class AIFindingOut(BaseModel):
     resolved_at: Optional[str] = None
     resolution_action: Optional[str] = None
     resolution_reason: Optional[str] = None
-    resolution_history: list = []
+    resolution_history: list = Field(default_factory=list)
     created_at: str
     updated_at: str
 
