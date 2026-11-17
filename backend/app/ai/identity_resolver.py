@@ -551,10 +551,33 @@ class IdentityResolver:
 
         if not surname and vis_surname:
             surname = vis_surname.title()
+        elif surname and vis_surname:
+            m_sur = re.sub(r"[^A-Z]", "", surname.upper())
+            v_sur = re.sub(r"[^A-Z]", "", vis_surname.upper())
+            if m_sur == v_sur and " " in vis_surname and " " not in surname:
+                surname = vis_surname.title()
+            elif (
+                len(v_sur) >= 3
+                and m_sur.startswith(v_sur)
+                and 0 < len(m_sur) - len(v_sur) <= 2
+                and set(m_sur[len(v_sur):]).issubset({"K", "L", "E", "C"})
+            ):
+                surname = vis_surname.title()
+
         if not given_names and vis_given:
             given_names = vis_given.title()
-        elif given_names and vis_given and " " not in given_names and " " in vis_given:
-            if given_names.replace(" ", "").upper() == vis_given.replace(" ", "").upper():
+        elif given_names and vis_given:
+            m_giv = re.sub(r"[^A-Z]", "", given_names.upper())
+            v_giv = re.sub(r"[^A-Z]", "", vis_given.upper())
+            if m_giv == v_giv and " " in vis_given and " " not in given_names:
+                given_names = vis_given.title()
+            elif (
+                len(v_giv) >= 3
+                and m_giv.startswith(v_giv)
+                and 0 < len(m_giv) - len(v_giv) <= 3
+                and set(m_giv[len(v_giv):]).issubset({"K", "L", "E", "C"})
+            ):
+                # Visual OCR often retains clean spacing without MRZ '<' -> 'K'/'L' filler noise
                 given_names = vis_given.title()
 
         if surname and given_names:
@@ -614,9 +637,16 @@ class IdentityResolver:
         pincode = None
 
         def _split_concatenated_indian_name(raw_n: str) -> str:
-            if " " not in raw_n and len(raw_n) >= 12:
-                s = re.sub(r"^PATEL([A-Z]{4,})", r"PATEL \1", raw_n.upper())
-                s = re.sub(r"([A-Z]{3,12}?(?:BEN|BHAI|KUMAR))([A-Z]{4,}(?:BHAI|BEN|KUMAR|LAL))", r"\1 \2", s)
+            if " " not in raw_n and len(raw_n) >= 11:
+                s = raw_n.upper()
+                # Insert boundary spaces after common Indian honorific/middle-name morphemes
+                s = re.sub(r"([A-Z]{3,}?(?:BEN|BHAI|KUMAR|KUMARI|LAL|CHAND|NATH|PRASAD|DEVI|DAS))([A-Z]{4,})", r"\1 \2", s)
+                # Insert boundary before trailing common Indian surnames when merged onto given/middle names
+                s = re.sub(
+                    r"([A-Z]{4,})(PATEL|SHAH|SHARMA|VERMA|GUPTA|MEHTA|DESAI|JOSHI|NAIR|REDDY|KAPOOR|MALHOTRA|BHAVSAR|PARIKH|CHAUHAN|SOLANKI|KULKARNI|PATIL|YADAV|TIWARI|MISHRA|SINGH|KAUR|PANDEY)$",
+                    r"\1 \2",
+                    s,
+                )
                 return s.title()
             return raw_n.title()
 
@@ -731,7 +761,10 @@ class IdentityResolver:
         if addr_lines:
             address = ", ".join(addr_lines)
 
-        pin_m = re.search(r"(?:PIN[\s:]*|(?<!\d))([1-9][0-9]{5})(?!\d)", address or clean_text, re.IGNORECASE)
+        if address:
+            pin_m = re.search(r"(?:PIN[\s:.-]*|(?<![\d/\-]))([1-9][0-9]{5})(?![\d/\-])", address, re.IGNORECASE)
+        else:
+            pin_m = re.search(r"\bPIN(?:\s*CODE)?[\s:.-]+([1-9][0-9]{5})\b", clean_text, re.IGNORECASE)
         if pin_m:
             pincode = pin_m.group(1)
 

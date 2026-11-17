@@ -6,18 +6,24 @@ disaster recovery & backup drills, data-flow register, jurisdiction privacy revi
 and the 6 core lifecycle scenarios (inactivity cleanup, holds, withdrawal, completed application summary,
 reapplication from scratch, employee offboarding, and firm export).
 """
+import secrets
 import uuid
 from typing import Any, Optional, List
-from fastapi import APIRouter, Depends, Query, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from backend.app.core.worker_health import WorkerHealthMonitor
 from backend.app.db.session import get_db
 from backend.app.domain.models import (
+    AuditEvent,
     CompletedApplicationSummary,
     CaseWithdrawalTombstone,
     Document,
+    MembershipRole,
+    OrganizationMembership,
+    Role,
+    User,
 )
 from backend.app.operations.backup_service import BackupAndDrillService
 from backend.app.operations.data_flow_register import get_data_flow_register
@@ -25,6 +31,7 @@ from backend.app.operations.privacy_reviews import get_all_privacy_reviews
 from backend.app.operations.scenario_service import ScenarioService
 from backend.app.operations.service import CompanyOperationsService
 from backend.app.security.auth import AuthContext, require_permission
+from backend.app.security.passwords import hash_password
 
 router = APIRouter(prefix="/operations", tags=["operations"])
 
@@ -38,6 +45,25 @@ class MembershipUpdateRequest(BaseModel):
     branch_id: str | None = None
     team_id: str | None = None
     role_codes: list[str] | None = None
+
+
+class StaffProvisionRequest(BaseModel):
+    full_name: str = Field(default="", max_length=160)
+    email: EmailStr
+    role_code: str = Field(default="case_manager", max_length=64)
+    branch: str | None = "Primary Office"
+    password: str | None = None
+    nominal_capacity: int = Field(default=20, ge=1, le=200)
+    login_enabled: bool = True
+
+
+class StaffUpdateRequest(BaseModel):
+    full_name: str | None = None
+    role_code: str | None = None
+    branch: str | None = None
+    nominal_capacity: int | None = Field(default=None, ge=1, le=200)
+    login_enabled: bool | None = None
+    password: str | None = None
 
 
 class WorkReassignmentRequest(BaseModel):
@@ -221,6 +247,216 @@ def update_membership(
         "status": mem.status,
         "branch_id": str(mem.branch_id) if mem.branch_id else None,
         "team_id": str(mem.team_id) if mem.team_id else None,
+    }
+
+
+def _map_ui_role_to_db_code(raw_role: str) -> str:
+    clean = (raw_role or "").strip().lower()
+    if clean in ("company_admin", "organization_admin"):
+        return "company_admin"
+    if clean in ("paralegal", "case_worker"):
+        return "case_worker"
+    if clean in ("intake_finance", "finance_staff"):
+        return "finance_staff"
+    return "case_manager"
+
+
+@router.post("/staff", status_code=status.HTTP_201_CREATED)
+def provision_staff_account(
+    payload: StaffProvisionRequest,
+    ctx: AuthContext = Depends(require_permission("user:manage")),
+    db: Session = Depends(get_db),
+):
+    """Directly provisions a separate staff user account + password + RBAC role membership."""
+    norm_email = payload.email.strip().lower()
+    raw_password = (payload.password or "").strip() or f"DocTeam!{secrets.token_hex(3).upper()}"
+    if len(raw_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Staff login password must be at least 8 characters.",
+        )
+
+    existing_user = db.query(User).filter(User.email == norm_email).first()
+    if existing_user:
+        existing_mem = (
+            db.query(OrganizationMembership)
+            .filter(
+                OrganizationMembership.user_id == existing_user.id,
+                OrganizationMembership.organization_id == ctx.organization_id,
+                OrganizationMembership.status == "active",
+            )
+            .first()
+        )
+        if existing_mem:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"{norm_email} already has an active login in this organization.",
+            )
+
+    derived_name = (
+        payload.full_name.strip()
+        or norm_email.split("@")[0].replace(".", " ").replace("_", " ").title()
+    )
+    db_role_code = _map_ui_role_to_db_code(payload.role_code)
+    role_obj = db.query(Role).filter(Role.code == db_role_code).first()
+    if not role_obj:
+        role_obj = Role(code=db_role_code, name=db_role_code.replace("_", " ").title())
+        db.add(role_obj)
+        db.flush()
+
+    user = existing_user or User(
+        email=norm_email,
+        full_name=derived_name,
+        hashed_password=hash_password(raw_password),
+        is_active=payload.login_enabled,
+    )
+    if existing_user:
+        user.full_name = derived_name
+        user.hashed_password = hash_password(raw_password)
+        user.is_active = payload.login_enabled
+    else:
+        db.add(user)
+        db.flush()
+
+    membership = OrganizationMembership(
+        organization_id=ctx.organization_id,
+        user_id=user.id,
+        status="active" if payload.login_enabled else "suspended",
+    )
+    db.add(membership)
+    db.flush()
+
+    db.add(MembershipRole(membership_id=membership.id, role_id=role_obj.id))
+    db.add(
+        AuditEvent(
+            organization_id=ctx.organization_id,
+            actor_user_id=ctx.user_id,
+            action="staff.account_provisioned",
+            object_type="user",
+            object_id=str(user.id),
+            metadata_json={
+                "email": norm_email,
+                "role_code": db_role_code,
+                "branch": payload.branch or "Primary Office",
+                "nominal_capacity": payload.nominal_capacity,
+                "login_enabled": payload.login_enabled,
+            },
+        )
+    )
+    db.commit()
+
+    return {
+        "id": str(user.id),
+        "membership_id": str(membership.id),
+        "full_name": user.full_name,
+        "email": user.email,
+        "role_code": payload.role_code,
+        "branch": payload.branch or "Primary Office",
+        "nominal_capacity": payload.nominal_capacity,
+        "login_enabled": payload.login_enabled,
+        "temporary_password": raw_password,
+    }
+
+
+@router.patch("/staff/{member_id}")
+def update_staff_account(
+    member_id: str,
+    payload: StaffUpdateRequest,
+    ctx: AuthContext = Depends(require_permission("user:manage")),
+    db: Session = Depends(get_db),
+):
+    """Updates a team member's role, login enabled/suspended status, or password."""
+    target_uuid = uuid.UUID(member_id)
+    mem = (
+        db.query(OrganizationMembership)
+        .filter(
+            OrganizationMembership.organization_id == ctx.organization_id,
+            (OrganizationMembership.user_id == target_uuid)
+            | (OrganizationMembership.id == target_uuid),
+        )
+        .first()
+    )
+    if not mem:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff member not found.")
+
+    user = db.query(User).filter(User.id == mem.user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User record not found.")
+
+    if payload.full_name and payload.full_name.strip():
+        user.full_name = payload.full_name.strip()
+
+    if payload.password is not None and payload.password.strip():
+        if len(payload.password.strip()) < 8:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Staff login password must be at least 8 characters.",
+            )
+        user.hashed_password = hash_password(payload.password.strip())
+
+    if payload.login_enabled is not None:
+        user.is_active = payload.login_enabled
+        mem.status = "active" if payload.login_enabled else "suspended"
+
+    if payload.role_code:
+        db_role_code = _map_ui_role_to_db_code(payload.role_code)
+        role_obj = db.query(Role).filter(Role.code == db_role_code).first()
+        if not role_obj:
+            role_obj = Role(code=db_role_code, name=db_role_code.replace("_", " ").title())
+            db.add(role_obj)
+            db.flush()
+        db.query(MembershipRole).filter(MembershipRole.membership_id == mem.id).delete()
+        db.add(MembershipRole(membership_id=mem.id, role_id=role_obj.id))
+
+    db.add(
+        AuditEvent(
+            organization_id=ctx.organization_id,
+            actor_user_id=ctx.user_id,
+            action="staff.account_updated",
+            object_type="user",
+            object_id=str(user.id),
+            metadata_json=payload.model_dump(exclude_unset=True, exclude={"password"}),
+        )
+    )
+    db.commit()
+
+    return {
+        "id": str(user.id),
+        "full_name": user.full_name,
+        "email": user.email,
+        "login_enabled": bool(user.is_active),
+    }
+
+
+@router.delete("/staff/{member_id}")
+def delete_and_offboard_staff_account(
+    member_id: str,
+    transfer_to_user_id: Optional[str] = Query(default=None),
+    reason: Optional[str] = Query(default="Removed by Managing Partner"),
+    ctx: AuthContext = Depends(require_permission("user:manage")),
+    db: Session = Depends(get_db),
+):
+    """Safely offboards and removes a staff member, atomically transferring active work if needed."""
+    departing_uuid = uuid.UUID(member_id)
+    if departing_uuid == ctx.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own active Managing Partner account.",
+        )
+    successor_uuid = uuid.UUID(transfer_to_user_id) if transfer_to_user_id else None
+    res = ScenarioService.offboard_employee_safely(
+        db,
+        ctx.organization_id,
+        departing_uuid,
+        successor_uuid,
+        actor_id=ctx.user_id,
+        notes=reason or "Removed by Managing Partner",
+    )
+    return {
+        "deleted_id": str(departing_uuid),
+        "cases_transferred": res.get("cases_reassigned", 0),
+        "tasks_transferred": res.get("tasks_reassigned", 0),
+        **res,
     }
 
 

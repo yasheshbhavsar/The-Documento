@@ -37,23 +37,29 @@ export interface SOPAuditPayload {
 }
 
 export const FALLBACK_SOP_AUDIT: SOPAuditItem = {
-  overall_score: 84.5,
-  is_statutorily_sound: true,
-  verdict: "HIGH_APPROVAL_POTENTIAL",
+  overall_score: 0,
+  is_statutorily_sound: false,
+  verdict: "NEEDS_REVISION",
   jurisdiction: "CA",
   dimension_scores: {
-    academic_progression: 90.0,
-    economic_home_ties: 85.0,
-    dual_intent_compliance: 80.0,
-    gap_justification: 85.0,
-    financial_clarity: 82.5,
+    academic_progression: 0,
+    economic_home_ties: 0,
+    dual_intent_compliance: 0,
+    gap_justification: 0,
+    financial_clarity: 0,
   },
-  strengths: [
-    "Clear articulation of academic curriculum progression and targeted skill acquisition.",
-    "Strong references to home country family, property, and career opportunities.",
-    "Affirmative compliance with IRPA s.22(2) temporary stay conditions.",
+  strengths: [],
+  findings: [
+    {
+      dimension: "backend_connection",
+      severity: "warning",
+      issue_code: "SOP_AUDIT_BACKEND_OFFLINE",
+      title: "Backend SOP analyzer unreachable",
+      description: "Live FastAPI statutory SOP evaluation requires an active backend connection.",
+      remediation: "Connect the backend API to run full statutory narrative scoring.",
+      statutory_reference: null,
+    },
   ],
-  findings: [],
   remediation_summary: [],
 };
 

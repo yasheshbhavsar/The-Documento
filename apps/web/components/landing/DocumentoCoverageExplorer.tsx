@@ -613,7 +613,7 @@ export function DocumentoCoverageExplorer() {
         padding: "88px 24px",
         scrollMarginTop: "80px",
         background: "#FFFFFF",
-        borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <InteractiveSectionBackground variant="ambient-mesh" />
@@ -625,44 +625,50 @@ export function DocumentoCoverageExplorer() {
         <div
           className="section-header-reveal animate-on-scroll"
           data-motion="up"
-          style={{ textAlign: "center", maxWidth: "740px", margin: "0 auto 40px auto" }}
+          style={{ textAlign: "center", maxWidth: "780px", margin: "0 auto 44px auto" }}
         >
-          <span
+          <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
               fontSize: "12px",
-              fontWeight: 650,
-              letterSpacing: "0.06em",
+              fontWeight: 700,
+              letterSpacing: "0.08em",
               textTransform: "uppercase",
-              color: "#0D6866",
+              color: "#07594F",
               marginBottom: "12px",
             }}
           >
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#169B77" }} className="status-dot-pulse" />
-            <span>Jurisdictional Coverage</span>
-          </span>
+            Jurisdictional Coverage
+          </div>
 
           <h2
             style={{
-              fontSize: "clamp(28px, 3.5vw, 42px)",
+              fontSize: "clamp(28px, 3.6vw, 44px)",
               fontWeight: 700,
               color: "#063C3D",
-              lineHeight: 1.15,
+              lineHeight: 1.14,
               letterSpacing: "-0.03em",
-              margin: "0 0 14px 0",
-              fontFamily: "var(--font-display, Inter, sans-serif)",
+              margin: "0 0 16px 0",
+              fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
             }}
           >
             Explicit pathway coverage. Zero exaggerated claims.
           </h2>
 
-          <p style={{ fontSize: "16px", color: "#4F6360", lineHeight: 1.6, margin: "0 0 22px 0" }}>
+          <p
+            style={{
+              fontSize: "15.5px",
+              color: "#475955",
+              lineHeight: 1.6,
+              margin: "0 0 24px 0",
+              maxWidth: "680px",
+              marginLeft: "auto",
+              marginRight: "auto",
+            }}
+          >
             Operational, code-verified immigration workflows distinguished from planned expansion jurisdictions.
           </p>
 
-          {/* Minimal Inline Scope Counter */}
+          {/* Sovereign Metric Scope Bar */}
           <div
             suppressHydrationWarning
             style={{
@@ -672,23 +678,23 @@ export function DocumentoCoverageExplorer() {
               flexWrap: "wrap",
               rowGap: "8px",
               columnGap: "16px",
-              fontSize: "13px",
-              color: "#526663",
-              background: "#F6FAF8",
-              padding: "8px 18px",
-              borderRadius: "999px",
-              border: "1px solid rgba(13, 104, 102, 0.1)",
+              fontSize: "12.5px",
+              color: "#445451",
+              background: "#F8FAF9",
+              padding: "10px 22px",
+              borderRadius: "8px",
+              border: "1px solid #DCE5E1",
             }}
           >
-            <span style={{ fontWeight: 650, color: "#063C3D" }}>
+            <span style={{ fontWeight: 700, color: "#063C3D" }}>
               3 Active Jurisdictions
             </span>
-            <span style={{ color: "#B0C0BC" }}>•</span>
-            <span style={{ fontWeight: 600, color: "#0D6866" }}>
+            <span style={{ color: "#BDCDC7" }}>•</span>
+            <span style={{ fontWeight: 650, color: "#07594F" }}>
               6 Operational Pathways &amp; Dedicated Visa Suites ({stats.availableCount} Available Workflows)
             </span>
-            <span style={{ color: "#B0C0BC" }}>•</span>
-            <span style={{ fontWeight: 600, color: "#8A5A10" }}>
+            <span style={{ color: "#BDCDC7" }}>•</span>
+            <span style={{ fontWeight: 650, color: "#8A5A10" }}>
               2 Roadmap Pathways &amp; Pilot Jurisdictions
             </span>
           </div>
@@ -700,20 +706,20 @@ export function DocumentoCoverageExplorer() {
           data-motion="scale"
           style={{
             background: "#FFFFFF",
-            borderRadius: "14px",
-            border: "1px solid rgba(13, 104, 102, 0.14)",
-            boxShadow: "0 10px 30px -14px rgba(6, 60, 61, 0.05)",
-            padding: "12px 16px",
+            borderRadius: "12px",
+            border: "1px solid #DCE5E1",
+            boxShadow: "0 4px 20px rgba(6, 60, 61, 0.04)",
+            padding: "14px 18px",
             marginBottom: "32px",
             display: "flex",
             flexWrap: "wrap",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: "12px",
+            gap: "14px",
           }}
         >
           {/* Search Box */}
-          <div style={{ position: "relative", flex: "1 1 260px", maxWidth: "380px" }}>
+          <div style={{ position: "relative", flex: "1 1 280px", maxWidth: "420px" }}>
             <input
               type="text"
               placeholder="Search visa name, code, or country..."
@@ -725,9 +731,9 @@ export function DocumentoCoverageExplorer() {
               style={{
                 width: "100%",
                 padding: "9px 14px 9px 36px",
-                borderRadius: "8px",
-                border: "1px solid rgba(13, 104, 102, 0.14)",
-                background: "#FAFCFB",
+                borderRadius: "6px",
+                border: "1px solid #DCE5E1",
+                background: "#F8FAF9",
                 fontSize: "13.5px",
                 color: "#063C3D",
                 outline: "none",
@@ -761,14 +767,13 @@ export function DocumentoCoverageExplorer() {
                 }}
                 aria-label="Clear search"
               >
-                {/* taste-skill-ignore */}
                 ✕
               </button>
             )}
           </div>
 
           {/* Status Filter Buttons */}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <button
               type="button"
               onClick={() => {
@@ -776,15 +781,16 @@ export function DocumentoCoverageExplorer() {
                 if (selectedPathwayId) setSelectedPathwayId(null);
               }}
               style={{
-                padding: "6px 12px",
-                borderRadius: "8px",
+                padding: "6px 14px",
+                borderRadius: "6px",
                 border: "1px solid",
-                borderColor: statusFilter === "ALL" ? "#0D6866" : "rgba(13, 104, 102, 0.14)",
-                background: statusFilter === "ALL" ? "#0D6866" : "#FFFFFF",
-                color: statusFilter === "ALL" ? "#FFFFFF" : "#4F6360",
+                borderColor: statusFilter === "ALL" ? "#07594F" : "#DCE5E1",
+                background: statusFilter === "ALL" ? "#07594F" : "#FFFFFF",
+                color: statusFilter === "ALL" ? "#FFFFFF" : "#445451",
                 fontSize: "12.5px",
-                fontWeight: statusFilter === "ALL" ? 600 : 500,
+                fontWeight: statusFilter === "ALL" ? 650 : 500,
                 cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
             >
               All
@@ -796,15 +802,16 @@ export function DocumentoCoverageExplorer() {
                 if (selectedPathwayId) setSelectedPathwayId(null);
               }}
               style={{
-                padding: "6px 12px",
-                borderRadius: "8px",
+                padding: "6px 14px",
+                borderRadius: "6px",
                 border: "1px solid",
-                borderColor: statusFilter === "Available" ? "#0D6866" : "rgba(13, 104, 102, 0.14)",
-                background: statusFilter === "Available" ? "#0D6866" : "#FFFFFF",
+                borderColor: statusFilter === "Available" ? "#07594F" : "#DCE5E1",
+                background: statusFilter === "Available" ? "#07594F" : "#FFFFFF",
                 color: statusFilter === "Available" ? "#FFFFFF" : "#07594F",
                 fontSize: "12.5px",
-                fontWeight: statusFilter === "Available" ? 600 : 500,
+                fontWeight: statusFilter === "Available" ? 650 : 500,
                 cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
             >
               Available Now ({stats.availableCount})
@@ -816,15 +823,16 @@ export function DocumentoCoverageExplorer() {
                 if (selectedPathwayId) setSelectedPathwayId(null);
               }}
               style={{
-                padding: "6px 12px",
-                borderRadius: "8px",
+                padding: "6px 14px",
+                borderRadius: "6px",
                 border: "1px solid",
-                borderColor: statusFilter === "Planned" ? "#8A5A10" : "rgba(13, 104, 102, 0.14)",
+                borderColor: statusFilter === "Planned" ? "#8A5A10" : "#DCE5E1",
                 background: statusFilter === "Planned" ? "#8A5A10" : "#FFFFFF",
                 color: statusFilter === "Planned" ? "#FFFFFF" : "#8A5A10",
                 fontSize: "12.5px",
-                fontWeight: statusFilter === "Planned" ? 600 : 500,
+                fontWeight: statusFilter === "Planned" ? 650 : 500,
                 cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
             >
               Roadmap / Planned ({stats.plannedCount})
@@ -841,13 +849,14 @@ export function DocumentoCoverageExplorer() {
               }}
               style={{
                 padding: "6px 14px",
-                borderRadius: "8px",
-                border: "1px solid rgba(13, 104, 102, 0.18)",
-                background: isBrowsingAll ? "#EAF5EF" : "#FAFCFB",
+                borderRadius: "6px",
+                border: "1px solid #DCE5E1",
+                background: isBrowsingAll ? "#EAF5EF" : "#F8FAF9",
                 color: "#063C3D",
                 fontSize: "12.5px",
                 fontWeight: 600,
                 cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
             >
               {isBrowsingAll ? "Show Featured 3" : `Browse All ${VERIFIED_PATHWAYS.length} Pathways`}
@@ -1080,8 +1089,8 @@ export function DocumentoCoverageExplorer() {
                             tabKey === "overview"
                               ? "Overview"
                               : tabKey === "statutory"
-                              ? "Statutory"
-                              : "Checklists";
+                                ? "Statutory"
+                                : "Checklists";
                           return (
                             <button
                               key={tabKey}

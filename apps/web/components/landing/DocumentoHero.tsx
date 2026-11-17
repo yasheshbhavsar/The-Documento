@@ -723,13 +723,13 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
                     fontWeight: 650,
                   }}
                 >
-                  Applicant: Maria Elena Vasquez
+                  Applicant: Principal Beneficiary (Verified)
                 </span>
               </div>
             </div>
 
             <div style={{ fontSize: "12px", color: "#6E7F7C" }}>
-              Sample Dossier • Human Attorney Adjudication Required
+              Illustrative Workflow • Human Attorney Adjudication Required
             </div>
           </div>
 
@@ -754,10 +754,10 @@ const DOSSIER_DEMO_ITEMS = [
       message: "Prior 2023 visa refusal declared. Flagged for attorney statutory statement review.",
     },
     fields: [
-      { label: "Unique Client Identifier (UCI)", value: "8194028511", status: "Extracted", statusType: "neutral" as const },
-      { label: "Inviting Host (Child in Canada)", value: "Lucas Vasquez (Toronto, ON)", status: "Verified", statusType: "ready" as const },
-      { label: "Prior Refusal Disclosure", value: "Declared: 2023 Study Visa Refusal", status: "Needs Review", statusType: "attention" as const },
-      { label: "Principal Applicant", value: "Maria Elena Vasquez", status: "Verified", statusType: "ready" as const },
+      { label: "Unique Client Identifier (UCI)", value: "Pending Assignment", status: "Extracted", statusType: "neutral" as const },
+      { label: "Inviting Host (Child in Canada)", value: "Authorized Canadian Host", status: "Verified", statusType: "ready" as const },
+      { label: "Prior Refusal Disclosure", value: "Declared: Prior Visa Refusal", status: "Needs Review", statusType: "attention" as const },
+      { label: "Principal Applicant", value: "Primary Applicant", status: "Verified", statusType: "ready" as const },
     ],
   },
   {
@@ -765,16 +765,16 @@ const DOSSIER_DEMO_ITEMS = [
     tabLabel: "Medical Assessment",
     filename: "eMedical Upfront Health Assessment Sheet",
     category: "Statutory Medical Admissibility",
-    source: "IRCC eMedical Clinic Summary (IME #31849204)",
+    source: "IRCC eMedical Clinic Summary",
     status: {
       type: "ready" as const,
       badge: "Cleared",
       message: "No statutory health inadmissibility identified under IRPA § 38(1).",
     },
     fields: [
-      { label: "Upfront Medical Identifier (UMI)", value: "U940182650", status: "Verified", statusType: "ready" as const },
-      { label: "Immigration Medical Exam (IME)", value: "31849204", status: "Completed", statusType: "ready" as const },
-      { label: "Designated Panel Physician", value: "Dr. Alistair Finch, MD", status: "Verified", statusType: "neutral" as const },
+      { label: "Upfront Medical Identifier (UMI)", value: "Verified on File", status: "Verified", statusType: "ready" as const },
+      { label: "Immigration Medical Exam (IME)", value: "Completed", status: "Completed", statusType: "ready" as const },
+      { label: "Designated Panel Physician", value: "IRCC Panel Physician", status: "Verified", statusType: "neutral" as const },
       { label: "Admissibility Determination", value: "Passed (Valid 12 Months)", status: "Cleared", statusType: "ready" as const },
     ],
   },
@@ -783,17 +783,17 @@ const DOSSIER_DEMO_ITEMS = [
     tabLabel: "Financial Proof (LICO)",
     filename: "Proof of Financial Support — CRA Notice of Assessment",
     category: "Financial Support & Eligibility",
-    source: "CRA Notice of Assessment (2024 Tax Year)",
+    source: "CRA Notice of Assessment",
     status: {
       type: "ready" as const,
       badge: "Threshold Met",
-      message: "Host income ($98,450 CAD) exceeds statutory LICO requirement ($44,530 CAD for 3-person household).",
+      message: "Verified host income exceeds statutory LICO threshold for household size.",
     },
     fields: [
-      { label: "Line 15000 Total Income", value: "$98,450 CAD", status: "Verified", statusType: "ready" as const },
-      { label: "Statutory 2024 LICO Threshold", value: "$44,530 CAD (Household of 3)", status: "Exceeded", statusType: "ready" as const },
-      { label: "CRA Tax Assessment Year", value: "2024 Tax Year", status: "Valid", statusType: "neutral" as const },
-      { label: "Host Sponsor", value: "Lucas Vasquez", status: "Verified", statusType: "ready" as const },
+      { label: "Line 15000 Total Income", value: "Exceeds Statutory LICO", status: "Verified", statusType: "ready" as const },
+      { label: "Statutory LICO Threshold", value: "Household Size Verified", status: "Exceeded", statusType: "ready" as const },
+      { label: "CRA Tax Assessment Year", value: "Most Recent Tax Year", status: "Valid", statusType: "neutral" as const },
+      { label: "Host Sponsor", value: "Authorized Canadian Host", status: "Verified", statusType: "ready" as const },
     ],
   },
   {

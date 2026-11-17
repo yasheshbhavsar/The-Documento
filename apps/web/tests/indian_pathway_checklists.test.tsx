@@ -1,12 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
+
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  const { mockApiModuleWithFixtures } = await import("./helpers/mockApiFixtures");
+  return mockApiModuleWithFixtures(actual);
+});
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   CreateCaseModal,
   JURISDICTION_OPTIONS,
   JURISDICTION_PATHWAYS,
 } from "../components/modals/CreateCaseModal";
-import { api, FIXTURE_CLIENTS } from "../lib/api";
+import { api } from "../lib/api";
+import { FIXTURE_CLIENTS } from "./helpers/testFixtures";
 
 describe("Indian & High-Volume Global Pathway Checklists Integration", () => {
   it("exposes all target jurisdictions and pathways in CreateCaseModal definitions", () => {

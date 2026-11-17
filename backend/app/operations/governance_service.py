@@ -183,7 +183,7 @@ class PilotGovernanceService:
         allowed_pathways: Optional[List[str]] = None,
         synthetic_data_attestation: bool = True,
         unapproved_ai_block_enabled: bool = True,
-        assigned_lead_email: str = "pilot-lead@lexfirm.com",
+        assigned_lead_email: str = "pilot-lead@practice-domain.com",
         notes: Optional[str] = None,
     ) -> PilotCohort:
         if not cohort_name.strip():
@@ -426,8 +426,8 @@ class StressTestingSuiteService:
 
         elif scenario_key == "spelling_mismatch":
             metrics.update({
-                "passport_name": "SARAH ELIZABETH SMYTH",
-                "civil_record_name": "SARA E. SMITH",
+                "passport_name": "SAMPLE_GIVEN_SURNAME_A",
+                "civil_record_name": "SAMPLE_GIVEN_SURNAME_B",
                 "levenshtein_distance": 3,
                 "discrepancy_flagged": True,
                 "lawyer_resolution_required": True,
@@ -455,8 +455,8 @@ class StressTestingSuiteService:
         elif scenario_key == "caseworker_reassignment":
             metrics.update({
                 "reassigned_cases": 12,
-                "from_officer": "attorney_departing@firm.com",
-                "to_officer": "attorney_senior@firm.com",
+                "from_officer": "departing.counsel@example.invalid",
+                "to_officer": "senior.counsel@example.invalid",
                 "audit_event_logged": True,
             })
             notes += "All 12 caseload items transferred cleanly with immutable audit trace."

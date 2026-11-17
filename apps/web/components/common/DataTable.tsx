@@ -28,6 +28,9 @@ export interface DataTableProps<T> {
   hideSearch?: boolean;
   isLoading?: boolean;
   skeletonRows?: number;
+  variant?: "boxed" | "flush";
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -45,12 +48,16 @@ export function DataTable<T extends Record<string, any>>({
   hideSearch = false,
   isLoading = false,
   skeletonRows,
+  variant = "flush",
+  className = "",
+  style,
 }: DataTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [currentPage, setCurrentPage] = useState(1);
+  const isFlush = variant === "flush";
 
   // Filter and Search
   const filteredData = useMemo(() => {
@@ -113,11 +120,14 @@ export function DataTable<T extends Record<string, any>>({
 
   return (
     <div
+      className={`data-table-root ${isFlush ? "data-table-flush" : "data-table-boxed"} ${className}`.trim()}
+      data-variant={variant}
       style={{
         display: "flex",
         flexDirection: "column",
         gap: "14px",
         width: "100%",
+        ...style,
       }}
     >
       {/* Controls Bar: Search, Filter, Actions */}
@@ -161,13 +171,27 @@ export function DataTable<T extends Record<string, any>>({
                     left: "10px",
                     top: "50%",
                     transform: "translateY(-50%)",
-                    fontSize: "14px",
                     color: "var(--quiet, #6E7F7C)",
                     pointerEvents: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                   aria-hidden="true"
                 >
-                  🔍
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
                 </span>
               </div>
             )}
@@ -208,12 +232,13 @@ export function DataTable<T extends Record<string, any>>({
 
       {/* Table Container */}
       <div
+        className={`data-table-container ${isFlush ? "data-table-container-flush" : "data-table-container-boxed"}`}
         style={{
-          border: "1px solid var(--border, #e2e8f0)",
-          borderRadius: "var(--radius, 12px)",
+          border: isFlush ? "none" : "1px solid var(--border, #e2e8f0)",
+          borderRadius: isFlush ? "0px" : "var(--radius, 12px)",
           overflow: "hidden",
           background: "var(--surface, #ffffff)",
-          boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
+          boxShadow: isFlush ? "none" : "0 1px 3px rgba(15, 23, 42, 0.04)",
         }}
       >
         <div style={{ overflowX: "auto" }}>
@@ -226,7 +251,7 @@ export function DataTable<T extends Record<string, any>>({
             }}
           >
             <thead>
-              <tr style={{ background: "var(--surface-subtle, #F1F6F4)", borderBottom: "1px solid var(--border, #DCE5E1)" }}>
+              <tr style={{ background: "var(--surface-subtle, #F8F7F2)", borderBottom: "1px solid var(--border, #DCE5E1)" }}>
                 {columns.map((col) => (
                   <th
                     key={col.key}
@@ -240,12 +265,12 @@ export function DataTable<T extends Record<string, any>>({
                       }
                     }}
                     style={{
-                      padding: "12px 16px",
-                      fontWeight: 700,
+                      padding: "10px 16px",
+                      fontWeight: 600,
                       color: "var(--muted, #445451)",
-                      fontSize: "12px",
+                      fontSize: "11px",
                       textTransform: "uppercase",
-                      letterSpacing: "0.04em",
+                      letterSpacing: "0.03em",
                       width: col.width,
                       cursor: col.sortable ? "pointer" : "default",
                       userSelect: "none",
@@ -332,8 +357,21 @@ export function DataTable<T extends Record<string, any>>({
               ) : (
                 <tr>
                   <td colSpan={columns.length} style={{ padding: "40px 20px", textAlign: "center" }}>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "28px" }}>📂</span>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
+                      <svg
+                        width="32"
+                        height="32"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ color: "var(--quiet, #6E7F7C)" }}
+                        aria-hidden="true"
+                      >
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      </svg>
                       <strong style={{ fontSize: "15px", color: "var(--text, #0f172a)" }}>{emptyTitle}</strong>
                       <p style={{ margin: 0, fontSize: "13px", color: "var(--muted, #475569)", maxWidth: "340px" }}>
                         {emptyDescription}
@@ -351,7 +389,7 @@ export function DataTable<T extends Record<string, any>>({
           style={{
             padding: "12px 16px",
             borderTop: "1px solid var(--border, #DCE5E1)",
-            background: "var(--surface-subtle, #F1F6F4)",
+            background: isFlush ? "var(--surface, #ffffff)" : "var(--surface-subtle, #F1F6F4)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",

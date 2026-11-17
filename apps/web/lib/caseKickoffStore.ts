@@ -429,3 +429,13 @@ export function getPathwayKickoffConfig(
   };
 }
 
+export function removeCaseKickoffRecord(caseId: string): void {
+  if (!caseId) return;
+  const all = readAllKickoffRecords();
+  if (all[caseId]) {
+    delete all[caseId];
+    writeAllKickoffRecords(all);
+  }
+}
+
+

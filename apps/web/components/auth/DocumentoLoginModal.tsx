@@ -350,7 +350,7 @@ export function DocumentoLoginModal({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder={portal === "firm" ? "you@youragency.com" : "applicant@domain.com"}
+                placeholder={portal === "firm" ? "counsel@practice-domain.com" : "client@domain.com"}
                 style={{
                   width: "100%",
                   padding: "10px 14px 10px 36px",

@@ -117,7 +117,7 @@ describe("DocumentExtractorLab Standalone Component", () => {
       if (typeof url === "string" && url.includes("/extractor/samples")) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve(extractorApi.FALLBACK_SAMPLES),
+          json: () => Promise.resolve([]),
         });
       }
       return Promise.resolve({
@@ -156,9 +156,29 @@ describe("DocumentExtractorLab Standalone Component", () => {
     // Simulate completely offline backend network error
     global.fetch = vi.fn().mockRejectedValue(new Error("Failed to fetch"));
 
-    const familyFile = new File(["%PDF-1.4 family content"], "family_test_packet.pdf", {
-      type: "application/pdf",
-    });
+    const familyFile = new File(
+      [
+        [
+          "--- PAGE 1 ---",
+          "REPUBLIC OF INDIA - PASSPORT",
+          "Type: P Code: IND Passport No: Z8492014",
+          "Surname: SHARMA",
+          "Given Names: AARAV",
+          "Nationality: IND",
+          "Date of Birth: 15 AUG 1990",
+          "--- PAGE 2 ---",
+          "GOVERNMENT OF INDIA - CERTIFICATE OF MARRIAGE",
+          "Registration No: MH-MRG-2020-0011",
+          "FULL NAME OF THE BRIDEGROOM: AARAV SHARMA",
+          "FULL NAME OF THE BRIDE: ANANYA PATEL",
+          "Date of Marriage: 12 FEB 2020",
+        ].join("\n"),
+      ],
+      "family_test_packet.pdf",
+      {
+        type: "application/pdf",
+      }
+    );
 
     const result = await extractorApi.sortDocumentPacket(familyFile);
 
@@ -191,9 +211,27 @@ describe("DocumentExtractorLab Standalone Component", () => {
     const { container } = render(<DocumentExtractorLab />);
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const packetFile = new File(["%PDF-1.4 family marriage packet"], "Sharma_Family_Packet.pdf", {
-      type: "application/pdf",
-    });
+    const packetFile = new File(
+      [
+        [
+          "--- PAGE 1 ---",
+          "REPUBLIC OF INDIA - PASSPORT",
+          "Type: P Code: IND Passport No: Z8492014",
+          "Surname: SHARMA",
+          "Given Names: AARAV",
+          "Nationality: IND",
+          "--- PAGE 2 ---",
+          "GOVERNMENT OF INDIA - CERTIFICATE OF MARRIAGE",
+          "FULL NAME OF THE BRIDEGROOM: AARAV SHARMA",
+          "FULL NAME OF THE BRIDE: ANANYA PATEL",
+          "Date of Marriage: 12 FEB 2020",
+        ].join("\n"),
+      ],
+      "Sharma_Family_Packet.pdf",
+      {
+        type: "application/pdf",
+      }
+    );
     fireEvent.change(fileInput, { target: { files: [packetFile] } });
 
     // Click "Sort & Split Multi-Person PDF Packet"
@@ -242,9 +280,27 @@ describe("DocumentExtractorLab Standalone Component", () => {
     const { container } = render(<DocumentExtractorLab />);
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const sampleFile = new File(["dummy packet"], "family_download_test.pdf", {
-      type: "application/pdf",
-    });
+    const sampleFile = new File(
+      [
+        [
+          "--- PAGE 1 ---",
+          "REPUBLIC OF INDIA - PASSPORT",
+          "Type: P Code: IND Passport No: Z8492014",
+          "Surname: SHARMA",
+          "Given Names: AARAV",
+          "Nationality: IND",
+          "--- PAGE 2 ---",
+          "GOVERNMENT OF INDIA - CERTIFICATE OF MARRIAGE",
+          "FULL NAME OF THE BRIDEGROOM: AARAV SHARMA",
+          "FULL NAME OF THE BRIDE: ANANYA PATEL",
+          "Date of Marriage: 12 FEB 2020",
+        ].join("\n"),
+      ],
+      "family_download_test.pdf",
+      {
+        type: "application/pdf",
+      }
+    );
     fireEvent.change(fileInput, { target: { files: [sampleFile] } });
 
     const sortBtn = screen.getByText(/Sort & Split Multi-Person PDF Packet/i);

@@ -47,10 +47,18 @@ describe("Phase 2 — Commercial & Operational Readiness", () => {
   });
 
   describe("Visa Appointments & VAC Logistics Desk Client", () => {
-    it("retrieves fallback appointment records for active cases", async () => {
+    it("starts clean without fake appointments and persists newly scheduled case records", async () => {
+      const initialAppts = await fetchCaseAppointments("case-01");
+      expect(Array.isArray(initialAppts)).toBe(true);
+      expect(initialAppts.length).toBe(0);
+
+      await createCaseAppointment("case-01", {
+        vac_center: "New Delhi VAC (Shivaji Stadium)",
+        consular_post: "U.S. Embassy New Delhi",
+        appointment_status: "scheduled",
+      });
       const appts = await fetchCaseAppointments("case-01");
-      expect(Array.isArray(appts)).toBe(true);
-      expect(appts.length).toBeGreaterThan(0);
+      expect(appts.length).toBe(1);
       const appt = appts[0];
       expect(appt.vac_center).toBeDefined();
       expect(appt.consular_post).toBeDefined();
@@ -81,14 +89,10 @@ describe("Phase 2 — Commercial & Operational Readiness", () => {
   });
 
   describe("Financial Sponsor & Indian KYC Model Client", () => {
-    it("retrieves financial sponsors for an active case", async () => {
+    it("retrieves empty sponsor list when unseeded offline without fake PII", async () => {
       const sponsors = await fetchCaseSponsors("case-01");
       expect(Array.isArray(sponsors)).toBe(true);
-      expect(sponsors.length).toBeGreaterThan(0);
-      expect(sponsors[0].name).toBe("Rajesh Kumar Sharma");
-      expect(sponsors[0].pan).toBe("ABCPS1234F");
-      expect(sponsors[0].liquid_funds).toBe(4500000);
-      expect(sponsors[0].loan_sanction_amount).toBe(3500000);
+      expect(sponsors.length).toBe(0);
     });
 
     it("creates a new financial sponsor with ITR gross income and education loan details", async () => {

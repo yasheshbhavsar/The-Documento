@@ -3,27 +3,7 @@ import { API_BASE_URL, getAuthHeaders, fallbackData } from "./client";
 
 const API_BASE = API_BASE_URL;
 
-export const FALLBACK_SPONSORS: FinancialSponsor[] = [
-  {
-    id: "sp-01",
-    organization_id: "org-01",
-    case_id: "case-01",
-    client_id: "client-01",
-    name: "Rajesh Kumar Sharma",
-    relationship: "parent",
-    sponsor_type: "individual",
-    pan: "ABCPS1234F",
-    itr_gross_income: 2850000.0,
-    liquid_funds: 4500000.0,
-    currency: "INR",
-    bank_name: "State Bank of India (SBI)",
-    loan_sanction_amount: 3500000.0,
-    affidavit_doc_id: null,
-    notes: "Primary financial sponsor with verified ITR-V past 3 years and SBI education loan sanction letter.",
-    created_at: "2026-10-12T10:00:00Z",
-    updated_at: "2026-10-12T10:00:00Z",
-  },
-];
+export const FALLBACK_SPONSORS: FinancialSponsor[] = [];
 
 export async function fetchCaseSponsors(caseId: string): Promise<FinancialSponsor[]> {
   try {

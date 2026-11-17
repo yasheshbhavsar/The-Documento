@@ -170,30 +170,60 @@ def test_adversarial_indian_certificate_number_regex_expanded_bounds():
 
 
 def test_adversarial_extractor_samples_catalog_and_expansion(client):
-    """Verify /api/v1/extractor/samples returns >= 8 samples and handles catalog expansion gracefully."""
+    """Verify /api/v1/extractor/samples has no baked-in demo PII and /analyze-text handles catalog expansion cleanly."""
     resp = client.get("/api/v1/extractor/samples")
     assert resp.status_code == 200
-    samples = resp.json()
+    assert resp.json() == []
 
-    # The catalog must contain at least 8 samples (currently 10)
-    assert len(samples) >= 8, f"Expected at least 8 samples, got {len(samples)}"
-
-    # Each sample must have required structure
-    for s in samples:
-        assert "id" in s
-        assert "filename" in s
-        assert "category" in s
-        assert "text_content" in s
-        assert len(s["text_content"].strip()) > 0
-
-    # Adversarial catalog expansion simulation:
-    # Inject 3 synthetic new samples into the list to test resilience against future additions
-    synthetic_samples = list(samples) + [
+    # Test catalog extraction and graceful expansion using local synthetic test fixtures
+    synthetic_samples = [
+        {
+            "id": "sample-indian-passport",
+            "filename": "PASSPORT_TEST_IND.pdf",
+            "category": "identity_passport",
+            "text_content": (
+                "REPUBLIC OF INDIA PASSPORT\n"
+                "Type: P Country Code: IND Passport No: Z8492014\n"
+                "Surname: SHARMA\nGiven Name(s): AARAV\n"
+                "Nationality: INDIAN\nDate of Birth: 14/08/1992\n"
+                "Date of Expiry: 19/05/2028\n"
+                "P<INDSHARMA<<AARAV<<<<<<<<<<<<<<<<<<<<<<<<<<\n"
+                "Z8492014<2IND9208146M2805194<<<<<<<<<<<<<<04"
+            ),
+        },
+        {
+            "id": "sample-us-passport",
+            "filename": "US_PASSPORT_TEST.pdf",
+            "category": "identity_passport",
+            "text_content": (
+                "PASSPORT UNITED STATES OF AMERICA\n"
+                "Passport No: C99887766\n"
+                "Surname: MILLER\nGiven Names: JORDAN ALEX\n"
+                "Nationality: UNITED STATES OF AMERICA\n"
+                "Date of Birth: 15 Mar 1990\nDate of Expiration: 14 Mar 2030\n"
+                "P<USAMILLER<<JORDAN<ALEX<<<<<<<<<<<<<<<<<<<<\n"
+                "C99887766<2USA9003156M3003144<<<<<<<<<<<<<<08"
+            ),
+        },
+        {
+            "id": "sample-marriage-certificate",
+            "filename": "MARRIAGE_CERT_TEST.pdf",
+            "category": "civil_status",
+            "text_content": (
+                "CERTIFICATE OF MARRIAGE\n"
+                "Certificate Registration No: MC-2022-88412\n"
+                "Registered at serial No 88412\n"
+                "Date of Marriage: 18/02/2022\n"
+                "Place of Marriage: Mumbai, Maharashtra\n"
+                "FULL NAME OF THE BRIDEGROOM: TEST GROOM\n"
+                "FULL NAME OF THE BRIDE: TEST BRIDE\n"
+            ),
+        },
         {
             "id": "sample-future-uae-residence-visa",
             "filename": "uae_residence_visa.txt",
             "category": "travel_history",
-            "text_content": "UNITED ARAB EMIRATES RESIDENCE VISA No 201/2024/99182 Name: Ahmed Al-Mansoor",
+            "text_content": "UNITED ARAB EMIRATES RESIDENCE VISA No 201/2024/99182 Name: Test Resident",
         },
         {
             "id": "sample-future-german-anerkennung",
@@ -202,6 +232,13 @@ def test_adversarial_extractor_samples_catalog_and_expansion(client):
             "text_content": "BUNDESREPUBLIK DEUTSCHLAND ANERKENNUNGSURKUNDE Berufsbezeichnung: Ingenieur",
         },
     ]
+
+    for s in synthetic_samples:
+        assert "id" in s
+        assert "filename" in s
+        assert "category" in s
+        assert "text_content" in s
+        assert len(s["text_content"].strip()) > 0
 
     expected_fields_by_id = {
         "sample-indian-passport": {"passport_number", "surname", "given_names", "date_of_birth", "expiry_date"},

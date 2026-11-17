@@ -22,6 +22,8 @@ import {
   getAgencyTenants,
   getCalculatorAgencyLeads,
   getPlatformBillingInvoices,
+  inviteAgencyTeamMember,
+  provisionSalesLedAgency,
   submitAgencyOnboarding,
   submitCobrandedCalculatorLead,
 } from "../lib/agencyPlatformStore";
@@ -281,16 +283,16 @@ describe("Visa Agency KYB Onboarding, Documento HQ Super-Admin & End-to-End Zero
     fireEvent.click(screen.getByTestId("open-sales-provision-modal-btn"));
     expect(screen.getByTestId("sales-led-provision-modal")).toBeDefined();
 
-    fireEvent.change(screen.getByPlaceholderText(/Pacific Rim Immigration Law PC/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Practice Legal Entity Name/i), {
       target: { value: "Pacific Rim Immigration Law PC" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/Pacific Rim Visas/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Public Trading Brand/i), {
       target: { value: "Pacific Rim Visas" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/Daniel Cho/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Full name and bar\/license title/i), {
       target: { value: "Daniel Cho, Barrister" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/daniel@pacificrimlaw\.ca/i), {
+    fireEvent.change(screen.getByPlaceholderText(/owner@practice-domain\.com/i), {
       target: { value: "daniel@pacificrimlaw.ca" },
     });
     fireEvent.change(screen.getByPlaceholderText(/R708112/i), {
@@ -368,10 +370,10 @@ describe("Visa Agency KYB Onboarding, Documento HQ Super-Admin & End-to-End Zero
       "IRCC French Category Draw #325"
     );
 
-    fireEvent.change(screen.getByPlaceholderText(/Simran Kaur/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Full Legal Name/i), {
       target: { value: "Simran Kaur" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/simran@yourfirm\.com/i), {
+    fireEvent.change(screen.getByPlaceholderText(/staff@practice-domain\.com/i), {
       target: { value: "simran@pacificrimlaw.ca" },
     });
     fireEvent.click(screen.getByTestId("invite-agency-staff-btn"));
@@ -536,10 +538,10 @@ describe("Visa Agency KYB Onboarding, Documento HQ Super-Admin & End-to-End Zero
     ).toBe(0);
 
     // Invite a Paralegal from the Launchpad
-    fireEvent.change(screen.getByPlaceholderText(/Simran Kaur/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Full Legal Name/i), {
       target: { value: "Navneet Brar" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/simran@yourfirm\.com/i), {
+    fireEvent.change(screen.getByPlaceholderText(/staff@practice-domain\.com/i), {
       target: { value: "navneet@maplecrestimmigration.ca" },
     });
     fireEvent.click(screen.getByTestId("invite-agency-staff-btn"));
@@ -793,5 +795,88 @@ describe("Visa Agency KYB Onboarding, Documento HQ Super-Admin & End-to-End Zero
       expect(document.body.textContent).not.toContain("28 verified reviews");
       expect(document.body.textContent).not.toContain("Elena Rostova");
     });
+  });
+
+  it("displays Managing Partner and Staff Seat Login IDs & Passwords inside Tenant Governance with Show/Hide and Password Reset", () => {
+    const provisioned = provisionSalesLedAgency({
+      legalEntityName: "YB IMMIGRATION",
+      tradingName: "YB IMMIGRATION",
+      ownerFullName: "YASHESH BHAVSAR",
+      ownerEmail: "yasheshbhavsartzuyu@gmail.com",
+      hqCountry: "INDIA",
+      hqCity: "AHMEDABAD",
+      kybTrack: "regulated_counsel",
+      regulatoryBody: "CICC",
+      licenseNumber: "R654321",
+      enabledCorridors: ["CA"],
+      planTier: "growth",
+      paymentMethod: "stripe_card",
+      kybVerifiedOnCall: true,
+    });
+
+    const staffSeat = inviteAgencyTeamMember({
+      organizationId: provisioned.organizationId,
+      fullName: "Neha Patel",
+      email: "neha.patel@ybimmigration.com",
+      role: "case_manager",
+      branchOffice: "AHMEDABAD",
+    });
+
+    render(<SuperAdminControlPlane />);
+    signInHqOperatorInUi();
+
+    // Open Partner Agencies -> click Govern on YB IMMIGRATION
+    fireEvent.click(screen.getByRole("button", { name: /Partner Agencies/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Govern" }));
+
+    expect(screen.getByTestId("tenant-governance-drawer")).toBeDefined();
+    expect(screen.getByTestId("tenant-credentials-panel")).toBeDefined();
+
+    // Managing Partner ID & Password show up immediately
+    expect(screen.getByTestId("tenant-owner-login-id").textContent).toBe(
+      "yasheshbhavsartzuyu@gmail.com"
+    );
+    expect(screen.getByTestId("tenant-owner-password").textContent).toBe(
+      provisioned.temporaryPassword
+    );
+
+    // Invited Staff Seat ID & Passcode also show up immediately
+    expect(screen.getByTestId(`tenant-staff-login-id-${staffSeat.id}`).textContent).toBe(
+      "neha.patel@ybimmigration.com"
+    );
+    expect(screen.getByTestId(`tenant-staff-password-${staffSeat.id}`).textContent).toBe(
+      staffSeat.passcode
+    );
+
+    // Hide / Show toggle works
+    fireEvent.click(screen.getByTestId("toggle-tenant-passwords-btn"));
+    expect(screen.getByTestId("tenant-owner-password").textContent).toBe("••••••••••••");
+    fireEvent.click(screen.getByTestId("toggle-tenant-passwords-btn"));
+    expect(screen.getByTestId("tenant-owner-password").textContent).toBe(
+      provisioned.temporaryPassword
+    );
+
+    // Set a custom Managing Partner password and verify Firm Login succeeds with new password
+    fireEvent.click(screen.getByTestId("open-custom-owner-password-btn"));
+    fireEvent.change(screen.getByTestId("custom-owner-password-input"), {
+      target: { value: "YBAdmin2026!Secure" },
+    });
+    fireEvent.click(screen.getByTestId("save-custom-owner-password-btn"));
+
+    expect(screen.getByTestId("tenant-owner-password").textContent).toBe("YBAdmin2026!Secure");
+    expect(
+      authenticateUser("yasheshbhavsartzuyu@gmail.com", "firm", provisioned.temporaryPassword).success
+    ).toBe(false);
+    expect(
+      authenticateUser("yasheshbhavsartzuyu@gmail.com", "firm", "YBAdmin2026!Secure").success
+    ).toBe(true);
+
+    // Auto-Reset generates a fresh DocInvite!... password and updates live auth
+    fireEvent.click(screen.getByTestId("auto-reset-owner-password-btn"));
+    const rotatedPassword = screen.getByTestId("tenant-owner-password").textContent || "";
+    expect(rotatedPassword.startsWith("DocInvite!")).toBe(true);
+    expect(authenticateUser("yasheshbhavsartzuyu@gmail.com", "firm", rotatedPassword).success).toBe(
+      true
+    );
   });
 });

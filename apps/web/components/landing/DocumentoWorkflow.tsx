@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { InteractiveSectionBackground } from "./InteractiveSectionBackground";
 
-interface WorkflowStage {
+export interface WorkflowStage {
   step: string;
   id: string;
   title: string;
@@ -48,9 +48,9 @@ export const WORKFLOW_STAGES: WorkflowStage[] = [
       badge: "Stage 1 Active",
       headline: "Client Onboarding & Identity Registration",
       items: [
-        "Applicant: Dr. Aris Thorne (PhD, Oxford)",
+        "Applicant: Principal Beneficiary (Verified Profile)",
         "Jurisdiction: United States (USCIS EB-1A)",
-        "Assigned: Eleanor Vance, Esq. (Lead Counsel)",
+        "Assigned: Supervising Managing Counsel",
       ],
     },
     challenge: {
@@ -341,7 +341,7 @@ export function DocumentoWorkflow() {
         padding: "88px 24px",
         scrollMarginTop: "80px",
         background: "#F8FAF9",
-        borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <InteractiveSectionBackground variant="architectural-grid" />
@@ -354,45 +354,51 @@ export function DocumentoWorkflow() {
         <div
           className="section-header-reveal animate-on-scroll"
           data-motion="up"
-          style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto 40px auto" }}
+          style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 44px auto" }}
         >
-          <span
+          <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
               fontSize: "12px",
-              fontWeight: 650,
-              letterSpacing: "0.06em",
+              fontWeight: 700,
+              letterSpacing: "0.08em",
               textTransform: "uppercase",
-              color: "#0D6866",
+              color: "#07594F",
               marginBottom: "12px",
             }}
           >
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#169B77" }} className="status-dot-pulse" />
-            <span>Six-Stage Casework Flow</span>
-          </span>
+            Operating Model
+          </div>
 
           <h2
             style={{
-              fontSize: "clamp(28px, 3.5vw, 42px)",
+              fontSize: "clamp(28px, 3.6vw, 44px)",
               fontWeight: 700,
               color: "#063C3D",
-              lineHeight: 1.15,
+              lineHeight: 1.14,
               letterSpacing: "-0.03em",
-              margin: "0 0 14px 0",
+              margin: "0 0 16px 0",
               fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
             }}
           >
             From overwhelming paperwork to an organized process.
           </h2>
 
-          <p style={{ fontSize: "16px", color: "#4F6360", lineHeight: 1.6, margin: 0 }}>
-            Every stage replaces administrative friction with transparent milestones, deterministic checklists, and attorney accountability.
+          <p
+            style={{
+              fontSize: "15.5px",
+              color: "#475955",
+              lineHeight: 1.6,
+              margin: 0,
+              maxWidth: "680px",
+              marginLeft: "auto",
+              marginRight: "auto",
+            }}
+          >
+            A transparent six-stage workflow that replaces scattered email threads and manual checklists with structured evidence and verified readiness.
           </p>
         </div>
 
-        {/* Minimal Horizontal 6-Stage Selector Rail */}
+        {/* Horizontal 6-Stage Timeline Selector Rail */}
         <div
           role="tablist"
           aria-label="Workflow Stages"
@@ -402,17 +408,18 @@ export function DocumentoWorkflow() {
             position: "relative",
             display: "grid",
             gridTemplateColumns: "repeat(6, 1fr)",
-            gap: "6px",
+            gap: "8px",
             background: "#FFFFFF",
             padding: "8px",
-            borderRadius: "16px",
-            border: "1px solid rgba(13, 104, 102, 0.12)",
+            borderRadius: "14px",
+            border: "1px solid #DCE5E1",
             marginBottom: "24px",
-            boxShadow: "0 10px 30px -12px rgba(6, 60, 61, 0.05)",
+            boxShadow: "0 4px 20px rgba(6, 60, 61, 0.04)",
             overflowX: "auto",
+            scrollbarWidth: "none",
           }}
         >
-          {WORKFLOW_STAGES.map((s) => {
+          {WORKFLOW_STAGES.map((s, idx) => {
             const isSelected = s.id === activeStepId;
             return (
               <button
@@ -434,34 +441,42 @@ export function DocumentoWorkflow() {
                   alignItems: "flex-start",
                   gap: "6px",
                   padding: "12px 14px",
-                  borderRadius: "10px",
-                  background: isSelected ? "#EAF5EF" : "transparent",
-                  border: isSelected ? "1px solid rgba(13, 104, 102, 0.22)" : "1px solid transparent",
+                  borderRadius: "8px",
+                  background: isSelected ? "#07594F" : "transparent",
+                  border: isSelected ? "1px solid #07594F" : "1px solid transparent",
                   cursor: "pointer",
                   textAlign: "left",
-                  transition: "all 0.2s cubic-bezier(0.22, 1, 0.36, 1)",
-                  minWidth: "140px",
+                  transition: "all 0.15s ease",
+                  minWidth: "150px",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
                   <span
                     style={{
                       fontSize: "11px",
-                      fontWeight: 650,
-                      color: isSelected ? "#07594F" : "#7B8E8B",
+                      fontWeight: 700,
+                      color: isSelected ? "#B9DED4" : "#6E7F7C",
+                      letterSpacing: "0.04em",
                     }}
                   >
                     Stage {s.step}
                   </span>
                   {isSelected && (
-                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#169B77" }} />
+                    <span
+                      style={{
+                        width: "6px",
+                        height: "6px",
+                        borderRadius: "50%",
+                        background: "#5EEAD4",
+                      }}
+                    />
                   )}
                 </div>
                 <span
                   style={{
-                    fontSize: "13px",
-                    fontWeight: isSelected ? 650 : 500,
-                    color: isSelected ? "#063C3D" : "#526663",
+                    fontSize: "12.5px",
+                    fontWeight: isSelected ? 700 : 550,
+                    color: isSelected ? "#FFFFFF" : "#172322",
                     lineHeight: 1.3,
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
@@ -485,9 +500,9 @@ export function DocumentoWorkflow() {
           data-motion="scale"
           style={{
             background: "#FFFFFF",
-            borderRadius: "18px",
-            border: "1px solid rgba(13, 104, 102, 0.14)",
-            boxShadow: "0 20px 50px -16px rgba(6, 60, 61, 0.06)",
+            borderRadius: "14px",
+            border: "1px solid #DCE5E1",
+            boxShadow: "0 8px 30px rgba(6, 60, 61, 0.05)",
             overflow: "hidden",
           }}
         >
@@ -495,8 +510,8 @@ export function DocumentoWorkflow() {
           <div
             style={{
               padding: "16px 28px",
-              background: "#FAFCFB",
-              borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+              background: "#F8FAF9",
+              borderBottom: "1px solid #DCE5E1",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -508,16 +523,17 @@ export function DocumentoWorkflow() {
               <span
                 style={{
                   fontSize: "11.5px",
-                  fontWeight: 650,
+                  fontWeight: 700,
                   color: "#07594F",
                   background: "#EAF5EF",
                   padding: "4px 10px",
-                  borderRadius: "999px",
+                  borderRadius: "6px",
+                  letterSpacing: "0.02em",
                 }}
               >
                 Stage {activeStage.step} of 06
               </span>
-              <span style={{ fontSize: "15px", fontWeight: 650, color: "#063C3D" }}>
+              <span style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D" }}>
                 {activeStage.title}
               </span>
             </div>
@@ -529,8 +545,8 @@ export function DocumentoWorkflow() {
                 onClick={handlePrev}
                 style={{
                   padding: "7px 14px",
-                  borderRadius: "8px",
-                  border: "1px solid rgba(13, 104, 102, 0.18)",
+                  borderRadius: "6px",
+                  border: "1px solid #DCE5E1",
                   background: "#FFFFFF",
                   color: "#063C3D",
                   fontSize: "12.5px",
@@ -547,12 +563,12 @@ export function DocumentoWorkflow() {
                 onClick={handleNext}
                 style={{
                   padding: "7px 16px",
-                  borderRadius: "8px",
+                  borderRadius: "6px",
                   border: "none",
                   background: "#07594F",
                   color: "#FFFFFF",
                   fontSize: "12.5px",
-                  fontWeight: 600,
+                  fontWeight: 650,
                   cursor: "pointer",
                   transition: "all 0.15s ease",
                 }}
@@ -562,14 +578,14 @@ export function DocumentoWorkflow() {
             </div>
           </div>
 
-          {/* Smooth Animated Stage Progress Hairline */}
-          <div style={{ width: "100%", height: "2px", background: "#EEF4F1" }}>
+          {/* Animated Stage Progress Indicator */}
+          <div style={{ width: "100%", height: "3px", background: "#EEF4F1" }}>
             <div
               style={{
                 width: `${stageProgressPct}%`,
                 height: "100%",
                 background: "#169B77",
-                transition: "width 450ms cubic-bezier(0.22, 1, 0.36, 1)",
+                transition: "width 400ms cubic-bezier(0.22, 1, 0.36, 1)",
               }}
             />
           </div>
@@ -584,7 +600,7 @@ export function DocumentoWorkflow() {
               alignItems: "start",
             }}
           >
-            {/* Left Column (7 of 12): Stage Purpose & Clean Capabilities List */}
+            {/* Left Column (7 of 12): Stage Purpose & Capabilities Checklist */}
             <div
               style={{ gridColumn: "span 7", display: "flex", flexDirection: "column", gap: "22px" }}
               className="wf-left-col"
@@ -592,12 +608,13 @@ export function DocumentoWorkflow() {
               <div>
                 <h3
                   style={{
-                    fontSize: "20px",
+                    fontSize: "19px",
                     color: "#063C3D",
-                    fontWeight: 650,
-                    letterSpacing: "-0.02em",
+                    fontWeight: 700,
+                    letterSpacing: "-0.015em",
                     margin: "0 0 8px 0",
                     lineHeight: 1.35,
+                    fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
                   }}
                 >
                   {activeStage.shortSummary}
@@ -607,7 +624,7 @@ export function DocumentoWorkflow() {
                 </p>
               </div>
 
-              {/* Clean Capabilities List */}
+              {/* Verified Functionality Checklist */}
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {activeStage.documentoFunctionality.map((func, i) => {
                   const isCapActive = selectedCapIdx === i;
@@ -620,14 +637,14 @@ export function DocumentoWorkflow() {
                         alignItems: "center",
                         gap: "12px",
                         padding: "12px 16px",
-                        borderRadius: "10px",
-                        background: isCapActive ? "#F3FAF7" : "#FAFCFB",
-                        border: isCapActive ? "1px solid rgba(13, 104, 102, 0.24)" : "1px solid rgba(13, 104, 102, 0.08)",
+                        borderRadius: "8px",
+                        background: isCapActive ? "#F1F6F4" : "#F8FAF9",
+                        border: isCapActive ? "1px solid rgba(13, 104, 102, 0.28)" : "1px solid #DCE5E1",
                         fontSize: "13.5px",
                         color: "#063C3D",
                         lineHeight: 1.45,
                         cursor: "pointer",
-                        transition: "all 0.2s ease",
+                        transition: "all 0.15s ease",
                       }}
                     >
                       <span
@@ -645,46 +662,54 @@ export function DocumentoWorkflow() {
                           flexShrink: 0,
                         }}
                       >
-                        {/* taste-skill-ignore */}
                         ✓
                       </span>
-                      <span style={{ fontWeight: isCapActive ? 600 : 450 }}>{func}</span>
+                      <span style={{ fontWeight: isCapActive ? 650 : 500 }}>{func}</span>
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            {/* Right Column (5 of 12): Minimal Before -> After & Live Artifact */}
+            {/* Right Column (5 of 12): Live Preview Folio & Outcome Summary */}
             <div
               style={{
                 gridColumn: "span 5",
-                background: "#F8FBFA",
-                border: "1px solid rgba(13, 104, 102, 0.12)",
-                borderRadius: "14px",
-                padding: "22px",
+                background: "#F8FAF9",
+                border: "1px solid #DCE5E1",
+                borderRadius: "12px",
+                padding: "24px",
                 display: "flex",
                 flexDirection: "column",
-                gap: "16px",
+                gap: "18px",
               }}
               className="wf-right-col"
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "11.5px", fontWeight: 650, color: "#0D6866" }}>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#0D6866",
+                    background: "#DDEFE8",
+                    padding: "3px 8px",
+                    borderRadius: "4px",
+                  }}
+                >
                   {activeStage.samplePreview.badge}
                 </span>
-                <span style={{ fontSize: "11.5px", color: "#6E7F7C" }}>
+                <span style={{ fontSize: "11.5px", color: "#6E7F7C", fontWeight: 600 }}>
                   {activeStage.challenge.category}
                 </span>
               </div>
 
-              <div style={{ fontSize: "15.5px", fontWeight: 650, color: "#063C3D", lineHeight: 1.35 }}>
+              <div style={{ fontSize: "15.5px", fontWeight: 700, color: "#063C3D", lineHeight: 1.35 }}>
                 {activeStage.samplePreview.headline}
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", paddingBottom: "14px", borderBottom: "1px solid rgba(13, 104, 102, 0.1)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "16px", borderBottom: "1px solid #EAEFEA" }}>
                 {activeStage.samplePreview.items.map((item, idx) => (
-                  <div key={idx} style={{ fontSize: "13px", color: "#526663", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div key={idx} style={{ fontSize: "13px", color: "#445451", display: "flex", alignItems: "center", gap: "8px" }}>
                     <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#169B77", flexShrink: 0 }} />
                     <span>{item}</span>
                   </div>
@@ -693,10 +718,10 @@ export function DocumentoWorkflow() {
 
               {/* Clean Outcome Summary */}
               <div>
-                <div style={{ fontSize: "11.5px", fontWeight: 650, color: "#07594F", marginBottom: "4px" }}>
+                <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#07594F", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.03em" }}>
                   {activeStage.challenge.documentoSolution.heading}
                 </div>
-                <p style={{ fontSize: "13px", color: "#063C3D", margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
+                <p style={{ fontSize: "13px", color: "#172322", margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
                   {activeStage.challenge.documentoSolution.practicalOutcome}
                 </p>
               </div>

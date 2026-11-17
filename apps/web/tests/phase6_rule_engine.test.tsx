@@ -1,10 +1,18 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  const { mockApiModuleWithFixtures } = await import("./helpers/mockApiFixtures");
+  return mockApiModuleWithFixtures(actual);
+});
+
 import { RuleAdministrationHub } from "../components/rules/RuleAdministrationHub";
 import { CaseRequirementEvaluationView } from "../components/rules/CaseRequirementEvaluationView";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
 import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
+import { TEST_CASE_EVALUATION } from "./helpers/mockApiFixtures";
 import {
   FIXTURE_CASES,
   FIXTURE_CLIENTS,
@@ -13,7 +21,7 @@ import {
   FIXTURE_AI_FINDINGS,
   FIXTURE_MESSAGES,
   FIXTURE_INVOICES,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Phase 6 — Immigration Rules, Official Sources & Requirement Engine", () => {
   describe("RuleAdministrationHub Component", () => {
@@ -183,6 +191,7 @@ describe("Phase 6 — Immigration Rules, Official Sources & Requirement Engine",
           caseId="case-01"
           cases={FIXTURE_CASES}
           isLiveBackend={false}
+          initialEvaluation={TEST_CASE_EVALUATION}
         />
       );
 
@@ -220,6 +229,7 @@ describe("Phase 6 — Immigration Rules, Official Sources & Requirement Engine",
           caseId="case-01"
           cases={FIXTURE_CASES}
           isLiveBackend={false}
+          initialEvaluation={TEST_CASE_EVALUATION}
         />
       );
 
@@ -241,6 +251,7 @@ describe("Phase 6 — Immigration Rules, Official Sources & Requirement Engine",
           caseId="case-01"
           cases={FIXTURE_CASES}
           isLiveBackend={false}
+          initialEvaluation={TEST_CASE_EVALUATION}
         />
       );
 
@@ -270,6 +281,7 @@ describe("Phase 6 — Immigration Rules, Official Sources & Requirement Engine",
           caseId="case-01"
           cases={FIXTURE_CASES}
           isLiveBackend={false}
+          initialEvaluation={TEST_CASE_EVALUATION}
         />
       );
 

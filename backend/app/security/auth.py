@@ -176,7 +176,7 @@ async def get_auth_context(
             payload = decode_access_token(token)
             user_id = uuid.UUID(payload["sub"])
             org_id = uuid.UUID(payload.get("org_id", str(DEFAULT_DEV_ORG_ID)))
-            email = payload.get("email", "user@ai-immigration.local")
+            email = payload.get("email", "")
             roles_list = payload.get("roles", [RoleCode.MASTER_ADMIN.value])
             membership_id = uuid.UUID(payload["membership_id"]) if payload.get("membership_id") else None
 
@@ -269,7 +269,7 @@ async def get_auth_context(
     return AuthContext(
         user_id=user_id,
         organization_id=org_id,
-        email="developer@ai-immigration.local",
+        email="dev@localhost",
         roles=tuple(roles),
         subject="local-development",
     )

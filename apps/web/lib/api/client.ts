@@ -25,20 +25,20 @@ export const DEMO_ORG_ID = "11111111-1111-1111-1111-111111111111";
 export const DEMO_USERS = {
   master_admin: {
     id: "22222222-2222-2222-2222-222222222222",
-    email: "elena.vance@leximmigration.com",
-    name: "Elena Vance (Managing Partner)",
+    email: "partner@firm.example.com",
+    name: "Managing Partner",
     role: "master_admin" as RoleCode,
   },
   case_manager: {
     id: "33333333-3333-3333-3333-333333333333",
-    email: "sarah.jenkins@leximmigration.com",
-    name: "Sarah Jenkins, Esq. (Senior Reviewer)",
+    email: "counsel@firm.example.com",
+    name: "Assigned Case Counsel",
     role: "case_manager" as RoleCode,
   },
   client_applicant: {
     id: "44444444-4444-4444-4444-444444444444",
-    email: "elena.rostova@stanford.edu",
-    name: "Dr. Elena Rostova (Applicant)",
+    email: "client@example.com",
+    name: "Retained Client",
     role: "retained_client" as RoleCode,
   },
 };

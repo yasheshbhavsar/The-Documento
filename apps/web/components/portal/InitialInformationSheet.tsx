@@ -1,8 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
 import type { AutoFillFieldProvenance } from "../../lib/documentAutoFillEngine";
 import { normalizeDateToDDMMYYYY } from "../../lib/documentAutoFillEngine";
+import {
+  computeMissingClientGaps,
+  getMissingQuestionsRequest,
+  MISSING_QUESTIONS_UPDATED_EVENT,
+  MissingQuestionsRequestRecord,
+} from "../../lib/rawClientPacketStore";
 
 export interface InitialInformationSheetProps {
   storageKeyId?: string;
@@ -35,6 +41,7 @@ export function computeInitialInfoSheetSectionStatuses(formData: any, isSubmitte
       detail: "Authorized entry records and statutory disclosure",
       done: Boolean(
         isSubmitted ||
+          f.refusal_disclosure_confirmed ||
           f.purpose_of_visit?.trim() ||
           f.date_of_entry?.trim() ||
           f.refusals_notes?.trim()
@@ -58,7 +65,11 @@ export function computeInitialInfoSheetSectionStatuses(formData: any, isSubmitte
     {
       title: "6. 10-Yr Travel History",
       detail: "International departures, entries, and travel records",
-      done: Boolean(isSubmitted || (Array.isArray(f.travel) && f.travel.length > 0)),
+      done: Boolean(
+        isSubmitted ||
+          f.no_international_travel_confirmed ||
+          (Array.isArray(f.travel) && f.travel.length > 0)
+      ),
     },
     {
       title: "7. Immediate Family Register",
@@ -118,18 +129,48 @@ export function InitialInformationSheet({
   const [isSavedNotice, setIsSavedNotice] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [fieldProvenance, setFieldProvenance] = useState<Record<string, AutoFillFieldProvenance>>({});
+  const [unlockedAiFields, setUnlockedAiFields] = useState<Record<string, boolean>>({});
+  const [missingRequest, setMissingRequest] = useState<MissingQuestionsRequestRecord | null>(() =>
+    storageKeyId ? getMissingQuestionsRequest(storageKeyId) : null
+  );
+  const [onlyMissingFilter, setOnlyMissingFilter] = useState<boolean>(() =>
+    Boolean(storageKeyId && getMissingQuestionsRequest(storageKeyId)?.explicitlyPromptedByParalegal)
+  );
 
   const isCanada = Boolean(
     (jurisdiction || "").toLowerCase().includes("canada") ||
     (jurisdiction || "").toLowerCase().includes("ircc")
   );
 
+  const isFieldAiLocked = (fieldName: string): boolean => {
+    const prov = fieldProvenance[fieldName];
+    if (!prov) return false;
+    return Boolean((prov.locked_by_ai_lab || prov.is_confirmed) && !unlockedAiFields[fieldName]);
+  };
+
+  const toggleUnlockAiField = (fieldName: string) => {
+    setUnlockedAiFields((prev) => ({
+      ...prev,
+      [fieldName]: !prev[fieldName],
+    }));
+  };
+
   const getFieldAutoFillStyle = (fieldName: string, baseStyle: React.CSSProperties = {}) => {
+    const locked = isFieldAiLocked(fieldName);
     const hasProv = Boolean(fieldProvenance[fieldName]);
     return {
       ...baseStyle,
-      backgroundColor: hasProv ? "#EFF6FF" : (baseStyle.backgroundColor || "#FFFFFF"),
-      borderColor: hasProv ? "#93C5FD" : (baseStyle.borderColor || "#CBD5E1"),
+      backgroundColor: locked
+        ? "#EAF6F0"
+        : hasProv
+          ? "#EFF6FF"
+          : (baseStyle.backgroundColor || "#FFFFFF"),
+      borderColor: locked
+        ? "#86C5B1"
+        : hasProv
+          ? "#93C5FD"
+          : (baseStyle.borderColor || "#CBD5E1"),
+      color: locked ? "#063C3D" : baseStyle.color,
       transition: "all 0.15s ease",
     };
   };
@@ -138,27 +179,53 @@ export function InitialInformationSheet({
     const prov = fieldProvenance[fieldName];
     if (!prov) return null;
     const conf = prov.confidence ? Math.round(prov.confidence * 100) : 95;
+    const isAiVerified = Boolean(prov.locked_by_ai_lab || prov.is_confirmed);
+    const isUnlocked = Boolean(unlockedAiFields[fieldName]);
+
     return (
-      <span
-        data-testid={`provenance-badge-${fieldName}`}
-        title={`Verified OCR auto-fill from ${prov.source_document_title || "Official Evidence"} (Confidence: ${conf}%)`}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "4px",
-          padding: "2px 7px",
-          fontSize: "10.5px",
-          fontWeight: 700,
-          color: "#1E40AF",
-          background: "#DBEAFE",
-          borderRadius: "4px",
-          border: "1px solid #BFDBFE",
-          marginLeft: "6px",
-          verticalAlign: "middle",
-        }}
-      >
-        <span>⚡ OCR</span>
-        <span>{conf}%</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", marginLeft: "6px" }}>
+        <span
+          data-testid={`provenance-badge-${fieldName}`}
+          title={`Verified OCR auto-fill from ${prov.source_document_title || "Official Evidence"} (Confidence: ${conf}%)`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "2px 7px",
+            fontSize: "10.5px",
+            fontWeight: 700,
+            color: isAiVerified ? "#176B50" : "#1E40AF",
+            background: isAiVerified ? "#EAF6F0" : "#DBEAFE",
+            borderRadius: "4px",
+            border: isAiVerified ? "1px solid #B9DED4" : "1px solid #BFDBFE",
+            verticalAlign: "middle",
+          }}
+        >
+          <span>{isAiVerified ? (isUnlocked ? "⚡ AI Editable" : "🔒 AI Verified") : "⚡ OCR"}</span>
+          <span>{conf}%</span>
+        </span>
+        {isAiVerified && (
+          <button
+            type="button"
+            data-testid={`unlock-ai-field-${fieldName}`}
+            onClick={(e) => {
+              e.preventDefault();
+              toggleUnlockAiField(fieldName);
+            }}
+            style={{
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "4px",
+              padding: "1px 6px",
+              fontSize: "10px",
+              fontWeight: 650,
+              color: "#063C3D",
+              cursor: "pointer",
+            }}
+          >
+            {isUnlocked ? "Lock" : "Unlock to Edit"}
+          </button>
+        )}
       </span>
     );
   };
@@ -187,6 +254,7 @@ export function InitialInformationSheet({
     place_last_entry: "",
     has_refusals: "NO",
     refusals_notes: "",
+    refusal_disclosure_confirmed: false,
 
     // Page 2: Relatives in Canada
     relatives: [] as Array<{
@@ -221,6 +289,7 @@ export function InitialInformationSheet({
     }>,
 
     // Page 3: Travel History
+    no_international_travel_confirmed: false,
     travel: [] as Array<{
       id: string;
       start_date: string;
@@ -581,6 +650,50 @@ export function InitialInformationSheet({
     };
   }, [storageKeyId]);
 
+  useEffect(() => {
+    const syncMissingReq = () => {
+      if (!storageKeyId) return;
+      const req = getMissingQuestionsRequest(storageKeyId) || getMissingQuestionsRequest("default_client");
+      setMissingRequest(req);
+      if (req?.explicitlyPromptedByParalegal) {
+        setOnlyMissingFilter(true);
+        const saved = getSavedInitialInfoSheetRecord(storageKeyId);
+        const { missingGaps: gaps } = computeMissingClientGaps(
+          saved?.formData || formData,
+          saved?.fieldProvenance || fieldProvenance,
+          Boolean(saved?.isSubmitted || isSubmitted),
+          jurisdiction
+        );
+        if (gaps.length > 0) {
+          setActiveSection(gaps[0].sectionKey);
+        }
+      }
+    };
+    syncMissingReq();
+    if (typeof window !== "undefined") {
+      window.addEventListener(MISSING_QUESTIONS_UPDATED_EVENT, syncMissingReq as EventListener);
+      return () => {
+        window.removeEventListener(MISSING_QUESTIONS_UPDATED_EVENT, syncMissingReq as EventListener);
+      };
+    }
+    return undefined;
+  }, [storageKeyId, jurisdiction]);
+
+  const liveMissingGaps = useMemo(
+    () =>
+      computeMissingClientGaps(formData, fieldProvenance, isSubmitted, jurisdiction)
+        .missingGaps,
+    [formData, fieldProvenance, isSubmitted, jurisdiction]
+  );
+
+  const aiVerifiedCount = useMemo(
+    () =>
+      Object.values(fieldProvenance).filter((p) =>
+        Boolean(p?.locked_by_ai_lab || p?.is_confirmed)
+      ).length,
+    [fieldProvenance]
+  );
+
   const persistSheetState = (nextData: any, nextSubmitted: boolean, nextProv?: Record<string, AutoFillFieldProvenance>) => {
     if (typeof window === "undefined" || !storageKeyId) return;
     try {
@@ -778,6 +891,114 @@ export function InitialInformationSheet({
         </div>
       </div>
 
+      {/* "Only Ask What's Missing" Guided AI Lab Pre-Completion Banner */}
+      {(aiVerifiedCount > 0 || Boolean(missingRequest)) && (
+        <div
+          data-testid="sheet-only-missing-banner"
+          style={{
+            background: "#EAF6F0",
+            border: "1px solid #B9DED4",
+            borderRadius: "12px",
+            padding: "16px 20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <strong style={{ fontSize: "14px", color: "#063C3D" }}>
+                  ✨ AI Lab Pre-Completed ({aiVerifiedCount || Object.keys(fieldProvenance).length} Fields Locked &amp; Verified)
+                </strong>
+                <span
+                  style={{
+                    background: "#FFFFFF",
+                    color: "#176B50",
+                    border: "1px solid #B9DED4",
+                    borderRadius: "999px",
+                    padding: "2px 9px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  Only Ask What&apos;s Missing
+                </span>
+              </div>
+              <p style={{ margin: "4px 0 0 0", fontSize: "12.5px", color: "#445451", lineHeight: 1.45 }}>
+                Your Assigned Paralegal&apos;s AI Lab already filled and locked your document-backed sections (click <strong>Unlock to Edit</strong> on any field if you need to correct a detail).
+                {liveMissingGaps.length > 0
+                  ? ` Only ${liveMissingGaps.length} non-document question section(s) remain:`
+                  : " All non-document disclosures and your e-signature are complete!"}
+              </p>
+            </div>
+
+            {liveMissingGaps.length > 0 && (
+              <button
+                type="button"
+                data-testid="sheet-toggle-missing-filter-btn"
+                onClick={() => setOnlyMissingFilter((prev) => !prev)}
+                style={{
+                  padding: "7px 13px",
+                  borderRadius: "8px",
+                  border: "1px solid #07594F",
+                  background: onlyMissingFilter ? "#07594F" : "#FFFFFF",
+                  color: onlyMissingFilter ? "#FFFFFF" : "#07594F",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {onlyMissingFilter
+                  ? `Show All 11 Sections`
+                  : `Focus Only on Missing (${liveMissingGaps.length})`}
+              </button>
+            )}
+          </div>
+
+          {liveMissingGaps.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              {liveMissingGaps.map((gap) => {
+                const isSelected = activeSection === gap.sectionKey;
+                return (
+                  <button
+                    key={gap.sectionKey}
+                    type="button"
+                    data-testid={`sheet-missing-gap-pill-${gap.sectionKey}`}
+                    onClick={() => setActiveSection(gap.sectionKey)}
+                    style={{
+                      background: isSelected ? "#063C3D" : "#FFFFFF",
+                      color: isSelected ? "#FFFFFF" : "#063C3D",
+                      border: "1px solid #86C5B1",
+                      borderRadius: "8px",
+                      padding: "6px 12px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <span>→ {gap.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Layout: Left Section Tabs & Right Form View */}
       <div
         style={{
@@ -811,10 +1032,15 @@ export function InitialInformationSheet({
               marginBottom: "4px",
             }}
           >
-            Intake Sections (12 Pages)
+            {onlyMissingFilter && liveMissingGaps.length > 0
+              ? `Missing Questions Only (${liveMissingGaps.length})`
+              : "Intake Sections (12 Pages)"}
           </div>
 
-          {sections.map((sec) => {
+          {(onlyMissingFilter && liveMissingGaps.length > 0
+            ? sections.filter((sec) => liveMissingGaps.some((g) => g.sectionKey === sec.key))
+            : sections
+          ).map((sec) => {
             const isActive = activeSection === sec.key;
             return (
               <button
@@ -844,6 +1070,28 @@ export function InitialInformationSheet({
               </button>
             );
           })}
+
+          {onlyMissingFilter && liveMissingGaps.length > 0 && (
+            <button
+              type="button"
+              data-testid="sheet-sidebar-show-all-btn"
+              onClick={() => setOnlyMissingFilter(false)}
+              style={{
+                marginTop: "6px",
+                padding: "7px 10px",
+                borderRadius: "6px",
+                border: "1px dashed #B9DED4",
+                background: "#F8FAF9",
+                color: "#07594F",
+                fontSize: "11.5px",
+                fontWeight: 650,
+                cursor: "pointer",
+                textAlign: "center",
+              }}
+            >
+              Show All 11 Sections (View AI-Filled)
+            </button>
+          )}
         </div>
 
         {/* Section Detail Content Container */}
@@ -876,6 +1124,7 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("family_name")}
                     value={formData.family_name}
                     placeholder="Enter family name (as in passport)"
                     onChange={(e) => handleInputChange("family_name", e.target.value)}
@@ -889,6 +1138,7 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("given_names")}
                     value={formData.given_names}
                     placeholder="Enter given name(s)"
                     onChange={(e) => handleInputChange("given_names", e.target.value)}
@@ -905,10 +1155,12 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("dob")}
                     value={formData.dob}
                     placeholder="DD/MM/YYYY"
                     onChange={(e) => handleInputChange("dob", e.target.value)}
                     onBlur={(e) => {
+                      if (isFieldAiLocked("dob")) return;
                       const norm = normalizeDateToDDMMYYYY(e.target.value);
                       if (norm && norm !== e.target.value) handleInputChange("dob", norm);
                     }}
@@ -922,7 +1174,11 @@ export function InitialInformationSheet({
                   </label>
                   <select
                     value={formData.gender}
-                    onChange={(e) => handleInputChange("gender", e.target.value)}
+                    aria-readonly={isFieldAiLocked("gender")}
+                    onChange={(e) => {
+                      if (isFieldAiLocked("gender")) return;
+                      handleInputChange("gender", e.target.value);
+                    }}
                     style={getFieldAutoFillStyle("gender", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   >
                     <option value="MALE">Male</option>
@@ -937,6 +1193,7 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("first_language")}
                     value={formData.first_language}
                     placeholder="Native / first language"
                     onChange={(e) => handleInputChange("first_language", e.target.value)}
@@ -952,6 +1209,7 @@ export function InitialInformationSheet({
                 </label>
                 <input
                   type="text"
+                  readOnly={isFieldAiLocked("city_country_birth")}
                   value={formData.city_country_birth}
                   placeholder="e.g. City, Province/State, Country"
                   onChange={(e) => handleInputChange("city_country_birth", e.target.value)}
@@ -966,6 +1224,7 @@ export function InitialInformationSheet({
                 </label>
                 <input
                   type="text"
+                  readOnly={isFieldAiLocked("residential_address")}
                   value={formData.residential_address}
                   placeholder="Street address, unit, city, postal code, country"
                   onChange={(e) => handleInputChange("residential_address", e.target.value)}
@@ -981,6 +1240,7 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("phone_number")}
                     value={formData.phone_number}
                     placeholder="e.g. +1 (555) 000-0000"
                     onChange={(e) => handleInputChange("phone_number", e.target.value)}
@@ -994,6 +1254,7 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="email"
+                    readOnly={isFieldAiLocked("email")}
                     value={formData.email}
                     placeholder="applicant@domain.com"
                     onChange={(e) => handleInputChange("email", e.target.value)}
@@ -1010,7 +1271,11 @@ export function InitialInformationSheet({
                   </label>
                   <select
                     value={formData.marital_status}
-                    onChange={(e) => handleInputChange("marital_status", e.target.value)}
+                    aria-readonly={isFieldAiLocked("marital_status")}
+                    onChange={(e) => {
+                      if (isFieldAiLocked("marital_status")) return;
+                      handleInputChange("marital_status", e.target.value);
+                    }}
                     style={getFieldAutoFillStyle("marital_status", { width: "100%", padding: "8px 12px", borderRadius: "6px", fontSize: "13px" })}
                   >
                     <option value="SINGLE">Single</option>
@@ -1027,10 +1292,12 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("date_of_marriage")}
                     value={formData.date_of_marriage}
                     placeholder="DD/MM/YYYY (if applicable)"
                     onChange={(e) => handleInputChange("date_of_marriage", e.target.value)}
                     onBlur={(e) => {
+                      if (isFieldAiLocked("date_of_marriage")) return;
                       const norm = normalizeDateToDDMMYYYY(e.target.value);
                       if (norm && norm !== e.target.value) handleInputChange("date_of_marriage", norm);
                     }}
@@ -1159,6 +1426,27 @@ export function InitialInformationSheet({
                   placeholder="Provide refusal details (Date, Type of Refusal, Country) if YES, or note None"
                   style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px" }}
                 />
+                <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #E2E8F0" }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "12.5px",
+                      fontWeight: 650,
+                      color: "#063C3D",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      data-testid="confirm-no-refusals-checkbox"
+                      checked={Boolean(formData.refusal_disclosure_confirmed)}
+                      onChange={(e) => handleInputChange("refusal_disclosure_confirmed", e.target.checked)}
+                    />
+                    ✓ I confirm the above entry &amp; worldwide visa refusal disclosure is complete and accurate.
+                  </label>
+                </div>
               </div>
             </div>
           )}
@@ -1568,14 +1856,43 @@ export function InitialInformationSheet({
                     background: "#F8FAF9",
                     border: "1px dashed #CBD5E1",
                     borderRadius: "10px",
-                    padding: "28px",
+                    padding: "24px",
                     textAlign: "center",
                     color: "#64748B",
                     fontSize: "13px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "12px",
                   }}
                 >
-                  <div style={{ fontSize: "24px", marginBottom: "6px" }}>🗺️</div>
-                  No international travel recorded yet. Click <strong>&quot;+ Add Travel Record&quot;</strong> to record trips.
+                  <div>
+                    <div style={{ fontSize: "24px", marginBottom: "6px" }}>🗺️</div>
+                    No international travel recorded yet. Click <strong>&quot;+ Add Travel Record&quot;</strong> to record trips, or confirm below if you have had no international trips in the last 10 years.
+                  </div>
+                  <label
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 14px",
+                      borderRadius: "8px",
+                      background: formData.no_international_travel_confirmed ? "#EAF6F0" : "#FFFFFF",
+                      border: `1px solid ${formData.no_international_travel_confirmed ? "#86C5B1" : "#CBD5E1"}`,
+                      color: "#063C3D",
+                      fontSize: "12.5px",
+                      fontWeight: 650,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      data-testid="confirm-no-travel-checkbox"
+                      checked={Boolean(formData.no_international_travel_confirmed)}
+                      onChange={(e) => handleInputChange("no_international_travel_confirmed", e.target.checked)}
+                    />
+                    ✓ I confirm I have had no international travel outside my country of residence in the last 10 years.
+                  </label>
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -1869,6 +2186,7 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("passport_number")}
                     value={formData.passport_number}
                     placeholder="e.g. Passport ID Number"
                     onChange={(e) => handleInputChange("passport_number", e.target.value)}
@@ -1882,6 +2200,7 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("passport_issue_place")}
                     value={formData.passport_issue_place}
                     placeholder="e.g. Issuing City / Authority"
                     onChange={(e) => handleInputChange("passport_issue_place", e.target.value)}
@@ -1895,10 +2214,12 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("passport_issue_date")}
                     value={formData.passport_issue_date}
                     placeholder="DD/MM/YYYY"
                     onChange={(e) => handleInputChange("passport_issue_date", e.target.value)}
                     onBlur={(e) => {
+                      if (isFieldAiLocked("passport_issue_date")) return;
                       const norm = normalizeDateToDDMMYYYY(e.target.value);
                       if (norm && norm !== e.target.value) handleInputChange("passport_issue_date", norm);
                     }}
@@ -1912,10 +2233,12 @@ export function InitialInformationSheet({
                   </label>
                   <input
                     type="text"
+                    readOnly={isFieldAiLocked("passport_expiry_date")}
                     value={formData.passport_expiry_date}
                     placeholder="DD/MM/YYYY"
                     onChange={(e) => handleInputChange("passport_expiry_date", e.target.value)}
                     onBlur={(e) => {
+                      if (isFieldAiLocked("passport_expiry_date")) return;
                       const norm = normalizeDateToDDMMYYYY(e.target.value);
                       if (norm && norm !== e.target.value) handleInputChange("passport_expiry_date", norm);
                     }}

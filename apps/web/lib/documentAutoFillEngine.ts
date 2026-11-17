@@ -31,6 +31,7 @@ export interface AutoFillFieldProvenance {
   bounding_box?: [number, number, number, number];
   extracted_at: string;
   is_confirmed?: boolean;
+  locked_by_ai_lab?: boolean;
 }
 
 export interface AutoFillClientProfile {
@@ -43,10 +44,15 @@ export interface AutoFillClientProfile {
   currentField?: string;
   highestDegree?: string;
   roleDescription?: string;
+  spouseName?: string;
+  sponsorName?: string;
+  sponsorJurisdiction?: "CA" | "UK" | "AU";
+  statutoryBadges?: string[];
   suggestedJurisdiction?: string;
   suggestedVisaCategory?: string;
   confidence: number;
   sourceDocumentName: string;
+  backendOffline?: boolean;
 }
 
 export interface AutoFillSheetResult {
@@ -367,35 +373,35 @@ export const CANONICAL_FORM_SCHEMAS: Record<string, FormSchemaItem> = {
                   label: "Law Practice Physical Address",
                   field_type: "textarea",
                   required: true,
-                  default: "100 Montgomery St, Suite 2400, San Francisco, CA 94104",
+                  default: "",
                 },
                 {
                   key: "attorney_email",
                   label: "Attorney Official Email",
                   field_type: "text",
                   required: true,
-                  default: "notices@immilaw.example.com",
+                  default: "",
                 },
                 {
                   key: "attorney_phone",
                   label: "Attorney Direct Phone",
                   field_type: "text",
                   required: true,
-                  default: "+1-415-555-0199",
+                  default: "",
                 },
                 {
                   key: "licensing_authority",
                   label: "Bar Licensing Authority / State Bar",
                   field_type: "text",
                   required: true,
-                  default: "State Bar of California",
+                  default: "",
                 },
                 {
                   key: "bar_number",
                   label: "Bar License Number / Identifier",
                   field_type: "text",
                   required: true,
-                  default: "318492",
+                  default: "",
                 },
               ],
             },
@@ -1069,14 +1075,19 @@ export function extractProfileFromAnalysis(
     return "";
   };
 
+  const isPlaceholderHolder = (val: string) =>
+    /^(principal applicant|primary document holder|document holder \(unidentified\)|applicant|spouse \/ family member)$/i.test(
+      val.trim()
+    );
+
   // 1. First & Last Names
   let firstName = "";
   let lastName = "";
 
   if (passport?.given_names || passport?.surname) {
-    firstName = passport.given_names || "";
-    lastName = passport.surname || "";
-  } else if (passport?.holder_name) {
+    firstName = isPlaceholderHolder(passport.given_names || "") ? "" : passport.given_names || "";
+    lastName = isPlaceholderHolder(passport.surname || "") ? "" : passport.surname || "";
+  } else if (passport?.holder_name && !isPlaceholderHolder(passport.holder_name)) {
     const parts = passport.holder_name.trim().split(/\s+/);
     if (parts.length > 1) {
       lastName = parts[parts.length - 1];
@@ -1084,7 +1095,7 @@ export function extractProfileFromAnalysis(
     } else {
       firstName = parts[0] || "";
     }
-  } else if (resume?.candidate_name) {
+  } else if (resume?.candidate_name && !isPlaceholderHolder(resume.candidate_name)) {
     const parts = resume.candidate_name.trim().split(/\s+/);
     if (parts.length > 1) {
       lastName = parts[parts.length - 1];
@@ -1095,12 +1106,12 @@ export function extractProfileFromAnalysis(
   } else {
     const fn = getFieldVal(["given_names", "first_name", "applicant_given_names"]);
     const ln = getFieldVal(["surname", "family_name", "last_name", "applicant_family_name"]);
-    if (fn || ln) {
-      firstName = fn;
-      lastName = ln;
+    if ((fn && !isPlaceholderHolder(fn)) || (ln && !isPlaceholderHolder(ln))) {
+      firstName = isPlaceholderHolder(fn) ? "" : fn;
+      lastName = isPlaceholderHolder(ln) ? "" : ln;
     } else {
       const full = getFieldVal(["full_name", "applicant_name", "holder_name", "candidate_name"]);
-      if (full) {
+      if (full && !isPlaceholderHolder(full)) {
         const parts = full.trim().split(/\s+/);
         if (parts.length > 1) {
           lastName = parts[parts.length - 1];
@@ -1130,7 +1141,7 @@ export function extractProfileFromAnalysis(
     getFieldVal(["nationality", "citizenship", "country_of_citizenship"]) ||
     "";
   if (!nationality) {
-    if (passport || spec.identity_compliance?.aadhaar || spec.identity_compliance?.pan) {
+    if (spec.identity_compliance?.aadhaar || spec.identity_compliance?.pan) {
       nationality = "India";
     }
   }
@@ -1164,17 +1175,49 @@ export function extractProfileFromAnalysis(
     getFieldVal(["criticalRoleDescription", "proposed_endeavor_summary", "job_description"]) ||
     (currentField ? `Key contributor and specialist serving as ${currentField}.` : "");
 
-  // 9. Suggested Jurisdiction & Pathway
+  // 9. Suggested Jurisdiction & Pathway + Sponsor / Family hints
   let suggestedJurisdiction = "United States (USCIS)";
   let suggestedVisaCategory = "EB-1A Extraordinary Ability";
-  const cat = analysis.recognition?.category || "";
   const keywords = analysis.recognition?.matched_keywords || [];
   const textBlob = `${analysis.metadata?.filename || ""} ${keywords.join(" ")}`.toLowerCase();
+  const sponsorIntel = spec.sponsor_statutory_intelligence;
+  const roleAttr = spec.role_attribution;
 
-  if (textBlob.includes("canada") || textBlob.includes("ircc") || textBlob.includes("express entry")) {
+  if (
+    sponsorIntel?.cra_noa_line_15000_cad ||
+    sponsorIntel?.super_visa_insurance_compliant ||
+    textBlob.includes("super visa") ||
+    textBlob.includes("supervisa") ||
+    textBlob.includes("cra") ||
+    textBlob.includes("noa")
+  ) {
+    suggestedJurisdiction = "Canada (IRCC)";
+    suggestedVisaCategory = "Canada Super Visa (Parents & Grandparents)";
+  } else if (roleAttr?.person_role === "canadian_crs_sibling" || textBlob.includes("sibling")) {
+    suggestedJurisdiction = "Canada (IRCC)";
+    suggestedVisaCategory = "Express Entry PNP";
+  } else if (
+    sponsorIntel?.jurisdiction === "UK" ||
+    textBlob.includes("ukvi") ||
+    textBlob.includes("hmrc") ||
+    textBlob.includes("share code")
+  ) {
+    suggestedJurisdiction = "United Kingdom (Home Office)";
+    suggestedVisaCategory = "UK Standard Visitor (Family Sponsored)";
+  } else if (
+    sponsorIntel?.jurisdiction === "AU" ||
+    textBlob.includes("vevo") ||
+    textBlob.includes("ato")
+  ) {
+    suggestedJurisdiction = "Australia (Home Affairs)";
+    suggestedVisaCategory = "Australia Visitor Visa (Subclass 600 Sponsored)";
+  } else if (textBlob.includes("canada") || textBlob.includes("ircc") || textBlob.includes("express entry")) {
     suggestedJurisdiction = "Canada (IRCC)";
     suggestedVisaCategory = "Express Entry / Federal Skilled Worker";
   }
+
+  const spouseName = passport?.spouse_name || getFieldVal(["spouse_name", "bride_name"]);
+  const sponsorName = sponsorIntel?.sponsor_name || getFieldVal(["sponsor_full_name"]);
 
   const confidence = analysis.recognition?.confidence || 0.95;
   const sourceDocumentName = analysis.metadata?.filename || filename || "Uploaded Document";
@@ -1189,10 +1232,15 @@ export function extractProfileFromAnalysis(
     currentField: currentField.trim(),
     highestDegree: highestDegree.trim(),
     roleDescription: roleDescription.trim(),
+    spouseName: spouseName ? spouseName.trim() : undefined,
+    sponsorName: sponsorName ? sponsorName.trim() : undefined,
+    sponsorJurisdiction: sponsorIntel?.jurisdiction || (roleAttr?.sponsor_jurisdiction ?? undefined),
+    statutoryBadges: roleAttr?.statutory_badges || sponsorIntel?.statutory_badges,
     suggestedJurisdiction,
     suggestedVisaCategory,
     confidence,
     sourceDocumentName,
+    backendOffline: Boolean(analysis.metadata?.backend_offline),
   };
 }
 
@@ -1435,16 +1483,16 @@ export function mapAnalysisToInitialInfoSheet(
   if (instMatch.val || degMatch.val) {
     updatedData.education = updatedData.education || [];
     const exists = updatedData.education.some(
-      (e: any) => e.school_name === (instMatch.val || "University")
+      (e: any) => e.school_name === (instMatch.val || "")
     );
     if (!exists) {
       updatedData.education.push({
         id: `edu-${Date.now()}-${updatedData.education.length + 1}`,
-        start_date: "01/09/2015",
-        end_date: normalizeDateToDDMMYYYY(gradMatch.val || "16/06/2019"),
-        field_of_study: degMatch.val || "Computer Science",
-        school_name: instMatch.val || "University",
-        city_country: "United States",
+        start_date: "",
+        end_date: gradMatch.val ? normalizeDateToDDMMYYYY(gradMatch.val) : "",
+        field_of_study: degMatch.val || "",
+        school_name: instMatch.val || "",
+        city_country: "",
       });
       fieldsFilledCount++;
     }
@@ -1456,19 +1504,69 @@ export function mapAnalysisToInitialInfoSheet(
   if (jobMatch.val || compMatch.val) {
     updatedData.employment = updatedData.employment || [];
     const exists = updatedData.employment.some(
-      (em: any) => em.company_name === (compMatch.val || "Enterprise")
+      (em: any) => em.company_name === (compMatch.val || "")
     );
     if (!exists) {
       updatedData.employment.push({
         id: `emp-${Date.now()}-${updatedData.employment.length + 1}`,
-        start_date: "01/01/2021",
-        end_date: "Present",
-        job_title: jobMatch.val || "Staff Engineer",
-        company_name: compMatch.val || "Enterprise Technology Corp",
-        company_address: addrVal || "San Francisco, CA",
+        start_date: "",
+        end_date: "",
+        job_title: jobMatch.val || "",
+        company_name: compMatch.val || "",
+        company_address: addrVal || "",
       });
       fieldsFilledCount++;
     }
+  }
+
+  // 13. Overseas Sponsor & +15 CRS Sibling Statutory Fields (only when sponsor/sibling fields exist)
+  const sponsorNameMatch = findVal(["sponsor_full_name"]);
+  const craNoaMatch = findVal(["cra_noa_line_15000"]);
+  const licoStatusMatch = findVal(["super_visa_lico_status"]);
+  const uciMatch = findVal(["ircc_uci_number"]);
+  const ukShareMatch = findVal(["uk_share_code"]);
+  const ukHmrcMatch = findVal(["uk_hmrc_gross_pay"]);
+  const auVevoMatch = findVal(["au_vevo_status"]);
+  const auAtoMatch = findVal(["au_ato_taxable_income"]);
+  const sponsorAddrMatch = findVal(["sponsor_address"]);
+
+  if (
+    sponsorNameMatch.val ||
+    craNoaMatch.val ||
+    uciMatch.val ||
+    ukShareMatch.val ||
+    ukHmrcMatch.val ||
+    auVevoMatch.val ||
+    auAtoMatch.val
+  ) {
+    updatedData.sponsor = { ...(updatedData.sponsor || {}) };
+    const setSponsorField = (key: string, label: string, val: string) => {
+      if (!val) return;
+      updatedData.sponsor[key] = val;
+      provenance[`sponsor.${key}`] = {
+        field_name: `sponsor.${key}`,
+        field_label: label,
+        value: val,
+        source_type: "document_ocr",
+        source_id: sourceDocId,
+        source_document_title: sourceTitle,
+        source_page: 1,
+        confidence: 0.96,
+        extracted_at: now,
+        is_confirmed: false,
+      };
+      fieldsFilledCount++;
+    };
+
+    setSponsorField("full_name", "Sponsor / Sibling Full Name", sponsorNameMatch.val);
+    setSponsorField("cra_noa_line_15000", "CRA NOA Line 15000 Income (CAD)", craNoaMatch.val);
+    setSponsorField("super_visa_lico_status", "Super Visa LICO Status", licoStatusMatch.val);
+    setSponsorField("ircc_uci_number", "IRCC UCI Number", uciMatch.val);
+    setSponsorField("uk_share_code", "UKVI Right-to-Reside Share Code", ukShareMatch.val);
+    setSponsorField("uk_hmrc_gross_pay", "HMRC Annual Gross Earnings (GBP)", ukHmrcMatch.val);
+    setSponsorField("au_vevo_status", "Australia VEVO Status", auVevoMatch.val);
+    setSponsorField("au_ato_taxable_income", "ATO Taxable Income (AUD)", auAtoMatch.val);
+    setSponsorField("address", "Sponsor Residential Address", sponsorAddrMatch.val);
   }
 
   return { updatedData, provenance, fieldsFilledCount };
@@ -1801,4 +1899,169 @@ export function getAutoFillProvenance(storageKeyId: string): Record<string, Auto
   } catch {
     return {};
   }
+}
+
+export const PENDING_AUTOFILL_STORAGE_KEY = "documento_pending_autofill_v1";
+export const PENDING_AUTOFILL_EVENT = "documento:pending-autofill-updated";
+
+export interface PendingAutoFillRecord {
+  storageKeyId: string;
+  formData: Record<string, any>;
+  provenance: Record<string, AutoFillFieldProvenance>;
+  fieldsCount: number;
+  sourceFilename?: string;
+  sourceDocId?: string;
+  statutoryHighlights?: string[];
+  queuedAt: string;
+}
+
+function readPendingAutoFillMap(): Record<string, PendingAutoFillRecord> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PENDING_AUTOFILL_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePendingAutoFillMap(
+  map: Record<string, PendingAutoFillRecord>,
+  storageKeyId: string,
+  action: "queued" | "confirmed" | "cleared"
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PENDING_AUTOFILL_STORAGE_KEY, JSON.stringify(map));
+    window.dispatchEvent(
+      new CustomEvent(PENDING_AUTOFILL_EVENT, {
+        detail: {
+          storageKeyId,
+          action,
+          record: map[storageKeyId] || null,
+          timestamp: new Date().toISOString(),
+        },
+      })
+    );
+  } catch {
+    // ignore storage quota
+  }
+}
+
+/**
+ * Stages extracted fields for 1-Click User Confirmation before overwriting
+ * confirmed profile & canonical form answers.
+ */
+export function queuePendingAutoFill(
+  storageKeyId: string,
+  payload: {
+    formData: Record<string, any>;
+    provenance?: Record<string, AutoFillFieldProvenance>;
+    fieldsCount?: number;
+    sourceFilename?: string;
+    sourceDocId?: string;
+    statutoryHighlights?: string[];
+  }
+): PendingAutoFillRecord {
+  const effectiveKey = storageKeyId || "default_client";
+  const map = readPendingAutoFillMap();
+  const existing = map[effectiveKey];
+
+  const mergedFormData = {
+    ...(existing?.formData || {}),
+    ...(payload.formData || {}),
+    family: {
+      ...(existing?.formData?.family || {}),
+      ...(payload.formData?.family || {}),
+    },
+    sponsor: {
+      ...(existing?.formData?.sponsor || {}),
+      ...(payload.formData?.sponsor || {}),
+    },
+  };
+
+  const mergedProvenance: Record<string, AutoFillFieldProvenance> = {
+    ...(existing?.provenance || {}),
+    ...(payload.provenance || {}),
+  };
+
+  const computedCount =
+    payload.fieldsCount ??
+    Math.max(
+      Object.keys(mergedProvenance).length,
+      Object.keys(payload.formData || {}).filter(
+        (k) => k !== "family" && k !== "sponsor" && payload.formData[k] !== "" && payload.formData[k] !== undefined
+      ).length
+    );
+
+  const record: PendingAutoFillRecord = {
+    storageKeyId: effectiveKey,
+    formData: mergedFormData,
+    provenance: mergedProvenance,
+    fieldsCount: Math.max(1, computedCount),
+    sourceFilename: payload.sourceFilename || existing?.sourceFilename,
+    sourceDocId: payload.sourceDocId || existing?.sourceDocId,
+    statutoryHighlights: Array.from(
+      new Set([...(existing?.statutoryHighlights || []), ...(payload.statutoryHighlights || [])])
+    ),
+    queuedAt: new Date().toISOString(),
+  };
+
+  map[effectiveKey] = record;
+  writePendingAutoFillMap(map, effectiveKey, "queued");
+  return record;
+}
+
+/**
+ * Retrieves staged/pending Auto-Fill record awaiting user 1-click confirmation.
+ */
+export function getPendingAutoFill(storageKeyId: string): PendingAutoFillRecord | null {
+  const effectiveKey = storageKeyId || "default_client";
+  const map = readPendingAutoFillMap();
+  return map[effectiveKey] || null;
+}
+
+/**
+ * Clears staged/pending Auto-Fill record without applying it.
+ */
+export function clearPendingAutoFill(storageKeyId: string): void {
+  const effectiveKey = storageKeyId || "default_client";
+  const map = readPendingAutoFillMap();
+  if (map[effectiveKey]) {
+    delete map[effectiveKey];
+    writePendingAutoFillMap(map, effectiveKey, "cleared");
+  }
+}
+
+/**
+ * Confirms staged Auto-Fill fields, marks provenance as user-confirmed,
+ * persists & broadcasts via persistAndBroadcastAutoFill, and clears the queue.
+ */
+export function confirmAndApplyPendingAutoFill(storageKeyId: string): PendingAutoFillRecord | null {
+  const effectiveKey = storageKeyId || "default_client";
+  const map = readPendingAutoFillMap();
+  const pending = map[effectiveKey];
+  if (!pending) return null;
+
+  const confirmedProvenance: Record<string, AutoFillFieldProvenance> = {};
+  Object.entries(pending.provenance || {}).forEach(([k, v]) => {
+    confirmedProvenance[k] = {
+      ...v,
+      is_confirmed: true,
+    };
+  });
+
+  persistAndBroadcastAutoFill(effectiveKey, {
+    formData: pending.formData,
+    provenance: confirmedProvenance,
+    sourceDocId: pending.sourceDocId,
+    sourceFilename: pending.sourceFilename,
+  });
+
+  delete map[effectiveKey];
+  writePendingAutoFillMap(map, effectiveKey, "confirmed");
+  return {
+    ...pending,
+    provenance: confirmedProvenance,
+  };
 }

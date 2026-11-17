@@ -38,7 +38,7 @@ describe("Landing Page Enhanced Features & Quality Gate", () => {
 
       // Tab 1: Case Overview
       expect(screen.getByText(/68% Ready/i)).toBeDefined();
-      expect(screen.getAllByText(/Dr\. Aris Thorne/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Principal Applicant/i).length).toBeGreaterThan(0);
       expect(screen.getByText(/Filing Readiness/i)).toBeDefined();
       expect(screen.getByText(/Waiting on Firm Counsel/i)).toBeDefined();
 
@@ -53,7 +53,7 @@ describe("Landing Page Enhanced Features & Quality Gate", () => {
       const tasksTab = screen.getByRole("tab", { name: /3\. Procedural Milestones & Tasks/i });
       fireEvent.click(tasksTab);
       expect(screen.getByText(/Active Case Task Docket/i)).toBeDefined();
-      const taskItem = screen.getByText(/Resolve employment start date discrepancy with Dr\. Thorne/i);
+      const taskItem = screen.getByText(/Resolve employment start date discrepancy with Applicant/i);
       expect(taskItem).toBeDefined();
       fireEvent.click(taskItem); // toggle completion
       expect(screen.getByText(/3 of 4 Completed/i)).toBeDefined();
@@ -71,7 +71,7 @@ describe("Landing Page Enhanced Features & Quality Gate", () => {
       const chatTab = screen.getByRole("tab", { name: /5\. Client & Legal Coordination/i });
       fireEvent.click(chatTab);
       expect(screen.getByText(/Case Coordination & Document Request Thread/i)).toBeDefined();
-      expect(screen.getByText(/Sarah Jenkins \(Senior Paralegal\)/i)).toBeDefined();
+      expect(screen.getByText(/Assigned Senior Paralegal/i)).toBeDefined();
 
       const input = screen.getByPlaceholderText(/Test reply:/i);
       fireEvent.change(input, { target: { value: "All set, brief finalized." } });

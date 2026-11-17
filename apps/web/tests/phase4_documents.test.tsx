@@ -1,10 +1,16 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  const { mockApiModuleWithFixtures } = await import("./helpers/mockApiFixtures");
+  return mockApiModuleWithFixtures(actual);
+});
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { DocumentUploadModal } from "../components/modals/DocumentUploadModal";
 import { DocumentInspectorModal } from "../components/modals/DocumentInspectorModal";
 import { DocumentDossierWorkbench } from "../components/documents/DocumentDossierWorkbench";
-import { FIXTURE_DOCUMENTS } from "../lib/api";
+import { FIXTURE_DOCUMENTS } from "./helpers/testFixtures";
 
 describe("Phase 4 — Document Management, OCR & Structured Extraction Workflows", () => {
   const samplePassportDoc = FIXTURE_DOCUMENTS[0]; // US_Passport_Biodata_Elena_Rostova.pdf

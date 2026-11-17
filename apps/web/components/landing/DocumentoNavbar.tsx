@@ -17,7 +17,8 @@ export function DocumentoNavbar({
 
   useEffect(() => {
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 16);
+      const next = window.scrollY > 16;
+      setIsScrolled((prev) => (prev === next ? prev : next));
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
@@ -25,8 +26,8 @@ export function DocumentoNavbar({
   }, []);
 
   const navLinks = [
-    { href: "#preview", label: "Interactive Preview" },
-    { href: "#coverage", label: "Visa Coverage" },
+    { href: "#preview", label: "Platform" },
+    { href: "#coverage", label: "Coverage" },
     { href: "#comparison", label: "Problem & Solution" },
     { href: "#workflow", label: "6-Step Journey" },
     { href: "#pathway-finder", label: "Case Fit Check" },
@@ -41,51 +42,46 @@ export function DocumentoNavbar({
         position: "sticky",
         top: 0,
         zIndex: 90,
-        background: isScrolled ? "rgba(250, 249, 246, 0.92)" : "rgba(250, 249, 246, 0.6)",
-        backdropFilter: "blur(24px) saturate(180%)",
-        WebkitBackdropFilter: "blur(24px) saturate(180%)",
-        borderBottom: isScrolled ? "1px solid #DCE7E3" : "none",
-        boxShadow: "none",
-        transition: "all 0.25s ease",
+        background: isScrolled ? "#FFFFFF" : "rgba(255, 255, 255, 0.94)",
+        borderBottom: isScrolled ? "1px solid #DCE7E3" : "1px solid rgba(220, 231, 227, 0.6)",
+        transition: "background-color 0.18s ease, border-color 0.18s ease",
       }}
     >
       <div
         style={{
           maxWidth: "1360px",
           margin: "0 auto",
-          padding: "16px 28px",
+          padding: "14px 28px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: "24px",
         }}
       >
-        {/* Brand Logo & Engine Indicator (Logo style preserved exactly) */}
+        {/* Brand Logo & Engine Indicator */}
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
           <a
             href="#hero"
             className="no-underline flex items-center"
+            style={{ textDecoration: "none" }}
           >
             <DocumentoLogo size="md" showWordmark showDomain />
           </a>
 
-          {/* Minimal Engine Status Pill */}
+          {/* Minimal Modern Engine Status Tag */}
           <div
             style={{
               display: "none",
               alignItems: "center",
               gap: "6px",
-              padding: "4px 10px",
-              borderRadius: "9999px",
-              background: "rgba(234, 246, 240, 0.72)",
-              backdropFilter: "blur(14px)",
-              WebkitBackdropFilter: "blur(14px)",
-              border: "1px solid rgba(185, 222, 212, 0.75)",
+              padding: "3px 9px",
+              borderRadius: "6px",
+              background: "#F1F6F4",
+              border: "1px solid #DCE7E3",
               fontSize: "11px",
               fontWeight: 650,
-              color: "#176B50",
+              color: "#07594F",
               letterSpacing: "0.02em",
-              boxShadow: "0 1px 3px rgba(6, 60, 61, 0.04)",
             }}
             className="sm-engine-badge"
             title="FastAPI Python engine with isolated tenant boundaries & RapidOCR intelligence"
@@ -96,7 +92,6 @@ export function DocumentoNavbar({
                 height: "6px",
                 borderRadius: "50%",
                 background: "#10B981",
-                boxShadow: "0 0 6px rgba(16, 185, 129, 0.6)",
                 display: "inline-block",
               }}
             />
@@ -104,7 +99,7 @@ export function DocumentoNavbar({
           </div>
         </div>
 
-        {/* Floating Glass Capsule Navigation Bar (IntegratedBio / Modern Luxury Pill Aesthetic) */}
+        {/* Flush Modern Minimal Desktop Navigation */}
         <nav
           role="navigation"
           aria-label="Main Navigation"
@@ -112,24 +107,14 @@ export function DocumentoNavbar({
           style={{
             display: "none",
             alignItems: "center",
-            gap: "22px",
-            background: "rgba(255, 255, 255, 0.68)",
-            backdropFilter: "blur(24px) saturate(180%)",
-            WebkitBackdropFilter: "blur(24px) saturate(180%)",
-            border: "1px solid rgba(255, 255, 255, 0.85)",
-            borderRadius: "9999px",
-            padding: "4px 5px 4px 22px",
-            boxShadow: "0 6px 24px -2px rgba(6, 60, 61, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04)",
+            gap: "24px",
           }}
         >
-          {/* Text Links: Uppercase, Tracked, High-End Sans */}
           <a
             href="#preview"
             style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 500,
               color: "#384A46",
               textDecoration: "none",
               transition: "color 0.15s ease",
@@ -143,10 +128,8 @@ export function DocumentoNavbar({
           <a
             href="#coverage"
             style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 500,
               color: "#384A46",
               textDecoration: "none",
               transition: "color 0.15s ease",
@@ -161,10 +144,8 @@ export function DocumentoNavbar({
             href="/calculators"
             data-testid="nav-pr-calculators-link"
             style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 500,
               color: "#384A46",
               textDecoration: "none",
               transition: "color 0.15s ease",
@@ -179,10 +160,8 @@ export function DocumentoNavbar({
           <a
             href="/extractor"
             style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 500,
               color: "#384A46",
               textDecoration: "none",
               transition: "color 0.15s ease",
@@ -198,10 +177,8 @@ export function DocumentoNavbar({
             href="/agency-onboarding"
             data-testid="nav-agency-onboarding-link"
             style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 600,
               color: "#0D6866",
               textDecoration: "none",
               transition: "color 0.15s ease",
@@ -220,10 +197,8 @@ export function DocumentoNavbar({
               background: "transparent",
               border: "none",
               padding: 0,
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 500,
               color: "#384A46",
               cursor: "pointer",
               transition: "color 0.15s ease",
@@ -241,10 +216,8 @@ export function DocumentoNavbar({
               background: "transparent",
               border: "none",
               padding: 0,
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 500,
               color: "#384A46",
               cursor: "pointer",
               transition: "color 0.15s ease",
@@ -255,34 +228,29 @@ export function DocumentoNavbar({
             Sign In
           </button>
 
-          {/* Dark Pill Action Button (Matches the reference "WORK WITH US" pill) */}
+          {/* Confident Flat Action Button */}
           <button
             type="button"
             onClick={() => onOpenLogin("firm")}
             style={{
-              background: "linear-gradient(135deg, #063C3D 0%, #032525 100%)",
+              background: "#07594F",
               color: "#FFFFFF",
-              border: "1px solid rgba(255, 255, 255, 0.15)",
-              padding: "9px 20px",
-              borderRadius: "9999px",
-              fontWeight: 750,
-              fontSize: "11px",
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
+              border: "none",
+              padding: "8px 18px",
+              borderRadius: "8px",
+              fontWeight: 650,
+              fontSize: "13.5px",
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
-              boxShadow: "0 2px 10px rgba(6, 60, 61, 0.35)",
-              transition: "all 0.18s ease",
+              transition: "background-color 0.15s ease, transform 0.12s ease",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#0D6866";
-              e.currentTarget.style.boxShadow = "0 4px 14px rgba(13, 104, 102, 0.45)";
+              e.currentTarget.style.background = "#063C3D";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "linear-gradient(135deg, #063C3D 0%, #032525 100%)";
-              e.currentTarget.style.boxShadow = "0 2px 10px rgba(6, 60, 61, 0.35)";
+              e.currentTarget.style.background = "#07594F";
             }}
           >
             <span>Get Started</span>
@@ -295,15 +263,13 @@ export function DocumentoNavbar({
             type="button"
             onClick={() => onOpenLogin("firm")}
             style={{
-              background: "#063C3D",
+              background: "#07594F",
               color: "#FFFFFF",
               border: "none",
               padding: "7px 14px",
-              borderRadius: "9999px",
-              fontWeight: 700,
-              fontSize: "11px",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
+              borderRadius: "8px",
+              fontWeight: 650,
+              fontSize: "12.5px",
               cursor: "pointer",
             }}
           >
@@ -316,9 +282,9 @@ export function DocumentoNavbar({
             aria-label="Toggle navigation menu"
             aria-expanded={mobileMenuOpen}
             style={{
-              background: "rgba(255, 255, 255, 0.8)",
+              background: "#F8FAF9",
               border: "1px solid #DCE5E1",
-              borderRadius: "9999px",
+              borderRadius: "8px",
               padding: "7px",
               color: "#063C3D",
               cursor: "pointer",
@@ -328,12 +294,12 @@ export function DocumentoNavbar({
             }}
           >
             {mobileMenuOpen ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                 <line x1="3" y1="12" x2="21" y2="12" />
                 <line x1="3" y1="6" x2="21" y2="6" />
                 <line x1="3" y1="18" x2="21" y2="18" />
@@ -353,7 +319,7 @@ export function DocumentoNavbar({
             display: "flex",
             flexDirection: "column",
             gap: "12px",
-            boxShadow: "0 8px 16px rgba(0,0,0,0.06)",
+            boxShadow: "0 8px 16px rgba(6, 60, 61, 0.04)",
           }}
           className="mobile-menu-drawer"
         >
@@ -363,10 +329,8 @@ export function DocumentoNavbar({
               href={link.href}
               onClick={() => setMobileMenuOpen(false)}
               style={{
-                fontSize: "13px",
-                fontWeight: 650,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
+                fontSize: "13.5px",
+                fontWeight: 600,
                 color: "#063C3D",
                 textDecoration: "none",
                 padding: "8px 0",
@@ -381,10 +345,8 @@ export function DocumentoNavbar({
             href="/calculators"
             onClick={() => setMobileMenuOpen(false)}
             style={{
-              fontSize: "13px",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 650,
               color: "#0D6866",
               textDecoration: "none",
               padding: "8px 0",
@@ -402,27 +364,23 @@ export function DocumentoNavbar({
             href="/extractor"
             onClick={() => setMobileMenuOpen(false)}
             style={{
-              fontSize: "13px",
-              fontWeight: 650,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 600,
               color: "#063C3D",
               textDecoration: "none",
               padding: "8px 0",
               borderBottom: "1px solid #F1F6F4",
             }}
           >
-            🔬 AI Extractor Lab
+            AI Extractor Lab
           </a>
 
           <a
             href="/agency-onboarding"
             onClick={() => setMobileMenuOpen(false)}
             style={{
-              fontSize: "13px",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
+              fontSize: "13.5px",
+              fontWeight: 650,
               color: "#0D6866",
               textDecoration: "none",
               padding: "8px 0",
@@ -446,14 +404,12 @@ export function DocumentoNavbar({
               style={{
                 flex: 1,
                 padding: "10px",
-                borderRadius: "9999px",
+                borderRadius: "8px",
                 border: "1px solid #DCE5E1",
                 background: "#FFFFFF",
                 color: "#063C3D",
-                fontSize: "11.5px",
-                fontWeight: 700,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
+                fontSize: "12.5px",
+                fontWeight: 650,
                 cursor: "pointer",
               }}
             >
@@ -468,14 +424,12 @@ export function DocumentoNavbar({
               style={{
                 flex: 1,
                 padding: "10px",
-                borderRadius: "9999px",
+                borderRadius: "8px",
                 border: "none",
-                background: "#063C3D",
+                background: "#07594F",
                 color: "#FFFFFF",
-                fontSize: "11.5px",
-                fontWeight: 700,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
+                fontSize: "12.5px",
+                fontWeight: 650,
                 cursor: "pointer",
               }}
             >

@@ -1,23 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
-import { UserContext, ImmigrationCase, ClientProfile } from "../lib/types";
+import React, { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
+import type { UserContext, ImmigrationCase } from "../lib/types";
+import type { ClientModalPrefill } from "../components/modals/CreateClientModal";
+import type { CalculatorAgencyLeadRecord } from "../lib/agencyPlatformStore";
 import { api } from "../lib/api";
 import { WorkspaceProvider, useWorkspace } from "../lib/context/WorkspaceContext";
 import { DashboardErrorBoundary } from "../components/common/DashboardErrorBoundary";
-import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
-import { SuperAdminControlPlane } from "../components/admin/SuperAdminControlPlane";
-import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
-import { ClientPortal } from "../components/dashboards/ClientPortal";
-import { CreateClientModal, ClientModalPrefill } from "../components/modals/CreateClientModal";
-import { CreateCaseModal } from "../components/modals/CreateCaseModal";
-import { PostOnboardingLaunchpadModal } from "../components/modals/PostOnboardingLaunchpadModal";
-import { CalculatorAgencyLeadRecord } from "../lib/agencyPlatformStore";
-import { CaseDrilldownDrawer } from "../components/modals/CaseDrilldownDrawer";
-import { CaseDetailModal } from "../components/cases/CaseDetailModal";
-import { DocumentUploadModal } from "../components/modals/DocumentUploadModal";
-import { GuidedQuestionnaireModal } from "../components/modals/GuidedQuestionnaireModal";
 import { AlertBanner } from "../components/common/NotificationToast";
+import { BackgroundProcessingTray } from "../components/common/BackgroundProcessingTray";
 import { DocumentoNavbar } from "../components/landing/DocumentoNavbar";
 import { DocumentoHero } from "../components/landing/DocumentoHero";
 import { DocumentoSignalStrip } from "../components/landing/DocumentoSignalStrip";
@@ -30,9 +22,45 @@ import { DocumentoFAQ } from "../components/landing/DocumentoFAQ";
 import { DocumentoFooter } from "../components/landing/DocumentoFooter";
 import { WaveBackground } from "../components/landing/WaveBackground";
 import { DocumentoLoginModal } from "../components/auth/DocumentoLoginModal";
-import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
 import { useAnimationOnScroll } from "../components/landing/useAnimationOnScroll";
-import { useSmoothScroll } from "../components/landing/useSmoothScroll";
+
+// Lazy-load heavy authenticated dashboards and modals so the public landing page stays ultra-lightweight
+const WorkspaceHeader = dynamic(() =>
+  import("../components/layout/WorkspaceHeader").then((m) => m.WorkspaceHeader)
+);
+const OwnerMasterDashboard = dynamic(() =>
+  import("../components/dashboards/OwnerMasterDashboard").then((m) => m.OwnerMasterDashboard)
+);
+const SuperAdminControlPlane = dynamic(() =>
+  import("../components/admin/SuperAdminControlPlane").then((m) => m.SuperAdminControlPlane)
+);
+const EmployeeWorkspace = dynamic(() =>
+  import("../components/dashboards/EmployeeWorkspace").then((m) => m.EmployeeWorkspace)
+);
+const ClientPortal = dynamic(() =>
+  import("../components/dashboards/ClientPortal").then((m) => m.ClientPortal)
+);
+const CreateClientModal = dynamic(() =>
+  import("../components/modals/CreateClientModal").then((m) => m.CreateClientModal)
+);
+const CreateCaseModal = dynamic(() =>
+  import("../components/modals/CreateCaseModal").then((m) => m.CreateCaseModal)
+);
+const PostOnboardingLaunchpadModal = dynamic(() =>
+  import("../components/modals/PostOnboardingLaunchpadModal").then((m) => m.PostOnboardingLaunchpadModal)
+);
+const CaseDrilldownDrawer = dynamic(() =>
+  import("../components/modals/CaseDrilldownDrawer").then((m) => m.CaseDrilldownDrawer)
+);
+const CaseDetailModal = dynamic(() =>
+  import("../components/cases/CaseDetailModal").then((m) => m.CaseDetailModal)
+);
+const DocumentUploadModal = dynamic(() =>
+  import("../components/modals/DocumentUploadModal").then((m) => m.DocumentUploadModal)
+);
+const GuidedQuestionnaireModal = dynamic(() =>
+  import("../components/modals/GuidedQuestionnaireModal").then((m) => m.GuidedQuestionnaireModal)
+);
 
 export default function Home() {
   return (
@@ -78,11 +106,26 @@ function DocumentoMainApp() {
   const [selectedCaseForDrawer, setSelectedCaseForDrawer] = useState<ImmigrationCase | null>(null);
   const [selectedCaseForDetailModal, setSelectedCaseForDetailModal] = useState<ImmigrationCase | null>(null);
 
+  useEffect(() => {
+    if (selectedCaseForDrawer && !cases.some((c) => c.id === selectedCaseForDrawer.id)) {
+      setSelectedCaseForDrawer(null);
+    }
+    if (selectedCaseForDetailModal && !cases.some((c) => c.id === selectedCaseForDetailModal.id)) {
+      setSelectedCaseForDetailModal(null);
+    }
+  }, [cases, selectedCaseForDrawer, selectedCaseForDetailModal]);
+
   // Initialize on-scroll reveal animations for landing page with currentUser trigger
   useAnimationOnScroll(".animate-on-scroll", true, currentUser);
 
-  // Initialize smooth inertia scroll via Lenis strictly on the public landing page
-  useSmoothScroll(!currentUser);
+  // Warm workspace chunks only after user opens Sign In modal (zero cost for landing visitors)
+  useEffect(() => {
+    if (!isLoginModalOpen) return;
+    void import("../components/layout/WorkspaceHeader");
+    void import("../components/dashboards/OwnerMasterDashboard");
+    void import("../components/dashboards/EmployeeWorkspace");
+    void import("../components/dashboards/ClientPortal");
+  }, [isLoginModalOpen]);
 
   // Auth Handlers
   const handleOpenLogin = (portal: "firm" | "client" = "firm") => {
@@ -328,120 +371,125 @@ function DocumentoMainApp() {
         </div>
       )}
 
-      {/* Modals & Drawers */}
-      <CreateClientModal
-        isOpen={isCreateClientOpen}
-        onClose={() => {
-          setIsCreateClientOpen(false);
-          setClientModalPrefill(null);
-        }}
-        onClientCreated={handleClientCreated}
-        onCaseCreated={handleCaseCreated}
-        clients={clients}
-        activeRole={currentRoleCode}
-        initialPrefill={clientModalPrefill}
-      />
-      <CreateCaseModal
-        isOpen={isCreateCaseOpen}
-        onClose={() => setIsCreateCaseOpen(false)}
-        clients={clients}
-        onCaseCreated={handleCaseCreated}
-        activeRole={currentRoleCode}
-      />
-      <PostOnboardingLaunchpadModal
-        isOpen={!!selectedCaseForKickoff}
-        onClose={() => setSelectedCaseForKickoff(null)}
-        caseItem={
-          selectedCaseForKickoff
-            ? cases.find((c) => c.id === selectedCaseForKickoff.id) || selectedCaseForKickoff
-            : null
-        }
-        clientItem={
-          selectedCaseForKickoff
-            ? clients.find(
-                (cl) =>
-                  cl.id === selectedCaseForKickoff.client_id ||
-                  (selectedCaseForKickoff.client_name &&
-                    `${cl.first_name} ${cl.last_name}`.trim().toLowerCase() ===
-                      selectedCaseForKickoff.client_name.trim().toLowerCase())
-              ) || null
-            : null
-        }
-        teamCapacity={capacity}
-        currentUser={currentUser}
-        activeRole={currentRoleCode}
-        onCaseUpdated={(updatedCase) => {
-          handleCaseUpdated(updatedCase);
-          setSelectedCaseForKickoff(updatedCase);
-        }}
-        onClientUpdated={handleClientUpdated}
-        onDocumentUploaded={handleDocumentUploaded}
-        onKickoffChanged={() => {
-          void refreshLiveTasksAndAudit();
-        }}
-        onOpenCaseWorkspace={(c) => {
-          setSelectedCaseForDetailModal(c);
-        }}
-      />
-      <CaseDrilldownDrawer
-        isOpen={!!selectedCaseForDrawer}
-        onClose={() => setSelectedCaseForDrawer(null)}
-        caseItem={selectedCaseForDrawer}
-        onOpenCaseKickoff={(c) => setSelectedCaseForKickoff(c)}
-        onOpenWorkspace={() => {
-          if (selectedCaseForDrawer) {
-            setSelectedCaseForDetailModal(selectedCaseForDrawer);
-            setSelectedCaseForDrawer(null);
-          }
-        }}
-        onOpenDetailModal={(c) => setSelectedCaseForDetailModal(c)}
-      />
-      <CaseDetailModal
-        isOpen={!!selectedCaseForDetailModal}
-        onClose={() => setSelectedCaseForDetailModal(null)}
-        caseItem={selectedCaseForDetailModal}
-        onCaseUpdated={handleCaseUpdated}
-        activeRole={currentRoleCode}
-      />
-      <DocumentUploadModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        cases={
-          activeExp === "client_applicant"
-            ? cases.filter(
-                (c) =>
-                  c.client_id === currentUser?.id ||
-                  (c.client_name &&
-                    currentUser?.full_name &&
-                    c.client_name.toLowerCase().includes(currentUser.full_name.toLowerCase()))
-              )
-            : cases
-        }
-        caseId={
-          selectedCaseForDetailModal?.id ||
-          (activeExp === "client_applicant"
-            ? cases.find(
-                (c) =>
-                  c.client_id === currentUser?.id ||
-                  (c.client_name &&
-                    currentUser?.full_name &&
-                    c.client_name.toLowerCase().includes(currentUser.full_name.toLowerCase()))
-              )?.id
-            : cases[0]?.id)
-        }
-        onDocumentUploaded={handleDocumentUploaded}
-        activeRole={currentRoleCode}
-      />
-      <GuidedQuestionnaireModal
-        isOpen={isQuestionnaireOpen}
-        onClose={() => setIsQuestionnaireOpen(false)}
-        onSaved={() => {
-          setBannerAlert({
-            type: "success",
-            message: "Guided questionnaire responses saved and submitted for legal attorney brief preparation.",
-          });
-        }}
-      />
+      {/* Modals & Drawers — mounted only when authenticated */}
+      {currentUser && (
+        <>
+          <CreateClientModal
+            isOpen={isCreateClientOpen}
+            onClose={() => {
+              setIsCreateClientOpen(false);
+              setClientModalPrefill(null);
+            }}
+            onClientCreated={handleClientCreated}
+            onCaseCreated={handleCaseCreated}
+            clients={clients}
+            activeRole={currentRoleCode}
+            initialPrefill={clientModalPrefill}
+          />
+          <CreateCaseModal
+            isOpen={isCreateCaseOpen}
+            onClose={() => setIsCreateCaseOpen(false)}
+            clients={clients}
+            onCaseCreated={handleCaseCreated}
+            activeRole={currentRoleCode}
+          />
+          <PostOnboardingLaunchpadModal
+            isOpen={!!selectedCaseForKickoff}
+            onClose={() => setSelectedCaseForKickoff(null)}
+            caseItem={
+              selectedCaseForKickoff
+                ? cases.find((c) => c.id === selectedCaseForKickoff.id) || selectedCaseForKickoff
+                : null
+            }
+            clientItem={
+              selectedCaseForKickoff
+                ? clients.find(
+                    (cl) =>
+                      cl.id === selectedCaseForKickoff.client_id ||
+                      (selectedCaseForKickoff.client_name &&
+                        `${cl.first_name} ${cl.last_name}`.trim().toLowerCase() ===
+                          selectedCaseForKickoff.client_name.trim().toLowerCase())
+                  ) || null
+                : null
+            }
+            teamCapacity={capacity}
+            currentUser={currentUser}
+            activeRole={currentRoleCode}
+            onCaseUpdated={(updatedCase) => {
+              handleCaseUpdated(updatedCase);
+              setSelectedCaseForKickoff(updatedCase);
+            }}
+            onClientUpdated={handleClientUpdated}
+            onDocumentUploaded={handleDocumentUploaded}
+            onKickoffChanged={() => {
+              void refreshLiveTasksAndAudit();
+            }}
+            onOpenCaseWorkspace={(c) => {
+              setSelectedCaseForDetailModal(c);
+            }}
+          />
+          <CaseDrilldownDrawer
+            isOpen={!!selectedCaseForDrawer}
+            onClose={() => setSelectedCaseForDrawer(null)}
+            caseItem={selectedCaseForDrawer}
+            onOpenCaseKickoff={(c) => setSelectedCaseForKickoff(c)}
+            onOpenWorkspace={() => {
+              if (selectedCaseForDrawer) {
+                setSelectedCaseForDetailModal(selectedCaseForDrawer);
+                setSelectedCaseForDrawer(null);
+              }
+            }}
+            onOpenDetailModal={(c) => setSelectedCaseForDetailModal(c)}
+          />
+          <CaseDetailModal
+            isOpen={!!selectedCaseForDetailModal}
+            onClose={() => setSelectedCaseForDetailModal(null)}
+            caseItem={selectedCaseForDetailModal}
+            onCaseUpdated={handleCaseUpdated}
+            activeRole={currentRoleCode}
+          />
+          <DocumentUploadModal
+            isOpen={isUploadModalOpen}
+            onClose={() => setIsUploadModalOpen(false)}
+            cases={
+              activeExp === "client_applicant"
+                ? cases.filter(
+                    (c) =>
+                      c.client_id === currentUser?.id ||
+                      (c.client_name &&
+                        currentUser?.full_name &&
+                        c.client_name.toLowerCase().includes(currentUser.full_name.toLowerCase()))
+                  )
+                : cases
+            }
+            caseId={
+              selectedCaseForDetailModal?.id ||
+              (activeExp === "client_applicant"
+                ? cases.find(
+                    (c) =>
+                      c.client_id === currentUser?.id ||
+                      (c.client_name &&
+                        currentUser?.full_name &&
+                        c.client_name.toLowerCase().includes(currentUser.full_name.toLowerCase()))
+                  )?.id
+                : cases[0]?.id)
+            }
+            onDocumentUploaded={handleDocumentUploaded}
+            activeRole={currentRoleCode}
+          />
+          <GuidedQuestionnaireModal
+            isOpen={isQuestionnaireOpen}
+            onClose={() => setIsQuestionnaireOpen(false)}
+            onSaved={() => {
+              setBannerAlert({
+                type: "success",
+                message: "Guided questionnaire responses saved and submitted for legal attorney brief preparation.",
+              });
+            }}
+          />
+          {activeExp !== "client_applicant" && <BackgroundProcessingTray />}
+        </>
+      )}
     </div>
   );
 }

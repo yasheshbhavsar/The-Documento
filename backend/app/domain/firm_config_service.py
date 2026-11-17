@@ -356,7 +356,7 @@ class FirmConfigService:
             if user:
                 effective_email = user.email
         if not effective_email:
-            effective_email = "admin@firm.com"
+            effective_email = "system"
 
         key = f"firm_config:{domain}"
         now = now_utc()

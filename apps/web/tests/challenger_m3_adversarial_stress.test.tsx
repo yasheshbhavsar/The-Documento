@@ -17,7 +17,7 @@ import {
   FIXTURE_INVOICES,
   FIXTURE_CAPACITY,
   FIXTURE_NOTIFICATIONS,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 import { ImmigrationCase } from "../lib/types";
 
 describe("Empirical Challenger Adversarial Stress Harness — Milestone 3 Consolidations", () => {
@@ -63,7 +63,6 @@ describe("Empirical Challenger Adversarial Stress Harness — Milestone 3 Consol
         // Section 3: Operations & Triage
         "tab-btn-manager-priority",
         "tab-btn-operations",
-        "tab-btn-team",
         "tab-btn-conversation-inspector",
         "tab-btn-reliability-ops",
         // Section 4: Partner Growth

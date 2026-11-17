@@ -17,10 +17,6 @@ interface ClientOnboardingWizardProps {
   isModal?: boolean;
 }
 
-const isTestEnv =
-  (typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.env.VITEST === "true")) ||
-  (typeof import.meta !== "undefined" && Boolean((import.meta as any).env?.VITEST));
-
 export function ClientOnboardingWizard({
   onComplete,
   onClose,
@@ -31,31 +27,16 @@ export function ClientOnboardingWizard({
   const [saving, setSaving] = useState<boolean>(false);
   const [submitted, setSubmitted] = useState<boolean>(false);
 
-  const hasStoredUser =
-    typeof window !== "undefined" && Boolean(window.localStorage.getItem("documento_user"));
-  const useDemoDefaults = isTestEnv && !hasStoredUser;
-
   // Step 1: Consents
   const [consents, setConsents] = useState({
-    representation_g28: useDemoDefaults,
-    data_processing_gdpr: useDemoDefaults,
-    communication_consent: useDemoDefaults,
-    electronic_signatures: useDemoDefaults,
+    representation_g28: false,
+    data_processing_gdpr: false,
+    communication_consent: false,
+    electronic_signatures: false,
   });
 
   // Step 2: Applicant Biodata
   const [profile, setProfile] = useState<Partial<ClientProfileData>>(() => {
-    if (useDemoDefaults) {
-      return {
-        first_name: "Elena",
-        last_name: "Rostova",
-        email: "elena.rostova@stanford.edu",
-        phone: "+1 (650) 723-2300",
-        date_of_birth: "1988-04-12",
-        nationality: "UKR",
-        passport_verified: true,
-      };
-    }
     return {
       first_name: "",
       last_name: "",
@@ -66,7 +47,7 @@ export function ClientOnboardingWizard({
       passport_verified: false,
     };
   });
-  const [passportNumber, setPassportNumber] = useState(useDemoDefaults ? "FG891244" : "");
+  const [passportNumber, setPassportNumber] = useState("");
 
   // Step 3: Dependants
   const [dependants, setDependants] = useState<Array<{
@@ -79,20 +60,6 @@ export function ClientOnboardingWizard({
     nationality: string;
     is_authorized_to_view_case: boolean;
   }>>(() => {
-    if (useDemoDefaults) {
-      return [
-        {
-          id: "dep-01",
-          first_name: "Oleksiy",
-          last_name: "Rostov",
-          relationship_type: "spouse",
-          email: "oleksiy.rostov@techcorp.com",
-          phone: "+1 (650) 555-0199",
-          nationality: "UKR",
-          is_authorized_to_view_case: true,
-        },
-      ];
-    }
     return [];
   });
 
@@ -100,23 +67,13 @@ export function ClientOnboardingWizard({
   const [newDepLastName, setNewDepLastName] = useState("");
   const [newDepRel, setNewDepRel] = useState("child");
   const [newDepEmail, setNewDepEmail] = useState("");
-  const [newDepNationality, setNewDepNationality] = useState(useDemoDefaults ? "UKR" : "IND");
+  const [newDepNationality, setNewDepNationality] = useState("IND");
   const [newDepAuth, setNewDepAuth] = useState(false);
   const [showAddDepForm, setShowAddDepForm] = useState(false);
 
   // Step 4: Questionnaire
   const [questionnaire, setQuestionnaire] = useState<ClientQuestionnaireItem | null>(null);
-  const [responses, setResponses] = useState<Record<string, any>>(
-    useDemoDefaults
-      ? {
-          current_employer: "Stanford University School of Medicine",
-          job_title: "Senior Research Scientist in Computational Genomics",
-          field_of_expertise: "Machine Learning applied to Cancer Genomics",
-          total_articles_count: 14,
-          google_scholar_link: "https://scholar.google.com/citations?user=sample_rostova",
-        }
-      : {}
-  );
+  const [responses, setResponses] = useState<Record<string, any>>({});
 
   useEffect(() => {
     loadInitialData();
@@ -236,9 +193,8 @@ export function ClientOnboardingWizard({
 
   return (
     <div
-      className={`bg-white rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden ${
-        isModal ? "w-full max-w-3xl max-h-[90vh]" : "w-full"
-      }`}
+      className={`bg-white rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden ${isModal ? "w-full max-w-3xl max-h-[90vh]" : "w-full"
+        }`}
     >
       {/* Top Header */}
       <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/80 backdrop-blur-md flex items-center justify-between">
@@ -282,24 +238,22 @@ export function ClientOnboardingWizard({
                 className="flex items-center gap-2 group focus:outline-none"
               >
                 <div
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                    isCompleted
-                      ? "bg-emerald-600 text-white"
-                      : isActive
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${isCompleted
+                    ? "bg-emerald-600 text-white"
+                    : isActive
                       ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-300"
                       : "bg-slate-200 text-slate-600"
-                  }`}
+                    }`}
                 >
                   {isCompleted ? "✓" : step.number}
                 </div>
                 <span
-                  className={`text-xs font-semibold whitespace-nowrap ${
-                    isActive
-                      ? "text-indigo-600"
-                      : isCompleted
+                  className={`text-xs font-semibold whitespace-nowrap ${isActive
+                    ? "text-indigo-600"
+                    : isCompleted
                       ? "text-slate-700"
                       : "text-slate-400"
-                  }`}
+                    }`}
                 >
                   {step.label}
                 </span>
@@ -776,12 +730,10 @@ export function ClientOnboardingWizard({
               const answeredQCount = Object.values(responses || {}).filter(
                 (v) => v !== "" && v !== null && v !== undefined
               ).length;
-              const wizardPct = useDemoDefaults
-                ? 92
-                : Math.min(
-                    100,
-                    Math.round(((signedCount + bioFilledCount + Math.min(4, answeredQCount)) / 12) * 100)
-                  );
+              const wizardPct = Math.min(
+                100,
+                Math.round(((signedCount + bioFilledCount + Math.min(4, answeredQCount)) / 12) * 100)
+              );
               return (
                 <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40">
                   <div className="flex items-center justify-between mb-2">

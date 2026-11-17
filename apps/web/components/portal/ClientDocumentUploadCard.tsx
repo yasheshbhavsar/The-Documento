@@ -172,13 +172,12 @@ export function ClientDocumentUploadCard({
     <div
       style={{
         background: "#FFFFFF",
-        border: "1.5px solid #B9DED4",
-        borderRadius: "14px",
-        padding: "22px 24px",
-        boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
+        border: "1px solid #DCE5E1",
+        borderRadius: "12px",
+        padding: "20px 22px",
         display: "flex",
         flexDirection: "column",
-        gap: "16px",
+        gap: "14px",
       }}
     >
       {/* Header and Title */}
@@ -190,12 +189,19 @@ export function ClientDocumentUploadCard({
           flexWrap: "wrap",
           gap: "12px",
           borderBottom: "1px solid #DCE5E1",
-          paddingBottom: "14px",
+          paddingBottom: "12px",
         }}
       >
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-            <span style={{ fontSize: "18px" }}>📄</span>
+            <span style={{ display: "inline-flex", alignItems: "center" }} aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+            </span>
             <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
               Required Document List &amp; Live Status
             </h3>
@@ -237,7 +243,12 @@ export function ClientDocumentUploadCard({
                 gap: "5px",
               }}
             >
-              <span>💡 OCR Standards</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+                <path d="M9 18h6" />
+                <path d="M10 22h4" />
+              </svg>
+              <span>OCR Standards</span>
             </button>
           )}
           <button
@@ -255,7 +266,6 @@ export function ClientDocumentUploadCard({
               display: "flex",
               alignItems: "center",
               gap: "5px",
-              boxShadow: "0 2px 5px rgba(13, 104, 102, 0.2)",
             }}
           >
             <span>+ Upload Evidence File</span>
@@ -313,7 +323,10 @@ export function ClientDocumentUploadCard({
             gap: "5px",
           }}
         >
-          <span>⏳</span> In Review: {inReviewCount}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>
+          </svg>
+          <span>In Review: {inReviewCount}</span>
         </span>
         <span
           style={{
@@ -329,39 +342,12 @@ export function ClientDocumentUploadCard({
             gap: "5px",
           }}
         >
-          <span>{correctionCount > 0 ? "⚠️" : "📤"}</span> Correction Required: {correctionCount}
-        </span>
-      </div>
-
-      {/* Compact Dropzone */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragOver(true);
-        }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={handleDrop}
-        onClick={onOpenUploadModal}
-        style={{
-          border: isDragOver ? "2px dashed #0D6866" : "1.5px dashed #B9DED4",
-          background: isDragOver ? "#EAF6F0" : "#F8FAF9",
-          borderRadius: "10px",
-          padding: "16px 20px",
-          textAlign: "center",
-          cursor: "pointer",
-          transition: "all 0.15s ease-in-out",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "4px",
-        }}
-      >
-        <span style={{ fontSize: "13.5px", fontWeight: 750, color: "#063C3D" }}>
-          ⚡ Drag &amp; Drop Documents to Auto-Classify &amp; Upload
-        </span>
-        <span style={{ fontSize: "11.5px", color: "#64748B" }}>
-          PDF, PNG, JPG accepted • Instant AI packet splitting &amp; legal classification
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={correctionCount > 0 ? "#991B1B" : "#64748B"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span>Correction Required: {correctionCount}</span>
         </span>
       </div>
 
@@ -373,11 +359,15 @@ export function ClientDocumentUploadCard({
             textAlign: "center",
             padding: "32px 20px",
             background: "#F8FAF9",
-            border: "1.5px dashed #B9DED4",
+            border: "1px dashed #B9DED4",
             borderRadius: "10px",
           }}
         >
-          <div style={{ fontSize: "32px", marginBottom: "8px" }}>📁</div>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px" }} aria-hidden="true">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
           <h4 style={{ margin: "0 0 6px 0", fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>
             No Evidentiary Documents Uploaded Yet
           </h4>
@@ -405,7 +395,6 @@ export function ClientDocumentUploadCard({
               fontSize: "12.5px",
               fontWeight: 650,
               cursor: "pointer",
-              boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
             }}
           >
             + Upload First Evidence File
@@ -517,9 +506,15 @@ export function ClientDocumentUploadCard({
                           </span>
                         </div>
 
-                        <div style={{ fontSize: "11.5px", color: "#64748B", display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                          <span>👤 <strong>Applicant:</strong> {doc.proposed_applicant_name || doc.uploaded_by || clientName}</span>
-                          <span>⚖️ <strong>Statutory Basis:</strong> Evidentiary Proof</span>
+                        <div style={{ fontSize: "11.5px", color: "#64748B", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            <strong>Applicant:</strong> {doc.proposed_applicant_name || doc.uploaded_by || clientName}
+                          </span>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
+                            <strong>Statutory Basis:</strong> Evidentiary Proof
+                          </span>
                         </div>
                         <div style={{ fontSize: "11.5px", color: "#475569", marginTop: "2px", fontStyle: "italic" }}>
                           {doc.verification_notes || doc.processing_error || (isAccepted ? "Verified by legal team." : "File received on record.")}
@@ -537,9 +532,12 @@ export function ClientDocumentUploadCard({
                               borderRadius: "5px",
                               fontSize: "11px",
                               fontWeight: 700,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
                             }}
                           >
-                            ✓ ACCEPTED &amp; VERIFIED
+                            <span>✓</span> ACCEPTED &amp; VERIFIED
                           </span>
                         )}
                         {isReview && (
@@ -552,9 +550,13 @@ export function ClientDocumentUploadCard({
                               borderRadius: "5px",
                               fontSize: "11px",
                               fontWeight: 700,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
                             }}
                           >
-                            ⏳ UNDER LEGAL REVIEW
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>
+                            UNDER LEGAL REVIEW
                           </span>
                         )}
                         {isUploaded && (
@@ -567,9 +569,13 @@ export function ClientDocumentUploadCard({
                               borderRadius: "5px",
                               fontSize: "11px",
                               fontWeight: 700,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
                             }}
                           >
-                            🔄 UPLOADED (OCR PROCESSING)
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0369A1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                            UPLOADED (OCR PROCESSING)
                           </span>
                         )}
                         {isRejected && (
@@ -582,9 +588,13 @@ export function ClientDocumentUploadCard({
                               borderRadius: "5px",
                               fontSize: "11px",
                               fontWeight: 700,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
                             }}
                           >
-                            ⚠️ CORRECTION REQUIRED
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#991B1B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            CORRECTION REQUIRED
                           </span>
                         )}
                         {isRequired && (
@@ -597,9 +607,13 @@ export function ClientDocumentUploadCard({
                               borderRadius: "5px",
                               fontSize: "11px",
                               fontWeight: 700,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
                             }}
                           >
-                            📋 ACTION NEEDED / MISSING
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+                            ACTION NEEDED / MISSING
                           </span>
                         )}
 

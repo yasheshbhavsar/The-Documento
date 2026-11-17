@@ -5,8 +5,16 @@ import { Button } from "../common/Button";
 import { calculateSHA256, formatBytes } from "../../lib/crypto";
 import { DocumentItem, DocumentCategory, ImmigrationCase, RoleCode } from "../../lib/types";
 import { api } from "../../lib/api";
-import { analyzeDocumentStandalone } from "../../lib/api/extractor";
-import { mapAnalysisToInitialInfoSheet, persistAndBroadcastAutoFill } from "../../lib/documentAutoFillEngine";
+import {
+  detectCategoryAndRoleFromFilename,
+  generateClientFallbackAnalysis,
+} from "../../lib/api/extractor";
+import {
+  mapAnalysisToInitialInfoSheet,
+  persistAndBroadcastAutoFill,
+  queuePendingAutoFill,
+} from "../../lib/documentAutoFillEngine";
+import { enqueueRawClientPacket, extractSafeRawTextPreview } from "../../lib/rawClientPacketStore";
 
 interface DocumentUploadModalProps {
   isOpen: boolean;
@@ -16,6 +24,11 @@ interface DocumentUploadModalProps {
   parentDocumentId?: string;
   onDocumentUploaded: (doc: DocumentItem) => void;
   activeRole?: RoleCode;
+}
+
+function normalizeDetectedCategory(raw: string): DocumentCategory {
+  if (raw === "civil_status_family") return "civil_status";
+  return (raw as DocumentCategory) || "supporting_evidence";
 }
 
 export function DocumentUploadModal({
@@ -28,13 +41,17 @@ export function DocumentUploadModal({
   activeRole = "retained_client",
 }: DocumentUploadModalProps) {
   const [selectedCaseId, setSelectedCaseId] = useState<string>(caseId || cases[0]?.id || "");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [category, setCategory] = useState<DocumentCategory>("identity_passport");
+  const [manualCategoryOverride, setManualCategoryOverride] = useState(false);
+  const [detectedSummary, setDetectedSummary] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [computedHash, setComputedHash] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedFile = selectedFiles[0] || null;
 
   React.useEffect(() => {
     if (isOpen) {
@@ -61,19 +78,16 @@ export function DocumentUploadModal({
     { label: "Other Supporting Evidence", value: "supporting_evidence" },
   ];
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedFile(file);
-      setTitle(file.name.replace(/\.[^/.]+$/, ""));
-      setError(null);
-      setStatusMessage("Validating file signature & calculating SHA-256 integrity hash...");
+  const validateAndLoadFiles = async (incoming: File[]) => {
+    if (!incoming.length) return;
+    setError(null);
+    setStatusMessage("Validating file signature & calculating SHA-256 integrity hash...");
 
-      try {
+    try {
+      for (const file of incoming) {
         const buffer = await file.arrayBuffer();
         const header = new Uint8Array(buffer.slice(0, 8));
-        
-        // Basic client-side magic byte check
+
         const isPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46; // %PDF
         const isJpg = header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
         const isPng = header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4e && header[3] === 0x47;
@@ -82,22 +96,66 @@ export function DocumentUploadModal({
 
         if (!isPdf && !isJpg && !isPng && !isTiff && !isWebp) {
           setError("File signature rejected: Only PDF and standard image formats (JPEG, PNG, TIFF, WebP) are authorized.");
-          setSelectedFile(null);
+          setSelectedFiles([]);
+          setComputedHash(null);
           setStatusMessage(null);
           return;
         }
-
-        const hash = await calculateSHA256(buffer);
-        setComputedHash(hash);
-        setStatusMessage(`File format authorized. SHA-256 fingerprint: ${hash.slice(0, 16)}...`);
-      } catch (err: any) {
-        setError("Failed to process file signature in browser.");
       }
+
+      const primary = incoming[0];
+      const primaryBuf = await primary.arrayBuffer();
+      const hash = await calculateSHA256(primaryBuf);
+
+      let snippet = "";
+      try {
+        snippet = (await primary.text()).slice(0, 1200);
+      } catch {
+        snippet = "";
+      }
+      const autoDetected = detectCategoryAndRoleFromFilename(primary.name, snippet);
+      if (!manualCategoryOverride) {
+        setCategory(normalizeDetectedCategory(autoDetected.category));
+      }
+      const roleLabel =
+        autoDetected.personRole === "overseas_sponsor_host"
+          ? `Overseas Sponsor${autoDetected.sponsorJurisdiction ? ` (${autoDetected.sponsorJurisdiction})` : ""}`
+          : autoDetected.personRole === "canadian_crs_sibling"
+            ? "+15 CRS Canadian Sibling"
+            : autoDetected.personRole === "spouse_partner"
+              ? "Spouse / Partner"
+              : "Principal Applicant";
+      setDetectedSummary(
+        incoming.length === 1
+          ? `Auto-Detected: ${autoDetected.subtypeLabel} • ${roleLabel}`
+          : `Auto-Detected ${incoming.length} files (Primary: ${autoDetected.subtypeLabel} • ${roleLabel})`
+      );
+
+      setSelectedFiles(incoming);
+      setTitle(
+        incoming.length === 1
+          ? primary.name.replace(/\.[^/.]+$/, "")
+          : `${incoming.length} Documents (${primary.name.replace(/\.[^/.]+$/, "")} + ${incoming.length - 1} more)`
+      );
+      setComputedHash(hash);
+      setStatusMessage(
+        incoming.length === 1
+          ? `File format authorized. SHA-256 fingerprint: ${hash.slice(0, 16)}...`
+          : `${incoming.length} files authorized. Primary SHA-256 fingerprint: ${hash.slice(0, 16)}...`
+      );
+    } catch {
+      setError("Failed to process file signature in browser.");
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await validateAndLoadFiles(Array.from(e.target.files));
     }
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) {
+    if (selectedFiles.length === 0) {
       setError("Please select a document file to upload.");
       return;
     }
@@ -106,42 +164,119 @@ export function DocumentUploadModal({
       return;
     }
 
+    const isRawClientUpload = activeRole === "retained_client";
     setIsProcessing(true);
-    setStatusMessage("Transmitting to private storage, running antivirus scan & OCR pipeline...");
+    setStatusMessage(
+      isRawClientUpload
+        ? "Transmitting your untouched file directly to your Assigned Paralegal..."
+        : "Transmitting to private storage, running antivirus scan & single-pass OCR pipeline..."
+    );
 
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("category", category);
-      formData.append("title", title || selectedFile.name);
       const targetCaseId = selectedCaseId || caseId || cases[0]?.id || "";
-      if (targetCaseId) formData.append("case_id", targetCaseId);
-      if (parentDocumentId) formData.append("parent_document_id", parentDocumentId);
+      let combinedFormData: Record<string, any> = {};
+      let combinedProvenance: Record<string, any> = {};
 
-      const res = await api.uploadDocumentFile(formData, activeRole);
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const fileSnippet = await extractSafeRawTextPreview(file);
+        const detectedForFile = detectCategoryAndRoleFromFilename(file.name, fileSnippet.slice(0, 1200));
+        const effectiveCategory =
+          manualCategoryOverride || selectedFiles.length === 1
+            ? category
+            : normalizeDetectedCategory(detectedForFile.category);
+        const effectiveTitle =
+          selectedFiles.length === 1 && title.trim()
+            ? title.trim()
+            : file.name.replace(/\.[^/.]+$/, "");
 
-      // Trigger automatic extraction and broadcast auto-fill intelligence
-      try {
-        const analysis = await analyzeDocumentStandalone({
-          file: selectedFile,
-          filename: selectedFile.name,
-          declaredCategory: category,
-        });
-        const sheetRes = mapAnalysisToInitialInfoSheet(analysis);
-        persistAndBroadcastAutoFill(targetCaseId || "default_client", {
-          formData: sheetRes.updatedData,
-          provenance: sheetRes.provenance,
-          sourceDocId: res.data?.id,
-          sourceFilename: selectedFile.name,
-        });
-      } catch {
-        // Fallback gracefully without interrupting primary upload callback
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("category", effectiveCategory);
+        formData.append("title", effectiveTitle);
+        if (targetCaseId) formData.append("case_id", targetCaseId);
+        if (parentDocumentId && i === 0) formData.append("parent_document_id", parentDocumentId);
+        if (isRawClientUpload) formData.append("raw_only", "true");
+
+        // Single network upload — never send the same file over HTTP twice!
+        const res = await api.uploadDocumentFile(formData, activeRole);
+
+        if (isRawClientUpload) {
+          const fileBuf = await file.arrayBuffer();
+          const fileSha = await calculateSHA256(fileBuf);
+          const vaultId =
+            res.data?.id || `raw-modal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          const rawPkt = enqueueRawClientPacket({
+            file,
+            vaultDocId: vaultId,
+            caseId: targetCaseId || "default_client",
+            title: effectiveTitle,
+            sha256: fileSha,
+            uploaderRole: "applicant",
+            declaredCategory: effectiveCategory,
+            rawTextPreview: fileSnippet,
+          });
+          onDocumentUploaded({
+            ...(res.data || ({} as DocumentItem)),
+            id: vaultId,
+            case_id: targetCaseId || res.data?.case_id,
+            title: effectiveTitle,
+            filename: file.name,
+            category: effectiveCategory,
+            sha256_hash: fileSha,
+            status: "under_review",
+            processing_status: "pending",
+            verification_status: "unverified",
+            ocr_applied: false,
+            extracted_fields: [],
+            is_raw_packet: true,
+            raw_packet_id: rawPkt.id,
+            ai_lab_status: "pending",
+            uploader_role: "applicant",
+          });
+        } else {
+          try {
+            if (res.data?.extracted_fields && res.data.extracted_fields.length > 0) {
+              const sheetRes = mapAnalysisToInitialInfoSheet(res.data, combinedFormData);
+              combinedFormData = sheetRes.updatedData;
+              combinedProvenance = { ...combinedProvenance, ...sheetRes.provenance };
+            } else {
+              // Zero-network local extraction fallback for firm staff
+              const localAnalysis = await generateClientFallbackAnalysis({
+                file,
+                rawText: fileSnippet.slice(0, 1200) || undefined,
+                filename: file.name,
+                declaredCategory: effectiveCategory,
+              });
+              const sheetRes = mapAnalysisToInitialInfoSheet(localAnalysis, combinedFormData);
+              combinedFormData = sheetRes.updatedData;
+              combinedProvenance = { ...combinedProvenance, ...sheetRes.provenance };
+            }
+          } catch {
+            // Graceful non-blocking auto-fill mapping
+          }
+
+          onDocumentUploaded(res.data);
+        }
       }
 
-      onDocumentUploaded(res.data);
+      if (!isRawClientUpload && Object.keys(combinedFormData).length > 0) {
+        queuePendingAutoFill(targetCaseId || "default_client", {
+          formData: combinedFormData,
+          provenance: combinedProvenance,
+          sourceFilename: selectedFiles[0].name,
+        });
+        persistAndBroadcastAutoFill(targetCaseId || "default_client", {
+          formData: combinedFormData,
+          provenance: combinedProvenance,
+          sourceFilename: selectedFiles[0].name,
+        });
+      }
+
       onClose();
-      // Reset
-      setSelectedFile(null);
+      setSelectedFiles([]);
+      setManualCategoryOverride(false);
+      setDetectedSummary(null);
       setComputedHash(null);
       setStatusMessage(null);
       setTitle("");
@@ -241,13 +376,36 @@ export function DocumentUploadModal({
 
         <div>
           <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "6px" }}>
-            Document Category *
+            Document Category (Auto-Detected • Optional Override)
           </label>
           <SelectInput
             value={category}
-            onChange={(e) => setCategory(e.target.value as DocumentCategory)}
+            onChange={(e) => {
+              setManualCategoryOverride(true);
+              setCategory(e.target.value as DocumentCategory);
+            }}
             options={categories}
           />
+          {detectedSummary && (
+            <div
+              data-testid="upload-autodetected-summary"
+              style={{
+                marginTop: "6px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "3px 9px",
+                borderRadius: "999px",
+                background: "#EAF6F0",
+                border: "1px solid #C6E7D8",
+                color: "#176B50",
+                fontSize: "11.5px",
+                fontWeight: 600,
+              }}
+            >
+              ✓ {detectedSummary}
+            </div>
+          )}
         </div>
 
         <div>
@@ -275,14 +433,21 @@ export function DocumentUploadModal({
 
         <div>
           <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "6px" }}>
-            Select Document File (PDF, JPEG, PNG, TIFF, WebP — Max 50 MB) *
+            Select Document File(s) (PDF, JPEG, PNG, TIFF, WebP — Single or Multi-File) *
           </label>
           <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (e.dataTransfer?.files?.length) {
+                void validateAndLoadFiles(Array.from(e.dataTransfer.files));
+              }
+            }}
             style={{
-              border: "2px dashed #B9DED4",
+              border: "1.5px dashed #B9DED4",
               background: "#F8F7F2",
-              borderRadius: "12px",
-              padding: "24px",
+              borderRadius: "10px",
+              padding: "22px",
               textAlign: "center",
               cursor: "pointer",
               transition: "all 0.15s ease",
@@ -290,6 +455,7 @@ export function DocumentUploadModal({
           >
             <input
               type="file"
+              multiple
               accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp"
               onChange={handleFileChange}
               disabled={isProcessing}
@@ -309,8 +475,8 @@ export function DocumentUploadModal({
             >
               <div
                 style={{
-                  width: "40px",
-                  height: "40px",
+                  width: "38px",
+                  height: "38px",
                   borderRadius: "50%",
                   background: "#EAF6F0",
                   border: "1px solid #B9DED4",
@@ -318,18 +484,22 @@ export function DocumentUploadModal({
                   alignItems: "center",
                   justifyContent: "center",
                   color: "#0D6866",
-                  fontSize: "18px",
+                  fontSize: "17px",
                 }}
               >
                 📁
               </div>
               <span style={{ fontSize: "13px", fontWeight: 600, color: "#063C3D" }}>
-                {selectedFile ? selectedFile.name : "Click to browse or drop document here"}
+                {selectedFiles.length > 1
+                  ? `${selectedFiles.length} files selected (${selectedFiles.map((f) => f.name).join(", ")})`
+                  : selectedFile
+                    ? selectedFile.name
+                    : "Click to browse or drop document(s) here"}
               </span>
               <span style={{ fontSize: "11px", color: "#6E7F7C" }}>
                 {selectedFile
-                  ? `${formatBytes(selectedFile.size)} • Type: ${selectedFile.type || "application/pdf"}`
-                  : "PDF, JPEG, PNG, TIFF, or WebP up to 50 MB"}
+                  ? `${formatBytes(selectedFiles.reduce((s, f) => s + f.size, 0))} • Single-pass upload & category detection`
+                  : "PDF, JPEG, PNG, TIFF, or WebP up to 50 MB (supports multi-file selection)"}
               </span>
             </label>
           </div>

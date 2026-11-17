@@ -114,6 +114,7 @@ class KybDecisionRequest(BaseModel):
     decision: str = Field(..., pattern="^(approve|request_clarification|reject)$")
     reviewer_notes: str | None = Field(default=None, max_length=1000)
     override_plan_tier: str | None = Field(default=None, pattern="^(pilot_14d|boutique|growth|enterprise)$")
+    owner_password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 class GovernancePatchRequest(BaseModel):
@@ -818,7 +819,7 @@ def adjudicate_kyb_application(
 
     # Ensure Managing Partner user & master_admin role membership
     owner_email = app_record.contact_work_email.lower().strip()
-    temp_password = f"DocPartner!{uuid.uuid4().hex[:6].upper()}"
+    temp_password = payload.owner_password or f"DocPartner!{uuid.uuid4().hex[:6].upper()}"
     user = db.query(User).filter(User.email == owner_email).first()
     if not user:
         user = User(
@@ -835,6 +836,8 @@ def adjudicate_kyb_application(
     else:
         user.organization_id = org.id
         user.status = "active"
+        if not user.password_hash and payload.owner_password:
+            user.password_hash = hash_password(payload.owner_password)
         db.flush()
 
     membership = OrganizationMembership(
@@ -1052,6 +1055,7 @@ class SalesLedProvisionRequest(BaseModel):
     slug: str | None = Field(default=None, max_length=100)
     owner_full_name: str = Field(..., min_length=2, max_length=200)
     owner_email: EmailStr
+    owner_password: str | None = Field(default=None, min_length=8, max_length=128)
     hq_country: str = Field(default="Canada", max_length=64)
     hq_city: str = Field(default="Toronto", max_length=120)
     kyb_track: str = Field(default="regulated_counsel", pattern="^(regulated_counsel|overseas_consultancy)$")
@@ -1061,6 +1065,13 @@ class SalesLedProvisionRequest(BaseModel):
     plan_tier: str = Field(default="growth", pattern="^(pilot_14d|boutique|growth|enterprise)$")
     custom_mrr_usd: float | None = Field(default=None, ge=0.0)
     custom_seat_limit: int | None = Field(default=None, ge=1, le=1000)
+
+
+class ResetAgencyOwnerPasswordRequest(BaseModel):
+    slug: str | None = Field(default=None, max_length=100)
+    owner_email: EmailStr
+    new_password: str = Field(..., min_length=8, max_length=128)
+    reason: str | None = Field(default=None, max_length=300)
 
 
 @router.post("/super-admin/agencies/provision-direct", status_code=status.HTTP_201_CREATED)
@@ -1120,7 +1131,7 @@ def provision_sales_led_agency_direct(
     db.add(gov)
 
     owner_email = payload.owner_email.lower().strip()
-    temp_password = f"DocInvite!{uuid.uuid4().hex[:6].upper()}"
+    temp_password = payload.owner_password or f"DocInvite!{uuid.uuid4().hex[:6].upper()}"
     user = db.query(User).filter(User.email == owner_email).first()
     if not user:
         user = User(
@@ -1132,6 +1143,11 @@ def provision_sales_led_agency_direct(
             status="active",
         )
         db.add(user)
+        db.flush()
+    else:
+        user.organization_id = org.id
+        user.status = "active"
+        user.password_hash = hash_password(temp_password)
         db.flush()
 
     membership = OrganizationMembership(
@@ -1180,6 +1196,63 @@ def provision_sales_led_agency_direct(
         "mrr_usd": effective_mrr,
         "seat_limit": effective_seats,
         "cobranded_calculator_url": f"/calculators?agency={slug}",
+    }
+
+
+@router.post("/super-admin/agencies/reset-owner-password")
+def reset_agency_owner_password_endpoint(
+    payload: ResetAgencyOwnerPasswordRequest,
+    ctx: AuthContext = Depends(require_permission("platform:agencies:manage")),
+    db: Session = Depends(get_db),
+):
+    """Synchronizes or rotates a partner agency Managing Partner's login password from Documento HQ."""
+    owner_email = payload.owner_email.lower().strip()
+    user = db.query(User).filter(User.email == owner_email).first()
+    org = (
+        db.query(Organization).filter(Organization.slug == _normalize_slug(payload.slug)).first()
+        if payload.slug
+        else None
+    )
+    if not user:
+        if not org:
+            raise EntityNotFoundError("User", owner_email)
+        user = User(
+            organization_id=org.id,
+            email=owner_email,
+            name=org.name,
+            full_name=org.name,
+            password_hash=hash_password(payload.new_password),
+            status="active",
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.password_hash = hash_password(payload.new_password)
+        if org and not user.organization_id:
+            user.organization_id = org.id
+        db.flush()
+
+    target_org_id = org.id if org else user.organization_id
+    if target_org_id:
+        db.add(
+            AuditEvent(
+                organization_id=target_org_id,
+                actor_id=ctx.user_id,
+                action="platform.owner_password_reset",
+                object_type="user",
+                object_id=str(user.id),
+                metadata_json={
+                    "owner_email": owner_email,
+                    "reason": payload.reason or "Password rotated from Documento HQ Control Plane",
+                },
+                occurred_at=datetime.now(timezone.utc),
+            )
+        )
+    db.commit()
+    return {
+        "status": "updated",
+        "owner_email": owner_email,
+        "organization_id": str(target_org_id) if target_org_id else None,
     }
 
 

@@ -18,11 +18,12 @@ export function WaveBackground({
 }) {
   return (
     <div
-      className={`relative w-full overflow-hidden ${className}`}
+      className={`relative w-full ${className}`}
       style={{
         background: "#ffffff",
         color: "#172322",
         minHeight: "100%",
+        overflowX: "clip",
         ...style,
       }}
     >

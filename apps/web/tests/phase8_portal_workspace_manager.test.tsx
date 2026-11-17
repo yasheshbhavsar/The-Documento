@@ -1,10 +1,21 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  const { mockApiModuleWithFixtures } = await import("./helpers/mockApiFixtures");
+  return mockApiModuleWithFixtures(actual);
+});
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { ClientPortal, DocumentProgressionStepper } from "../components/dashboards/ClientPortal";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
 import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
 import { DocumentInspectorModal } from "../components/modals/DocumentInspectorModal";
+import {
+  TEST_APPLICANT_CHECKLIST_GROUPS,
+  TEST_APPOINTMENTS,
+  TEST_PENDING_ACTIONS,
+} from "./helpers/mockApiFixtures";
 import {
   FIXTURE_CASES,
   FIXTURE_CLIENTS,
@@ -16,7 +27,7 @@ import {
   FIXTURE_INVOICES,
   FIXTURE_CAPACITY,
   FIXTURE_NOTIFICATIONS,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Phase 8 — Client Portal, Staff Workspace & Manager Priority Board", () => {
   describe("1. Mobile-First Client Portal Experience", () => {
@@ -52,6 +63,8 @@ describe("Phase 8 — Client Portal, Staff Workspace & Manager Priority Board", 
           messages={FIXTURE_MESSAGES}
           notifications={FIXTURE_NOTIFICATIONS}
           invoices={FIXTURE_INVOICES}
+          pendingActions={TEST_PENDING_ACTIONS}
+          upcomingAppointments={TEST_APPOINTMENTS}
           onOpenUploadModal={handleOpenUpload}
           onOpenQuestionnaireModal={handleOpenQuestionnaire}
           onSendMessage={vi.fn()}
@@ -93,6 +106,7 @@ describe("Phase 8 — Client Portal, Staff Workspace & Manager Priority Board", 
           messages={FIXTURE_MESSAGES}
           notifications={FIXTURE_NOTIFICATIONS}
           invoices={FIXTURE_INVOICES}
+          applicantChecklistGroups={TEST_APPLICANT_CHECKLIST_GROUPS}
           onOpenUploadModal={handleOpenUpload}
           onOpenQuestionnaireModal={vi.fn()}
           onSendMessage={vi.fn()}

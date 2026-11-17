@@ -16,7 +16,8 @@ import {
 import { CreateClientModal } from "../components/modals/CreateClientModal";
 import { CaseDrilldownDrawer } from "../components/modals/CaseDrilldownDrawer";
 import { WorkspaceHeader } from "../components/layout/WorkspaceHeader";
-import { api, FIXTURE_CASES, FIXTURE_CLIENTS } from "../lib/api";
+import { api } from "../lib/api";
+import { FIXTURE_CASES, FIXTURE_CLIENTS } from "./helpers/testFixtures";
 import { ImmigrationCase, ClientProfile, UserContext } from "../lib/types";
 import { initCaseKickoffRecord, updateCaseKickoffRecord } from "../lib/caseKickoffStore";
 

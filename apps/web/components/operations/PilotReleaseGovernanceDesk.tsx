@@ -165,7 +165,7 @@ export function PilotReleaseGovernanceDesk({
     }
   })();
   const activeOrgId = parsedStoredUser?.organization_id || "org-workspace";
-  const activeLeadEmail = parsedStoredUser?.email || (isTestEnv ? "lead@firm.local" : "");
+  const activeLeadEmail = parsedStoredUser?.email || "";
 
   // Pilot Cohorts State
   const [cohorts, setCohorts] = useState<PilotCohort[]>([]);
@@ -297,26 +297,7 @@ export function PilotReleaseGovernanceDesk({
       const data = await getPilotCohorts(userRole);
       setCohorts(data);
     } catch (err: any) {
-      if (isTestEnv && !parsedStoredUser) {
-        setCohorts([
-          {
-            id: "cohort-01",
-            organization_id: "org-apex",
-            cohort_name: "Apex Express Entry Pilot (Alpha)",
-            firm_tier: "small_firm",
-            status: "active",
-            max_cases_allowed: 25,
-            allowed_pathways: ["CA_EXPRESS_ENTRY_FSW", "CA_STUDY_PERMIT"],
-            synthetic_data_attestation: true,
-            unapproved_ai_block_enabled: true,
-            assigned_lead_email: "lead.counsel@apexlaw.com",
-            start_date: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-          },
-        ]);
-      } else {
-        setCohorts([]);
-      }
+      setCohorts([]);
     }
   };
 
@@ -325,28 +306,7 @@ export function PilotReleaseGovernanceDesk({
       const data = await getKPIBenchmarks(userRole);
       setBenchmarks(data);
     } catch (err: any) {
-      if (isTestEnv && !parsedStoredUser) {
-        setBenchmarks([
-          {
-            id: "bm-01",
-            period_label: "Q4 Pilot Evaluation",
-            pathway_key: "CA_EXPRESS_ENTRY_FSW",
-            baseline_workflow_hours: 18.0,
-            documento_workflow_hours: 3.6,
-            time_saved_hours: 14.4,
-            time_saved_percentage: 80.0,
-            correction_rate_percentage: 2.1,
-            false_positive_flags_count: 1,
-            missed_exceptions_count: 0,
-            package_rework_rate_percentage: 1.5,
-            operational_failures_count: 0,
-            operational_recovery_rate_percentage: 100.0,
-            created_at: new Date().toISOString(),
-          },
-        ]);
-      } else {
-        setBenchmarks([]);
-      }
+      setBenchmarks([]);
     }
   };
 
@@ -634,11 +594,10 @@ Trigger rollback immediately if any of the following occur post-deployment:
         <div className="flex items-center gap-3">
           {evaluation && (
             <div
-              className={`px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 shadow-sm ${
-                evaluation.overall_status === "PASSED"
-                  ? "bg-emerald-600/90 text-white border border-emerald-400"
-                  : "bg-rose-600/90 text-white border border-rose-400"
-              }`}
+              className={`px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 shadow-sm ${evaluation.overall_status === "PASSED"
+                ? "bg-emerald-600/90 text-white border border-emerald-400"
+                : "bg-rose-600/90 text-white border border-rose-400"
+                }`}
             >
               {evaluation.overall_status === "PASSED" ? (
                 <>
@@ -712,11 +671,10 @@ Trigger rollback immediately if any of the following occur post-deployment:
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl transition-all whitespace-nowrap ${
-                isActive
-                  ? "bg-[#063C3D] text-white font-semibold shadow-sm border-t border-l border-r border-[#0D6866]"
-                  : "text-[#063C3D]/80 hover:text-[#063C3D] hover:bg-[#DCE5E1]/40"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl transition-all whitespace-nowrap ${isActive
+                ? "bg-[#063C3D] text-white font-semibold shadow-sm border-t border-l border-r border-[#0D6866]"
+                : "text-[#063C3D]/80 hover:text-[#063C3D] hover:bg-[#DCE5E1]/40"
+                }`}
             >
               <Icon className="w-4 h-4" />
               <span>{tab.label}</span>
@@ -789,11 +747,10 @@ Trigger rollback immediately if any of the following occur post-deployment:
                   return (
                     <div
                       key={gate.gate_id}
-                      className={`p-4 rounded-xl border transition-all ${
-                        isPassed
-                          ? "bg-slate-50/60 border-slate-200 hover:border-emerald-300"
-                          : "bg-rose-50/60 border-rose-200"
-                      }`}
+                      className={`p-4 rounded-xl border transition-all ${isPassed
+                        ? "bg-slate-50/60 border-slate-200 hover:border-emerald-300"
+                        : "bg-rose-50/60 border-rose-200"
+                        }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
@@ -803,9 +760,8 @@ Trigger rollback immediately if any of the following occur post-deployment:
                           <h3 className="text-sm font-bold text-[#063C3D]">{gate.title}</h3>
                         </div>
                         <span
-                          className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ${
-                            isPassed ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
-                          }`}
+                          className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ${isPassed ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                            }`}
                         >
                           {gate.status}
                         </span>
@@ -875,13 +831,12 @@ Trigger rollback immediately if any of the following occur post-deployment:
                         <span className="text-xs text-slate-500">Tier: {cohort.firm_tier.replace("_", " ")}</span>
                       </div>
                       <span
-                        className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                          isActive
-                            ? "bg-emerald-100 text-emerald-800"
-                            : cohort.status === "graduated"
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${isActive
+                          ? "bg-emerald-100 text-emerald-800"
+                          : cohort.status === "graduated"
                             ? "bg-blue-100 text-blue-800"
                             : "bg-amber-100 text-amber-800"
-                        }`}
+                          }`}
                       >
                         {cohort.status}
                       </span>
@@ -1220,11 +1175,10 @@ Trigger rollback immediately if any of the following occur post-deployment:
                         setSelectedRunbookType(rb.runbook_type);
                         setActiveRunbook(rb);
                       }}
-                      className={`w-full text-left p-3 rounded-xl text-xs font-semibold transition-all border ${
-                        isSelected
-                          ? "bg-[#063C3D] text-white border-[#063C3D] shadow-sm"
-                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                      }`}
+                      className={`w-full text-left p-3 rounded-xl text-xs font-semibold transition-all border ${isSelected
+                        ? "bg-[#063C3D] text-white border-[#063C3D] shadow-sm"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                        }`}
                     >
                       <div className="flex items-center gap-1.5 mb-1">
                         <BookOpenIcon className="w-3.5 h-3.5" />

@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CaseDetailModal } from "../components/cases/CaseDetailModal";
 import { CreateClientModal } from "../components/modals/CreateClientModal";
-import { FIXTURE_CASES, api } from "../lib/api";
+import { api } from "../lib/api";
+import { FIXTURE_CASES } from "./helpers/testFixtures";
 
 describe("Phase 3 — Core Immigration Case Management Workflows", () => {
   const sampleCase = FIXTURE_CASES[0]; // CASE-US-8841

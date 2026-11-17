@@ -1030,7 +1030,7 @@ export function AgencyOnboardingWizard() {
                       <input
                         id="onb-contact-name"
                         type="text"
-                        placeholder="e.g. Priya Grewal, RCIC"
+                        placeholder="Full Name &amp; Title"
                         value={contactFullName}
                         onChange={(e) => setContactFullName(e.target.value)}
                         style={inputStyle}
@@ -1043,7 +1043,7 @@ export function AgencyOnboardingWizard() {
                       <input
                         id="onb-contact-email"
                         type="email"
-                        placeholder="priya@northstarrcic.ca"
+                        placeholder="counsel@practice-domain.com"
                         value={contactWorkEmail}
                         onChange={(e) => setContactWorkEmail(e.target.value)}
                         style={inputStyle}
@@ -1093,7 +1093,7 @@ export function AgencyOnboardingWizard() {
                       <input
                         id="onb-legal-name"
                         type="text"
-                        placeholder="e.g. NorthStar Immigration Counsel Inc."
+                        placeholder="Registered Legal Entity Name"
                         value={legalEntityName}
                         onChange={(e) => setLegalEntityName(e.target.value)}
                         style={inputStyle}
@@ -1106,7 +1106,7 @@ export function AgencyOnboardingWizard() {
                       <input
                         id="onb-trading-name"
                         type="text"
-                        placeholder="e.g. NorthStar RCIC"
+                        placeholder="Public Trading Name"
                         value={tradingName}
                         onChange={(e) => setTradingName(e.target.value)}
                         style={inputStyle}
@@ -1136,7 +1136,7 @@ export function AgencyOnboardingWizard() {
                         id="onb-slug"
                         type="text"
                         value={slugEditedManually ? customSlug : effectiveSlug === "your-firm" ? "" : effectiveSlug}
-                        placeholder="northstar-rcic"
+                        placeholder="your-agency-slug"
                         onChange={(e) => {
                           setSlugEditedManually(true);
                           setCustomSlug(e.target.value);

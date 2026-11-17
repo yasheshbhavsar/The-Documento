@@ -117,7 +117,7 @@ def migrate_case_rule_version(
     target_version_id: uuid.UUID,
     migration_reason: str,
     authorized_user_id: uuid.UUID,
-    authorized_user_email: str = "counsel@lawfirm.com",
+    authorized_user_email: str = "system",
 ) -> Dict[str, Any]:
     """Explicitly migrates an existing case from its pinned rule version to a new target version.
     Never silently rewrites active cases; preserves audit trail and calculates diff impact.

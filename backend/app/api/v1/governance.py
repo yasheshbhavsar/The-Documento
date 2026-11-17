@@ -38,7 +38,7 @@ class PilotCohortCreateRequest(BaseModel):
     allowed_pathways: Optional[List[str]] = None
     synthetic_data_attestation: bool = True
     unapproved_ai_block_enabled: bool = True
-    assigned_lead_email: str = "pilot-lead@lexfirm.com"
+    assigned_lead_email: str = "pilot-lead@practice-domain.com"
     notes: Optional[str] = None
 
 

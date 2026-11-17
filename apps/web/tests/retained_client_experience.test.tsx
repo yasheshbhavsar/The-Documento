@@ -1,17 +1,24 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  const { mockApiModuleWithFixtures } = await import("./helpers/mockApiFixtures");
+  return mockApiModuleWithFixtures(actual);
+});
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ClientPortal } from "../components/dashboards/ClientPortal";
-import { VisaFileUpdatesView, FALLBACK_VISA_FILE_UPDATES } from "../components/portal/VisaFileUpdatesView";
+import { VisaFileUpdatesView } from "../components/portal/VisaFileUpdatesView";
 import { DirectDocumentUploader } from "../components/portal/DirectDocumentUploader";
 import { CaseOfficerChatBanner } from "../components/portal/CaseOfficerChatBanner";
 import {
+  FALLBACK_VISA_FILE_UPDATES,
   FIXTURE_CASES,
   FIXTURE_DOCUMENTS,
   FIXTURE_MESSAGES,
   FIXTURE_NOTIFICATIONS,
   FIXTURE_INVOICES,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Retained Client Experience — Visa File Updates, Upload Document Tab & Case Officer Chat", () => {
   describe("1. Visa File Updates Component & Docket", () => {
@@ -20,6 +27,7 @@ describe("Retained Client Experience — Visa File Updates, Upload Document Tab 
       render(
         <VisaFileUpdatesView
           myCase={FIXTURE_CASES[0]}
+          updates={FALLBACK_VISA_FILE_UPDATES}
           onNavigateTab={handleNavigate}
         />
       );
@@ -37,6 +45,7 @@ describe("Retained Client Experience — Visa File Updates, Upload Document Tab 
       render(
         <VisaFileUpdatesView
           myCase={FIXTURE_CASES[0]}
+          updates={FALLBACK_VISA_FILE_UPDATES}
           onNavigateTab={handleNavigate}
         />
       );
@@ -56,6 +65,7 @@ describe("Retained Client Experience — Visa File Updates, Upload Document Tab 
       render(
         <VisaFileUpdatesView
           myCase={FIXTURE_CASES[0]}
+          updates={FALLBACK_VISA_FILE_UPDATES}
           onNavigateTab={vi.fn()}
         />
       );
@@ -140,7 +150,7 @@ describe("Retained Client Experience — Visa File Updates, Upload Document Tab 
         />
       );
 
-      expect(screen.getByText(/Officer Sarah Jenkins, Esq./i)).toBeDefined();
+      expect(screen.getByText(/Assigned Legal Counsel/i)).toBeDefined();
       expect(screen.getByText(/Lead Case Processing Officer/i)).toBeDefined();
       expect(screen.getByText(/Direct Case Processing Channel/i)).toBeDefined();
       expect(screen.getByText(/8 CFR § 292.1 Privileged/i)).toBeDefined();
@@ -167,6 +177,7 @@ describe("Retained Client Experience — Visa File Updates, Upload Document Tab 
           messages={FIXTURE_MESSAGES}
           notifications={FIXTURE_NOTIFICATIONS}
           invoices={FIXTURE_INVOICES}
+          visaFileUpdates={FALLBACK_VISA_FILE_UPDATES}
           onOpenUploadModal={vi.fn()}
           onOpenQuestionnaireModal={vi.fn()}
           onSendMessage={handleSendMessage}

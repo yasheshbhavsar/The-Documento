@@ -45,20 +45,17 @@ describe("Phase 3 Modular API & SOP Evaluation System", () => {
     expect(typeof backwardCompatFetchInvoices).toBe("function");
   });
 
-  it("evaluates statement of purpose (SOP) via fallback when offline", async () => {
+  it("returns unverified offline SOP state cleanly when backend is unavailable", async () => {
     const res = await auditSOP({
       sop_text: "I am applying for a master degree in artificial intelligence at University of Toronto...",
       jurisdiction: "CA",
     });
 
     expect(res).toBeDefined();
-    expect(res.overall_score).toBeGreaterThanOrEqual(80.0);
-    expect(res.is_statutorily_sound).toBe(true);
-    expect(res.verdict).toBe("HIGH_APPROVAL_POTENTIAL");
+    expect(res.overall_score).toBe(0);
+    expect(res.is_statutorily_sound).toBe(false);
+    expect(res.verdict).toBe("NEEDS_REVISION");
     expect(res.jurisdiction).toBe("CA");
-    expect(res.dimension_scores.academic_progression).toBeGreaterThan(0);
-    expect(res.dimension_scores.economic_home_ties).toBeGreaterThan(0);
-    expect(res.dimension_scores.dual_intent_compliance).toBeGreaterThan(0);
     expect(Array.isArray(res.strengths)).toBe(true);
   });
 

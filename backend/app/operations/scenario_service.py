@@ -330,7 +330,7 @@ class ScenarioService:
         officer = assigned.user if assigned else None
         officer_id = officer.id if officer else actor_id
         officer_name = officer.full_name if officer else "Lead Attorney"
-        officer_email = officer.email if officer else "attorney@firm.com"
+        officer_email = officer.email if officer else ""
         officer_role = assigned.role_in_case if assigned else "lead_attorney"
 
         now = now_utc()

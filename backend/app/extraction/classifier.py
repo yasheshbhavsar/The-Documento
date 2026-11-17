@@ -16,13 +16,17 @@ CATEGORY_RULES: list[dict] = [
             r"\bVOTER[_\s-]?ID\b",
             r"\bEPIC[_\s-]?CARD\b",
             r"\bPROOF[_\s-]?OF[_\s-]?STATUS\b",
+            r"\bECOPR\b",
             r"\bCOPR\b",
             r"\bPR[_\s-]?CARD\b",
+            r"\bCITIZENSHIP[_\s-]?CERT(?:IFICATE)?\b",
         ],
         "patterns": [
             r"\bPASSPORT\b",
             r"\bPASAPORTE\b",
             r"\bPASSEPORT\b",
+            r"\bCANADIAN\s*PASSPORT\b",
+            r"\bPASSEPORT\s*CANADA\b",
             r"\bP<[A-Z0-9<]{39,}\b",  # ICAO Doc 9303 MRZ Type 3
             r"\bREPUBLIC OF INDIA\b",
             r"\bSURNAME\b",
@@ -35,9 +39,12 @@ CATEGORY_RULES: list[dict] = [
             r"\bNATIONAL IDENTIT(?:Y| CARD)\b",
             r"UNIQUE\s*IDENTIFICATION\s*AUTHORITY\s*OF\s*INDIA",
             r"\bENROLL?MENT\s*NO\b",
+            r"\bELECTRONIC\s*CONFIRMATION\s*OF\s*PERMANENT\s*RESIDENCE\b",
             r"\bCONFIRMATION\s*OF\s*PERMANENT\s*RESIDENCE\b",
             r"\bPERMANENT\s*RESIDENT\s*CARD\b",
-            r"\bCACANPD[0-9<]+\b",
+            r"\bCERTIFICATE\s*OF\s*CANADIAN\s*CITIZENSHIP\b",
+            r"\bCANADIAN\s*CITIZENSHIP\s*CERTIFICATE\b",
+            r"\bCACAN[A-Z0-9<]+\b",
             r"\bINCOME TAX DEPARTMENT.*GOVT\. OF INDIA\b",
             r"\bE-?PERMANENT ACCOUNT NUMBER\b",
             r"\bE-?PAN\s*CARD\b",
@@ -125,13 +132,18 @@ CATEGORY_RULES: list[dict] = [
     {
         "category": "visas_residence_permits",
         "label": "Existing Visas and Residence Permits",
-        "weight": 1.8,
+        "weight": 1.9,
         "filename_patterns": [
             r"\bVISA[_\s-]?FOIL\b",
             r"\bRESIDENCE[_\s-]?PERMIT\b",
             r"\bBRP\b",
             r"\bWORK[_\s-]?PERMIT\b",
             r"\bSTUDY[_\s-]?PERMIT\b",
+            r"\bSHARE[_\s-]?CODE\b",
+            r"\bEVISA\b",
+            r"\bSETTLED[_\s-]?STATUS\b",
+            r"\bILR\b",
+            r"\bVEVO\b",
         ],
         "patterns": [
             r"\bVISA\b",
@@ -147,6 +159,25 @@ CATEGORY_RULES: list[dict] = [
             r"\bALLOWED\s*TO\s*ENTER\s*UAE\b",
             r"\bGENERAL\s*DIRECTORATE\s*OF\s*RESIDENCY\b",
             r"\bESTABLISHMENT\s*CARD\b",
+            # Canada IRCC Work & Study Permits
+            r"\bWORK\s*PERMIT\s*/\s*PERMIS\s*DE\s*TRAVAIL\b",
+            r"\bSTUDY\s*PERMIT\s*/\s*PERMIS\s*D['’]?[EÉ]TUDES\b",
+            r"\bTHIS\s*DOES\s*NOT\s*AUTHORIZE\s*RE-?ENTRY\b",
+            # UK Home Office eVisa / Share Code / BRP / ILR / Settled Status
+            r"\bVIEW\s*AND\s*PROVE\s*(?:YOUR\s*)?IMMIGRATION\s*STATUS\b",
+            r"\bSHARE\s*CODE\b",
+            r"\bINDEFINITE\s*LEAVE\s*TO\s*(?:REMAIN|ENTER)\b",
+            r"\bEU\s*SETTLEMENT\s*SCHEME\b",
+            r"\bSETTLED\s*STATUS\b",
+            r"\bPRE-?SETTLED\s*STATUS\b",
+            r"\bSKILLED\s*WORKER\b",
+            # Australia Home Affairs VEVO
+            r"\bVISA\s*ENTITLEMENT\s*VERIFICATION\s*ONLINE\b",
+            r"\bVEVO\b",
+            r"\bVISA\s*GRANT\s*NUMBER\b",
+            r"\bVISA\s*CLASS\s*/?\s*SUBCLASS\b",
+            r"\bMUST\s*NOT\s*ARRIVE\s*AFTER\b",
+            r"\bWORK\s*ENTITLEMENTS\b",
         ],
     },
     {
@@ -210,6 +241,7 @@ CATEGORY_RULES: list[dict] = [
             r"\bPAYSLIP\b",
             r"\bPAYSTUB\b",
             r"\bW-?2\b",
+            r"\bT4\b",
             r"\bRESUME\b",
             r"\bCV\b",
             r"\bCURRICULUM[_\s-]?VITAE\b",
@@ -246,6 +278,8 @@ CATEGORY_RULES: list[dict] = [
             r"\bSERIAL NO\. OF ROE\b",
             r"\bINSURABLE EARNINGS\b",
             r"\bSTATEMENT OF REMUNERATION PAID\b",
+            r"\bEMPLOYMENT\s*INCOME\s*[-–:]?\s*LINE\s*10100\b",
+            r"\bBOX\s*14\b",
             r"\bFORM W-2\b",
             r"\bPAYSTUB\b",
             r"\bPAYSLIP\b",
@@ -281,6 +315,13 @@ CATEGORY_RULES: list[dict] = [
             r"\bFEES?[_\s-]?RECEIPT\b",
             r"\bTUITION\b",
             r"\bASSESSMENT\b",
+            r"\bNOA\b",
+            r"\bOPTION[_\s-]?C\b",
+            r"\bP60\b",
+            r"\bSA302\b",
+            r"\bHMRC\b",
+            r"\bATO\b",
+            r"\bPAYG\b",
         ],
         "patterns": [
             r"\bBANK STATEMENT\b",
@@ -318,8 +359,25 @@ CATEGORY_RULES: list[dict] = [
             r"\bPAYMENT ID\b",
             r"\bEFT FEE PAYMENT\b",
             r"\bACCOUNT SUMMARY BY TERM\b",
+            # Canada CRA Notice of Assessment & Option C Printout
             r"\bNOTICE OF ASSESSMENT\b",
             r"\bCANADA REVENUE AGENCY\b",
+            r"\bLINE\s*15000\b",
+            r"\bLINE\s*23600\b",
+            r"\bPROOF\s*OF\s*INCOME\s*STATEMENT\b",
+            r"\bOPTION\s*['\"]?C['\"]?\s*PRINTOUT\b",
+            # UK HMRC P60 & SA302 Tax Calculation
+            r"\bP60\s*END\s*OF\s*YEAR\s*CERTIFICATE\b",
+            r"\bHM\s*REVENUE\s*(?:&|AND)\s*CUSTOMS\b",
+            r"\bSA302\b",
+            r"\bTAX\s*CALCULATION\s*FOR\s*(?:THE\s*)?YEAR\b",
+            r"\bNATIONAL\s*INSURANCE\s*NUMBER\b",
+            # Australia ATO Notice of Assessment & PAYG Income Statement
+            r"\bAUSTRALIAN\s*TAXATION\s*OFFICE\b",
+            r"\bYOUR\s*TAXABLE\s*INCOME\s*IS\b",
+            r"\bPAYG\s*PAYMENT\s*SUMMARY\b",
+            r"\bATO\s*INCOME\s*STATEMENT\b",
+            r"\bTAX\s*FILE\s*NUMBER\b",
         ],
     },
     {
@@ -364,6 +422,11 @@ CATEGORY_RULES: list[dict] = [
             r"\bACCOMMODATION\b",
             r"\bLEASE\b",
             r"\bTENANCY\b",
+            r"\bHYDRO\b",
+            r"\bUTILITY\b",
+            r"\bCOUNCIL[_\s-]?TAX\b",
+            r"\bLAND[_\s-]?REGISTRY\b",
+            r"\bCOUNCIL[_\s-]?RATES\b",
         ],
         "patterns": [
             r"\bHEALTH INSURANCE\b",
@@ -373,19 +436,50 @@ CATEGORY_RULES: list[dict] = [
             r"\bINSURED COVERAGE SUMMARY\b",
             r"\bMANULIFE\b",
             r"\bALLIANZ\b",
+            r"\bTUGO\b",
+            r"\bDESTINATION\s*CANADA\b",
             r"\bEMERGENCY MEDICAL INSURANCE\b",
-            r"\bSUPER VISA INSURANCE\b",
+            r"\bSUPER VISA(?:\s*MEDICAL)?\s*INSURANCE\b",
+            r"\bSUPER\s*VISA\b",
             r"\bDEDUCTIBLE\b",
             r"\bPREMIUM DETAILS\b",
             r"\bLEASE AGREEMENT\b",
             r"\bRESIDENTIAL LEASE\b",
+            r"\bONTARIO\s*STANDARD\s*LEASE\b",
             r"\bTENANCY AGREEMENT\b",
+            r"\bASSURED\s*SHORTHOLD\s*TENANCY\b",
             r"\bLANDLORD\b",
             r"\bMONTHLY RENT\b",
             r"\bACCOMMODATION CONFIRMATION\b",
             r"\bCONFIRMED BOOKING\b",
             r"\bPROPERTY POLICIES\b",
             r"\bSTAR HOTEL\b",
+            # Canada Hydro / Utility / Property Tax Residency Proof
+            r"\bHYDRO\s*ONE\b",
+            r"\bBC\s*HYDRO\b",
+            r"\bTORONTO\s*HYDRO\b",
+            r"\bHYDRO[\s-]QU[EÉ]BEC\b",
+            r"\bENBRIDGE(?:\s*GAS)?\b",
+            r"\bFORTIS\s*BC\b",
+            r"\bBELL\s*CANADA\b",
+            r"\bROGERS\s*COMMUNICATIONS\b",
+            r"\bMUNICIPAL\s*PROPERTY\s*TAX\b",
+            r"\bPROPERTY\s*TAX\s*BILL\b",
+            r"\bSERVICE\s*ADDRESS\b",
+            # UK Council Tax & HM Land Registry
+            r"\bCOUNCIL\s*TAX(?:\s*BILL|\s*DEMAND|\s*ACCOUNT)?\b",
+            r"\bVALUATION\s*BAND\b",
+            r"\bLONDON\s*BOROUGH\s*OF\b",
+            r"\bBOROUGH\s*COUNCIL\b",
+            r"\bHM\s*LAND\s*REGISTRY\b",
+            r"\bOFFICIAL\s*COPY\s*OF\s*REGISTER\s*OF\s*TITLE\b",
+            # Australia Council Rates & Utility Bills
+            r"\bCOUNCIL\s*RATES(?:\s*NOTICE)?\b",
+            r"\bRATES\s*(?:AND\s*CHARGES\s*)?NOTICE\b",
+            r"\bORIGIN\s*ENERGY\b",
+            r"\bAGL\s*ENERGY\b",
+            r"\bENERGY\s*AUSTRALIA\b",
+            r"\bSYDNEY\s*WATER\b",
         ],
     },
     {
@@ -439,7 +533,6 @@ CATEGORY_RULES: list[dict] = [
             r"\bPROVINCIAL[_\s-]?ATTESTATION\b",
             r"\bPAL\b",
             r"\bREPRESENTATIVE\b",
-            r"\bINVITATION\b",
             r"\bNOTICE[_\s-]?OF[_\s-]?ACTION\b",
             r"\bI-797\b",
             r"\bUSCIS\b",
@@ -461,8 +554,6 @@ CATEGORY_RULES: list[dict] = [
             r"\bIMMIGRATION,\s*REFUGEES\s*AND\s*CITIZENSHIP\s*CANADA\b",
             r"\bIMM\s*5713\b",
             r"\bUSE OF A FAMILY REPRESENTATIVE\b",
-            r"\bINVITATION LETTER\b",
-            r"\bLETTER OF INVITATION\b",
             r"\bSUBMISSION LETTER\b",
             r"\bREPRESENTATIVE FOR\b",
             r"\bCOLLEGE OF IMMIGRATION AND CITIZENSHIP CONSULTANTS\b",
@@ -476,6 +567,29 @@ CATEGORY_RULES: list[dict] = [
             r"\bHOME OFFICE\b",
             r"\bUK VISAS AND IMMIGRATION\b",
             r"\bRECEIPT NUMBER\b",
+        ],
+    },
+    {
+        "category": "supporting_evidence",
+        "label": "Sponsor Undertaking and Supporting Evidence",
+        "weight": 2.0,
+        "filename_patterns": [
+            r"\bINVITATION\b",
+            r"\bUNDERTAKING\b",
+            r"\bFORM[_\s-]?1149\b",
+            r"\bSTATUTORY[_\s-]?DECLARATION\b",
+        ],
+        "patterns": [
+            r"\bLETTER\s*OF\s*INVITATION\b",
+            r"\bINVITATION\s*LETTER\b",
+            r"\bINVITATION\s*AND\s*(?:FINANCIAL\s*)?UNDERTAKING\b",
+            r"\bSPONSORSHIP\s*UNDERTAKING\b",
+            r"\bUNDERTAKING\s*OF\s*SUPPORT\b",
+            r"\bPROMISE\s*TO\s*PROVIDE\s*FINANCIAL\s*SUPPORT\b",
+            r"\bFINANCIALLY\s*RESPONSIBLE\s*FOR\b",
+            r"\bFORM\s*1149\b",
+            r"\bAPPLICATION\s*FOR\s*SPONSORSHIP\s*FOR\s*A\s*SPONSORED\s*FAMILY\s*VISITOR\b",
+            r"\bSTATUTORY\s*DECLARATIONS\s*ACT\s*1959\b",
         ],
     },
     {
@@ -541,6 +655,60 @@ def classify_document(
             if "CONFIRMATION OF COVERAGE" in combined or "INSURED" in combined or "DEDUCTIBLE" in combined:
                 filename_boost = 0.45
 
+        # Insurance, Utility, Council Tax, Land Registry & Super Visa Insurance primary header boost
+        if category == "insurance_accommodation" and (
+            "SUPER VISA" in combined
+            or "EMERGENCY MEDICAL INSURANCE" in combined
+            or "HYDRO ONE" in combined
+            or "BC HYDRO" in combined
+            or "TORONTO HYDRO" in combined
+            or "ENBRIDGE" in combined
+            or "COUNCIL TAX" in combined
+            or "HM LAND REGISTRY" in combined
+            or "ASSURED SHORTHOLD TENANCY" in combined
+            or "COUNCIL RATES" in combined
+            or "RATES NOTICE" in combined
+        ):
+            filename_boost = max(filename_boost, 0.45)
+
+        # Visas & Residence Permits primary header boost (UK eVisa Share Code, ILR, BRP, AU VEVO, IRCC Work/Study Permit)
+        if (
+            category == "visas_residence_permits"
+            and "SUBMISSION LETTER" not in combined
+            and "APPLICATION FOR WORK PERMIT" not in combined
+            and "REPRESENTATIVE FOR" not in combined
+            and (
+                "VISA ENTITLEMENT VERIFICATION ONLINE" in combined
+                or "VISA GRANT NUMBER" in combined
+                or ("VEVO" in combined and "SUBCLASS" in combined)
+                or "VIEW AND PROVE YOUR IMMIGRATION STATUS" in combined
+                or "SHARE CODE" in combined
+                or "INDEFINITE LEAVE TO REMAIN" in combined
+                or "SETTLED STATUS" in combined
+                or "BIOMETRIC RESIDENCE PERMIT" in combined
+                or "WORK PERMIT / PERMIS DE TRAVAIL" in combined
+                or "STUDY PERMIT / PERMIS" in combined
+                or "THIS DOES NOT AUTHORIZE RE-ENTRY" in combined
+            )
+        ):
+            filename_boost = max(filename_boost, 0.45)
+
+        # Sponsor Invitation / Undertaking / Form 1149 Statutory Declaration primary boost
+        if (
+            category == "supporting_evidence"
+            and "SUBMISSION LETTER" not in combined
+            and "COLLEGE OF IMMIGRATION AND CITIZENSHIP CONSULTANTS" not in combined
+            and (
+                "LETTER OF INVITATION" in combined
+                or "INVITATION LETTER" in combined
+                or "SPONSORSHIP UNDERTAKING" in combined
+                or "INVITATION AND UNDERTAKING" in combined
+                or "FORM 1149" in combined
+                or "STATUTORY DECLARATIONS ACT 1959" in combined
+            )
+        ):
+            filename_boost = max(filename_boost, 0.45)
+
         # IRCC Form boost (IMM 5257, IMM 1295, IMM 5710, IMM 5708, IMM 5476, PAL)
         if category == "government_correspondence" and (
             re.search(r"\bIMM\s*(?:5257|1295|5710|5708|5709|5476)\b", combined)
@@ -568,19 +736,20 @@ def classify_document(
         ):
             filename_boost = max(filename_boost, 0.45)
 
-        # Employment primary document header boost (prevents LMIA / Employment Contract from losing to CRA/Identity)
+        # Employment primary document header boost (prevents LMIA / Employment Contract / T4 from losing to CRA/Identity)
         if category == "employment_records" and (
             "LABOUR MARKET IMPACT ASSESSMENT" in combined
             or "EMPLOYMENT CONTRACT" in combined
             or "EMPLOYMENTCONTRACT" in combined
             or "EI/IPLOYI/LENT CONTRACT" in combined
             or "RECORD OF EMPLOYMENT" in combined
+            or "STATEMENT OF REMUNERATION PAID" in combined
             or "APPOINTMENT LETTER" in combined
             or "APPOINTMENTLETTER" in combined
         ):
             filename_boost = max(filename_boost, 0.45)
 
-        # Financial GIC / Tuition Receipt primary header boost
+        # Financial GIC / Tuition Receipt / CRA NOA / HMRC P60 & SA302 / ATO NOA primary header boost
         if category == "financial_evidence" and (
             "STUDENT GIC PROGRAM" in combined
             or "GUARANTEED INVESTMENT CERTIFICATE" in combined
@@ -590,6 +759,16 @@ def classify_document(
             or "PAYMENT RECEIPT" in combined
             or "PAYMENT ID" in combined
             or "ACCOUNT SUMMARY BY TERM" in combined
+            or "NOTICE OF ASSESSMENT" in combined
+            or "LINE 15000" in combined
+            or "PROOF OF INCOME STATEMENT" in combined
+            or "OPTION C PRINTOUT" in combined
+            or "P60 END OF YEAR CERTIFICATE" in combined
+            or "HM REVENUE & CUSTOMS" in combined
+            or "HM REVENUE AND CUSTOMS" in combined
+            or "SA302" in combined
+            or "AUSTRALIAN TAXATION OFFICE" in combined
+            or "PAYG PAYMENT SUMMARY" in combined
         ):
             filename_boost = max(filename_boost, 0.45)
 

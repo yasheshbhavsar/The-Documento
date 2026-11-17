@@ -8,6 +8,7 @@ import {
   AgencyKybApplication,
   AgencySupportTicket,
   AgencyTeamInviteRecord,
+  AgencyTeamRole,
   AgencyTenantRecord,
   CalculatorAgencyLeadRecord,
   KybDocType,
@@ -15,6 +16,7 @@ import {
   StatutoryRuleBroadcast,
   buildKybUploadedDocMeta,
   createAgencySupportTicket,
+  formatStaffRoleLabel,
   getAgencyApplications,
   getAgencyForOrganization,
   getAgencySupportTickets,
@@ -66,7 +68,7 @@ export function AgencyGrowthAndSetupDesk({
   // Staff Invite State
   const [staffNameDraft, setStaffNameDraft] = useState<string>("");
   const [staffEmailDraft, setStaffEmailDraft] = useState<string>("");
-  const [staffRoleDraft, setStaffRoleDraft] = useState<"case_manager" | "paralegal">("paralegal");
+  const [staffRoleDraft, setStaffRoleDraft] = useState<AgencyTeamRole>("paralegal");
   const [staffBranchDraft, setStaffBranchDraft] = useState<string>("");
   const [staffError, setStaffError] = useState<string | null>(null);
 
@@ -1142,7 +1144,7 @@ export function AgencyGrowthAndSetupDesk({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Simran Kaur"
+                  placeholder="e.g. Full Legal Name"
                   value={staffNameDraft}
                   onChange={(e) => setStaffNameDraft(e.target.value)}
                   style={{
@@ -1161,7 +1163,7 @@ export function AgencyGrowthAndSetupDesk({
                 </label>
                 <input
                   type="email"
-                  placeholder="simran@yourfirm.com"
+                  placeholder="staff@practice-domain.com"
                   value={staffEmailDraft}
                   onChange={(e) => setStaffEmailDraft(e.target.value)}
                   style={{
@@ -1183,7 +1185,7 @@ export function AgencyGrowthAndSetupDesk({
                 </label>
                 <select
                   value={staffRoleDraft}
-                  onChange={(e) => setStaffRoleDraft(e.target.value as "case_manager" | "paralegal")}
+                  onChange={(e) => setStaffRoleDraft(e.target.value as AgencyTeamRole)}
                   style={{
                     width: "100%",
                     padding: "8px 10px",
@@ -1193,8 +1195,10 @@ export function AgencyGrowthAndSetupDesk({
                     background: "#FFFFFF",
                   }}
                 >
-                  <option value="paralegal">Paralegal / Document Reviewer</option>
-                  <option value="case_manager">Case Manager / Counsel</option>
+                  <option value="paralegal">Case Processor / Paralegal</option>
+                  <option value="case_manager">Case Manager / Licensed Counsel</option>
+                  <option value="company_admin">Co-Partner / Branch Admin</option>
+                  <option value="intake_finance">Intake / Finance Coordinator</option>
                 </select>
               </div>
               <div>
@@ -1262,7 +1266,7 @@ export function AgencyGrowthAndSetupDesk({
                   <div>
                     <strong>{member.fullName}</strong> ({member.email}) ·{" "}
                     <span style={{ color: "#526360" }}>
-                      {member.role === "case_manager" ? "Case Manager" : "Paralegal"} • {member.branchOffice}
+                      {formatStaffRoleLabel(member.role)} • {member.branchOffice}
                     </span>
                   </div>
                   <code style={{ fontSize: "11.5px", fontWeight: 700, color: "#063C3D" }}>

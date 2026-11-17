@@ -5,7 +5,7 @@ import { Button } from "../common/Button";
 import { ImmigrationCase, UserContext, RoleCode } from "../../lib/types";
 import { getCaseKickoffProgress } from "../../lib/caseKickoffStore";
 import { CANONICAL_6_STAGES, getCaseStageInfo } from "../../lib/caseLifecycle";
-import { canDeleteClient } from "../../lib/auth";
+import { canDeleteClient, canDeleteCase } from "../../lib/auth";
 import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 import { api } from "../../lib/api";
 
@@ -19,6 +19,7 @@ interface CaseDrilldownDrawerProps {
   currentUser?: UserContext | null;
   activeRole?: RoleCode;
   onDeleteClient?: (clientId: string) => void | Promise<void>;
+  onDeleteCase?: (caseId: string) => void | Promise<void>;
 }
 
 export function CaseDrilldownDrawer({
@@ -31,6 +32,7 @@ export function CaseDrilldownDrawer({
   currentUser,
   activeRole,
   onDeleteClient,
+  onDeleteCase,
 }: CaseDrilldownDrawerProps) {
   if (!caseItem) return null;
 
@@ -44,6 +46,7 @@ export function CaseDrilldownDrawer({
           ? ({ role: activeRole, experience: activeRole } as UserContext)
           : null);
   const isDeleteClientAllowed = canDeleteClient(effectiveUser);
+  const isDeleteCaseAllowed = canDeleteCase(effectiveUser);
 
   const kickoff = getCaseKickoffProgress(caseItem.id);
   const stageInfo = getCaseStageInfo(caseItem.status);
@@ -74,6 +77,23 @@ export function CaseDrilldownDrawer({
     onClose();
   };
 
+  const handleDeleteCaseClick = async () => {
+    if (!caseItem?.id) return;
+    const ok = window.confirm(
+      `Permanently delete case "${caseItem.case_number}" (${caseItem.title}) along with its documents, tasks, and findings? Retained client profile (${caseItem.client_name || "Unlinked"}) will remain preserved. This action cannot be undone.`
+    );
+    if (!ok) return;
+
+    if (onDeleteCase) {
+      await onDeleteCase(caseItem.id);
+    } else if (ws?.handleDeleteCase) {
+      await ws.handleDeleteCase(caseItem.id);
+    } else {
+      await api.deleteCase(caseItem.id, effectiveUser?.role || activeRole || "master_admin");
+    }
+    onClose();
+  };
+
   return (
     <Drawer
       isOpen={isOpen}
@@ -82,19 +102,31 @@ export function CaseDrilldownDrawer({
       subtitle={caseItem.title}
       badge={<Badge variant={stageInfo.badgeVariant}>{stageInfo.label}</Badge>}
       footer={
-        <div style={{ display: "flex", gap: "10px", width: "100%", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "10px", width: "100%", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             <Button variant="secondary" onClick={onClose} data-testid="drawer-close-btn">
               Close
             </Button>
+            {isDeleteCaseAllowed && (
+              <Button
+                variant="danger"
+                data-testid="delete-case-drawer-btn"
+                aria-label={`Delete case ${caseItem.case_number}`}
+                onClick={handleDeleteCaseClick}
+                style={{ background: "#FEF2F2", color: "#DC2626", borderColor: "#FCA5A5" }}
+              >
+                Delete Case
+              </Button>
+            )}
             {isDeleteClientAllowed && caseItem.client_id && (
               <Button
                 variant="danger"
                 data-testid="delete-client-drawer-btn"
                 aria-label={`Delete client ${caseItem.client_name || ""}`.trim()}
                 onClick={handleDeleteClientClick}
+                style={{ background: "#FEF2F2", color: "#DC2626", borderColor: "#FCA5A5" }}
               >
-                🗑️ Delete Client
+                Delete Client
               </Button>
             )}
           </div>

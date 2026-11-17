@@ -15,7 +15,7 @@ export interface ClientDirectChatWidgetProps {
 export function ClientDirectChatWidget({
   hasAssignedOfficer,
   displayOfficerTitle,
-  firmDisplayName = "LexImmigration Law Firm",
+  firmDisplayName = "Legal Practice Portal",
   quickChatMessage,
   onQuickChatChange,
   onSendMessage,
@@ -32,7 +32,7 @@ export function ClientDirectChatWidget({
         .join("")
         .slice(0, 2)
         .toUpperCase()
-    : "⚖️";
+    : null;
 
   const handleSend = () => {
     if (!quickChatMessage.trim()) return;
@@ -55,10 +55,9 @@ export function ClientDirectChatWidget({
     <div
       style={{
         background: "#FFFFFF",
-        border: "1.5px solid #B9DED4",
-        borderRadius: "14px",
-        padding: "22px 24px",
-        boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
+        border: "1px solid #DCE5E1",
+        borderRadius: "12px",
+        padding: "20px 22px",
         display: "flex",
         flexDirection: "column",
         gap: "14px",
@@ -73,19 +72,19 @@ export function ClientDirectChatWidget({
           flexWrap: "wrap",
           gap: "12px",
           borderBottom: "1px solid #DCE5E1",
-          paddingBottom: "14px",
+          paddingBottom: "12px",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div style={{ position: "relative" }}>
             <div
               style={{
-                width: "44px",
-                height: "44px",
+                width: "42px",
+                height: "42px",
                 borderRadius: "50%",
                 background: hasAssignedOfficer ? "#0D6866" : "#F1F5F9",
                 color: hasAssignedOfficer ? "#FFFFFF" : "#64748B",
-                fontSize: hasAssignedOfficer ? "15px" : "20px",
+                fontSize: hasAssignedOfficer ? "14px" : "16px",
                 fontWeight: 750,
                 display: "flex",
                 alignItems: "center",
@@ -94,7 +93,17 @@ export function ClientDirectChatWidget({
                 border: hasAssignedOfficer ? "1.5px solid #B9DED4" : "1.5px solid #CBD5E1",
               }}
             >
-              {officerInitials}
+              {hasAssignedOfficer ? (
+                officerInitials
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" />
+                  <path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" />
+                  <path d="M7 21h10" />
+                  <path d="M12 3v18" />
+                  <path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2" />
+                </svg>
+              )}
             </div>
             {hasAssignedOfficer ? (
               <span
@@ -237,7 +246,12 @@ export function ClientDirectChatWidget({
                 e.currentTarget.style.background = "#F8FAF9";
               }}
             >
-              💬 {prompt}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                {prompt}
+              </span>
             </button>
           ))}
         </div>

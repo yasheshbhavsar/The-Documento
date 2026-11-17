@@ -536,6 +536,17 @@ export interface DocumentItem {
   suggested_boundaries?: any[];
   provenance_extractions?: FieldExtractionProvenance[];
   legal_sufficiency_disclaimer?: string;
+  // Raw Client/Sponsor Packet -> Paralegal AI Lab Sorted Tree Metadata
+  is_raw_packet?: boolean;
+  raw_packet_id?: string;
+  ai_lab_status?: "pending" | "completed";
+  parent_packet_id?: string;
+  page_range?: string;
+  page_numbers?: number[];
+  person_role?: string;
+  person_name?: string;
+  uploader_role?: "applicant" | "sponsor" | "staff";
+  is_private_to_firm?: boolean;
 }
 
 export interface ReviewDimensionDetail {
@@ -1521,14 +1532,21 @@ export interface MetricDefinition<T> {
 
 export interface StaffWorkloadItem {
   user_id: string;
+  invite_id?: string;
+  is_owner?: boolean;
   full_name: string;
   email: string;
   roles: string[];
+  branch_office?: string;
   assigned_cases: number;
   pending_tasks: number;
   nominal_capacity: number;
   utilization_pct: number;
   status: "normal" | "overloaded";
+  login_enabled?: boolean;
+  passcode?: string;
+  invited_at?: string;
+  open_reviews?: number;
   branch_id?: string | null;
   team_id?: string | null;
 }

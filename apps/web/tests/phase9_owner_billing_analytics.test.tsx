@@ -1,5 +1,11 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  const { mockApiModuleWithFixtures } = await import("./helpers/mockApiFixtures");
+  return mockApiModuleWithFixtures(actual);
+});
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ExecutiveCommandCenter } from "../components/analytics/ExecutiveCommandCenter";
 import { AnalyticsExplorer } from "../components/analytics/AnalyticsExplorer";
@@ -9,7 +15,7 @@ import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashbo
 import {
   FALLBACK_EXECUTIVE_DASHBOARD,
   FALLBACK_OPERATIONS_ANALYTICS,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Phase 9 — Owner Analytics, Company Management, and Billing", () => {
   describe("ExecutiveCommandCenter Component", () => {

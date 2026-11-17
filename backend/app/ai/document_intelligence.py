@@ -31,6 +31,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from backend.app.ai.comparators import (
+    are_roles_distinct_persons,
+    compare_addresses,
+    compare_dates_of_birth,
+    compare_names,
+    normalize_person_role,
+)
+from backend.app.ai.sponsor_intelligence import SponsorIntelligenceEngine
 from backend.app.domain.models import (
     CaseAIFinding,
     CaseTask,
@@ -43,10 +51,123 @@ from backend.app.extraction.service import format_field_extraction_provenance
 
 logger = logging.getLogger("ai_immigration.ai.document_intelligence")
 
+CONTRIBUTOR_ASSOCIATION_NOTE = "Attributed to Overseas Sponsor / Family Contributor"
+
 OCR_LEGAL_SUFFICIENCY_DISCLAIMER = (
     "High optical character recognition (OCR) confidence reflects typographical and contrast fidelity only; "
     "it does not constitute evidentiary or statutory legal sufficiency under governing immigration regulations."
 )
+
+
+def _doc_to_role_dict(doc: Any) -> Dict[str, Any]:
+    """Normalizes either a SQLAlchemy Document instance or a dict for role attribution."""
+    if isinstance(doc, dict):
+        return doc
+    raw_fields = getattr(doc, "extracted_fields", None) or []
+    field_list: List[Dict[str, Any]] = []
+    for f in raw_fields:
+        if isinstance(f, dict):
+            field_list.append(f)
+        else:
+            val = (
+                f.corrected_value
+                if getattr(f, "is_manually_corrected", False)
+                else (getattr(f, "normalized_value", None) or getattr(f, "original_value", None))
+            )
+            field_list.append(
+                {
+                    "field_name": getattr(f, "field_name", ""),
+                    "field_label": getattr(f, "field_label", ""),
+                    "original_value": getattr(f, "original_value", None),
+                    "normalized_value": val,
+                }
+            )
+    return {
+        "id": str(getattr(doc, "id", "")),
+        "title": getattr(doc, "title", None) or getattr(doc, "filename", ""),
+        "filename": getattr(doc, "filename", ""),
+        "category": getattr(doc, "category", ""),
+        "extracted_text": getattr(doc, "extracted_text", "") or "",
+        "layout_metadata": getattr(doc, "layout_metadata", None) or {},
+        "extracted_fields": field_list,
+        "applicant_dependant_id": str(getattr(doc, "applicant_dependant_id", ""))
+        if getattr(doc, "applicant_dependant_id", None)
+        else None,
+    }
+
+
+def detect_document_contributor_role(
+    doc: Any,
+    case: Optional[Any] = None,
+    case_docs: Optional[List[Any]] = None,
+    principal_name_override: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Determines whether a document belongs to the Principal Applicant or to a distinct
+    overseas sponsor / Canadian sibling / spouse / dependant contributor.
+    """
+    doc_dict = _doc_to_role_dict(doc)
+    principal_name = principal_name_override
+    pathway = ""
+
+    if case is not None:
+        if isinstance(case, dict):
+            pathway = str(case.get("visa_category") or case.get("pathway") or "")
+            if not principal_name:
+                principal_name = case.get("applicant_name") or case.get("principal_name")
+        else:
+            pathway = str(getattr(case, "visa_category", "") or "")
+            client_obj = getattr(case, "client", None)
+            if not principal_name and client_obj is not None:
+                first_n = (getattr(client_obj, "first_name", "") or "").strip()
+                last_n = (getattr(client_obj, "last_name", "") or "").strip()
+                combined = f"{first_n} {last_n}".strip()
+                if combined:
+                    principal_name = combined
+
+    role_res = SponsorIntelligenceEngine.infer_role_for_document(
+        doc_dict,
+        anchor_applicant_name=principal_name,
+        pathway=pathway,
+    )
+    inferred_role = normalize_person_role(role_res.get("person_role") or role_res.get("role"))
+
+    # If explicitly linked to a dependant on the ORM model and still marked principal_applicant, promote to spouse/dependant
+    dep_id = doc_dict.get("applicant_dependant_id")
+    if dep_id and inferred_role == "principal_applicant":
+        inferred_role = "spouse_partner"
+
+    is_distinct = are_roles_distinct_persons("principal_applicant", inferred_role)
+    return {
+        "person_role": inferred_role,
+        "holder_name": role_res.get("holder_name"),
+        "confidence": role_res.get("confidence", 0.85),
+        "is_distinct_from_principal_applicant": is_distinct,
+        "association_note": CONTRIBUTOR_ASSOCIATION_NOTE if is_distinct else None,
+    }
+
+
+def _is_false_cross_person_finding(finding: Any) -> bool:
+    """Checks if a finding is a cross-person Name/DOB/Address mismatch against the Principal Applicant."""
+    f_type = (getattr(finding, "finding_type", None) or (finding.get("finding_type") if isinstance(finding, dict) else "") or "").lower()
+    title = (getattr(finding, "title", None) or (finding.get("title") if isinstance(finding, dict) else "") or "").lower()
+    desc = (getattr(finding, "description", None) or (finding.get("description") if isinstance(finding, dict) else "") or "").lower()
+    combined = f"{f_type} {title} {desc}"
+
+    cross_person_markers = (
+        "name mismatch",
+        "name variation",
+        "name contradiction",
+        "address contradiction",
+        "address mismatch",
+        "residential address",
+        "date of birth inconsistency",
+        "dob mismatch",
+        "dob contradiction",
+        "against principal applicant",
+        "client record",
+    )
+    return any(m in combined for m in cross_person_markers)
 
 
 class ReviewDimensionDetail(BaseModel):
@@ -189,8 +310,12 @@ def evaluate_document_six_dimensions(
     )
 
     # -------------------------------------------------------------
-    # Dimension 3: Applicant Association
+    # Dimension 3: Applicant Association (Role-Aware)
     # -------------------------------------------------------------
+    role_info = detect_document_contributor_role(doc, case=case, case_docs=case_docs)
+    detected_role = role_info["person_role"]
+    is_contributor_role = role_info["is_distinct_from_principal_applicant"]
+
     assoc_flags = []
     is_confirmed = getattr(doc, "is_assignment_confirmed", True)
     prop_name = getattr(doc, "proposed_applicant_name", None)
@@ -203,26 +328,39 @@ def evaluate_document_six_dimensions(
         assoc_status = "passed"
         assoc_score = 1.0
 
+    if assoc_status == "passed" and is_contributor_role:
+        assoc_summary = f"{CONTRIBUTOR_ASSOCIATION_NOTE} ({detected_role})."
+    elif assoc_status == "passed":
+        assoc_summary = "Document is definitively linked to verified applicant."
+    else:
+        assoc_summary = f"Provisional assignment to {prop_name or 'Applicant'} requires officer confirmation."
+
+    assoc_details: Dict[str, Any] = {
+        "is_assignment_confirmed": is_confirmed,
+        "applicant_dependant_id": str(doc.applicant_dependant_id) if doc.applicant_dependant_id else None,
+        "client_id": str(doc.client_id) if doc.client_id else None,
+        "proposed_applicant_name": prop_name,
+        "person_role": detected_role,
+    }
+    if is_contributor_role:
+        assoc_details["association_note"] = CONTRIBUTOR_ASSOCIATION_NOTE
+
     applicant_assoc = ReviewDimensionDetail(
         dimension="applicant_association",
         status=assoc_status,
         score=assoc_score,
         label="Applicant Association",
-        summary="Document is definitively linked to verified applicant." if assoc_status == "passed" else f"Provisional assignment to {prop_name or 'Applicant'} requires officer confirmation.",
-        details={
-            "is_assignment_confirmed": is_confirmed,
-            "applicant_dependant_id": str(doc.applicant_dependant_id) if doc.applicant_dependant_id else None,
-            "client_id": str(doc.client_id) if doc.client_id else None,
-            "proposed_applicant_name": prop_name,
-        },
+        summary=assoc_summary,
+        details=assoc_details,
         high_priority_flags=assoc_flags,
     )
 
     # -------------------------------------------------------------
-    # Dimension 4: Consistency (Cross-Document Concordance)
+    # Dimension 4: Consistency (Role-Aware Cross-Document Concordance)
     # -------------------------------------------------------------
     consistency_flags = []
     doc_findings = []
+    suppressed_cross_role_count = 0
     if unresolved_findings:
         for f in unresolved_findings:
             matches = False
@@ -237,6 +375,9 @@ def evaluate_document_six_dimensions(
                         matches = True
                         break
             if matches:
+                if is_contributor_role and _is_false_cross_person_finding(f):
+                    suppressed_cross_role_count += 1
+                    continue
                 doc_findings.append(f)
                 consistency_flags.append(f"[{f.severity.upper()}] {f.title}: {f.description}")
 
@@ -248,16 +389,31 @@ def evaluate_document_six_dimensions(
         consistency_status = "passed"
         consistency_score = 1.0
 
+    if consistency_status == "passed" and is_contributor_role:
+        consistency_summary = (
+            f"{CONTRIBUTOR_ASSOCIATION_NOTE}: cross-person name/address comparison against Principal Applicant bypassed."
+        )
+    elif consistency_status == "passed":
+        consistency_summary = "Zero cross-document discrepancies or name/date conflicts detected."
+    else:
+        consistency_summary = f"{len(doc_findings)} discrepancy finding(s) require legal reviewer disposition."
+
+    consistency_details: Dict[str, Any] = {
+        "discrepancies_count": len(doc_findings),
+        "findings_summary": [f.title for f in doc_findings[:5]],
+        "person_role": detected_role,
+    }
+    if is_contributor_role:
+        consistency_details["association_note"] = CONTRIBUTOR_ASSOCIATION_NOTE
+        consistency_details["suppressed_cross_role_findings_count"] = suppressed_cross_role_count
+
     consistency = ReviewDimensionDetail(
         dimension="consistency",
         status=consistency_status,
         score=consistency_score,
         label="Cross-Document Consistency",
-        summary="Zero cross-document discrepancies or name/date conflicts detected." if consistency_status == "passed" else f"{len(doc_findings)} discrepancy finding(s) require legal reviewer disposition.",
-        details={
-            "discrepancies_count": len(doc_findings),
-            "findings_summary": [f.title for f in doc_findings[:5]],
-        },
+        summary=consistency_summary,
+        details=consistency_details,
         high_priority_flags=consistency_flags,
     )
 
@@ -419,3 +575,163 @@ def create_anomaly_finding(
         created_at=now,
         updated_at=now,
     )
+
+
+def evaluate_role_aware_consistency(
+    principal_applicant: Optional[Dict[str, Any]],
+    documents: List[Any],
+    pathway: str = "",
+) -> Dict[str, Any]:
+    """
+    Role-aware cross-document consistency auditor.
+
+    When a document is attributed to a distinct contributor role (`overseas_sponsor_host`,
+    `canadian_crs_sibling`, `spouse_partner`, `dependant_child`) via `extracted_fields`,
+    `layout_metadata`, or CRA/HMRC/ATO/VEVO/Sponsor markers, it does NOT raise a false
+    "Name Mismatch against Principal Applicant" or "Address Contradiction" anomaly.
+    Instead, it records an informational association note:
+    "Attributed to Overseas Sponsor / Family Contributor".
+    """
+    pa_profile = principal_applicant or {}
+    pa_name = (
+        pa_profile.get("full_name")
+        or pa_profile.get("applicant_name")
+        or f"{pa_profile.get('first_name', '')} {pa_profile.get('last_name', '')}".strip()
+    )
+    pa_dob = pa_profile.get("date_of_birth") or pa_profile.get("dob")
+    pa_address = (
+        pa_profile.get("residential_address")
+        or pa_profile.get("address")
+        or pa_profile.get("permanent_address")
+    )
+
+    normalized_docs = [_doc_to_role_dict(d) for d in (documents or [])]
+
+    # Auto-seed Principal Applicant anchor from the packet if not explicitly supplied
+    if not pa_name:
+        packet_eval = SponsorIntelligenceEngine.evaluate_packet_or_case_intelligence(
+            normalized_docs, pathway=pathway
+        )
+        for d_attr in packet_eval.get("document_roles", []):
+            if normalize_person_role(d_attr.get("person_role")) == "principal_applicant":
+                if d_attr.get("holder_name"):
+                    pa_name = d_attr["holder_name"]
+                    break
+
+    anomalies: List[Dict[str, Any]] = []
+    contributor_attributions: List[Dict[str, Any]] = []
+
+    for doc_dict in normalized_docs:
+        role_info = detect_document_contributor_role(
+            doc_dict,
+            case={"pathway": pathway, "applicant_name": pa_name},
+            principal_name_override=pa_name,
+        )
+        role = role_info["person_role"]
+        doc_title = doc_dict.get("title") or doc_dict.get("filename") or "Untitled Document"
+        doc_id = doc_dict.get("id")
+
+        fields_map: Dict[str, str] = {}
+        raw_fields = doc_dict.get("extracted_fields") or []
+        if isinstance(raw_fields, dict):
+            fields_map = {str(k): str(v) for k, v in raw_fields.items() if v is not None}
+        else:
+            for f in raw_fields:
+                if isinstance(f, dict):
+                    fn = f.get("field_name")
+                    val = f.get("normalized_value") or f.get("original_value")
+                    if fn and val and fn not in fields_map:
+                        fields_map[str(fn)] = str(val)
+
+        holder_name = (
+            fields_map.get("full_name")
+            or fields_map.get("applicant_name")
+            or fields_map.get("holder_name")
+            or fields_map.get("taxpayer_name")
+            or role_info.get("holder_name")
+        )
+        doc_dob = fields_map.get("date_of_birth") or fields_map.get("dob")
+        doc_addr = (
+            fields_map.get("residential_address")
+            or fields_map.get("address")
+            or fields_map.get("permanent_address")
+        )
+        if not doc_addr:
+            text_val = doc_dict.get("extracted_text") or ""
+            m_addr = re.search(r"(?:Address|Residential Address)\s*[:\-]\s*([^\n]{8,120})", text_val, re.IGNORECASE)
+            if m_addr:
+                doc_addr = m_addr.group(1).strip()
+
+        if are_roles_distinct_persons("principal_applicant", role):
+            contributor_attributions.append(
+                {
+                    "document_id": doc_id,
+                    "title": doc_title,
+                    "person_role": role,
+                    "holder_name": holder_name,
+                    "address": doc_addr,
+                    "status": "attributed_contributor",
+                    "association_note": CONTRIBUTOR_ASSOCIATION_NOTE,
+                }
+            )
+            continue
+
+        # Same person (`principal_applicant`) -> run genuine cross-document comparisons
+        if pa_name and holder_name:
+            name_cmp = compare_names(pa_name, holder_name)
+            if not name_cmp.is_concordant:
+                anomalies.append(
+                    {
+                        "document_id": doc_id,
+                        "title": doc_title,
+                        "person_role": role,
+                        "finding_type": "name_mismatch",
+                        "severity": "critical" if name_cmp.is_confirmed_contradiction else "major",
+                        "title_summary": "Name Mismatch against Principal Applicant",
+                        "anchor_value": pa_name,
+                        "compared_value": holder_name,
+                        "explanation": name_cmp.explanation,
+                    }
+                )
+
+        if pa_dob and doc_dob:
+            dob_cmp = compare_dates_of_birth(str(pa_dob), str(doc_dob))
+            if not dob_cmp.is_concordant:
+                anomalies.append(
+                    {
+                        "document_id": doc_id,
+                        "title": doc_title,
+                        "person_role": role,
+                        "finding_type": "dob_discrepancy",
+                        "severity": "critical" if dob_cmp.is_confirmed_contradiction else "major",
+                        "title_summary": "Date of Birth Inconsistency against Principal Applicant",
+                        "anchor_value": str(pa_dob),
+                        "compared_value": str(doc_dob),
+                        "explanation": dob_cmp.explanation,
+                    }
+                )
+
+        if pa_address and doc_addr:
+            addr_cmp = compare_addresses(str(pa_address), str(doc_addr))
+            if not addr_cmp.is_concordant:
+                anomalies.append(
+                    {
+                        "document_id": doc_id,
+                        "title": doc_title,
+                        "person_role": role,
+                        "finding_type": "address_contradiction",
+                        "severity": "minor" if not addr_cmp.is_confirmed_contradiction else "major",
+                        "title_summary": "Address Contradiction",
+                        "anchor_value": str(pa_address),
+                        "compared_value": str(doc_addr),
+                        "explanation": addr_cmp.explanation,
+                    }
+                )
+
+    return {
+        "principal_applicant_name": pa_name,
+        "anomalies_count": len(anomalies),
+        "anomalies": anomalies,
+        "contributor_attributions_count": len(contributor_attributions),
+        "contributor_attributions": contributor_attributions,
+    }

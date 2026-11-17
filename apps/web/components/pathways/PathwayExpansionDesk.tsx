@@ -140,8 +140,8 @@ export function PathwayExpansionDesk({ userRole = "master_admin" }: PathwayExpan
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Multilingual tester states
-  const [name1, setName1] = useState<string>("Mohammad Al-Hassan");
-  const [name2, setName2] = useState<string>("Mohammed Hassan");
+  const [name1, setName1] = useState<string>("");
+  const [name2, setName2] = useState<string>("");
   const [transliterationAnalysis, setTransliterationAnalysis] = useState<{
     similarity_score: number;
     variation_type: string;
@@ -227,7 +227,7 @@ export function PathwayExpansionDesk({ userRole = "master_admin" }: PathwayExpan
       return;
     }
 
-    // Name inversion check (Given/Family inversion e.g. Chen Wei vs Wei Chen)
+    // Name inversion check (Given/Family inversion)
     const words1 = clean1.split(/\s+/);
     const words2 = clean2.split(/\s+/);
     if (words1.length === 2 && words2.length === 2) {
@@ -243,12 +243,25 @@ export function PathwayExpansionDesk({ userRole = "master_admin" }: PathwayExpan
       }
     }
 
-    // Cyrillic-Latin Transliteration Equivalence (Yelena vs Elena)
-    if (
-      (clean1.includes("yelena") && clean2.includes("elena")) ||
-      (clean1.includes("elena") && clean2.includes("yelena")) ||
-      (clean1.includes("dmitry") && clean2.includes("dmitri"))
-    ) {
+    // Cyrillic-Latin Transliteration Equivalence (ISO 9 / BGN/PCGN normalization)
+    const normalizeCyrillicLatin = (s: string) =>
+      s
+        .replace(/iye\b/g, "ie")
+        .replace(/([a-z])yi\b/g, "$1i")
+        .replace(/(iy|yy)\b/g, "i")
+        .replace(/\bye/g, "e")
+        .replace(/\byu/g, "iu")
+        .replace(/\bya/g, "ia")
+        .replace(/kh/g, "h")
+        .replace(/ks/g, "x")
+        .replace(/['’`]/g, "");
+    const cyr1 = normalizeCyrillicLatin(clean1);
+    const cyr2 = normalizeCyrillicLatin(clean2);
+    const hasCyrillicPattern =
+      /[\u0400-\u04FF]/.test(clean1 + clean2) ||
+      cyr1 !== clean1 ||
+      cyr2 !== clean2;
+    if (hasCyrillicPattern && cyr1 === cyr2) {
       setTransliterationAnalysis({
         similarity_score: 0.95,
         variation_type: "cyrillic_transliteration_variant",
@@ -259,17 +272,28 @@ export function PathwayExpansionDesk({ userRole = "master_admin" }: PathwayExpan
       return;
     }
 
-    // Arabic Transliteration Variant (Mohammad vs Mohammed / Al-Hassan vs Hassan)
-    if (
-      (clean1.includes("moham") && clean2.includes("moham")) ||
-      (clean1.includes("hassan") && clean2.includes("hassan"))
-    ) {
+    // Arabic Transliteration Variant (definite article stripping, vowel & gemination normalization)
+    const normalizeArabicLatin = (s: string) =>
+      s
+        .replace(/\b(al|el)-?/g, "")
+        .replace(/([bcdfghjklmnpqrstvwxyz])\1+/g, "$1")
+        .replace(/[ou]+/g, "u")
+        .replace(/[ei]+/g, "i")
+        .replace(/ah\b/g, "a")
+        .replace(/\s+/g, " ")
+        .trim();
+    const ar1 = normalizeArabicLatin(clean1);
+    const ar2 = normalizeArabicLatin(clean2);
+    const hasArabicMarker =
+      /[\u0600-\u06FF]/.test(clean1 + clean2) ||
+      /\b(al|el)-/i.test(clean1 + " " + clean2);
+    if (hasArabicMarker && ar1 === ar2) {
       setTransliterationAnalysis({
         similarity_score: 0.92,
         variation_type: "arabic_transliteration_variant",
         is_acceptable_transliteration: true,
         confidence_label: "Transliteration Equivalence Detected (92% Confidence Match)",
-        explanation: "Arabic script Romanization variance including definite article ('Al-') and vowel representation. Adheres to Documento cross-document comparison standard without false fraud accusation.",
+        explanation: "Arabic script Romanization variance including definite article ('Al-'/'El-') and vowel representation. Adheres to Documento cross-document comparison standard without false fraud accusation.",
       });
       return;
     }
@@ -789,9 +813,9 @@ export function PathwayExpansionDesk({ userRole = "master_admin" }: PathwayExpan
                 <button
                   data-testid="preset-arabic"
                   onClick={() => {
-                    setName1("Mohammad Al-Hassan");
-                    setName2("Mohammed Hassan");
-                    handleAnalyzeTransliteration("Mohammad Al-Hassan", "Mohammed Hassan");
+                    setName1("Al-Safar Wathiqa");
+                    setName2("El-Saffar Wathiqah");
+                    handleAnalyzeTransliteration("Al-Safar Wathiqa", "El-Saffar Wathiqah");
                   }}
                   className="px-3 py-2 border rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100"
                 >
@@ -800,9 +824,9 @@ export function PathwayExpansionDesk({ userRole = "master_admin" }: PathwayExpan
                 <button
                   data-testid="preset-cyrillic"
                   onClick={() => {
-                    setName1("Yelena Smirnova");
-                    setName2("Elena Smirnova");
-                    handleAnalyzeTransliteration("Yelena Smirnova", "Elena Smirnova");
+                    setName1("Zayavleniye");
+                    setName2("Zayavlenie");
+                    handleAnalyzeTransliteration("Zayavleniye", "Zayavlenie");
                   }}
                   className="px-3 py-2 border rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100"
                 >
@@ -811,9 +835,9 @@ export function PathwayExpansionDesk({ userRole = "master_admin" }: PathwayExpan
                 <button
                   data-testid="preset-inversion"
                   onClick={() => {
-                    setName1("Chen Wei");
-                    setName2("Wei Chen");
-                    handleAnalyzeTransliteration("Chen Wei", "Wei Chen");
+                    setName1("Given Family");
+                    setName2("Family Given");
+                    handleAnalyzeTransliteration("Given Family", "Family Given");
                   }}
                   className="px-3 py-2 border rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100"
                 >

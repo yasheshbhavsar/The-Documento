@@ -3,24 +3,39 @@
 import React, { useState } from "react";
 import { InteractiveSectionBackground } from "./InteractiveSectionBackground";
 
-const signals = [
+interface ArchitectureSignal {
+  code: string;
+  tag: string;
+  title: string;
+  detail: string;
+  stat: string;
+  standard: string;
+}
+
+const signals: ArchitectureSignal[] = [
   {
-    index: "01",
+    code: "SEC-256",
     tag: "SHA-256 Provenance",
     title: "Evidence stays traceable",
     detail: "Source-linked exhibits anchored by cryptographic hashing and exact page coordinates.",
+    stat: "100% Merkle Root Hashing",
+    standard: "Federal Evidentiary Rule 902",
   },
   {
-    index: "02",
+    code: "RBAC-W1",
     tag: "Ethical Wall RBAC",
     title: "Every role has a boundary",
     detail: "Isolated workspaces separating client portals from internal firm strategy.",
+    stat: "Quarantined Strategy Records",
+    standard: "ABA Model Rules 1.6 & 5.3",
   },
   {
-    index: "03",
+    code: "HIL-REV",
     tag: "Attorney-Led",
     title: "People stay accountable",
     detail: "Licensed counsel retain non-delegable review over every finding and filing.",
+    stat: "Mandatory Adjudication Gate",
+    standard: "Non-Delegable Legal Review",
   },
 ];
 
@@ -34,9 +49,9 @@ export function DocumentoSignalStrip() {
       style={{
         position: "relative",
         overflow: "hidden",
-        padding: "44px 24px",
-        background: "#FAFCFB",
-        borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+        padding: "64px 24px",
+        background: "#F8FAF9",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <InteractiveSectionBackground variant="architectural-grid" />
@@ -50,144 +65,177 @@ export function DocumentoSignalStrip() {
           margin: "0 auto",
         }}
       >
+        {/* Modern Minimal Section Header */}
         <div
           className="documento-signal-intro section-header-reveal animate-on-scroll"
           data-motion="left"
         >
-          <span
+          <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              fontSize: "11.5px",
-              fontWeight: 650,
-              color: "#0D6866",
-              letterSpacing: "0.06em",
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "#07594F",
+              letterSpacing: "0.08em",
               textTransform: "uppercase",
-              marginBottom: "10px",
+              marginBottom: "12px",
             }}
           >
-            <span
-              style={{
-                width: "6px",
-                height: "6px",
-                borderRadius: "50%",
-                background: "#169B77",
-                display: "inline-block",
-              }}
-              className="status-dot-pulse"
-            />
             Architecture Standard
-          </span>
-          <p
+          </div>
+
+          <h2
             style={{
-              fontSize: "clamp(22px, 2.4vw, 28px)",
-              fontWeight: 650,
+              fontSize: "clamp(24px, 2.6vw, 32px)",
+              fontWeight: 700,
               lineHeight: 1.2,
-              letterSpacing: "-0.025em",
+              letterSpacing: "-0.03em",
               color: "#063C3D",
-              margin: 0,
+              margin: "0 0 12px 0",
+              fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
             }}
           >
             Structure for the details.
             <br />
-            <span style={{ color: "#0D6866", fontWeight: 500 }}>
-              Clarity for the decisions.
-            </span>
+            Clarity for the decisions.
+          </h2>
+
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#526663",
+              lineHeight: 1.6,
+              margin: 0,
+              maxWidth: "360px",
+            }}
+          >
+            Three non-negotiable architectural guarantees governing every evidentiary ingestion, role boundary, and legal authorization.
           </p>
         </div>
 
+        {/* 3-Pillar Architectural Ledger */}
         <div
           className="documento-signal-items stagger-children animate-on-scroll"
           data-motion="right"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: "20px",
+          }}
         >
           {signals.map((signal, idx) => {
             const isSelected = activeIdx === idx;
             return (
               <article
-                className="documento-signal-item spotlight-card hover-lift"
-                key={signal.index}
-                onMouseEnter={() => setActiveIdx(idx)}
+                className="documento-signal-item"
+                key={signal.code}
                 onClick={() => setActiveIdx(idx)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setActiveIdx(idx);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-pressed={isSelected}
                 style={{
                   cursor: "pointer",
-                  padding: "22px 24px",
-                  borderRadius: "14px",
-                  background: isSelected ? "#FFFFFF" : "rgba(255, 255, 255, 0.72)",
+                  padding: "26px 24px",
+                  borderRadius: "12px",
+                  background: isSelected ? "#FFFFFF" : "#F4F8F6",
                   border: isSelected
-                    ? "1px solid rgba(13, 104, 102, 0.28)"
-                    : "1px solid rgba(13, 104, 102, 0.1)",
+                    ? "1px solid rgba(13, 104, 102, 0.4)"
+                    : "1px solid #DCE7E3",
                   boxShadow: isSelected
-                    ? "0 16px 36px -12px rgba(6, 60, 61, 0.08)"
+                    ? "0 4px 16px -4px rgba(6, 60, 61, 0.06)"
                     : "none",
-                  transition: "all 240ms cubic-bezier(0.22, 1, 0.36, 1)",
+                  transition: "all 180ms cubic-bezier(0.16, 1, 0.3, 1)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  gap: "16px",
+                  minHeight: "190px",
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between",
-                    gap: "14px",
-                    width: "100%",
-                  }}
-                >
+                {/* Header Row: Standard Protocol Tag & Reference Code */}
+                <div>
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
+                      marginBottom: "14px",
                     }}
                   >
                     <span
                       style={{
-                        fontSize: "11px",
+                        fontSize: "11.5px",
                         fontWeight: 650,
-                        color: isSelected ? "#07594F" : "#5D6E7F",
-                        background: isSelected ? "#EAF5EF" : "#F2F7F5",
+                        color: isSelected ? "#07594F" : "#526663",
+                        background: isSelected ? "#EAF5EF" : "#EAEFEA",
                         padding: "3px 9px",
-                        borderRadius: "999px",
-                        transition: "all 200ms ease",
+                        borderRadius: "6px",
+                        letterSpacing: "0.02em",
+                        transition: "all 160ms ease",
                       }}
                     >
                       {signal.tag}
                     </span>
                     <span
                       style={{
-                        fontSize: "12px",
+                        fontSize: "11px",
                         fontWeight: 600,
-                        color: isSelected ? "#169B77" : "#94A8A4",
-                        transition: "color 200ms ease",
+                        color: isSelected ? "#169B77" : "#7A8F8B",
+                        letterSpacing: "0.04em",
                       }}
                     >
-                      {/* taste-skill-ignore */}
-                      {signal.index}
+                      § {signal.code}
                     </span>
                   </div>
 
-                  <div>
-                    <h3
-                      style={{
-                        fontSize: "16.5px",
-                        fontWeight: 650,
-                        color: "#063C3D",
-                        letterSpacing: "-0.015em",
-                        margin: "0 0 6px 0",
-                      }}
-                    >
-                      {signal.title}
-                    </h3>
-                    <p
-                      style={{
-                        fontSize: "13.5px",
-                        color: "#526663",
-                        lineHeight: 1.55,
-                        margin: 0,
-                      }}
-                    >
-                      {signal.detail}
-                    </p>
-                  </div>
+                  <h3
+                    style={{
+                      fontSize: "16.5px",
+                      fontWeight: 700,
+                      color: "#063C3D",
+                      letterSpacing: "-0.015em",
+                      margin: "0 0 8px 0",
+                      lineHeight: 1.3,
+                      fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
+                    }}
+                  >
+                    {signal.title}
+                  </h3>
+
+                  <p
+                    style={{
+                      fontSize: "13.5px",
+                      color: "#475955",
+                      lineHeight: 1.55,
+                      margin: 0,
+                    }}
+                  >
+                    {signal.detail}
+                  </p>
+                </div>
+
+                {/* Bottom Proof Strip: Concrete Legal Standard */}
+                <div
+                  style={{
+                    paddingTop: "12px",
+                    borderTop: "1px solid rgba(13, 104, 102, 0.08)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: "11px",
+                  }}
+                >
+                  <span style={{ color: "#169B77", fontWeight: 650 }}>
+                    {signal.stat}
+                  </span>
+                  <span style={{ color: "#6E7F7C", fontWeight: 500 }}>
+                    {signal.standard}
+                  </span>
                 </div>
               </article>
             );
@@ -197,3 +245,5 @@ export function DocumentoSignalStrip() {
     </section>
   );
 }
+
+export default DocumentoSignalStrip;

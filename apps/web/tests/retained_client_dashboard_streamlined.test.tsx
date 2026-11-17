@@ -11,7 +11,7 @@ import {
   FIXTURE_MESSAGES,
   FIXTURE_NOTIFICATIONS,
   FIXTURE_INVOICES,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 import { ImmigrationCase } from "../lib/types";
 
 const SPOUSAL_CASE_FIXTURE: ImmigrationCase = {

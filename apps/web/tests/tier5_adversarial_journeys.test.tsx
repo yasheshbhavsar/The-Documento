@@ -27,8 +27,8 @@ import {
   CanonicalStageKey,
 } from "../lib/caseLifecycle";
 
+import { api } from "../lib/api";
 import {
-  api,
   FIXTURE_CASES,
   FIXTURE_CLIENTS,
   FIXTURE_DOCUMENTS,
@@ -39,7 +39,7 @@ import {
   FIXTURE_INVOICES,
   FIXTURE_CAPACITY,
   FIXTURE_NOTIFICATIONS,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 import {
   ImmigrationCase,

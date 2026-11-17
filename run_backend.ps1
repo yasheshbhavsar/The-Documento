@@ -44,8 +44,21 @@ if (-not $env:DATABASE_URL) {
 $env:PYTHONPATH = $scriptDir
 Set-Location $backendDir
 
-Write-Host "Running Alembic migrations to head..." -ForegroundColor Cyan
+Write-Host "Checking database / running Alembic migrations..." -ForegroundColor Cyan
+$prevErrorPref = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 & $alembicExe -c $alembicIni upgrade head
+$alembicExit = $LASTEXITCODE
+$ErrorActionPreference = $prevErrorPref
+
+if ($alembicExit -ne 0) {
+    if ($env:ENVIRONMENT -eq "production" -or $env:ENVIRONMENT -eq "staging") {
+        Write-Error "Alembic migrations failed in $env:ENVIRONMENT environment (exit code $alembicExit)."
+        exit $alembicExit
+    }
+    Write-Warning "PostgreSQL database unavailable or credentials rejected (Alembic exit $alembicExit)."
+    Write-Host "Continuing in local dev mode - FastAPI will automatically use SQLite (backend/documento_local_dev.db) so OCR and intake APIs remain available." -ForegroundColor Yellow
+}
 
 Write-Host "Starting FastAPI server at http://localhost:8000..." -ForegroundColor Green
 Write-Host "OpenAPI documentation: http://localhost:8000/docs" -ForegroundColor Yellow

@@ -3,11 +3,14 @@ import { Modal } from "../common/Modal";
 import { TextInput, SelectInput } from "../common/FormControls";
 import { Button } from "../common/Button";
 import { Badge } from "../common/Badge";
-import { ClientProfile, DuplicateCandidate, ImmigrationCase, RoleCode } from "../../lib/types";
-import { api } from "../../lib/api";
+import { ClientProfile, DocumentCategory, DocumentItem, DuplicateCandidate, ImmigrationCase, RoleCode } from "../../lib/types";
+import { api, createDocumentRequest } from "../../lib/api";
 import { JURISDICTION_OPTIONS, JURISDICTION_PATHWAYS } from "./CreateCaseModal";
 import { getJurisdictionRepresentationInfo } from "../../lib/jurisdictionForms";
 import { extractProfileFromDocument, persistAndBroadcastAutoFill } from "../../lib/documentAutoFillEngine";
+import { detectCategoryAndRoleFromFilename, runSmartIntakePipeline } from "../../lib/api/extractor";
+import { getPathwayKickoffConfig, initCaseKickoffRecord, updateCaseKickoffRecord } from "../../lib/caseKickoffStore";
+import { createSponsorInviteLink, SponsorInviteRecord } from "../../lib/sponsorContributorStore";
 
 export interface ClientModalPrefill {
   firstName?: string;
@@ -28,7 +31,12 @@ interface CreateClientModalProps {
   onCaseCreated?: (
     newCase: ImmigrationCase,
     linkedClient?: ClientProfile,
-    isNewClientOnboarding?: boolean
+    isNewClientOnboarding?: boolean,
+    expressOptions?: {
+      skipKickoffModal?: boolean;
+      uploadedDocs?: DocumentItem[];
+      sponsorInvite?: SponsorInviteRecord | null;
+    }
   ) => void;
   clients?: ClientProfile[];
   activeRole?: RoleCode;
@@ -113,56 +121,188 @@ export function CreateClientModal({
   const docInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingDoc, setIsDraggingDoc] = useState(false);
   const [isExtractingDocument, setIsExtractingDocument] = useState(false);
+  const [droppedOnboardingFiles, setDroppedOnboardingFiles] = useState<File[]>([]);
+  const [detectedSponsor, setDetectedSponsor] = useState<{
+    sponsorName: string;
+    relationship: SponsorInviteRecord["relationship"];
+    jurisdiction: "CA" | "UK" | "AU";
+    badges: string[];
+  } | null>(null);
   const [extractedDocBanner, setExtractedDocBanner] = useState<{
     filename: string;
     confidence: number;
     fieldsCount: number;
+    extraNotes?: string;
+    backendOffline?: boolean;
   } | null>(null);
 
-  const handleDocumentAutoFill = async (file: File) => {
+  const handleDocumentAutoFill = async (
+    incoming: File | File[] | FileList,
+    options?: { isRescan?: boolean }
+  ) => {
+    const files = Array.isArray(incoming)
+      ? incoming
+      : "length" in (incoming as any)
+        ? Array.from(incoming as FileList)
+        : [incoming as File];
+    if (files.length === 0) return;
+
     setIsExtractingDocument(true);
     setError(null);
+    if (!options?.isRescan) {
+      setDroppedOnboardingFiles((prev) => [...prev, ...files]);
+    }
+
     try {
-      const profile = await extractProfileFromDocument(file);
-      if (profile.firstName) setFirstName(profile.firstName);
-      if (profile.lastName) setLastName(profile.lastName);
-      if (profile.email) setEmail(profile.email);
-      if (profile.phone) setPhone(profile.phone);
-      if (profile.nationality) setNationality(profile.nationality);
-      if (profile.passportNumber) setPassportNumber(profile.passportNumber);
-      if (profile.suggestedJurisdiction && JURISDICTION_PATHWAYS[profile.suggestedJurisdiction]) {
-        setJurisdiction(profile.suggestedJurisdiction);
-        const pathways = JURISDICTION_PATHWAYS[profile.suggestedJurisdiction];
-        const matchedPathway = profile.suggestedVisaCategory
-          ? pathways.find((p) => p.value === profile.suggestedVisaCategory)
-          : undefined;
-        setVisaCategory(matchedPathway ? matchedPathway.value : pathways[0]?.value || visaCategory);
+      const primaryFile = files[0];
+      const profile = await extractProfileFromDocument(primaryFile);
+
+      // Also run unified multi-file / packet intake when multiple files or merged packet dropped
+      const pipeline = await runSmartIntakePipeline(files, { contributorRole: "staff" });
+
+      const applicantDoc = pipeline.documents.find((d) => d.personRole === "principal_applicant");
+      const spouseDoc = pipeline.documents.find((d) => d.personRole === "spouse_partner");
+      const sponsorDoc = pipeline.documents.find(
+        (d) => d.personRole === "overseas_sponsor_host" || d.personRole === "canadian_crs_sibling"
+      );
+
+      const isPlaceholderPersonName = (val?: string | null) =>
+        !val ||
+        /^(principal applicant|primary document holder|document holder \(unidentified\)|applicant|spouse \/ family member|family sponsor)$/i.test(
+          val.trim()
+        );
+      const validPersonParts = (val?: string | null) =>
+        isPlaceholderPersonName(val) ? [] : String(val).trim().split(/\s+/);
+      const applicantParts = validPersonParts(applicantDoc?.personName);
+
+      const nextFirst =
+        profile.firstName ||
+        applicantDoc?.extractedFields?.given_names ||
+        applicantParts[0] ||
+        "";
+      const nextLast =
+        profile.lastName ||
+        applicantDoc?.extractedFields?.surname ||
+        applicantParts.slice(1).join(" ") ||
+        "";
+      const nextEmail = profile.email || pipeline.mergedExtractedFields.email_address || "";
+      const nextPhone = profile.phone || pipeline.mergedExtractedFields.phone_number || "";
+      const nextNat = profile.nationality || applicantDoc?.extractedFields?.nationality || "";
+      const nextPass = profile.passportNumber || applicantDoc?.extractedFields?.passport_number || "";
+
+      if (nextFirst) setFirstName(nextFirst);
+      if (nextLast) setLastName(nextLast);
+      if (nextEmail) setEmail(nextEmail);
+      if (nextPhone) setPhone(nextPhone);
+      if (nextNat) setNationality(nextNat);
+      if (nextPass) setPassportNumber(nextPass);
+
+      // Spouse / Dependant auto-fill from packet or marriage cert
+      const spouseFull =
+        (!isPlaceholderPersonName(spouseDoc?.personName) ? spouseDoc?.personName : "") ||
+        pipeline.mergedExtractedFields.spouse_full_name ||
+        pipeline.mergedExtractedFields.bride_name ||
+        profile.spouseName;
+      if (spouseFull && !isPlaceholderPersonName(spouseFull)) {
+        const spParts = spouseFull.trim().split(/\s+/);
+        setIncludeDependant(true);
+        setDepRel("spouse");
+        setDepFn(spParts[0] || "");
+        setDepLn(spParts.slice(1).join(" ") || nextLast || "");
+      }
+
+      // Sponsor / CRS Sibling auto-detection (only when actual fields/statutory evidence were extracted)
+      const sponsorHasRealData =
+        Boolean(sponsorDoc) &&
+        (Object.keys(sponsorDoc?.extractedFields || {}).length > 0 ||
+          (sponsorDoc?.statutoryBadges?.length ?? 0) > 0 ||
+          !isPlaceholderPersonName(sponsorDoc?.personName));
+      if (sponsorHasRealData && sponsorDoc) {
+        const jur = (sponsorDoc.sponsorJurisdiction || "CA") as "CA" | "UK" | "AU";
+        const rel: SponsorInviteRecord["relationship"] =
+          sponsorDoc.personRole === "canadian_crs_sibling"
+            ? "canadian_sibling"
+            : jur === "UK"
+              ? "uk_sponsor"
+              : jur === "AU"
+                ? "au_sponsor"
+                : "child_grandchild";
+        setDetectedSponsor({
+          sponsorName:
+            (!isPlaceholderPersonName(sponsorDoc.personName) ? sponsorDoc.personName : "") ||
+            profile.sponsorName ||
+            "Family Sponsor",
+          relationship: rel,
+          jurisdiction: jur,
+          badges: pipeline.statutoryHighlights,
+        });
+      }
+
+      // Suggested Jurisdiction & Pathway (only auto-switch when meaningful text/signals exist)
+      const filledCount = Math.max(
+        [
+          nextFirst,
+          nextLast,
+          nextEmail,
+          nextPhone,
+          nextNat,
+          nextPass,
+          spouseFull,
+          sponsorHasRealData ? sponsorDoc?.personName : "",
+        ].filter(Boolean).length,
+        Object.keys(pipeline.mergedExtractedFields).length
+      );
+      if (filledCount > 0) {
+        const targetJur = pipeline.suggestedJurisdiction || profile.suggestedJurisdiction;
+        const targetPath = pipeline.suggestedPathway || profile.suggestedVisaCategory;
+        if (targetJur && JURISDICTION_PATHWAYS[targetJur]) {
+          setJurisdiction(targetJur);
+          const pathways = JURISDICTION_PATHWAYS[targetJur];
+          const matchedPathway = targetPath ? pathways.find((p) => p.value === targetPath) : undefined;
+          setVisaCategory(matchedPathway ? matchedPathway.value : pathways[0]?.value || visaCategory);
+        }
+      }
+
+      const isBackendOffline = Boolean(
+        pipeline.backendOffline || profile.backendOffline
+      );
+      const extraParts: string[] = [];
+      if (filledCount === 0) {
+        extraParts.push(
+          isBackendOffline
+            ? "FastAPI OCR backend is offline (port 8000) — start backend ('npm run dev:backend' or 'npm run dev') and click Re-scan, or enter fields manually"
+            : "OCR scanned the file but found no legible text or MRZ — check scan clarity or enter fields manually"
+        );
+      } else {
+        if (pipeline.documents.length > 1) extraParts.push(`${pipeline.documents.length} docs sorted`);
+        if (spouseFull && !isPlaceholderPersonName(spouseFull)) extraParts.push(`Spouse: ${spouseFull}`);
+        if (sponsorHasRealData && sponsorDoc && !isPlaceholderPersonName(sponsorDoc.personName)) {
+          extraParts.push(`Sponsor: ${sponsorDoc.personName}`);
+        }
       }
 
       setExtractedDocBanner({
-        filename: file.name,
-        confidence: Math.round(profile.confidence * 100),
-        fieldsCount: [
-          profile.firstName,
-          profile.lastName,
-          profile.email,
-          profile.phone,
-          profile.nationality,
-          profile.passportNumber,
-        ].filter(Boolean).length,
+        filename: files.length === 1 ? primaryFile.name : `${primaryFile.name} + ${files.length - 1} files`,
+        confidence: filledCount === 0 ? 0 : Math.round((profile.confidence || 0.96) * 100),
+        fieldsCount: filledCount,
+        extraNotes: extraParts.length > 0 ? extraParts.join(" • ") : undefined,
+        backendOffline: isBackendOffline,
       });
 
-      // Broadcast extraction to forms and sheets
-      persistAndBroadcastAutoFill("default_client", {
-        formData: {
-          family_name: profile.lastName,
-          given_names: profile.firstName,
-          email: profile.email,
-          phone_number: profile.phone,
-          passport_number: profile.passportNumber,
-        },
-        sourceFilename: file.name,
-      });
+      if (filledCount > 0) {
+        persistAndBroadcastAutoFill("default_client", {
+          formData: {
+            family_name: nextLast,
+            given_names: nextFirst,
+            email: nextEmail,
+            phone_number: nextPhone,
+            passport_number: nextPass,
+            ...(spouseFull && !isPlaceholderPersonName(spouseFull) ? { family: { spouse: { name: spouseFull } } } : {}),
+            ...(sponsorHasRealData && sponsorDoc ? { sponsor: { full_name: sponsorDoc.personName } } : {}),
+          },
+          sourceFilename: primaryFile.name,
+        });
+      }
     } catch (err: any) {
       setError(err?.message || "Failed to auto-extract client data from document.");
     } finally {
@@ -182,6 +322,9 @@ export function CreateClientModal({
       setCaseNumber(`CASE-${Math.floor(1000 + Math.random() * 9000)}`);
       setOpenInitialCase(isUnifiedFlow);
       setRecentlyCreatedClient(null);
+      setDroppedOnboardingFiles([]);
+      setDetectedSponsor(null);
+      setExtractedDocBanner(null);
       if (initialPrefill) {
         setIntakeMode("new_client");
         setFirstName(initialPrefill.firstName || "");
@@ -275,11 +418,14 @@ export function CreateClientModal({
     setDuplicateMatches([]);
     setCopiedInvite(false);
     setInviteEmailSent(false);
+    setDroppedOnboardingFiles([]);
+    setDetectedSponsor(null);
+    setExtractedDocBanner(null);
   };
 
   const handleCopyInviteLink = () => {
     const inviteUrl = `https://app.documento.legal/login?invite=${inviteToken}&email=${encodeURIComponent(
-      email.trim() || "applicant@portal.legal"
+      email.trim() || "client@example.com"
     )}`;
     navigator.clipboard?.writeText(inviteUrl);
     setCopiedInvite(true);
@@ -291,8 +437,12 @@ export function CreateClientModal({
     setTimeout(() => setInviteEmailSent(false), 4000);
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (
+    e?: React.FormEvent,
+    submitOptions?: { expressLaunch?: boolean }
+  ) => {
     if (e) e.preventDefault();
+    const isExpress = Boolean(submitOptions?.expressLaunch);
 
     // Branch A: Open a new case for an already-retained client
     if (isUnifiedFlow && intakeMode === "existing_client") {
@@ -331,7 +481,14 @@ export function CreateClientModal({
     }
 
     // Branch B: Onboard new client (+ optional/default initial case)
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !nationality.trim()) {
+    const effectiveEmail =
+      email.trim() ||
+      (isExpress && firstName.trim() && lastName.trim()
+        ? `${firstName.trim().toLowerCase().replace(/[^a-z0-9]/g, "")}.${lastName.trim().toLowerCase().replace(/[^a-z0-9]/g, "")}@portal.legal`
+        : "");
+    const effectiveNationality = nationality.trim() || (isExpress && droppedOnboardingFiles.length > 0 ? "India" : "");
+
+    if (!firstName.trim() || !lastName.trim() || !effectiveEmail || !effectiveNationality) {
       setError("Please fill in all required fields (First Name, Last Name, Email, Nationality).");
       setActiveStep(1);
       return;
@@ -345,9 +502,9 @@ export function CreateClientModal({
         {
           first_name: firstName.trim(),
           last_name: lastName.trim(),
-          email: email.trim(),
+          email: effectiveEmail,
           phone: phone || undefined,
-          nationality: nationality.trim(),
+          nationality: effectiveNationality,
           passport_number: passportNumber || undefined,
           portal_credentials_provided: grantPortalAccess,
           portal_access_enabled: grantPortalAccess,
@@ -366,7 +523,7 @@ export function CreateClientModal({
             relationship_type: depRel,
             first_name: depFn.trim(),
             last_name: depLn.trim(),
-            nationality: nationality || "USA",
+            nationality: effectiveNationality || "USA",
             is_authorized_to_view_case: depAuthView,
           });
         } catch {
@@ -390,7 +547,116 @@ export function CreateClientModal({
             },
             activeRole
           );
-          onCaseCreated(caseRes.data, createdClient, true);
+          const createdCase = caseRes.data;
+
+          // CRITICAL FIX: Automatically attach all dropped onboarding files to the newly created Case Vault!
+          const uploadedDocs: DocumentItem[] = [];
+          for (const file of droppedOnboardingFiles) {
+            try {
+              let snippet = "";
+              try {
+                snippet = (await file.text()).slice(0, 1000);
+              } catch {
+                snippet = "";
+              }
+              const det = detectCategoryAndRoleFromFilename(file.name, snippet);
+              const cat = (det.category === "civil_status_family" ? "civil_status" : det.category) as DocumentCategory;
+              const fd = new FormData();
+              fd.append("file", file);
+              fd.append("category", cat);
+              fd.append("title", file.name.replace(/\.[^/.]+$/, ""));
+              fd.append("case_id", createdCase.id);
+              const upRes = await api.uploadDocumentFile(fd, activeRole);
+              if (upRes?.data) {
+                uploadedDocs.push(upRes.data);
+              }
+            } catch {
+              // Non-blocking per-file vault persistence
+            }
+          }
+
+          // Initialize Pathway Checklist on Case Kickoff Store & Document Requests
+          try {
+            const kickoffCfg = getPathwayKickoffConfig(jurisdiction, visaCategory);
+            initCaseKickoffRecord({
+              caseId: createdCase.id,
+              caseNumber: createdCase.case_number || caseNumber,
+              clientId: createdClient.id,
+            });
+            if (isExpress || uploadedDocs.length > 0) {
+              updateCaseKickoffRecord(createdCase.id, {
+                caseNumber: createdCase.case_number || caseNumber,
+                clientId: createdClient.id,
+                step1CredentialsShared: grantPortalAccess,
+                step2ChecklistDispatched: true,
+                step4InitialDocsOrWorkspace: uploadedDocs.length > 0,
+                dispatchedChecklistCount: kickoffCfg.items.length,
+                uploadedInitialDocCount: uploadedDocs.length,
+              });
+              for (const item of kickoffCfg.items.slice(0, 4)) {
+                void createDocumentRequest({
+                  case_id: createdCase.id,
+                  requested_from_client_id: createdClient.id,
+                  title: item.title,
+                  description: item.description,
+                  category: item.category as DocumentCategory,
+                  rationale: `${item.citation} — Required for ${visaCategory}`,
+                  statutory_requirement_code: item.code,
+                }).catch(() => {});
+              }
+            }
+          } catch {
+            // Non-blocking checklist initialization
+          }
+
+          // Auto-create Shareable Sponsor Upload Link when sponsor pathway or sponsor document is present
+          let sponsorInvite: SponsorInviteRecord | null = null;
+          const lowerPathway = visaCategory.toLowerCase();
+          const isSponsorPathway =
+            Boolean(detectedSponsor) ||
+            lowerPathway.includes("super visa") ||
+            lowerPathway.includes("sponsored") ||
+            lowerPathway.includes("sowp");
+
+          if (isSponsorPathway) {
+            const spJur: "CA" | "UK" | "AU" =
+              detectedSponsor?.jurisdiction ||
+              (jurisdiction.includes("United Kingdom")
+                ? "UK"
+                : jurisdiction.includes("Australia")
+                  ? "AU"
+                  : "CA");
+            const spRel: SponsorInviteRecord["relationship"] =
+              detectedSponsor?.relationship ||
+              (spJur === "UK"
+                ? "uk_sponsor"
+                : spJur === "AU"
+                  ? "au_sponsor"
+                  : lowerPathway.includes("sowp")
+                    ? "spouse_cosigner"
+                    : "child_grandchild");
+
+            sponsorInvite = createSponsorInviteLink({
+              caseId: createdCase.id,
+              caseNumber: createdCase.case_number || caseNumber,
+              applicantName: `${firstName.trim()} ${lastName.trim()}`,
+              pathway: visaCategory,
+              sponsorName: detectedSponsor?.sponsorName || "Family Sponsor / Host",
+              relationship: spRel,
+              jurisdiction: spJur,
+              privacyShield: true,
+            });
+          }
+
+          if (isExpress || uploadedDocs.length > 0 || sponsorInvite) {
+            (onCaseCreated as any)(createdCase, createdClient, true, {
+              skipKickoffModal: isExpress,
+              uploadedDocs,
+              sponsorInvite,
+            });
+          } else {
+            onCaseCreated(createdCase, createdClient, true);
+          }
         } catch (caseErr: any) {
           setIntakeMode("existing_client");
           setSelectedExistingClientId(createdClient.id);
@@ -426,7 +692,7 @@ export function CreateClientModal({
         : "Save Client Record";
 
   const inviteUrl = `https://app.documento.legal/login?invite=${inviteToken}&email=${encodeURIComponent(
-    email.trim() || "applicant@portal.legal"
+    email.trim() || "client@example.com"
   )}`;
 
   return (
@@ -458,7 +724,7 @@ export function CreateClientModal({
               </Button>
             )}
           </div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             {activeStep === 1 && intakeMode === "new_client" && (
               <Button
                 variant="outline"
@@ -470,12 +736,23 @@ export function CreateClientModal({
               </Button>
             )}
             <Button
-              variant="primary"
+              variant={activeStep === 1 && isUnifiedFlow && intakeMode === "new_client" && openInitialCase ? "secondary" : "primary"}
               onClick={() => handleSubmit()}
               isLoading={isSubmitting}
             >
               {submitLabel}
             </Button>
+            {activeStep === 1 && isUnifiedFlow && intakeMode === "new_client" && openInitialCase && (
+              <Button
+                variant="primary"
+                type="button"
+                data-testid="express-launch-client-case-btn"
+                onClick={() => handleSubmit(undefined, { expressLaunch: true })}
+                isLoading={isSubmitting}
+              >
+                ⚡ Express Launch Client &amp; Case (1-Click)
+              </Button>
+            )}
           </div>
         </div>
       }
@@ -733,7 +1010,7 @@ export function CreateClientModal({
               <div style={{ fontSize: "11px", color: "#6E7F7C" }}>Checking directory for existing client records...</div>
             )}
 
-            {/* Auto-fill Dropzone: Drop Passport / Resume / Packet */}
+            {/* Auto-fill Dropzone: Drop Passport / Resume / Multi-File / Family+Sponsor Packet */}
             <div
               data-testid="client-autofill-dropzone"
               onDragOver={(e) => {
@@ -747,43 +1024,65 @@ export function CreateClientModal({
               onDrop={(e) => {
                 e.preventDefault();
                 setIsDraggingDoc(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file) handleDocumentAutoFill(file);
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  void handleDocumentAutoFill(e.dataTransfer.files);
+                }
               }}
               style={{
-                border: isDraggingDoc ? "2px dashed #0D6866" : "2px dashed #93C5FD",
-                background: isDraggingDoc ? "#EAF6F0" : "#EFF6FF",
+                border: isDraggingDoc ? "1.5px dashed #07594F" : "1.5px dashed #B8C9C3",
+                background: isDraggingDoc ? "#EAF6F0" : "#F8F7F2",
                 borderRadius: "10px",
                 padding: "14px 18px",
                 textAlign: "center",
                 cursor: "pointer",
-                transition: "all 0.2s ease",
+                transition: "background-color 0.15s ease, border-color 0.15s ease",
               }}
               onClick={() => docInputRef.current?.click()}
             >
               <input
                 ref={docInputRef}
                 type="file"
+                multiple
                 data-testid="client-autofill-file-input"
                 accept=".pdf,.jpg,.jpeg,.png,.tiff,.webp"
                 style={{ display: "none" }}
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleDocumentAutoFill(file);
+                  if (e.target.files && e.target.files.length > 0) {
+                    void handleDocumentAutoFill(e.target.files);
+                  }
                 }}
               />
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "12px" }}>
-                <span style={{ fontSize: "22px" }}>⚡</span>
-                <div style={{ textAlign: "left" }}>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E40AF" }}>
-                    Drop Passport / Resume / Packet to Auto-Fill Client
-                  </div>
-                  <div style={{ fontSize: "11.5px", color: "#3B82F6" }}>
-                    {isExtractingDocument
-                      ? "Analyzing document with deterministic OCR & credential intelligence..."
-                      : "Drag & drop PDF, JPG, or PNG to instantly extract name, passport, contacts & pathway"}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", textAlign: "left" }}>
+                  <span style={{ fontSize: "20px" }}>⚡</span>
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>
+                      Drop Passport / Resume / Packet to Auto-Fill Client
+                    </div>
+                    <div style={{ fontSize: "11.5px", color: "#4B5E5B" }}>
+                      {isExtractingDocument
+                        ? "Analyzing documents, sorting Applicant / Spouse / Sponsor & suggesting pathway..."
+                        : "Drop 1 file, multiple loose scans, or a merged family & sponsor PDF — auto-attaches to Case Vault"}
+                    </div>
                   </div>
                 </div>
+                {droppedOnboardingFiles.length > 0 && (
+                  <span
+                    data-testid="onboarding-queued-vault-badge"
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "999px",
+                      background: "#EAF6F0",
+                      border: "1px solid #C6E7D8",
+                      color: "#176B50",
+                      fontSize: "11.5px",
+                      fontWeight: 600,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    ✓ {droppedOnboardingFiles.length} {droppedOnboardingFiles.length === 1 ? "file" : "files"} queued for Case Vault
+                  </span>
+                )}
               </div>
             </div>
 
@@ -792,27 +1091,63 @@ export function CreateClientModal({
                 data-testid="autofill-success-banner"
                 style={{
                   padding: "8px 14px",
-                  background: "#ECFDF5",
-                  border: "1px solid #A7F3D0",
+                  background: extractedDocBanner.fieldsCount === 0 ? "#FEF3C7" : "#EAF6F0",
+                  border: extractedDocBanner.fieldsCount === 0 ? "1px solid #FDE68A" : "1px solid #C6E7D8",
                   borderRadius: "6px",
-                  color: "#065F46",
+                  color: extractedDocBanner.fieldsCount === 0 ? "#92400E" : "#176B50",
                   fontSize: "12px",
                   fontWeight: 600,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  gap: "8px",
                 }}
               >
                 <span>
-                  ✓ Auto-extracted {extractedDocBanner.fieldsCount} onboarding fields from <strong>{extractedDocBanner.filename}</strong> ({extractedDocBanner.confidence}% Match)
+                  {extractedDocBanner.fieldsCount === 0
+                    ? extractedDocBanner.backendOffline
+                      ? `⚠ Attached ${extractedDocBanner.filename} (OCR backend offline)`
+                      : `⚠ Scanned ${extractedDocBanner.filename} (0 auto-fill fields found)`
+                    : `✓ Auto-extracted ${extractedDocBanner.fieldsCount} onboarding fields from `}
+                  {extractedDocBanner.fieldsCount > 0 && <strong>{extractedDocBanner.filename}</strong>}
+                  {extractedDocBanner.fieldsCount > 0 ? ` (${extractedDocBanner.confidence}% Match)` : ""}
+                  {extractedDocBanner.extraNotes ? ` • ${extractedDocBanner.extraNotes}` : ""}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setExtractedDocBanner(null)}
-                  style={{ background: "none", border: "none", color: "#065F46", cursor: "pointer", fontWeight: 700 }}
-                >
-                  ✕
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                  {extractedDocBanner.fieldsCount === 0 && droppedOnboardingFiles.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={isExtractingDocument}
+                      onClick={() => void handleDocumentAutoFill(droppedOnboardingFiles, { isRescan: true })}
+                      style={{
+                        background: "#FFFBEB",
+                        border: "1px solid #F59E0B",
+                        borderRadius: "4px",
+                        color: "#92400E",
+                        padding: "2px 8px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        cursor: isExtractingDocument ? "wait" : "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {isExtractingDocument ? "Scanning..." : "↻ Re-scan"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setExtractedDocBanner(null)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: extractedDocBanner.fieldsCount === 0 ? "#92400E" : "#176B50",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             )}
 

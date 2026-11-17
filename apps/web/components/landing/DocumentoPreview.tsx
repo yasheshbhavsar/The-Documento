@@ -17,8 +17,8 @@ export function DocumentoPreview() {
   const [tasks, setTasks] = useState([
     {
       id: "t-1",
-      title: "Resolve employment start date discrepancy with Dr. Thorne",
-      assignee: "Sarah Jenkins (Senior Paralegal)",
+      title: "Resolve employment start date discrepancy with Applicant",
+      assignee: "Senior Paralegal",
       priority: "high",
       completed: false,
       dueDate: "In 2 days",
@@ -26,7 +26,7 @@ export function DocumentoPreview() {
     {
       id: "t-2",
       title: "Finalize Kazarian Stage Two final merits memorandum",
-      assignee: "Eleanor Vance, Esq. (Managing Attorney)",
+      assignee: "Managing Attorney",
       priority: "high",
       completed: false,
       dueDate: "In 5 days",
@@ -54,15 +54,15 @@ export function DocumentoPreview() {
     {
       id: "m-1",
       sender: "firm",
-      senderName: "Sarah Jenkins (Senior Paralegal)",
-      text: "Dr. Thorne, our automated intake check identified that Exhibit E-2 lists your employment start date as Sept 1, 2021, whereas your CV states Oct 2021. Could you confirm which date your HR department officially recorded?",
+      senderName: "Assigned Senior Paralegal",
+      text: "Our automated intake check identified that Exhibit E-2 lists your employment start date differently from your CV. Could you confirm which date your HR department officially recorded?",
       time: "Yesterday, 3:15 PM",
     },
     {
       id: "m-2",
       sender: "client",
-      senderName: "Dr. Aris Thorne (Applicant)",
-      text: "Hello Sarah. I officially commenced on September 1, 2021 as a visiting fellow before transitioning to full-time payroll on October 1. I have uploaded an HR confirmation letter clarifying both dates.",
+      senderName: "Principal Applicant",
+      text: "Confirmed: the earlier date reflects visiting fellowship commencement prior to full-time payroll onboarding. An HR confirmation letter has been uploaded.",
       time: "Today, 10:20 AM",
     },
   ]);
@@ -74,6 +74,7 @@ export function DocumentoPreview() {
       title: "Passport_Bio_Page_UK.pdf",
       category: "Identity",
       exhibitCode: "Exhibit A-1",
+      batesCode: "BATES EX-A1-001",
       size: "2.4 MB",
       hash: "e3b0c442...a53b",
       status: "verified",
@@ -85,6 +86,7 @@ export function DocumentoPreview() {
       title: "PhD_Diploma_Oxford_Physics.pdf",
       category: "Academic",
       exhibitCode: "Exhibit B-1",
+      batesCode: "BATES EX-B1-003",
       size: "4.1 MB",
       hash: "cb8825fc...21ad",
       status: "verified",
@@ -96,6 +98,7 @@ export function DocumentoPreview() {
       title: "IEEE_Quantum_Algorithm_Paper.pdf",
       category: "Publications",
       exhibitCode: "Exhibit C-1",
+      batesCode: "BATES EX-C1-004",
       size: "8.7 MB",
       hash: "8f4a2109...b76c",
       status: "verified",
@@ -107,6 +110,7 @@ export function DocumentoPreview() {
       title: "US_Patent_US11489201_Quantum.pdf",
       category: "Patents",
       exhibitCode: "Exhibit D-1",
+      batesCode: "BATES EX-D1-018",
       size: "5.2 MB",
       hash: "19c3e982...98f4",
       status: "verified",
@@ -118,6 +122,7 @@ export function DocumentoPreview() {
       title: "Employer_Support_Letter_MIT.pdf",
       category: "Support Letters",
       exhibitCode: "Exhibit E-2",
+      batesCode: "BATES EX-E2-040",
       size: "1.8 MB",
       hash: "7f83b165...9f80",
       status: "flagged",
@@ -129,6 +134,7 @@ export function DocumentoPreview() {
       title: "Form_I-140_Draft_Part1-Part8.pdf",
       category: "Forms",
       exhibitCode: "Form Draft",
+      batesCode: "FORM DRAFT I-140",
       size: "1.2 MB",
       hash: "3c990211...de51",
       status: "pending_review",
@@ -157,7 +163,7 @@ export function DocumentoPreview() {
       {
         id: `m-${Date.now()}`,
         sender: "firm",
-        senderName: "Eleanor Vance, Esq. (Lead Counsel)",
+        senderName: "Lead Immigration Counsel",
         text: sampleReplyInput.trim(),
         time: "Just now",
       },
@@ -207,66 +213,72 @@ export function DocumentoPreview() {
         overflow: "hidden",
         padding: "88px 24px",
         background: "#FFFFFF",
-        borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <InteractiveSectionBackground variant="dot-matrix" />
 
       <div style={{ maxWidth: "1240px", margin: "0 auto", position: "relative", zIndex: 1 }}>
-        {/* Section Header */}
+        {/* Section Editorial Header */}
         <div
           className="section-header-reveal animate-on-scroll"
           data-motion="up"
-          style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto 44px auto" }}
+          style={{ textAlign: "center", maxWidth: "780px", margin: "0 auto 48px auto" }}
         >
-          <span
+          <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
               fontSize: "12px",
-              fontWeight: 650,
-              letterSpacing: "0.06em",
+              fontWeight: 700,
+              letterSpacing: "0.08em",
               textTransform: "uppercase",
-              color: "#0D6866",
+              color: "#07594F",
               marginBottom: "12px",
             }}
           >
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#169B77" }} className="status-dot-pulse" />
-            <span>Evidence Architecture</span>
-          </span>
+            Evidence Architecture
+          </div>
 
           <h2
             style={{
-              fontSize: "clamp(28px, 3.5vw, 42px)",
+              fontSize: "clamp(28px, 3.4vw, 42px)",
               fontWeight: 700,
               color: "#063C3D",
               lineHeight: 1.15,
               letterSpacing: "-0.03em",
-              margin: "0 0 14px 0",
+              margin: "0 0 16px 0",
               fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
             }}
           >
             From raw evidence to verified counsel judgment.
           </h2>
 
-          <p style={{ fontSize: "16px", color: "#4F6360", lineHeight: 1.6, margin: 0 }}>
+          <p
+            style={{
+              fontSize: "15.5px",
+              color: "#475955",
+              lineHeight: 1.6,
+              margin: 0,
+              maxWidth: "680px",
+              marginLeft: "auto",
+              marginRight: "auto",
+            }}
+          >
             Unstructured source records become an indexed, tamper-evident evidentiary record ready for attorney adjudication.
           </p>
         </div>
 
-        {/* Minimal 3-Step Bento Architecture: Source -> Audit -> Adjudication */}
+        {/* 3-Step Bento Architecture: Source -> Cross-Exhibit Audit -> Counsel Sign-Off */}
         <div
           className="stagger-children animate-on-scroll"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
             gap: "24px",
-            marginBottom: "40px",
+            marginBottom: "44px",
             alignItems: "stretch",
           }}
         >
-          {/* Card 1: Source Document */}
+          {/* Card 1: Forensic Source Record */}
           <div
             className="floating-card spotlight-card hover-lift"
             style={{
@@ -275,37 +287,69 @@ export function DocumentoPreview() {
               flexDirection: "column",
               justifyContent: "space-between",
               background: "#FFFFFF",
-              border: "1px solid rgba(13, 104, 102, 0.14)",
-              borderRadius: "16px",
-              boxShadow: "0 12px 32px -12px rgba(6, 60, 61, 0.05)",
+              border: "1px solid #DCE5E1",
+              borderRadius: "14px",
+              boxShadow: "0 4px 18px rgba(6, 60, 61, 0.04)",
               position: "relative",
             }}
           >
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
-                <span
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "18px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#07594F",
+                      background: "#EAF5EF",
+                      padding: "3px 9px",
+                      borderRadius: "6px",
+                      letterSpacing: "0.02em",
+                    }}
+                  >
+                    Source Record
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontFamily: "monospace",
+                      color: "#169B77",
+                      fontWeight: 700,
+                      background: "#F1F6F4",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {bentoExhibitIdx === 0 ? "BATES EX-A1-001" : "BATES EX-C1-004"}
+                  </span>
+                </div>
+
+                {/* Interactive Exhibit Micro-Tabs */}
+                <div
                   style={{
-                    fontSize: "11.5px",
-                    fontWeight: 650,
-                    color: "#07594F",
-                    background: "#EAF5EF",
-                    padding: "4px 10px",
-                    borderRadius: "999px",
+                    display: "inline-flex",
+                    gap: "2px",
+                    background: "#F1F6F4",
+                    padding: "3px",
+                    borderRadius: "6px",
                   }}
                 >
-                  Source Record
-                </span>
-                {/* Interactive Exhibit Micro-Tabs */}
-                <div style={{ display: "inline-flex", gap: "2px", background: "#F3F8F6", padding: "3px", borderRadius: "8px" }}>
                   <button
                     type="button"
                     onClick={() => setBentoExhibitIdx(0)}
                     style={{
-                      padding: "4px 10px",
-                      borderRadius: "6px",
+                      padding: "3px 9px",
+                      borderRadius: "4px",
                       border: "none",
                       fontSize: "11px",
-                      fontWeight: 600,
+                      fontWeight: 650,
                       cursor: "pointer",
                       background: bentoExhibitIdx === 0 ? "#FFFFFF" : "transparent",
                       color: bentoExhibitIdx === 0 ? "#063C3D" : "#5D6E7F",
@@ -319,11 +363,11 @@ export function DocumentoPreview() {
                     type="button"
                     onClick={() => setBentoExhibitIdx(1)}
                     style={{
-                      padding: "4px 10px",
-                      borderRadius: "6px",
+                      padding: "3px 9px",
+                      borderRadius: "4px",
                       border: "none",
                       fontSize: "11px",
-                      fontWeight: 600,
+                      fontWeight: 650,
                       cursor: "pointer",
                       background: bentoExhibitIdx === 1 ? "#FFFFFF" : "transparent",
                       color: bentoExhibitIdx === 1 ? "#063C3D" : "#5D6E7F",
@@ -336,24 +380,51 @@ export function DocumentoPreview() {
                 </div>
               </div>
 
-              <h3 style={{ fontSize: "18px", fontWeight: 650, color: "#063C3D", letterSpacing: "-0.015em", margin: "0 0 8px 0" }}>
+              <h3
+                style={{
+                  fontSize: "17.5px",
+                  fontWeight: 700,
+                  color: "#063C3D",
+                  letterSpacing: "-0.015em",
+                  margin: "0 0 8px 0",
+                  fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
+                }}
+              >
                 Passport_Bio_Page_UK.pdf
               </h3>
-              <p style={{ fontSize: "14px", color: "#526663", lineHeight: 1.55, margin: "0 0 20px 0" }}>
+              <p style={{ fontSize: "13.5px", color: "#526663", lineHeight: 1.55, margin: "0 0 18px 0" }}>
                 Biometric identity exhibit anchored by SHA-256 provenance and coordinate-linked extraction.
               </p>
 
-              <div style={{ background: "#F8FBFA", borderRadius: "12px", padding: "14px 16px", border: "1px solid rgba(13, 104, 102, 0.1)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", fontSize: "12.5px" }}>
-                  <span style={{ color: "#526663", fontWeight: 500 }}>
+              {/* Extraction Confidence Controller */}
+              <div
+                style={{
+                  background: "#F8FAF9",
+                  borderRadius: "8px",
+                  padding: "14px 16px",
+                  border: "1px solid #DCE5E1",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "10px",
+                    fontSize: "12px",
+                  }}
+                >
+                  <span style={{ color: "#445451", fontWeight: 600 }}>
                     {bentoExhibitIdx === 0 ? "Exhibit A-1 • 2 pgs" : "Exhibit C-1 • 14 pgs"}
                   </span>
-                  <span style={{ color: "#0D6866", fontWeight: 650 }}>
+                  <span style={{ color: "#0D6866", fontWeight: 700 }}>
                     {ocrConfidence.toFixed(1)}% AI Extraction Confidence
                   </span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 500, whiteSpace: "nowrap" }}>Threshold</span>
+                  <span style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 550, whiteSpace: "nowrap" }}>
+                    Threshold
+                  </span>
                   <input
                     type="range"
                     min="92.0"
@@ -373,9 +444,20 @@ export function DocumentoPreview() {
               </div>
             </div>
 
-            <div style={{ marginTop: "18px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", color: "#6E7F7C" }}>
+            <div
+              style={{
+                marginTop: "18px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: "11.5px",
+                color: "#6E7F7C",
+                paddingTop: "12px",
+                borderTop: "1px solid #EAEFEA",
+              }}
+            >
               <span>Tamper-evident vault</span>
-              <code style={{ fontSize: "11px", color: "#0D6866" }}>
+              <code style={{ fontSize: "11px", color: "#07594F", fontWeight: 600 }}>
                 {bentoExhibitIdx === 0 ? "e3b0c442...a53b" : "8f4a2109...b76c"}
               </code>
             </div>
@@ -390,38 +472,53 @@ export function DocumentoPreview() {
               flexDirection: "column",
               justifyContent: "space-between",
               background: "#FFFFFF",
-              border: "1.5px solid #0D6866",
-              borderRadius: "16px",
-              boxShadow: "0 20px 44px -16px rgba(6, 60, 61, 0.1)",
+              border: findingStatus === "resolved" ? "1.5px solid #169B77" : "1.5px solid #0D6866",
+              borderRadius: "14px",
+              boxShadow: "0 8px 24px -6px rgba(6, 60, 61, 0.08)",
               position: "relative",
             }}
           >
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "18px",
+                }}
+              >
                 <span
                   style={{
-                    fontSize: "11.5px",
-                    fontWeight: 650,
-                    color: findingStatus === "resolved" ? "#07594F" : "#8A5A10",
-                    background: findingStatus === "resolved" ? "#EAF5EF" : "#FEF7EA",
-                    padding: "4px 10px",
-                    borderRadius: "999px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: findingStatus === "resolved" ? "#176B50" : "#8A5A10",
+                    background: findingStatus === "resolved" ? "#EAF6F0" : "#FEF7EA",
+                    padding: "3px 9px",
+                    borderRadius: "6px",
                   }}
                 >
                   {findingStatus === "resolved" ? "Discrepancy Resolved" : "Cross-Exhibit Audit"}
                 </span>
 
                 {/* Interactive Audit View Switcher */}
-                <div style={{ display: "inline-flex", gap: "2px", background: "#F3F8F6", padding: "3px", borderRadius: "8px" }}>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    gap: "2px",
+                    background: "#F1F6F4",
+                    padding: "3px",
+                    borderRadius: "6px",
+                  }}
+                >
                   <button
                     type="button"
                     onClick={() => setAuditViewMode("timeline")}
                     style={{
-                      padding: "4px 10px",
-                      borderRadius: "6px",
+                      padding: "3px 9px",
+                      borderRadius: "4px",
                       border: "none",
                       fontSize: "11px",
-                      fontWeight: 600,
+                      fontWeight: 650,
                       cursor: "pointer",
                       background: auditViewMode === "timeline" ? "#FFFFFF" : "transparent",
                       color: auditViewMode === "timeline" ? "#063C3D" : "#5D6E7F",
@@ -434,11 +531,11 @@ export function DocumentoPreview() {
                     type="button"
                     onClick={() => setAuditViewMode("entity")}
                     style={{
-                      padding: "4px 10px",
-                      borderRadius: "6px",
+                      padding: "3px 9px",
+                      borderRadius: "4px",
                       border: "none",
                       fontSize: "11px",
-                      fontWeight: 600,
+                      fontWeight: 650,
                       cursor: "pointer",
                       background: auditViewMode === "entity" ? "#FFFFFF" : "transparent",
                       color: auditViewMode === "entity" ? "#063C3D" : "#5D6E7F",
@@ -450,46 +547,57 @@ export function DocumentoPreview() {
                 </div>
               </div>
 
-              <h3 style={{ fontSize: "18px", fontWeight: 650, color: "#063C3D", letterSpacing: "-0.015em", margin: "0 0 8px 0" }}>
-                Dr. Aris Thorne (EB-1A)
+              <h3
+                style={{
+                  fontSize: "17.5px",
+                  fontWeight: 700,
+                  color: "#063C3D",
+                  letterSpacing: "-0.015em",
+                  margin: "0 0 8px 0",
+                  fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
+                }}
+              >
+                Principal Applicant (EB-1A)
               </h3>
-              <p style={{ fontSize: "14px", color: "#526663", lineHeight: 1.55, margin: "0 0 20px 0" }}>
+              <p style={{ fontSize: "13.5px", color: "#526663", lineHeight: 1.55, margin: "0 0 18px 0" }}>
                 Cross-document verification flags date variances across exhibits before government submission.
               </p>
 
               <div
                 style={{
                   background: findingStatus === "resolved" ? "#F4FAF7" : "#FFFBF2",
-                  borderRadius: "12px",
+                  borderRadius: "8px",
                   padding: "14px 16px",
-                  border: `1px solid ${findingStatus === "resolved" ? "rgba(22, 155, 119, 0.2)" : "rgba(217, 119, 6, 0.22)"}`,
+                  border: `1px solid ${findingStatus === "resolved" ? "rgba(22, 155, 119, 0.28)" : "rgba(217, 119, 6, 0.25)"}`,
                 }}
               >
                 {auditViewMode === "timeline" ? (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "13px" }}>
                     <div>
-                      <div style={{ fontSize: "11px", color: "#6E7F7C" }}>Exhibit E-2</div>
-                      <div style={{ fontWeight: 650, color: "#063C3D" }}>Sept 1, 2021</div>
+                      <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Exhibit E-2 (Support Letter)</div>
+                      <div style={{ fontWeight: 700, color: "#063C3D" }}>Sept 1, 2021</div>
                     </div>
-                    <span style={{ color: "#D97706", fontSize: "12px", fontWeight: 600 }}>vs</span>
+                    <span style={{ color: "#D97706", fontSize: "11px", fontWeight: 700, background: "#FEF7EA", padding: "2px 6px", borderRadius: "4px" }}>
+                      variance
+                    </span>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "11px", color: "#6E7F7C" }}>Applicant CV</div>
-                      <div style={{ fontWeight: 650, color: "#063C3D" }}>Oct 1, 2021</div>
+                      <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Applicant CV (Exhibit E-1)</div>
+                      <div style={{ fontWeight: 700, color: "#063C3D" }}>Oct 1, 2021</div>
                     </div>
                   </div>
                 ) : (
-                  <div style={{ fontSize: "13px", color: "#063C3D", display: "flex", justifyContent: "space-between" }}>
-                    <span>MIT Quantum Lab</span>
-                    <span style={{ color: "#0D6866", fontWeight: 600 }}>3 Exhibits Linked</span>
+                  <div style={{ fontSize: "13px", color: "#063C3D", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>MIT Quantum Engineering Lab</span>
+                    <span style={{ color: "#0D6866", fontWeight: 700 }}>3 Exhibits Linked</span>
                   </div>
                 )}
               </div>
             </div>
 
-            <div style={{ marginTop: "18px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#526663", marginBottom: "6px" }}>
-                <span>Evidentiary Readiness</span>
-                <span style={{ fontWeight: 650, color: "#063C3D" }}>{findingStatus === "resolved" ? "94%" : "68%"}</span>
+            <div style={{ marginTop: "18px", paddingTop: "12px", borderTop: "1px solid #EAEFEA" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", color: "#526663", marginBottom: "6px" }}>
+                <span style={{ fontWeight: 600 }}>Evidentiary Readiness</span>
+                <span style={{ fontWeight: 750, color: "#063C3D" }}>{findingStatus === "resolved" ? "94%" : "68%"}</span>
               </div>
               <div style={{ width: "100%", height: "4px", background: "#EAF5EF", borderRadius: "999px", overflow: "hidden" }}>
                 <div
@@ -498,7 +606,7 @@ export function DocumentoPreview() {
                     height: "100%",
                     background: findingStatus === "resolved" ? "#169B77" : "#D97706",
                     borderRadius: "999px",
-                    transition: "width 500ms cubic-bezier(0.22, 1, 0.36, 1)",
+                    transition: "width 400ms cubic-bezier(0.22, 1, 0.36, 1)",
                   }}
                 />
               </div>
@@ -514,55 +622,78 @@ export function DocumentoPreview() {
               flexDirection: "column",
               justifyContent: "space-between",
               background: "#FFFFFF",
-              border: "1px solid rgba(13, 104, 102, 0.14)",
-              borderRadius: "16px",
-              boxShadow: "0 12px 32px -12px rgba(6, 60, 61, 0.05)",
+              border: "1px solid #DCE5E1",
+              borderRadius: "14px",
+              boxShadow: "0 4px 18px rgba(6, 60, 61, 0.04)",
               position: "relative",
             }}
           >
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "18px",
+                }}
+              >
                 <span
                   style={{
-                    fontSize: "11.5px",
-                    fontWeight: 650,
+                    fontSize: "11px",
+                    fontWeight: 700,
                     color: "#063C3D",
                     background: "#EAF5EF",
-                    padding: "4px 10px",
-                    borderRadius: "999px",
+                    padding: "3px 9px",
+                    borderRadius: "6px",
                   }}
                 >
                   Counsel Sign-Off
                 </span>
-                <span style={{ fontSize: "12px", color: "#0D6866", fontWeight: 600 }}>
+                <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700 }}>
                   G-28 Verified
                 </span>
               </div>
 
-              <h3 style={{ fontSize: "18px", fontWeight: 650, color: "#063C3D", letterSpacing: "-0.015em", margin: "0 0 8px 0" }}>
-                Eleanor Vance, Esq.
+              <h3
+                style={{
+                  fontSize: "17.5px",
+                  fontWeight: 700,
+                  color: "#063C3D",
+                  letterSpacing: "-0.015em",
+                  margin: "0 0 8px 0",
+                  fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
+                }}
+              >
+                Assigned Lead Counsel
               </h3>
-              <p style={{ fontSize: "14px", color: "#526663", lineHeight: 1.55, margin: "0 0 20px 0" }}>
+              <p style={{ fontSize: "13.5px", color: "#526663", lineHeight: 1.55, margin: "0 0 18px 0" }}>
                 Supervising counsel retains non-delegable legal authority over every discrepancy resolution and filing package.
               </p>
 
-              <div style={{ background: "#F8FBFA", borderRadius: "12px", padding: "14px 16px", border: "1px solid rgba(13, 104, 102, 0.1)" }}>
+              <div
+                style={{
+                  background: "#F8FAF9",
+                  borderRadius: "8px",
+                  padding: "14px 16px",
+                  border: "1px solid #DCE5E1",
+                }}
+              >
                 {findingStatus === "resolved" ? (
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                    <span style={{ fontWeight: 650, color: "#07594F", fontSize: "13px" }}>
+                    <span style={{ fontWeight: 700, color: "#07594F", fontSize: "12.5px" }}>
                       Addendum Authorized
                     </span>
                     <button
                       type="button"
                       onClick={() => setFindingStatus("pending")}
                       style={{
-                        padding: "5px 10px",
+                        padding: "4px 10px",
                         borderRadius: "6px",
-                        border: "1px solid rgba(13, 104, 102, 0.18)",
+                        border: "1px solid #DCE5E1",
                         background: "#FFFFFF",
                         color: "#063C3D",
-                        fontSize: "11.5px",
-                        fontWeight: 600,
+                        fontSize: "11px",
+                        fontWeight: 650,
                         cursor: "pointer",
                       }}
                     >
@@ -575,13 +706,13 @@ export function DocumentoPreview() {
                     onClick={() => setFindingStatus("resolved")}
                     style={{
                       width: "100%",
-                      padding: "10px 14px",
-                      borderRadius: "8px",
+                      padding: "9px 14px",
+                      borderRadius: "6px",
                       border: "none",
                       background: "#0D6866",
                       color: "#FFFFFF",
-                      fontSize: "13px",
-                      fontWeight: 600,
+                      fontSize: "12.5px",
+                      fontWeight: 650,
                       cursor: "pointer",
                       transition: "background 0.15s ease",
                     }}
@@ -592,7 +723,15 @@ export function DocumentoPreview() {
               </div>
             </div>
 
-            <div style={{ marginTop: "18px", fontSize: "12px", color: "#6E7F7C" }}>
+            <div
+              style={{
+                marginTop: "18px",
+                fontSize: "11.5px",
+                color: "#6E7F7C",
+                paddingTop: "12px",
+                borderTop: "1px solid #EAEFEA",
+              }}
+            >
               Human-led legal judgment • Bar # NY-4921
             </div>
           </div>
@@ -605,17 +744,17 @@ export function DocumentoPreview() {
           data-motion="scale"
           style={{
             background: "#FFFFFF",
-            borderRadius: "18px",
-            border: "1px solid rgba(13, 104, 102, 0.14)",
-            boxShadow: "0 24px 60px -16px rgba(6, 60, 61, 0.07)",
+            borderRadius: "14px",
+            border: "1px solid #DCE5E1",
+            boxShadow: "0 8px 30px rgba(6, 60, 61, 0.05)",
             overflow: "hidden",
           }}
         >
           {/* Compact Case Header */}
           <div
             style={{
-              background: "#FAFCFB",
-              borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+              background: "#F8FAF9",
+              borderBottom: "1px solid #DCE5E1",
               padding: "14px 24px",
               display: "flex",
               alignItems: "center",
@@ -625,15 +764,13 @@ export function DocumentoPreview() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "13.5px", fontWeight: 650, color: "#063C3D" }}>
-                  CASE-US-8841: Dr. Aris Thorne
-                </span>
-                <span style={{ fontSize: "12px", color: "#A0B0AC" }}>•</span>
-                <span style={{ fontSize: "13px", fontWeight: 500, color: "#0D6866" }}>
-                  EB-1A Extraordinary Ability (Form I-140)
-                </span>
-              </div>
+              <span style={{ fontSize: "13.5px", fontWeight: 700, color: "#063C3D" }}>
+                Active Petition Docket: Principal Applicant
+              </span>
+              <span style={{ fontSize: "12px", color: "#BDCDC7" }}>•</span>
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#0D6866" }}>
+                EB-1A Extraordinary Ability (Form I-140)
+              </span>
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -642,9 +779,10 @@ export function DocumentoPreview() {
                   background: "#EAF5EF",
                   color: "#063C3D",
                   fontSize: "11.5px",
-                  fontWeight: 600,
-                  padding: "4px 10px",
-                  borderRadius: "999px",
+                  fontWeight: 700,
+                  padding: "3px 10px",
+                  borderRadius: "6px",
+                  border: "1px solid #B9DED4",
                 }}
               >
                 Readiness: 68%
@@ -652,8 +790,8 @@ export function DocumentoPreview() {
               <span
                 style={{
                   fontSize: "11.5px",
-                  fontWeight: 500,
-                  color: "#6E7F7C",
+                  fontWeight: 600,
+                  color: "#5D6E7F",
                 }}
               >
                 Interactive Casework Studio
@@ -661,7 +799,7 @@ export function DocumentoPreview() {
             </div>
           </div>
 
-          {/* Compact Tab Selector Bar */}
+          {/* Tab Selector Bar */}
           <div
             role="tablist"
             aria-label="Interactive case workspace sections"
@@ -687,7 +825,7 @@ export function DocumentoPreview() {
                   aria-label={tab.accessibleLabel}
                   onClick={() => setActiveTab(tab.id)}
                   style={{
-                    padding: "12px 16px",
+                    padding: "12px 18px",
                     fontSize: "13px",
                     fontWeight: isSelected ? 700 : 550,
                     color: isSelected ? "#063C3D" : "#445451",
@@ -709,8 +847,8 @@ export function DocumentoPreview() {
                       color: isSelected ? "#063C3D" : "#6E7F7C",
                       fontSize: "11px",
                       padding: "2px 7px",
-                      borderRadius: "10px",
-                      fontWeight: 600,
+                      borderRadius: "6px",
+                      fontWeight: 650,
                     }}
                   >
                     {tab.badge}
@@ -738,17 +876,17 @@ export function DocumentoPreview() {
                 }}
               >
                 <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
-                  <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  <div style={{ fontSize: "11px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     Filing Readiness
                   </div>
-                  <div style={{ fontSize: "22px", fontWeight: 750, color: "#063C3D" }}>68%</div>
-                  <div style={{ fontSize: "12px", color: "#176B50", marginTop: "3px", fontWeight: 550 }}>
+                  <div style={{ fontSize: "24px", fontWeight: 750, color: "#063C3D" }}>68%</div>
+                  <div style={{ fontSize: "12px", color: "#176B50", marginTop: "3px", fontWeight: 600 }}>
                     ✓ 3 of 10 Criteria Satisfied
                   </div>
                 </div>
 
                 <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
-                  <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  <div style={{ fontSize: "11px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     Active Status
                   </div>
                   <div style={{ fontSize: "14px", fontWeight: 700, color: "#8A5A10" }}>
@@ -760,7 +898,7 @@ export function DocumentoPreview() {
                 </div>
 
                 <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
-                  <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  <div style={{ fontSize: "11px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     Target Submission Date
                   </div>
                   <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
@@ -772,11 +910,11 @@ export function DocumentoPreview() {
                 </div>
 
                 <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
-                  <div style={{ fontSize: "11.5px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  <div style={{ fontSize: "11px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     Supervising Attorney
                   </div>
                   <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
-                    Eleanor Vance, Esq.
+                    Assigned Lead Counsel
                   </div>
                   <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "4px" }}>
                     Lead Counsel (Bar # NY-4921)
@@ -838,23 +976,23 @@ export function DocumentoPreview() {
                 </div>
               </div>
 
-              {/* Restrained Progressive Tip */}
+              {/* Restrained Guidance Callout */}
               <div
                 style={{
-                  background: "#FAFCFB",
+                  background: "#F8FAF9",
                   border: "1px solid #DCE5E1",
                   borderRadius: "8px",
-                  padding: "10px 14px",
+                  padding: "12px 16px",
                   fontSize: "12.5px",
                   color: "#445451",
                   display: "flex",
                   alignItems: "center",
-                  gap: "8px",
+                  gap: "10px",
                 }}
               >
-                <span style={{ color: "#0D6866", fontWeight: 700 }}>💡 Note:</span>
+                <span style={{ color: "#07594F", fontWeight: 700 }}>Casework Note:</span>
                 <span>
-                  Select any tab above to explore the Document Vault, procedural tasks, AI discrepancy resolution, or client messaging.
+                  Select any tab above to examine the Document Vault, procedural tasks, AI discrepancy resolution desk, or client communication thread.
                 </span>
               </div>
             </div>
@@ -870,7 +1008,7 @@ export function DocumentoPreview() {
             >
               {/* Category Filter Pills */}
               <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "16px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "12px", fontWeight: 650, color: "#6E7F7C", marginRight: "4px" }}>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: "#6E7F7C", marginRight: "4px" }}>
                   Filter:
                 </span>
                 {["ALL", "Identity", "Academic", "Publications", "Patents", "Support Letters", "Forms"].map((cat) => {
@@ -888,7 +1026,7 @@ export function DocumentoPreview() {
                         background: isCatSelected ? "#0D6866" : "#FFFFFF",
                         color: isCatSelected ? "#FFFFFF" : "#445451",
                         fontSize: "12px",
-                        fontWeight: 600,
+                        fontWeight: 650,
                         cursor: "pointer",
                         transition: "all 0.12s ease",
                       }}
@@ -918,7 +1056,7 @@ export function DocumentoPreview() {
                           }
                         }}
                         style={{
-                          padding: "10px 14px",
+                          padding: "11px 14px",
                           borderRadius: "8px",
                           border: "1px solid",
                           borderColor: isSelected ? "#0D6866" : "#DCE5E1",
@@ -935,7 +1073,7 @@ export function DocumentoPreview() {
                           <div
                             style={{
                               fontSize: "13px",
-                              fontWeight: 650,
+                              fontWeight: 700,
                               color: "#063C3D",
                               whiteSpace: "nowrap",
                               overflow: "hidden",
@@ -979,7 +1117,7 @@ export function DocumentoPreview() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", flexWrap: "wrap", gap: "6px" }}>
-                    <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#0D6866", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    <span style={{ fontSize: "11.5px", fontWeight: 750, color: "#0D6866", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                       Exhibit Metadata Inspector
                     </span>
                     <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#6E7F7C" }}>
@@ -995,7 +1133,7 @@ export function DocumentoPreview() {
                     <strong>Regulatory Mapping:</strong> {selectedDoc.criterion}
                   </div>
 
-                  <div style={{ background: "#FFFFFF", borderRadius: "6px", border: "1px solid #DCE5E1", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#445451" }}>
+                  <div style={{ background: "#F8FAF9", borderRadius: "6px", border: "1px solid #DCE5E1", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#445451" }}>
                     <div style={{ marginBottom: "3px" }}>• <strong>Vault Storage:</strong> Encrypted AES-256 at Rest</div>
                     <div style={{ marginBottom: "3px" }}>• <strong>AI Status:</strong> Parsed &amp; Coordinates Indexed</div>
                     <div>• <strong>Integrity Audit:</strong> Immutable Hash Registered</div>
@@ -1040,7 +1178,7 @@ export function DocumentoPreview() {
                     Interactive: Click checkboxes to toggle task completion.
                   </div>
                 </div>
-                <div style={{ fontSize: "12px", color: "#0D6866", fontWeight: 650 }}>
+                <div style={{ fontSize: "12px", color: "#0D6866", fontWeight: 700 }}>
                   {tasks.filter((t) => t.completed).length} of {tasks.length} Completed
                 </div>
               </div>
@@ -1124,13 +1262,13 @@ export function DocumentoPreview() {
                 </div>
               </div>
 
-              {/* Finding Card with Restrained Amber Review Treatment */}
+              {/* Finding Card */}
               <div
                 style={{
                   border: "1px solid",
                   borderColor: findingStatus === "resolved" ? "#B9DED4" : findingStatus === "escalated" ? "#0D6866" : "#F6D8A6",
                   background: findingStatus === "resolved" ? "#F8FDFB" : findingStatus === "escalated" ? "#F1F6F4" : "#FFFDF8",
-                  borderRadius: "10px",
+                  borderRadius: "8px",
                   padding: "18px",
                 }}
               >
@@ -1251,7 +1389,7 @@ export function DocumentoPreview() {
               {/* Chat Message Stream */}
               <div
                 style={{
-                  background: "#FFFFFF",
+                  background: "#F8FAF9",
                   border: "1px solid #DCE5E1",
                   borderRadius: "8px",
                   padding: "14px",

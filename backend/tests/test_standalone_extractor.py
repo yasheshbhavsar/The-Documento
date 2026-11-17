@@ -11,16 +11,11 @@ def client():
 
 
 def test_get_extractor_samples(client: TestClient):
-    """Verify that sample documents can be fetched without authentication."""
+    """Verify /api/v1/extractor/samples returns an empty list with no hardcoded demo PII."""
     resp = client.get("/api/v1/extractor/samples")
     assert resp.status_code == 200
     samples = resp.json()
-    assert len(samples) >= 6
-    sample_ids = [s["id"] for s in samples]
-    assert "sample-indian-passport" in sample_ids
-    assert "sample-bank-statement" in sample_ids
-    assert "sample-us-passport" in sample_ids
-    assert "sample-employment-letter" in sample_ids
+    assert samples == []
 
 
 def test_analyze_passport_text(client: TestClient):

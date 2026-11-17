@@ -10,6 +10,7 @@ import {
   AgencyKybApplication,
   AgencyPlanTier,
   AgencySupportTicket,
+  AgencyTeamInviteRecord,
   AgencyTenantRecord,
   KybTrack,
   KybVerificationChecklist,
@@ -22,8 +23,10 @@ import {
   computePlatformOverview,
   exportPartnerAgenciesCsv,
   extendAgencyTrialDays,
+  formatStaffRoleLabel,
   getAgencyApplications,
   getAgencySupportTickets,
+  getAgencyTeamInvites,
   getAgencyTenants,
   getPlatformBillingInvoices,
   getPlatformGovernanceLogs,
@@ -32,6 +35,9 @@ import {
   publishStatutoryRuleBroadcast,
   recordAgencyInvoicePaid,
   replyAndResolveSupportTicket,
+  resetAgencyOwnerPassword,
+  resetAgencyStaffPasscode,
+  resolveAgencyTenantCredentials,
   updateAgencyGovernanceLocal,
   updateKybVerificationChecklist,
   deleteAgencyTenant,
@@ -71,6 +77,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
   const [invoices, setInvoices] = useState<AgencyBillingInvoice[]>([]);
   const [supportTickets, setSupportTickets] = useState<AgencySupportTicket[]>([]);
   const [broadcasts, setBroadcasts] = useState<StatutoryRuleBroadcast[]>([]);
+  const [teamInvites, setTeamInvites] = useState<AgencyTeamInviteRecord[]>([]);
 
   // Filters & Selection
   const [statusFilter, setStatusFilter] = useState<
@@ -96,6 +103,10 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
   const [govAiDraft, setGovAiDraft] = useState<number>(2500);
   const [govPlanDraft, setGovPlanDraft] = useState<AgencyPlanTier>("growth");
   const [govReasonDraft, setGovReasonDraft] = useState<string>("");
+  const [showTenantPasswords, setShowTenantPasswords] = useState<boolean>(true);
+  const [isEditingOwnerPassword, setIsEditingOwnerPassword] = useState<boolean>(false);
+  const [customOwnerPasswordDraft, setCustomOwnerPasswordDraft] = useState<string>("");
+  const [credentialError, setCredentialError] = useState<string | null>(null);
   const [toastBanner, setToastBanner] = useState<string | null>(null);
 
   // Sales-Led Direct Agency Provisioning Modal State
@@ -104,6 +115,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
   const [salesTradingName, setSalesTradingName] = useState<string>("");
   const [salesOwnerName, setSalesOwnerName] = useState<string>("");
   const [salesOwnerEmail, setSalesOwnerEmail] = useState<string>("");
+  const [salesOwnerPassword, setSalesOwnerPassword] = useState<string>("");
   const [salesCountry, setSalesCountry] = useState<string>("Canada");
   const [salesCity, setSalesCity] = useState<string>("Toronto");
   const [salesTrack, setSalesTrack] = useState<KybTrack>("regulated_counsel");
@@ -138,12 +150,14 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
     const inv = getPlatformBillingInvoices();
     const tkts = getAgencySupportTickets();
     const bcs = getStatutoryRuleBroadcasts();
+    const invites = getAgencyTeamInvites();
     setTenants(t);
     setApplications(a);
     setGovLogs(l);
     setInvoices(inv);
     setSupportTickets(tkts);
     setBroadcasts(bcs);
+    setTeamInvites(invites);
     if (!selectedAppId) {
       const firstPending = a.find((item) => item.kybStatus === "pending_kyb") || a[0];
       if (firstPending) setSelectedAppId(firstPending.id);
@@ -200,6 +214,11 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
     [tenants, selectedTenantId]
   );
 
+  const selectedTenantCredentials = useMemo(
+    () => (selectedTenant ? resolveAgencyTenantCredentials(selectedTenant.organizationId) : null),
+    [selectedTenant, tenants, applications, teamInvites]
+  );
+
   useEffect(() => {
     if (selectedTenant) {
       setGovPlanDraft(selectedTenant.planTier);
@@ -207,6 +226,9 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
       setGovCaseDraft(selectedTenant.monthlyCaseQuota);
       setGovAiDraft(selectedTenant.monthlyAiExtractionQuota);
       setGovReasonDraft("");
+      setIsEditingOwnerPassword(false);
+      setCustomOwnerPasswordDraft("");
+      setCredentialError(null);
     }
   }, [selectedTenantId]);
 
@@ -238,8 +260,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
     const parts: string[] = [];
     if (overview.pendingKybCount > 0) {
       parts.push(
-        `${overview.pendingKybCount} agency KYB ${
-          overview.pendingKybCount === 1 ? "dossier awaits" : "dossiers await"
+        `${overview.pendingKybCount} agency KYB ${overview.pendingKybCount === 1 ? "dossier awaits" : "dossiers await"
         } practitioner license verification`
       );
     }
@@ -250,8 +271,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
     }
     if (overview.quotaAttentionCount > 0) {
       parts.push(
-        `${overview.quotaAttentionCount} active ${
-          overview.quotaAttentionCount === 1 ? "tenant is" : "tenants are"
+        `${overview.quotaAttentionCount} active ${overview.quotaAttentionCount === 1 ? "tenant is" : "tenants are"
         } at ≥85% monthly seat/AI quota`
       );
     }
@@ -280,7 +300,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
     }
     setLoginError(
       res.error ||
-        "Control Plane access requires an authorized Documento HQ Platform Super-Admin account and passphrase."
+      "Control Plane access requires an authorized Documento HQ Platform Super-Admin account and passphrase."
     );
   };
 
@@ -352,6 +372,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
         tradingName: salesTradingName,
         ownerFullName: salesOwnerName,
         ownerEmail: salesOwnerEmail,
+        ownerPassword: salesOwnerPassword.trim() || undefined,
         hqCountry: salesCountry,
         hqCity: salesCity,
         kybTrack: salesTrack,
@@ -377,6 +398,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
       setSalesTradingName("");
       setSalesOwnerName("");
       setSalesOwnerEmail("");
+      setSalesOwnerPassword("");
       setSalesLicense("");
       refreshData();
       setToastBanner(
@@ -401,8 +423,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
     const updated = extendAgencyTrialDays(tenant.organizationId, 7, operator.email);
     refreshData();
     setToastBanner(
-      `Extended 14-day pilot for ${updated.tradingName} by +7 days (new expiry ${
-        updated.trialEndsAt ? updated.trialEndsAt.slice(0, 10) : ""
+      `Extended 14-day pilot for ${updated.tradingName} by +7 days (new expiry ${updated.trialEndsAt ? updated.trialEndsAt.slice(0, 10) : ""
       }).`
     );
   };
@@ -481,6 +502,95 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
     );
     refreshData();
     setToastBanner(`Updated SaaS quotas and plan governance for ${selectedTenant.tradingName}.`);
+  };
+
+  const copyTextToClipboard = (value: string, label: string) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(value).catch(() => { });
+    }
+    setToastBanner(`Copied ${label} to clipboard.`);
+  };
+
+  const handleCopyFullLoginPacket = () => {
+    if (!selectedTenant || !selectedTenantCredentials) return;
+    const ownerPw = selectedTenantCredentials.ownerPassword || "(Password not set — reset in Tenant Governance)";
+    const lines = [
+      `Documento Partner Workspace Credentials — ${selectedTenant.tradingName}`,
+      `Firm Sign-In Portal: /login (Firm Staff)`,
+      `Workspace Slug: ${selectedTenant.slug}`,
+      `Co-Branded Calculators: /calculators?agency=${selectedTenant.slug}`,
+      ``,
+      `[Managing Partner / Master Admin]`,
+      `Name: ${selectedTenant.ownerFullName}`,
+      `Login ID: ${selectedTenant.ownerEmail}`,
+      `Password: ${ownerPw}`,
+    ];
+    if (selectedTenantCredentials.teamSeats.length > 0) {
+      lines.push(``, `[Provisioned Staff Seats]`);
+      for (const seat of selectedTenantCredentials.teamSeats) {
+        lines.push(
+          `- ${seat.fullName} (${formatStaffRoleLabel(seat.role)}) | Login ID: ${seat.email} | Password: ${seat.passcode}`
+        );
+      }
+    }
+    copyTextToClipboard(lines.join("\n"), `full login credential packet for ${selectedTenant.tradingName}`);
+  };
+
+  const handleAutoResetOwnerPassword = () => {
+    if (!selectedTenant) return;
+    setCredentialError(null);
+    try {
+      const actorEmail = operator?.email || PLATFORM_HQ_OPERATOR_EMAIL;
+      const updated = resetAgencyOwnerPassword(
+        selectedTenant.organizationId,
+        undefined,
+        actorEmail,
+        govReasonDraft.trim() || undefined
+      );
+      setShowTenantPasswords(true);
+      setIsEditingOwnerPassword(false);
+      setCustomOwnerPasswordDraft("");
+      refreshData();
+      setToastBanner(
+        `Issued new Managing Partner password (${updated.temporaryPassword}) for ${updated.ownerEmail}.`
+      );
+    } catch (err: any) {
+      setCredentialError(err?.message || "Unable to reset Managing Partner password.");
+    }
+  };
+
+  const handleSaveCustomOwnerPassword = () => {
+    if (!selectedTenant) return;
+    setCredentialError(null);
+    try {
+      const actorEmail = operator?.email || PLATFORM_HQ_OPERATOR_EMAIL;
+      const updated = resetAgencyOwnerPassword(
+        selectedTenant.organizationId,
+        customOwnerPasswordDraft,
+        actorEmail,
+        govReasonDraft.trim() || undefined
+      );
+      setShowTenantPasswords(true);
+      setIsEditingOwnerPassword(false);
+      setCustomOwnerPasswordDraft("");
+      refreshData();
+      setToastBanner(`Updated custom Managing Partner password for ${updated.ownerEmail}.`);
+    } catch (err: any) {
+      setCredentialError(err?.message || "Password must be at least 8 characters.");
+    }
+  };
+
+  const handleResetStaffSeatPasscode = (seat: AgencyTeamInviteRecord) => {
+    setCredentialError(null);
+    try {
+      const actorEmail = operator?.email || PLATFORM_HQ_OPERATOR_EMAIL;
+      const updated = resetAgencyStaffPasscode(seat.id, undefined, actorEmail);
+      setShowTenantPasswords(true);
+      refreshData();
+      setToastBanner(`Issued new staff passcode (${updated.passcode}) for ${updated.email}.`);
+    } catch (err: any) {
+      setCredentialError(err?.message || "Unable to rotate staff passcode.");
+    }
   };
 
   const handleToggleFeatureFlag = (flagKey: keyof AgencyFeatureFlags) => {
@@ -723,6 +833,9 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
             grid-template-columns: 1fr !important;
           }
           .hq-split-2col {
+            grid-template-columns: 1fr !important;
+          }
+          .hq-cred-grid {
             grid-template-columns: 1fr !important;
           }
         }
@@ -1064,7 +1177,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Daniel Cho, Barrister"
+                      placeholder="Full name and bar/license title"
                       value={salesOwnerName}
                       onChange={(e) => setSalesOwnerName(e.target.value)}
                       style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #BDCDC7", fontSize: "13px" }}
@@ -1076,9 +1189,22 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                     </label>
                     <input
                       type="email"
-                      placeholder="daniel@pacificrimlaw.ca"
+                      placeholder="owner@practice-domain.com"
                       value={salesOwnerEmail}
                       onChange={(e) => setSalesOwnerEmail(e.target.value)}
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #BDCDC7", fontSize: "13px" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                      Initial Password (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      aria-label="Sales initial owner password"
+                      placeholder="Auto-generates if blank"
+                      value={salesOwnerPassword}
+                      onChange={(e) => setSalesOwnerPassword(e.target.value)}
                       style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #BDCDC7", fontSize: "13px" }}
                     />
                   </div>
@@ -1233,7 +1359,7 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                                 prev.includes(c.code)
                                   ? prev.length > 1
                                     ? prev.filter((x) => x !== c.code)
-                                  : prev
+                                    : prev
                                   : [...prev, c.code]
                               )
                             }
@@ -2138,10 +2264,37 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                         color: "#176B50",
                         fontSize: "13px",
                         fontWeight: 600,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "6px",
                       }}
                     >
-                      ✓ Approved and provisioned as tenant{" "}
-                      <code>{selectedApp.provisionedOrganizationId}</code>.
+                      <div>
+                        ✓ Approved and provisioned as tenant{" "}
+                        <code>{selectedApp.provisionedOrganizationId}</code>.
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "14px",
+                          fontSize: "12px",
+                          color: "#063C3D",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <span>
+                          Login ID: <code>{selectedApp.contactWorkEmail}</code>
+                        </span>
+                        {(selectedApp.temporaryOwnerPassword || selectedApp.ownerPassword) && (
+                          <span>
+                            Password:{" "}
+                            <code>
+                              {selectedApp.temporaryOwnerPassword || selectedApp.ownerPassword}
+                            </code>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div style={{ borderTop: "1px solid #E5ECE9", paddingTop: "16px" }}>
@@ -2576,6 +2729,507 @@ export function SuperAdminControlPlane({ onSignOut }: { onSignOut?: () => void }
                         ? `Break-Glass Support Token Active (Reason: ${selectedTenant.supportGrantReason})`
                         : "Zero-PII Sealed (No Support Token Issued)"}
                     </span>
+                  </div>
+
+                  {/* Workspace Login Credentials (IDs & Passwords) */}
+                  <div
+                    data-testid="tenant-credentials-panel"
+                    style={{
+                      border: "1px solid #DCE5E1",
+                      borderRadius: "6px",
+                      background: "#F8FAF9",
+                      padding: "14px 16px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "10px",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>
+                          Workspace Login Credentials (IDs &amp; Passwords)
+                        </div>
+                        <div style={{ fontSize: "11.5px", color: "#5C6E6A", marginTop: "2px" }}>
+                          Firm Sign-In Portal (<code>/login</code>) · 1 Managing Partner
+                          {(selectedTenantCredentials?.teamSeats.length || 0) > 0
+                            ? ` + ${selectedTenantCredentials!.teamSeats.length} Provisioned Staff Seat(s)`
+                            : ""}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          data-testid="toggle-tenant-passwords-btn"
+                          onClick={() => setShowTenantPasswords((prev) => !prev)}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: "5px",
+                            border: "1px solid #BDCDC7",
+                            background: "#FFFFFF",
+                            color: "#063C3D",
+                            fontSize: "11.5px",
+                            fontWeight: 650,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {showTenantPasswords ? "Hide Passwords" : "Show Passwords"}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="copy-tenant-login-packet-btn"
+                          onClick={handleCopyFullLoginPacket}
+                          style={{
+                            padding: "5px 11px",
+                            borderRadius: "5px",
+                            border: "1px solid #063C3D",
+                            background: "#063C3D",
+                            color: "#FFFFFF",
+                            fontSize: "11.5px",
+                            fontWeight: 650,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Copy Login Packet
+                        </button>
+                      </div>
+                    </div>
+
+                    {credentialError && (
+                      <div
+                        role="alert"
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: "5px",
+                          background: "#FEF2F2",
+                          border: "1px solid #FECACA",
+                          color: "#991B1B",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          marginBottom: "10px",
+                        }}
+                      >
+                        {credentialError}
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {/* Managing Partner / Master Admin Account */}
+                      <div
+                        data-testid="tenant-owner-credential-row"
+                        style={{
+                          border: "1px solid #E4ECE8",
+                          borderRadius: "6px",
+                          background: "#FFFFFF",
+                          padding: "10px 12px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "8px",
+                        }}
+                      >
+                        <div
+                          className="hq-cred-grid"
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "minmax(170px, 1.3fr) minmax(210px, 1.8fr) minmax(190px, 1.5fr) auto",
+                            gap: "12px",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#172322" }}>
+                              {selectedTenant.ownerFullName}
+                            </div>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                marginTop: "2px",
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                                background: "#EAF6F0",
+                                border: "1px solid #B9DED4",
+                                color: "#176B50",
+                                fontSize: "10.5px",
+                                fontWeight: 700,
+                                letterSpacing: "0.03em",
+                              }}
+                            >
+                              MANAGING PARTNER · MASTER ADMIN
+                            </span>
+                          </div>
+
+                          <div>
+                            <div
+                              style={{
+                                fontSize: "10.5px",
+                                fontWeight: 700,
+                                color: "#647571",
+                                letterSpacing: "0.04em",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              Login ID (Email)
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px", flexWrap: "wrap" }}>
+                              <code
+                                data-testid="tenant-owner-login-id"
+                                style={{
+                                  fontSize: "12.5px",
+                                  fontWeight: 650,
+                                  color: "#063C3D",
+                                  background: "#F4F8F6",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #DCE5E1",
+                                }}
+                              >
+                                {selectedTenant.ownerEmail}
+                              </code>
+                              <button
+                                type="button"
+                                data-testid="copy-owner-login-id-btn"
+                                onClick={() =>
+                                  copyTextToClipboard(
+                                    selectedTenant.ownerEmail,
+                                    `Login ID (${selectedTenant.ownerEmail})`
+                                  )
+                                }
+                                style={{
+                                  padding: "2px 7px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #DCE5E1",
+                                  background: "#FFFFFF",
+                                  color: "#384A46",
+                                  fontSize: "11px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Copy ID
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <div
+                              style={{
+                                fontSize: "10.5px",
+                                fontWeight: 700,
+                                color: "#647571",
+                                letterSpacing: "0.04em",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              Password
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px", flexWrap: "wrap" }}>
+                              {selectedTenantCredentials?.ownerPassword ? (
+                                <>
+                                  <code
+                                    data-testid="tenant-owner-password"
+                                    style={{
+                                      fontSize: "12.5px",
+                                      fontWeight: 700,
+                                      color: "#063C3D",
+                                      background: "#F4F8F6",
+                                      padding: "2px 6px",
+                                      borderRadius: "4px",
+                                      border: "1px solid #DCE5E1",
+                                    }}
+                                  >
+                                    {showTenantPasswords
+                                      ? selectedTenantCredentials.ownerPassword
+                                      : "••••••••••••"}
+                                  </code>
+                                  <button
+                                    type="button"
+                                    data-testid="copy-owner-password-btn"
+                                    onClick={() =>
+                                      copyTextToClipboard(
+                                        selectedTenantCredentials.ownerPassword!,
+                                        `password for ${selectedTenant.ownerEmail}`
+                                      )
+                                    }
+                                    style={{
+                                      padding: "2px 7px",
+                                      borderRadius: "4px",
+                                      border: "1px solid #DCE5E1",
+                                      background: "#FFFFFF",
+                                      color: "#384A46",
+                                      fontSize: "11px",
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Copy Password
+                                  </button>
+                                </>
+                              ) : (
+                                <span
+                                  data-testid="tenant-owner-password"
+                                  style={{ fontSize: "12px", fontWeight: 600, color: "#8A5A10" }}
+                                >
+                                  Not stored — click Set / Auto-Reset
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              data-testid="open-custom-owner-password-btn"
+                              onClick={() => {
+                                setCredentialError(null);
+                                setIsEditingOwnerPassword((prev) => !prev);
+                              }}
+                              style={{
+                                padding: "5px 9px",
+                                borderRadius: "4px",
+                                border: "1px solid #BDCDC7",
+                                background: "#FFFFFF",
+                                color: "#063C3D",
+                                fontSize: "11px",
+                                fontWeight: 650,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {isEditingOwnerPassword ? "Cancel" : "Set Password"}
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="auto-reset-owner-password-btn"
+                              onClick={handleAutoResetOwnerPassword}
+                              style={{
+                                padding: "5px 9px",
+                                borderRadius: "4px",
+                                border: "1px solid #0D6866",
+                                background: "#F2F9F6",
+                                color: "#063C3D",
+                                fontSize: "11px",
+                                fontWeight: 650,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Auto-Reset
+                            </button>
+                          </div>
+                        </div>
+
+                        {isEditingOwnerPassword && (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "8px",
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                              paddingTop: "8px",
+                              borderTop: "1px solid #EFF3F1",
+                            }}
+                          >
+                            <input
+                              type="text"
+                              data-testid="custom-owner-password-input"
+                              placeholder="Enter new Managing Partner password (min 8 characters)..."
+                              value={customOwnerPasswordDraft}
+                              onChange={(e) => setCustomOwnerPasswordDraft(e.target.value)}
+                              style={{
+                                flex: 1,
+                                minWidth: "230px",
+                                padding: "7px 10px",
+                                borderRadius: "5px",
+                                border: "1px solid #BDCDC7",
+                                fontSize: "12.5px",
+                              }}
+                            />
+                            <button
+                              type="button"
+                              data-testid="save-custom-owner-password-btn"
+                              onClick={handleSaveCustomOwnerPassword}
+                              style={{
+                                padding: "7px 13px",
+                                borderRadius: "5px",
+                                border: "none",
+                                background: "#063C3D",
+                                color: "#FFFFFF",
+                                fontSize: "12px",
+                                fontWeight: 650,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Save Password
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Provisioned Agency Staff Seats (Case Managers & Paralegals) */}
+                      {(selectedTenantCredentials?.teamSeats || []).map((seat) => (
+                        <div
+                          key={seat.id}
+                          className="hq-cred-grid"
+                          data-testid={`tenant-staff-credential-row-${seat.id}`}
+                          style={{
+                            border: "1px solid #E4ECE8",
+                            borderRadius: "6px",
+                            background: "#FFFFFF",
+                            padding: "9px 12px",
+                            display: "grid",
+                            gridTemplateColumns:
+                              "minmax(170px, 1.3fr) minmax(210px, 1.8fr) minmax(190px, 1.5fr) auto",
+                            gap: "12px",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: "12.5px", fontWeight: 650, color: "#172322" }}>
+                              {seat.fullName}
+                            </div>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                marginTop: "2px",
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                                background: "#F4F8F6",
+                                border: "1px solid #DCE5E1",
+                                color: "#384A46",
+                                fontSize: "10.5px",
+                                fontWeight: 700,
+                                letterSpacing: "0.03em",
+                              }}
+                            >
+                              {formatStaffRoleLabel(seat.role).toUpperCase()} ·{" "}
+                              {seat.branchOffice}
+                            </span>
+                          </div>
+
+                          <div>
+                            <div
+                              style={{
+                                fontSize: "10.5px",
+                                fontWeight: 700,
+                                color: "#647571",
+                                letterSpacing: "0.04em",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              Login ID (Email)
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px", flexWrap: "wrap" }}>
+                              <code
+                                data-testid={`tenant-staff-login-id-${seat.id}`}
+                                style={{
+                                  fontSize: "12px",
+                                  fontWeight: 650,
+                                  color: "#063C3D",
+                                  background: "#F4F8F6",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #DCE5E1",
+                                }}
+                              >
+                                {seat.email}
+                              </code>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  copyTextToClipboard(seat.email, `Staff Login ID (${seat.email})`)
+                                }
+                                style={{
+                                  padding: "2px 7px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #DCE5E1",
+                                  background: "#FFFFFF",
+                                  color: "#384A46",
+                                  fontSize: "11px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Copy ID
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <div
+                              style={{
+                                fontSize: "10.5px",
+                                fontWeight: 700,
+                                color: "#647571",
+                                letterSpacing: "0.04em",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              Staff Passcode
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px", flexWrap: "wrap" }}>
+                              <code
+                                data-testid={`tenant-staff-password-${seat.id}`}
+                                style={{
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  color: "#063C3D",
+                                  background: "#F4F8F6",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #DCE5E1",
+                                }}
+                              >
+                                {showTenantPasswords ? seat.passcode : "••••••••••••"}
+                              </code>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  copyTextToClipboard(seat.passcode, `passcode for ${seat.email}`)
+                                }
+                                style={{
+                                  padding: "2px 7px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #DCE5E1",
+                                  background: "#FFFFFF",
+                                  color: "#384A46",
+                                  fontSize: "11px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Copy Password
+                              </button>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              data-testid={`reset-staff-passcode-btn-${seat.id}`}
+                              onClick={() => handleResetStaffSeatPasscode(seat)}
+                              style={{
+                                padding: "5px 9px",
+                                borderRadius: "4px",
+                                border: "1px solid #BDCDC7",
+                                background: "#FFFFFF",
+                                color: "#063C3D",
+                                fontSize: "11px",
+                                fontWeight: 650,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Auto-Reset
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div

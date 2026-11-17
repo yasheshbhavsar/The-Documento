@@ -109,7 +109,7 @@ export const DOCKET_ITEM_LOCALIZATIONS: Record<
     gu: {
       title: "કાનૂની પ્રતિનિધિત્વ કરાર અને એસ્ક્રો ટ્રસ્ટ ફંડિંગ સંપન્ન",
       summary:
-        "ફોર્મ G-28 હેઠળ વેનગાર્ડ ઇમિગ્રેશન લો ગ્રૂપ સાથે કાનૂની કરાર સંપન્ન થયો અને ડેડિકેટેડ કેસ પ્રોસેસિંગ ટીમ સાથે ક્લાયન્ટ પોર્ટલ સક્રિય કરાયું.",
+        "ફોર્મ G-28 હેઠળ સત્તાવાર કાનૂની પ્રતિનિધિત્વ કરાર સંપન્ન થયો અને ડેડિકેટેડ કેસ પ્રોસેસિંગ ટીમ સાથે ક્લાયન્ટ પોર્ટલ સક્રિય કરાયું.",
       legalSignificance:
         "ફોર્મ G-28 વકીલાતનામું USCIS અને હોમલેન્ડ સિક્યોરિટી સમક્ષ સત્તાવાર કાનૂની અધિકાર અને ગોપનીયતા સ્થાપિત કરે છે.",
       badgeLabel: "પ્રતિનિધિત્વ સક્રિય",
@@ -117,7 +117,7 @@ export const DOCKET_ITEM_LOCALIZATIONS: Record<
     hi: {
       title: "कानूनी प्रतिनिधित्व अनुबंध और एस्क्रो ट्रस्ट फंडिंग संपन्न",
       summary:
-        "फॉर्म G-28 के तहत वैनगार्ड इमिग्रेशन लॉ ग्रुप के साथ कानूनी अनुबंध संपन्न हुआ और समर्पित केस टीम के साथ क्लाइंट पोर्टल सक्रिय किया गया।",
+        "फॉर्म G-28 के तहत आधिकारिक कानूनी प्रतिनिधित्व अनुबंध संपन्न हुआ और समर्पित केस टीम के साथ क्लाइंट पोर्टल सक्रिय किया गया।",
       legalSignificance:
         "फॉर्म G-28 वकालतनामा USCIS और होमलैंड सिक्योरिटी के समक्ष आधिकारिक कानूनी अधिकार और गोपनीयता स्थापित करता है।",
       badgeLabel: "प्रतिनिधित्व सक्रिय",
@@ -125,115 +125,7 @@ export const DOCKET_ITEM_LOCALIZATIONS: Record<
   },
 };
 
-export const FALLBACK_VISA_FILE_UPDATES: VisaFileUpdateItem[] = [
-  {
-    id: "update-01",
-    timestamp: "October 15, 2026 • 10:15 AM",
-    relativeTime: "2 hours ago",
-    category: "biometrics",
-    title: "USCIS Biometrics Appointment Notice (Form I-797C) Issued",
-    officialReference: "ASC Notice #ASC-CA-88921",
-    statusBadge: {
-      label: "Appointment Scheduled",
-      bg: "#FEF3C7",
-      color: "#92400E",
-      border: "#FCD34D",
-    },
-    officerName: "USCIS National Benefits Center",
-    officerRole: "ASC Tier-2 Adjudications",
-    summary:
-      "USCIS has officially scheduled your in-person biometrics recording (digital fingerprints, facial photography, and cryptographic signature capture) at the San Jose Application Support Center (ASC) for November 04, 2026, at 10:15 AM PST.",
-    legalSignificance:
-      "Mandatory biometric identification verification and FBI forensic background checks under 8 CFR § 103.2(b)(9). Mandatory prerequisite for Form I-485 and employment authorization (EAD).",
-    actionRequired: true,
-    actionText: "Chat with Officer About Appointment",
-    actionTargetTab: "messages",
-  },
-  {
-    id: "update-02",
-    timestamp: "October 14, 2026 • 02:40 PM",
-    relativeTime: "1 day ago",
-    category: "uscis_notice",
-    title: "Form I-140 Immigrant Petition Approved (Form I-797 Notice of Action)",
-    officialReference: "USCIS #IOE-09-284-91823",
-    statusBadge: {
-      label: "Form I-140 Approved ✓",
-      bg: "#DCFCE7",
-      color: "#166534",
-      border: "#86EFAC",
-    },
-    officerName: "Texas Service Center (TSC)",
-    officerRole: "Supervisory Immigration Services Officer",
-    summary:
-      "USCIS has completed adjudicative review and formally APPROVED your immigrant petition for Extraordinary Ability (EB-1A). Evidentiary satisfaction met across high remuneration, critical role, peer review, and scholarly publication criteria under Matter of Chawathe preponderant evidence standards.",
-    legalSignificance:
-      "Establishes permanent immigrant classification under INA § 203(b)(1)(A). Your Priority Date of August 10, 2026 is officially vested and permanently locked.",
-    actionRequired: false,
-  },
-  {
-    id: "update-03",
-    timestamp: "October 12, 2026 • 11:30 AM",
-    relativeTime: "3 days ago",
-    category: "evidence",
-    title: "Comprehensive Legal Brief & 1,420-Page Evidentiary Dossier Indexed",
-    officialReference: "Docket Submission #EXH-2026-EB1A",
-    statusBadge: {
-      label: "Evidence Dossier Filed",
-      bg: "#E0F2FE",
-      color: "#0369A1",
-      border: "#BAE6FD",
-    },
-    officerName: "Sarah Jenkins, Esq.",
-    officerRole: "Lead Immigration Attorney",
-    summary:
-      "Legal team completed final paginated exhibit indexing and evidentiary binder filing: 14 peer-reviewed publications, 28 journal review verifications, 5 independent expert testimonial letters, and evidence of 840 citations in top AI robotics venues.",
-    legalSignificance:
-      "Comprehensive two-step evidentiary compliance under Kazarian v. USCIS, 580 F.3d 1025 (9th Cir. 2010), satisfying both regulatory criteria threshold and final merits determination.",
-    actionRequired: false,
-  },
-  {
-    id: "update-04",
-    timestamp: "October 10, 2026 • 04:15 PM",
-    relativeTime: "5 days ago",
-    category: "officer_action",
-    title: "Civil Documents & Identity Records Verified by Reviewing Specialist",
-    officialReference: "Internal Quality Audit #QA-9902",
-    statusBadge: {
-      label: "Verified & Locked",
-      bg: "#F3E8FF",
-      color: "#6B21A8",
-      border: "#D8B4FE",
-    },
-    officerName: "Marcus Vance",
-    officerRole: "Senior Case Processing Specialist",
-    summary:
-      "Cryptographic SHA-256 integrity match confirmed for primary applicant passport, birth record, marriage certificate, and spouse derivative records. Verification against Form I-485 biographical records passed with zero discrepancies.",
-    legalSignificance:
-      "Primary identity requirement under 8 CFR § 204.5(a) and derivative beneficiary qualification under INA § 203(d).",
-    actionRequired: false,
-  },
-  {
-    id: "update-05",
-    timestamp: "October 03, 2026 • 09:00 AM",
-    relativeTime: "12 days ago",
-    category: "officer_action",
-    title: "Representation Contract & Trust Retainer Completed",
-    officialReference: "Retainer #RET-2026-8819",
-    statusBadge: {
-      label: "Retainer Active",
-      bg: "#EAF6F0",
-      color: "#0D6866",
-      border: "#B9DED4",
-    },
-    officerName: "Vanguard Immigration Law Group",
-    officerRole: "Attorney of Record",
-    summary:
-      "Notice of Entry of Appearance as Attorney (Form G-28) filed with USCIS and client transparency portal initialized with direct real-time casework updates and assigned case processing officer channel.",
-    legalSignificance:
-      "Form G-28 formal notice establishes attorney-client privilege and DHS authorized legal representative authority under 8 CFR § 292.1.",
-    actionRequired: false,
-  },
-];
+export const FALLBACK_VISA_FILE_UPDATES: VisaFileUpdateItem[] = [];
 
 interface VisaFileUpdatesViewProps {
   myCase: ImmigrationCase | null;
@@ -327,7 +219,7 @@ export function VisaFileUpdatesView({
   const activeUpdates: VisaFileUpdateItem[] = isDemoCase
     ? FALLBACK_VISA_FILE_UPDATES
     : isCanada
-    ? [
+      ? [
         {
           id: `update-${myCase.id}-01`,
           timestamp: "Today • Just now",
@@ -348,7 +240,7 @@ export function VisaFileUpdatesView({
           actionRequired: false,
         },
       ]
-    : [
+      : [
         {
           id: `update-${myCase.id}-01`,
           timestamp: "Today • Just now",
@@ -569,7 +461,7 @@ export function VisaFileUpdatesView({
               CASE PROCESSING OFFICER
             </span>
             <strong style={{ fontSize: "13px", color: "#FFFFFF", display: "block", marginTop: "2px" }}>
-              {isDemoCase ? "Sarah Jenkins, Esq." : resolvedOfficerLabel}
+              {resolvedOfficerLabel}
             </strong>
           </div>
         </div>
@@ -837,217 +729,217 @@ export function VisaFileUpdatesView({
 
             return (
               <div
-              key={item.id}
-              style={{
-                background: "#FFFFFF",
-                border: "1px solid #DCE5E1",
-                borderRadius: "14px",
-                padding: "20px 24px",
-                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
-                transition: "all 0.15s ease",
-                position: "relative",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#B9DED4";
-                e.currentTarget.style.boxShadow = "0 4px 12px rgba(6, 60, 61, 0.06)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#DCE5E1";
-                e.currentTarget.style.boxShadow = "0 1px 3px rgba(6, 60, 61, 0.02)";
-              }}
-            >
-              {/* Top Row: Timestamp, Official Reference, and Status Badge */}
-              <div
+                key={item.id}
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  flexWrap: "wrap",
-                  gap: "10px",
-                  marginBottom: "10px",
+                  background: "#FFFFFF",
+                  border: "1px solid #DCE5E1",
+                  borderRadius: "14px",
+                  padding: "20px 24px",
+                  boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
+                  transition: "all 0.15s ease",
+                  position: "relative",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#B9DED4";
+                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(6, 60, 61, 0.06)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#DCE5E1";
+                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(6, 60, 61, 0.02)";
                 }}
               >
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
-                    <span
+                {/* Top Row: Timestamp, Official Reference, and Status Badge */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                    marginBottom: "10px",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+                      <span
+                        style={{
+                          background: item.statusBadge.bg,
+                          color: item.statusBadge.color,
+                          border: `1px solid ${item.statusBadge.border}`,
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                        }}
+                      >
+                        {displayBadgeLabel}
+                      </span>
+                      <span style={{ fontSize: "11px", color: "#6E7F7C" }}>•</span>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#6E7F7C" }}>
+                        {item.relativeTime}
+                      </span>
+                      <span style={{ fontSize: "11px", color: "#BDCDC7" }}>
+                        ({item.timestamp.includes(" • ") ? item.timestamp.split(" • ")[0] : (!isNaN(new Date(item.timestamp).getTime()) ? new Date(item.timestamp).toLocaleDateString() : item.timestamp)})
+                      </span>
+                    </div>
+
+                    <h3
                       style={{
-                        background: item.statusBadge.bg,
-                        color: item.statusBadge.color,
-                        border: `1px solid ${item.statusBadge.border}`,
-                        fontSize: "11px",
+                        margin: "0 0 4px 0",
+                        fontSize: "16px",
                         fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: "6px",
+                        color: "#063C3D",
+                        letterSpacing: "-0.01em",
                       }}
                     >
-                      {displayBadgeLabel}
-                    </span>
-                    <span style={{ fontSize: "11px", color: "#6E7F7C" }}>•</span>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#6E7F7C" }}>
-                      {item.relativeTime}
-                    </span>
-                    <span style={{ fontSize: "11px", color: "#BDCDC7" }}>
-                      ({item.timestamp.includes(" • ") ? item.timestamp.split(" • ")[0] : (!isNaN(new Date(item.timestamp).getTime()) ? new Date(item.timestamp).toLocaleDateString() : item.timestamp)})
-                    </span>
+                      {displayTitle}
+                    </h3>
                   </div>
 
-                  <h3
+                  <div
                     style={{
-                      margin: "0 0 4px 0",
-                      fontSize: "16px",
-                      fontWeight: 700,
+                      background: "#F8F7F2",
+                      border: "1px solid #DCE5E1",
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      fontFamily: "monospace",
                       color: "#063C3D",
-                      letterSpacing: "-0.01em",
+                      fontWeight: 600,
                     }}
                   >
-                    {displayTitle}
-                  </h3>
+                    {item.officialReference}
+                  </div>
                 </div>
 
+                {/* Summary of What Happened */}
+                <p
+                  style={{
+                    margin: "0 0 12px 0",
+                    fontSize: "13px",
+                    color: "#172322",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {displaySummary}
+                </p>
+
+                {/* Legal Significance Box */}
                 <div
                   style={{
                     background: "#F8F7F2",
-                    border: "1px solid #DCE5E1",
-                    padding: "4px 10px",
-                    borderRadius: "6px",
-                    fontSize: "11px",
-                    fontFamily: "monospace",
-                    color: "#063C3D",
-                    fontWeight: 600,
+                    borderLeft: "3px solid #0D6866",
+                    padding: "10px 14px",
+                    borderRadius: "0 8px 8px 0",
+                    marginBottom: "14px",
                   }}
                 >
-                  {item.officialReference}
-                </div>
-              </div>
-
-              {/* Summary of What Happened */}
-              <p
-                style={{
-                  margin: "0 0 12px 0",
-                  fontSize: "13px",
-                  color: "#172322",
-                  lineHeight: 1.5,
-                }}
-              >
-                {displaySummary}
-              </p>
-
-              {/* Legal Significance Box */}
-              <div
-                style={{
-                  background: "#F8F7F2",
-                  borderLeft: "3px solid #0D6866",
-                  padding: "10px 14px",
-                  borderRadius: "0 8px 8px 0",
-                  marginBottom: "14px",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
-                  <span style={{ fontSize: "11px" }}>⚖️</span>
-                  <strong style={{ fontSize: "11px", color: "#063C3D", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    {language === "en" ? "Legal Significance & Statutory Authority" : t.legalSignificanceLabel}
-                  </strong>
-                </div>
-                <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.45 }}>
-                  {displayLegalSignificance}
-                </div>
-              </div>
-
-              {/* Bottom Row: Responsible Officer & Action CTA */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "10px",
-                  paddingTop: "10px",
-                  borderTop: "1px solid #F1F6F4",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <div
-                    style={{
-                      width: "24px",
-                      height: "24px",
-                      borderRadius: "50%",
-                      background: "#0D6866",
-                      color: "#FFFFFF",
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    SJ
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
+                    <span style={{ fontSize: "11px" }}>⚖️</span>
+                    <strong style={{ fontSize: "11px", color: "#063C3D", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                      {language === "en" ? "Legal Significance & Statutory Authority" : t.legalSignificanceLabel}
+                    </strong>
                   </div>
-                  <div>
-                    <span style={{ fontSize: "11px", fontWeight: 650, color: "#063C3D", display: "block" }}>
-                      {item.officerName}
-                    </span>
-                    <span style={{ fontSize: "10px", color: "#6E7F7C" }}>
-                      {item.officerRole}
-                    </span>
+                  <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.45 }}>
+                    {displayLegalSignificance}
                   </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(item.officialReference)}
-                    style={{
-                      padding: "5px 10px",
-                      background: "#FFFFFF",
-                      border: "1px solid #DCE5E1",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#445451",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {copiedRef === item.officialReference ? "✓ Copied Ref" : "📋 Copy Reference"}
-                  </button>
-                  {item.actionRequired && item.actionText && (
-                    <button
-                      type="button"
-                      onClick={() => item.actionTargetTab && onNavigateTab(item.actionTargetTab)}
+                {/* Bottom Row: Responsible Officer & Action CTA */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                    paddingTop: "10px",
+                    borderTop: "1px solid #F1F6F4",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div
                       style={{
-                        padding: "5px 12px",
+                        width: "24px",
+                        height: "24px",
+                        borderRadius: "50%",
                         background: "#0D6866",
                         color: "#FFFFFF",
-                        border: "none",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      SJ
+                    </div>
+                    <div>
+                      <span style={{ fontSize: "11px", fontWeight: 650, color: "#063C3D", display: "block" }}>
+                        {item.officerName}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#6E7F7C" }}>
+                        {item.officerRole}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(item.officialReference)}
+                      style={{
+                        padding: "5px 10px",
+                        background: "#FFFFFF",
+                        border: "1px solid #DCE5E1",
                         borderRadius: "6px",
                         fontSize: "11px",
-                        fontWeight: 650,
+                        fontWeight: 600,
+                        color: "#445451",
                         cursor: "pointer",
                       }}
                     >
-                      {item.actionText} →
+                      {copiedRef === item.officialReference ? "✓ Copied Ref" : "📋 Copy Reference"}
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => onNavigateTab("messages")}
-                    style={{
-                      padding: "5px 10px",
-                      background: "#EAF6F0",
-                      color: "#0D6866",
-                      border: "1px solid #B9DED4",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    💬 Ask Officer
-                  </button>
+                    {item.actionRequired && item.actionText && (
+                      <button
+                        type="button"
+                        onClick={() => item.actionTargetTab && onNavigateTab(item.actionTargetTab)}
+                        style={{
+                          padding: "5px 12px",
+                          background: "#0D6866",
+                          color: "#FFFFFF",
+                          border: "none",
+                          borderRadius: "6px",
+                          fontSize: "11px",
+                          fontWeight: 650,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {item.actionText} →
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onNavigateTab("messages")}
+                      style={{
+                        padding: "5px 10px",
+                        background: "#EAF6F0",
+                        color: "#0D6866",
+                        border: "1px solid #B9DED4",
+                        borderRadius: "6px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      💬 Ask Officer
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })
+            );
+          })
         )}
       </div>
     </div>

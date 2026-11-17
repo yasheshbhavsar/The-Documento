@@ -111,10 +111,10 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
         id="case-fit-content"
         style={{
           position: "relative",
-          overflow: "hidden",
           padding: "88px 24px",
           scrollMarginTop: "80px",
-          borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+          background: "#FFFFFF",
+          borderBottom: "1px solid #DCE7E3",
         }}
       >
         <InteractiveSectionBackground variant="dot-matrix" />
@@ -145,25 +145,14 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
           >
             <div
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
                 fontSize: "12px",
-                fontWeight: 650,
-                letterSpacing: "0.06em",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                color: "#0D6866",
+                color: "#07594F",
               }}
             >
-              <span
-                style={{
-                  width: "6px",
-                  height: "6px",
-                  borderRadius: "50%",
-                  background: "#169B77",
-                }}
-              />
-              <span>Case Compatibility</span>
+              Case Compatibility
             </div>
 
             <h2
@@ -174,7 +163,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                 lineHeight: 1.15,
                 letterSpacing: "-0.03em",
                 margin: 0,
-                fontFamily: "var(--font-display, Inter, sans-serif)",
+                fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
               }}
             >
               Is Documento right for your case?
@@ -182,8 +171,8 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
 
             <p
               style={{
-                fontSize: "15.5px",
-                color: "#4F6360",
+                fontSize: "15px",
+                color: "#475955",
                 lineHeight: 1.6,
                 margin: 0,
               }}
@@ -198,9 +187,9 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: "4px",
-                marginTop: "6px",
-                borderTop: "1px solid rgba(13, 104, 102, 0.12)",
+                gap: "6px",
+                marginTop: "8px",
+                borderTop: "1px solid #DCE5E1",
                 paddingTop: "16px",
               }}
             >
@@ -215,13 +204,13 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      padding: "10px 14px",
+                      padding: "11px 14px",
                       borderRadius: "8px",
-                      background: isSelected ? "#EAF5EF" : "transparent",
-                      color: isSelected ? "#063C3D" : "#526663",
-                      border: "none",
+                      background: isSelected ? "#07594F" : "#F8FAF9",
+                      color: isSelected ? "#FFFFFF" : "#172322",
+                      border: isSelected ? "1px solid #07594F" : "1px solid #DCE5E1",
                       fontSize: "13.5px",
-                      fontWeight: isSelected ? 650 : 500,
+                      fontWeight: isSelected ? 700 : 500,
                       cursor: "pointer",
                       textAlign: "left",
                       transition: "all 0.15s ease",
@@ -231,8 +220,8 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     <span
                       style={{
                         fontSize: "11px",
-                        fontWeight: 600,
-                        color: preset.status === "Available" ? "#07594F" : "#8A5A10",
+                        fontWeight: 650,
+                        color: isSelected ? "#B9DED4" : preset.status === "Available" ? "#07594F" : "#8A5A10",
                       }}
                     >
                       {preset.status === "Available" ? "Verified" : "Planned"}
@@ -251,22 +240,23 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
               gridColumn: "span 8",
               minWidth: 0,
               background: "#FFFFFF",
-              border: "1px solid rgba(13, 104, 102, 0.14)",
-              borderRadius: "18px",
+              border: "1px solid #DCE5E1",
+              borderRadius: "14px",
               padding: "32px",
-              boxShadow: "0 20px 50px -16px rgba(6, 60, 61, 0.05)",
+              boxShadow: "0 4px 24px rgba(6, 60, 61, 0.04)",
             }}
           >
             {/* Status & Category */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
               <span
                 style={{
                   fontSize: "11.5px",
-                  fontWeight: 650,
+                  fontWeight: 700,
                   padding: "4px 12px",
-                  borderRadius: "999px",
+                  borderRadius: "6px",
                   background: activePreset.status === "Available" ? "#EAF5EF" : "#FEF7EA",
                   color: activePreset.status === "Available" ? "#07594F" : "#8A5A10",
+                  border: `1px solid ${activePreset.status === "Available" ? "#B9DED4" : "#F6D8A6"}`,
                 }}
               >
                 {activePreset.status === "Available"
@@ -274,19 +264,20 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   : "Expansion Pipeline • In Development"}
               </span>
 
-              <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#6E7F7C" }}>
+              <span style={{ fontSize: "12.5px", fontWeight: 650, color: "#6E7F7C" }}>
                 {activePreset.fitScore}
               </span>
             </div>
 
             <h3
               style={{
-                fontSize: "24px",
-                fontWeight: 650,
+                fontSize: "22px",
+                fontWeight: 700,
                 color: "#063C3D",
                 letterSpacing: "-0.02em",
                 margin: "0 0 10px 0",
                 lineHeight: 1.25,
+                fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
               }}
             >
               {activePreset.title}
@@ -294,8 +285,8 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
 
             <p
               style={{
-                fontSize: "15px",
-                color: "#526663",
+                fontSize: "14.5px",
+                color: "#475955",
                 lineHeight: 1.6,
                 margin: "0 0 24px 0",
               }}
@@ -306,10 +297,10 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
             {/* Law Firm Verdict Callout + Live Micro-UI Simulator */}
             <div
               style={{
-                background: "#F6FAF8",
-                border: "1px solid rgba(13, 104, 102, 0.14)",
+                background: "#F8FAF9",
+                border: "1px solid #DCE5E1",
                 padding: "18px 20px",
-                borderRadius: "14px",
+                borderRadius: "10px",
                 marginBottom: "24px",
                 fontSize: "14px",
                 color: "#063C3D",
@@ -324,9 +315,9 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
               <div
                 style={{
                   background: "#FFFFFF",
-                  border: "1px solid rgba(13, 104, 102, 0.12)",
-                  borderRadius: "10px",
-                  padding: "10px 16px",
+                  border: "1px solid #DCE5E1",
+                  borderRadius: "8px",
+                  padding: "12px 16px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -337,8 +328,8 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: "1 1 240px" }}>
                   <span
                     style={{
-                      fontSize: "12px",
-                      fontWeight: 650,
+                      fontSize: "12.5px",
+                      fontWeight: 700,
                       color: "#063C3D",
                       whiteSpace: "nowrap",
                     }}
@@ -364,11 +355,12 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                 <span
                   style={{
                     fontSize: "12px",
-                    fontWeight: 650,
+                    fontWeight: 700,
                     color: "#07594F",
                     background: "#EAF5EF",
-                    borderRadius: "999px",
+                    borderRadius: "6px",
                     padding: "4px 12px",
+                    border: "1px solid #B9DED4",
                   }}
                 >
                   ~{estimatedHoursSaved} hrs paralegal assembly saved
@@ -391,9 +383,9 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   key={idx}
                   className="hover-lift spotlight-card"
                   style={{
-                    background: "#FAFCFB",
-                    border: "1px solid rgba(13, 104, 102, 0.12)",
-                    borderRadius: "12px",
+                    background: "#F8FAF9",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "8px",
                     padding: "18px",
                   }}
                 >
@@ -401,20 +393,20 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     <span
                       style={{
                         fontSize: "11px",
-                        fontWeight: 650,
-                        color: "#0D6866",
+                        fontWeight: 700,
+                        color: "#07594F",
                         background: "#EAF5EF",
                         padding: "3px 8px",
-                        borderRadius: "6px",
+                        borderRadius: "4px",
                       }}
                     >
                       {pillar.tag}
                     </span>
                   </div>
-                  <div style={{ fontSize: "14.5px", fontWeight: 650, color: "#063C3D", marginBottom: "6px" }}>
+                  <div style={{ fontSize: "14.5px", fontWeight: 700, color: "#063C3D", marginBottom: "6px" }}>
                     {pillar.title}
                   </div>
-                  <div style={{ fontSize: "13px", color: "#526663", lineHeight: 1.5 }}>
+                  <div style={{ fontSize: "12.8px", color: "#475955", lineHeight: 1.5 }}>
                     {pillar.detail}
                   </div>
                 </div>
@@ -429,12 +421,12 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   onClick={() => onOpenLogin("firm")}
                   style={{
                     padding: "12px 24px",
-                    borderRadius: "10px",
+                    borderRadius: "8px",
                     border: "none",
                     background: "#07594F",
                     color: "#FFFFFF",
                     fontSize: "14px",
-                    fontWeight: 600,
+                    fontWeight: 650,
                     cursor: "pointer",
                     transition: "background-color 0.15s ease",
                   }}
@@ -449,21 +441,15 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     <a
                       href="/crs-calculator"
                       style={{
-                        padding: "11px 20px",
-                        borderRadius: "10px",
+                        padding: "11px 18px",
+                        borderRadius: "8px",
                         border: "1px solid #0D6866",
-                        background: "#F4F9F7",
+                        background: "#F8FAF9",
                         color: "#063C3D",
-                        fontSize: "14px",
+                        fontSize: "13.5px",
                         fontWeight: 650,
                         textDecoration: "none",
                         transition: "all 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "#EAF5EF";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "#F4F9F7";
                       }}
                     >
                       Open Official CRS Score Calculator →
@@ -471,21 +457,15 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     <a
                       href="/pnp-calculator"
                       style={{
-                        padding: "11px 20px",
-                        borderRadius: "10px",
+                        padding: "11px 18px",
+                        borderRadius: "8px",
                         border: "1px solid #0D6866",
                         background: "#FFFFFF",
                         color: "#063C3D",
-                        fontSize: "14px",
+                        fontSize: "13.5px",
                         fontWeight: 650,
                         textDecoration: "none",
                         transition: "all 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "#EAF5EF";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "#FFFFFF";
                       }}
                     >
                       Open Official PNP Points Calculator →
@@ -497,12 +477,12 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   <a
                     href="/calculators/uk-skilled-worker"
                     style={{
-                      padding: "11px 20px",
-                      borderRadius: "10px",
+                      padding: "11px 18px",
+                      borderRadius: "8px",
                       border: "1px solid #0D6866",
-                      background: "#F4F9F7",
+                      background: "#F8FAF9",
                       color: "#063C3D",
-                      fontSize: "14px",
+                      fontSize: "13.5px",
                       fontWeight: 650,
                       textDecoration: "none",
                     }}
@@ -515,12 +495,12 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   <a
                     href="/calculators/germany-pr"
                     style={{
-                      padding: "11px 20px",
-                      borderRadius: "10px",
+                      padding: "11px 18px",
+                      borderRadius: "8px",
                       border: "1px solid #0D6866",
-                      background: "#F4F9F7",
+                      background: "#F8FAF9",
                       color: "#063C3D",
-                      fontSize: "14px",
+                      fontSize: "13.5px",
                       fontWeight: 650,
                       textDecoration: "none",
                     }}
@@ -533,8 +513,8 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   href="/calculators"
                   style={{
                     padding: "11px 18px",
-                    borderRadius: "10px",
-                    border: "1px solid rgba(13, 104, 102, 0.25)",
+                    borderRadius: "8px",
+                    border: "1px solid #DCE5E1",
                     background: "#FFFFFF",
                     color: "#07594F",
                     fontSize: "13.5px",
@@ -546,7 +526,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                 </a>
               </div>
 
-              <span style={{ fontSize: "12px", color: "#6E7F7C" }}>
+              <span style={{ fontSize: "11.5px", color: "#6E7F7C" }}>
                 Workflow guidance only. Does not substitute for formal legal representation.
               </span>
             </div>
@@ -559,10 +539,9 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
         id="personas"
         style={{
           position: "relative",
-          overflow: "hidden",
           padding: "88px 24px",
           scrollMarginTop: "80px",
-          borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+          borderBottom: "1px solid #DCE7E3",
         }}
       >
         <InteractiveSectionBackground variant="architectural-grid" />
@@ -593,25 +572,14 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
           >
             <div
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
                 fontSize: "12px",
-                fontWeight: 650,
-                letterSpacing: "0.06em",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                color: "#0D6866",
+                color: "#07594F",
               }}
             >
-              <span
-                style={{
-                  width: "6px",
-                  height: "6px",
-                  borderRadius: "50%",
-                  background: "#169B77",
-                }}
-              />
-              <span>Dedicated Experiences</span>
+              Dedicated Experiences
             </div>
 
             <h2
@@ -622,7 +590,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                 lineHeight: 1.15,
                 letterSpacing: "-0.03em",
                 margin: 0,
-                fontFamily: "var(--font-display, Inter, sans-serif)",
+                fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
               }}
             >
               Built for applicants and legal teams alike.
@@ -630,8 +598,8 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
 
             <p
               style={{
-                fontSize: "15.5px",
-                color: "#4F6360",
+                fontSize: "15px",
+                color: "#475955",
                 lineHeight: 1.6,
                 margin: 0,
               }}
@@ -644,9 +612,9 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: "6px",
-                marginTop: "6px",
-                borderTop: "1px solid rgba(13, 104, 102, 0.12)",
+                gap: "8px",
+                marginTop: "8px",
+                borderTop: "1px solid #DCE5E1",
                 paddingTop: "16px",
               }}
             >
@@ -659,20 +627,20 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  padding: "11px 14px",
+                  padding: "12px 16px",
                   borderRadius: "8px",
-                  background: activePersonaTab === "applicant" ? "#EAF5EF" : "transparent",
-                  color: activePersonaTab === "applicant" ? "#063C3D" : "#526663",
-                  border: "none",
+                  background: activePersonaTab === "applicant" ? "#07594F" : "#F8FAF9",
+                  color: activePersonaTab === "applicant" ? "#FFFFFF" : "#172322",
+                  border: activePersonaTab === "applicant" ? "1px solid #07594F" : "1px solid #DCE5E1",
                   fontSize: "13.5px",
-                  fontWeight: activePersonaTab === "applicant" ? 650 : 500,
+                  fontWeight: activePersonaTab === "applicant" ? 700 : 500,
                   cursor: "pointer",
                   textAlign: "left",
                   transition: "all 0.15s ease",
                 }}
               >
                 <span>For Retained Applicants</span>
-                <span style={{ fontSize: "12px", color: "#0D6866" }}>→</span>
+                <span style={{ fontSize: "12px", color: activePersonaTab === "applicant" ? "#B9DED4" : "#0D6866" }}>→</span>
               </button>
 
               <button
@@ -684,20 +652,20 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  padding: "11px 14px",
+                  padding: "12px 16px",
                   borderRadius: "8px",
-                  background: activePersonaTab === "lawfirm" ? "#EAF5EF" : "transparent",
-                  color: activePersonaTab === "lawfirm" ? "#063C3D" : "#526663",
-                  border: "none",
+                  background: activePersonaTab === "lawfirm" ? "#07594F" : "#F8FAF9",
+                  color: activePersonaTab === "lawfirm" ? "#FFFFFF" : "#172322",
+                  border: activePersonaTab === "lawfirm" ? "1px solid #07594F" : "1px solid #DCE5E1",
                   fontSize: "13.5px",
-                  fontWeight: activePersonaTab === "lawfirm" ? 650 : 500,
+                  fontWeight: activePersonaTab === "lawfirm" ? 700 : 500,
                   cursor: "pointer",
                   textAlign: "left",
                   transition: "all 0.15s ease",
                 }}
               >
                 <span>For Legal Teams &amp; Law Firms</span>
-                <span style={{ fontSize: "12px", color: "#0D6866" }}>→</span>
+                <span style={{ fontSize: "12px", color: activePersonaTab === "lawfirm" ? "#B9DED4" : "#0D6866" }}>→</span>
               </button>
             </div>
           </div>
@@ -719,18 +687,19 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   style={{
                     padding: "24px 28px",
                     background: "#FFFFFF",
-                    border: "1px solid rgba(13, 104, 102, 0.14)",
-                    borderRadius: "16px",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "20px",
+                    boxShadow: "0 2px 12px rgba(6, 60, 61, 0.03)",
                   }}
                 >
                   <div
                     style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "10px",
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
                       background: "#EAF5EF",
                       color: "#07594F",
                       display: "flex",
@@ -745,10 +714,10 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     </svg>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: "17.5px", fontWeight: 650, color: "#063C3D", margin: "0 0 6px 0" }}>
+                    <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 6px 0", fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)" }}>
                       Know Exactly What Documents Are Needed
                     </h3>
-                    <p style={{ fontSize: "14.5px", color: "#526663", lineHeight: 1.6, margin: 0 }}>
+                    <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
                       Receive structured checklists with sample templates and file guidelines so you upload the right paperwork the first time.
                     </p>
                   </div>
@@ -760,18 +729,19 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   style={{
                     padding: "24px 28px",
                     background: "#FFFFFF",
-                    border: "1px solid rgba(13, 104, 102, 0.14)",
-                    borderRadius: "16px",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "20px",
+                    boxShadow: "0 2px 12px rgba(6, 60, 61, 0.03)",
                   }}
                 >
                   <div
                     style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "10px",
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
                       background: "#EAF5EF",
                       color: "#07594F",
                       display: "flex",
@@ -787,7 +757,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
-                      <h3 style={{ fontSize: "17.5px", fontWeight: 650, color: "#063C3D", margin: 0 }}>
+                      <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: 0, fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)" }}>
                         Clear Waiting-State Transparency
                       </h3>
                       <button
@@ -795,12 +765,13 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                         onClick={() => setWaitingDemoState((prev) => (prev === "firm" ? "applicant" : "firm"))}
                         style={{
                           padding: "4px 10px",
-                          borderRadius: "999px",
-                          border: "none",
+                          borderRadius: "6px",
+                          border: "1px solid",
+                          borderColor: waitingDemoState === "firm" ? "#B9DED4" : "#F6D8A6",
                           background: waitingDemoState === "firm" ? "#EAF5EF" : "#FEF7EA",
                           color: waitingDemoState === "firm" ? "#07594F" : "#8A5A10",
-                          fontSize: "11.5px",
-                          fontWeight: 650,
+                          fontSize: "11px",
+                          fontWeight: 700,
                           cursor: "pointer",
                         }}
                       >
@@ -809,7 +780,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                           : "Status: Action Needed by Applicant"}
                       </button>
                     </div>
-                    <p style={{ fontSize: "14.5px", color: "#526663", lineHeight: 1.6, margin: 0 }}>
+                    <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
                       Always see who acts next—whether your legal team is preparing filings or waiting on a specific document from you.
                     </p>
                   </div>
@@ -821,18 +792,19 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   style={{
                     padding: "24px 28px",
                     background: "#FFFFFF",
-                    border: "1px solid rgba(13, 104, 102, 0.14)",
-                    borderRadius: "16px",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "20px",
+                    boxShadow: "0 2px 12px rgba(6, 60, 61, 0.03)",
                   }}
                 >
                   <div
                     style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "10px",
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
                       background: "#EAF5EF",
                       color: "#07594F",
                       display: "flex",
@@ -847,10 +819,10 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     </svg>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: "17.5px", fontWeight: 650, color: "#063C3D", margin: "0 0 6px 0" }}>
+                    <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 6px 0", fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)" }}>
                       Private &amp; Secure Direct Uploads
                     </h3>
-                    <p style={{ fontSize: "14.5px", color: "#526663", lineHeight: 1.6, margin: 0 }}>
+                    <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
                       Upload sensitive identity documents straight to a private, encrypted vault with cryptographic audit protection.
                     </p>
                   </div>
@@ -864,18 +836,19 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   style={{
                     padding: "24px 28px",
                     background: "#FFFFFF",
-                    border: "1px solid rgba(13, 104, 102, 0.14)",
-                    borderRadius: "16px",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "20px",
+                    boxShadow: "0 2px 12px rgba(6, 60, 61, 0.03)",
                   }}
                 >
                   <div
                     style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "10px",
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
                       background: "#EAF5EF",
                       color: "#07594F",
                       display: "flex",
@@ -890,10 +863,10 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     </svg>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: "17.5px", fontWeight: 650, color: "#063C3D", margin: "0 0 6px 0" }}>
+                    <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 6px 0", fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)" }}>
                       Automated Evidence Cross-Examination
                     </h3>
-                    <p style={{ fontSize: "14.5px", color: "#526663", lineHeight: 1.6, margin: 0 }}>
+                    <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
                       Cross-verify dates, entity spellings, and biographic facts across exhibits automatically to catch conflicting details early.
                     </p>
                   </div>
@@ -905,18 +878,19 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   style={{
                     padding: "24px 28px",
                     background: "#FFFFFF",
-                    border: "1px solid rgba(13, 104, 102, 0.14)",
-                    borderRadius: "16px",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "20px",
+                    boxShadow: "0 2px 12px rgba(6, 60, 61, 0.03)",
                   }}
                 >
                   <div
                     style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "10px",
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
                       background: "#EAF5EF",
                       color: "#07594F",
                       display: "flex",
@@ -931,10 +905,10 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     </svg>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: "17.5px", fontWeight: 650, color: "#063C3D", margin: "0 0 6px 0" }}>
+                    <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 6px 0", fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)" }}>
                       Deterministic Exhibit Index &amp; Assembly
                     </h3>
-                    <p style={{ fontSize: "14.5px", color: "#526663", lineHeight: 1.6, margin: 0 }}>
+                    <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
                       Generate sequential exhibit tabs, tables of contents, and filing packages deterministically without manual PDF merging.
                     </p>
                   </div>
@@ -946,18 +920,19 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                   style={{
                     padding: "24px 28px",
                     background: "#FFFFFF",
-                    border: "1px solid rgba(13, 104, 102, 0.14)",
-                    borderRadius: "16px",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "20px",
+                    boxShadow: "0 2px 12px rgba(6, 60, 61, 0.03)",
                   }}
                 >
                   <div
                     style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "10px",
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
                       background: "#EAF5EF",
                       color: "#07594F",
                       display: "flex",
@@ -967,15 +942,16 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     }}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: "17.5px", fontWeight: 650, color: "#063C3D", margin: "0 0 6px 0" }}>
-                      Strict Ethical Wall &amp; RBAC Control
+                    <h3 style={{ fontSize: "17px", fontWeight: 700, color: "#063C3D", margin: "0 0 6px 0", fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)" }}>
+                      Role-Based Access &amp; Ethical Walls
                     </h3>
-                    <p style={{ fontSize: "14.5px", color: "#526663", lineHeight: 1.6, margin: 0 }}>
-                      Isolate internal supervisory attorney work product, legal strategy memos, and private partner notes from client portal access.
+                    <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
+                      Enforce strict ethical walls separating applicant questions from private internal legal strategies and partner deliberations.
                     </p>
                   </div>
                 </div>

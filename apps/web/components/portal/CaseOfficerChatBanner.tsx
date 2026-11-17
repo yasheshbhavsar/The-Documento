@@ -33,7 +33,7 @@ export function CaseOfficerChatBanner({
       : useStandaloneTestFallback;
 
   const resolvedOfficerName = isOfficerAssigned
-    ? (assignedOfficer || (useStandaloneTestFallback ? "Officer Sarah Jenkins, Esq." : "Assigned Legal Counsel"))
+    ? (assignedOfficer || "Assigned Legal Counsel")
     : null;
 
   const displayOfficerName = resolvedOfficerName
@@ -167,9 +167,7 @@ export function CaseOfficerChatBanner({
               )}
               <span style={{ fontSize: "11px", color: "#6E7F7C" }}>
                 {isOfficerAssigned
-                  ? useStandaloneTestFallback && !assignedOfficer
-                    ? "Bar #NY-519284 • Assisted by Officer Marcus Vance"
-                    : "Verified Immigration Counsel • Direct Encrypted Portal Line"
+                  ? "Verified Immigration Counsel • Direct Encrypted Portal Line"
                   : "Counsel allocation in progress • Assigned Legal Practice"}
               </span>
             </div>

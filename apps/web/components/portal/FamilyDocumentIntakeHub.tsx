@@ -22,8 +22,7 @@ import {
   FALLBACK_UPLOAD_GUIDANCE,
 } from "../../lib/api";
 import { calculateSHA256, formatBytes } from "../../lib/crypto";
-import { analyzeDocumentStandalone } from "../../lib/api/extractor";
-import { mapAnalysisToInitialInfoSheet, persistAndBroadcastAutoFill } from "../../lib/documentAutoFillEngine";
+import { enqueueRawClientPacket, extractSafeRawTextPreview } from "../../lib/rawClientPacketStore";
 
 interface FamilyDocumentIntakeHubProps {
   caseId?: string;
@@ -142,22 +141,28 @@ export function FamilyDocumentIntakeHub({
       setLastBatchReceipt(receipt);
       setQueuedFiles([]);
 
-      // Trigger automatic extraction and broadcast auto-fill intelligence per Requirement R1
+      // Enqueue untouched raw files directly for the Paralegal's local AI Lab (zero client OCR wait)
       try {
         for (let i = 0; i < rawFiles.length; i++) {
           const rawFile = rawFiles[i];
           const receiptItem = receipt.items?.[i];
-          const analysis = await analyzeDocumentStandalone({
+          let sha256 = "";
+          try {
+            sha256 = await calculateSHA256(await rawFile.arrayBuffer());
+          } catch {
+            sha256 = `sha256_${Date.now().toString(16)}_${i}`;
+          }
+          const rawTextPreview = await extractSafeRawTextPreview(rawFile);
+          enqueueRawClientPacket({
             file: rawFile,
-            filename: rawFile.name,
+            vaultDocId: receiptItem?.document_id || `batch-raw-${Date.now()}-${i}`,
+            caseId: caseId || "default_client",
+            title: rawFile.name,
+            sha256,
+            uploaderRole: "applicant",
+            uploaderName: clientName,
             declaredCategory: selectedCategory,
-          });
-          const sheetRes = mapAnalysisToInitialInfoSheet(analysis);
-          persistAndBroadcastAutoFill(caseId || "default_client", {
-            formData: sheetRes.updatedData,
-            provenance: sheetRes.provenance,
-            sourceDocId: receiptItem?.document_id,
-            sourceFilename: rawFile.name,
+            rawTextPreview,
           });
         }
       } catch {

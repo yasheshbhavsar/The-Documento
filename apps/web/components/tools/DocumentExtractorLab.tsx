@@ -164,6 +164,31 @@ export function DocumentExtractorLab({
       }
     }
 
+    const syncedRoleAttribution =
+      doc.person_role || doc.statutory_badges?.length
+        ? {
+            person_name:
+              doc.extracted_fields?.sponsor_full_name ||
+              doc.extracted_fields?.full_name ||
+              fallbackBase.specialized_intelligence?.role_attribution?.person_name ||
+              doc.filename.replace(/\.[^/.]+$/, "").replace(/_/g, " "),
+            person_role:
+              doc.person_role ||
+              fallbackBase.specialized_intelligence?.role_attribution?.person_role ||
+              "principal_applicant",
+            sponsor_jurisdiction:
+              doc.sponsor_jurisdiction ??
+              fallbackBase.specialized_intelligence?.role_attribution?.sponsor_jurisdiction ??
+              null,
+            confidence: 0.98,
+            subtype_label: doc.document_subtype || fallbackBase.recognition.category_label,
+            statutory_badges:
+              doc.statutory_badges ||
+              fallbackBase.specialized_intelligence?.role_attribution?.statutory_badges ||
+              [],
+          }
+        : fallbackBase.specialized_intelligence?.role_attribution;
+
     return {
       ...fallbackBase,
       metadata: {
@@ -183,6 +208,10 @@ export function DocumentExtractorLab({
           ...(fallbackBase.recognition.matched_keywords || []),
           doc.document_subtype.toUpperCase(),
         ],
+      },
+      specialized_intelligence: {
+        ...fallbackBase.specialized_intelligence,
+        ...(syncedRoleAttribution ? { role_attribution: syncedRoleAttribution } : {}),
       },
       extracted_fields: docFields,
       raw_text_preview: doc.text_preview || fallbackBase.raw_text_preview,
@@ -1796,6 +1825,114 @@ export function DocumentExtractorLab({
                 </div>
               </div>
 
+              {/* Role Attribution, QR/2D Barcode & Sponsor Statutory Intelligence Strip */}
+              {(analysisResult.specialized_intelligence?.role_attribution ||
+                analysisResult.specialized_intelligence?.barcode_qr_payloads?.length ||
+                analysisResult.specialized_intelligence?.sponsor_statutory_intelligence) && (
+                <div
+                  data-testid="extractor-role-statutory-strip"
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
+                    padding: "16px 18px",
+                    marginBottom: "20px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {analysisResult.specialized_intelligence?.role_attribution && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "8px",
+                      }}
+                    >
+                      <div style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>
+                        Role Attribution: {analysisResult.specialized_intelligence.role_attribution.person_name} &bull;{" "}
+                        <span style={{ color: "#176B50" }}>
+                          {analysisResult.specialized_intelligence.role_attribution.person_role === "overseas_sponsor_host"
+                            ? `CA/UK/AU Sponsor (${analysisResult.specialized_intelligence.role_attribution.sponsor_jurisdiction || "CA"})`
+                            : analysisResult.specialized_intelligence.role_attribution.person_role === "canadian_crs_sibling"
+                              ? "+15 CRS Sibling (CA)"
+                              : analysisResult.specialized_intelligence.role_attribution.person_role === "spouse_partner"
+                                ? "Spouse / Partner"
+                                : "Principal Applicant"}
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          padding: "3px 10px",
+                          borderRadius: "999px",
+                          background: "#F8F7F2",
+                          border: "1px solid #DCE5E1",
+                          fontSize: "11.5px",
+                          fontWeight: 600,
+                          color: "#063C3D",
+                        }}
+                      >
+                        {analysisResult.specialized_intelligence.role_attribution.subtype_label}
+                      </span>
+                    </div>
+                  )}
+
+                  {(analysisResult.specialized_intelligence?.role_attribution?.statutory_badges?.length || 0) > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {analysisResult.specialized_intelligence.role_attribution?.statutory_badges.map((badge, bIdx) => (
+                        <span
+                          key={bIdx}
+                          style={{
+                            padding: "3px 10px",
+                            borderRadius: "999px",
+                            background: "#EAF6F0",
+                            border: "1px solid #C6E7D8",
+                            color: "#176B50",
+                            fontSize: "11.5px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          ✓ {badge}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {(analysisResult.specialized_intelligence?.barcode_qr_payloads?.length || 0) > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                        paddingTop: "6px",
+                        borderTop: "1px solid #EEF2F0",
+                        fontSize: "12px",
+                        color: "#063C3D",
+                      }}
+                    >
+                      {analysisResult.specialized_intelligence.barcode_qr_payloads?.map((qr, qIdx) => (
+                        <span
+                          key={qIdx}
+                          style={{
+                            background: "#F8F7F2",
+                            border: "1px solid #DCE5E1",
+                            borderRadius: "6px",
+                            padding: "4px 9px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          ▣ {qr.format}: {qr.decoded_summary}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Deep-Dive Inspector Tabs */}
               <div
                 style={{
@@ -2624,6 +2761,94 @@ export function DocumentExtractorLab({
                 {/* Tab 4: Specialized Forensics & Intelligence */}
                 {activeTab === "forensics" && (
                   <div style={{ padding: "24px", background: "#FFFFFF" }}>
+                    {/* 0. Sponsor Statutory Intelligence (CA Super Visa LICO / +15 CRS Sibling / UK Appendix V / AU VEVO) & QR/2D Barcodes */}
+                    {(analysisResult.specialized_intelligence.sponsor_statutory_intelligence ||
+                      analysisResult.specialized_intelligence.barcode_qr_payloads?.length) && (
+                      <div
+                        data-testid="forensics-sponsor-barcode-card"
+                        style={{
+                          marginBottom: "24px",
+                          background: "#F8F7F2",
+                          border: "1px solid #DCE5E1",
+                          borderRadius: "12px",
+                          padding: "20px",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        <div style={{ fontSize: "11px", color: "#176B50", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          Sponsor, +15 CRS Sibling &amp; Cryptographic Barcode Intelligence
+                        </div>
+                        <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#063C3D", margin: "4px 0 12px" }}>
+                          {analysisResult.specialized_intelligence.sponsor_statutory_intelligence?.document_subtype ||
+                            "Verified 2D Barcode & Statutory Credentials"}
+                        </h3>
+
+                        {analysisResult.specialized_intelligence.sponsor_statutory_intelligence && (
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                              gap: "12px",
+                              marginBottom: "12px",
+                            }}
+                          >
+                            {analysisResult.specialized_intelligence.sponsor_statutory_intelligence.cra_noa_line_15000_cad !== undefined && (
+                              <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "12px" }}>
+                                <div style={{ fontSize: "11px", color: "#6E7F7C" }}>CRA NOA Line 15000</div>
+                                <div style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", marginTop: "4px" }}>
+                                  ${analysisResult.specialized_intelligence.sponsor_statutory_intelligence.cra_noa_line_15000_cad.toLocaleString("en-US")} CAD
+                                </div>
+                                <div style={{ fontSize: "11.5px", color: "#176B50", fontWeight: 600, marginTop: "2px" }}>
+                                  LICO Threshold: ${(analysisResult.specialized_intelligence.sponsor_statutory_intelligence.ircc_lico_threshold_cad || 58594).toLocaleString("en-US")} CAD
+                                </div>
+                              </div>
+                            )}
+                            {analysisResult.specialized_intelligence.sponsor_statutory_intelligence.crs_sibling_points_awarded !== undefined && (
+                              <div style={{ background: "#EAF6F0", border: "1px solid #C6E7D8", borderRadius: "8px", padding: "12px" }}>
+                                <div style={{ fontSize: "11px", color: "#176B50", fontWeight: 700 }}>Express Entry Sibling Factor</div>
+                                <div style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", marginTop: "4px" }}>
+                                  +{analysisResult.specialized_intelligence.sponsor_statutory_intelligence.crs_sibling_points_awarded} CRS Points Verified
+                                </div>
+                              </div>
+                            )}
+                            {analysisResult.specialized_intelligence.sponsor_statutory_intelligence.uk_share_code && (
+                              <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "12px" }}>
+                                <div style={{ fontSize: "11px", color: "#6E7F7C" }}>UKVI eVisa Share Code</div>
+                                <div style={{ fontSize: "15px", fontWeight: 700, color: "#063C3D", marginTop: "4px" }}>
+                                  {analysisResult.specialized_intelligence.sponsor_statutory_intelligence.uk_share_code}
+                                </div>
+                              </div>
+                            )}
+                            {analysisResult.specialized_intelligence.sponsor_statutory_intelligence.au_vevo_entitlement && (
+                              <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "12px" }}>
+                                <div style={{ fontSize: "11px", color: "#6E7F7C" }}>Australia Home Affairs VEVO</div>
+                                <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D", marginTop: "4px" }}>
+                                  {analysisResult.specialized_intelligence.sponsor_statutory_intelligence.au_vevo_entitlement}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {analysisResult.specialized_intelligence.barcode_qr_payloads?.map((qr, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              background: "#FFFFFF",
+                              border: "1px solid #DCE5E1",
+                              borderRadius: "8px",
+                              padding: "10px 14px",
+                              fontSize: "12.5px",
+                              color: "#063C3D",
+                              marginTop: "8px",
+                            }}
+                          >
+                            <strong>{qr.format} ({qr.payload_type}):</strong> {qr.decoded_summary}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* 1. Resume & Career Intelligence */}
                     {analysisResult.specialized_intelligence.resume_intelligence && (
                       <div

@@ -206,8 +206,8 @@ export function SecureMessagingHub({
           if (parsedUser?.full_name) resolvedSenderName = parsedUser.full_name;
           if (parsedUser?.id) resolvedSenderId = parsedUser.id;
         } else if (useDemoFallbacks) {
-          resolvedSenderName = isStaffMode ? "Sarah Jenkins, Esq." : "Dr. Elena Rostova";
-          resolvedCaseNumber = "CASE-US-8841";
+          resolvedSenderName = isStaffMode ? "Assigned Legal Counsel" : "Retained Client";
+          resolvedCaseNumber = "CASE-PENDING";
         }
         const rawCases = window.localStorage.getItem("documento_cases_v3_clean");
         if (rawCases && caseId) {

@@ -61,8 +61,8 @@ import {
 
 import { WorkspaceProvider, useWorkspace } from "../lib/context/WorkspaceContext";
 import { canDeleteClient, authenticateUser, PLATFORM_HQ_OPERATOR_EMAIL } from "../lib/auth";
+import { api } from "../lib/api";
 import {
-  api,
   FIXTURE_CASES,
   FIXTURE_CLIENTS,
   FIXTURE_DOCUMENTS,
@@ -71,7 +71,7 @@ import {
   FIXTURE_INVOICES,
   FIXTURE_CAPACITY,
   FIXTURE_NOTIFICATIONS,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 import {
   ImmigrationCase,
@@ -991,7 +991,29 @@ describe("Documento AI Immigration Platform Upgrades — Comprehensive E2E Integ
    * ========================================================================== */
   describe("Tier 3: Cross-Feature Combinations (Integration across R1, R2, R3, R4)", () => {
     it("Packet Sorter output feeds documentAutoFillEngine which populates InitialInformationSheet and hydrates FormViewer", async () => {
-      const sampleFile = new File(["%PDF-1.4 test"], "Family_Sharma_Packet.pdf", { type: "application/pdf" });
+      const sampleFile = new File(
+        [
+          [
+            "--- PAGE 1 ---",
+            "REPUBLIC OF INDIA - PASSPORT",
+            "Type: P Code: IND Passport No: M1234567",
+            "Surname: SHARMA",
+            "Given Names: AARAV",
+            "Nationality: IND",
+            "Date of Birth: 15 AUG 1990",
+            "Date of Expiry: 14 AUG 2030",
+            "--- PAGE 2 ---",
+            "PASSPORT",
+            "Type: P Code: IND Passport No: M7654321",
+            "Surname: PATEL",
+            "Given Names: ANANYA",
+            "Nationality: IND",
+            "Date of Birth: 20 MAR 1992",
+          ].join("\n"),
+        ],
+        "Family_Sharma_Packet.pdf",
+        { type: "application/pdf" }
+      );
       const packetSortResult = await generateClientFallbackPacketSort(sampleFile);
 
       const autoFillResult = mapPacketToInitialInfoSheet(packetSortResult);

@@ -8,13 +8,14 @@ import {
   RequirementEvaluationStatus,
   ImmigrationCase,
 } from "../../lib/types";
-import { api, FALLBACK_EVALUATION } from "../../lib/api";
+import { api } from "../../lib/api";
 
 interface CaseRequirementEvaluationViewProps {
   caseId?: string;
   cases?: ImmigrationCase[];
   isLiveBackend?: boolean;
   onSelectCase?: (c: ImmigrationCase) => void;
+  initialEvaluation?: CaseRequirementEvaluation;
 }
 
 export function CaseRequirementEvaluationView({
@@ -22,44 +23,40 @@ export function CaseRequirementEvaluationView({
   cases,
   isLiveBackend = false,
   onSelectCase,
+  initialEvaluation,
 }: CaseRequirementEvaluationViewProps) {
-  const isTestEnv = typeof process !== "undefined" && Boolean(process.env.VITEST);
-  const hasStoredUser =
-    typeof window !== "undefined" && Boolean(window.localStorage.getItem("documento_user"));
   const initialEval: CaseRequirementEvaluation =
-    isTestEnv && !hasStoredUser
-      ? FALLBACK_EVALUATION
-      : {
-          id: `eval-init-${caseId || "empty"}`,
-          case_id: caseId || "",
-          rule_set_version_id: "ver-stat-2026",
-          version_number: "2026.1.0",
-          status: "needs_review",
-          overall_fulfillment_percentage: 0,
-          results: {
-            summary: {
-              total: 0,
-              applicable: 0,
-              complete: 0,
-              missing: 0,
-              needs_review: 0,
-              blocked: 0,
-              expired: 0,
-              not_applicable: 0,
-              unknown: 0,
-            },
-            version_number: "2026.1.0",
-            rule_set_id: "ruleset-stat-2026",
-            requirements: [],
-          },
-          is_superseded: false,
-          evaluated_at: new Date().toISOString(),
-        };
+    initialEvaluation ?? {
+      id: `eval-init-${caseId || "empty"}`,
+      case_id: caseId || "",
+      rule_set_version_id: "ver-stat-2026",
+      version_number: "2026.1.0",
+      status: "needs_review",
+      overall_fulfillment_percentage: 0,
+      results: {
+        summary: {
+          total: 0,
+          applicable: 0,
+          complete: 0,
+          missing: 0,
+          needs_review: 0,
+          blocked: 0,
+          expired: 0,
+          not_applicable: 0,
+          unknown: 0,
+        },
+        version_number: "2026.1.0",
+        rule_set_id: "ruleset-stat-2026",
+        requirements: [],
+      },
+      is_superseded: false,
+      evaluated_at: new Date().toISOString(),
+    };
 
   const [selectedCaseId, setSelectedCaseId] = useState<string>(caseId);
   const [evaluation, setEvaluation] = useState<CaseRequirementEvaluation>(initialEval);
   const [evaluationHistory, setEvaluationHistory] = useState<CaseRequirementEvaluation[]>(
-    isTestEnv && !hasStoredUser ? [FALLBACK_EVALUATION] : []
+    initialEvaluation ? [initialEvaluation] : []
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
@@ -86,7 +83,9 @@ export function CaseRequirementEvaluationView({
   }, [selectedCaseId]);
 
   const loadEvaluations = async (targetCaseId: string) => {
-    if (!isLiveBackend && isTestEnv && !hasStoredUser) return;
+    if (!isLiveBackend && initialEvaluation && targetCaseId === (initialEvaluation.case_id || caseId)) {
+      return;
+    }
     setIsLoading(true);
     setErrorMsg(null);
     try {
@@ -132,7 +131,7 @@ export function CaseRequirementEvaluationView({
       setSelectedItemForDetails({
         ...selectedItemForDetails,
         human_signoff_completed: true,
-        status: selectedItemForDetails.evidence_matched.length > 0 ? "complete" : "needs_review",
+        status: (selectedItemForDetails.evidence_matched ?? []).length > 0 ? "complete" : "needs_review",
       });
     }
     // Update active evaluation in memory
@@ -140,13 +139,13 @@ export function CaseRequirementEvaluationView({
       const updatedReqs = evaluation.results.requirements.map((r) => {
         if (r.code === itemCode) {
           const newStatus: RequirementEvaluationStatus =
-            r.evidence_matched.length > 0 ? "complete" : "needs_review";
+            (r.evidence_matched ?? []).length > 0 ? "complete" : "needs_review";
           return {
             ...r,
             human_signoff_completed: true,
             status: newStatus,
             validation_details: [
-              ...r.validation_details,
+              ...(r.validation_details ?? []),
               `Adjudicated by Legal Specialist: ${adjudicationNote || "Evidentiary standard satisfied."}`,
             ],
           };
@@ -359,8 +358,8 @@ export function CaseRequirementEvaluationView({
                     evaluation.overall_fulfillment_percentage >= 80
                       ? "linear-gradient(90deg, #0D6866, #10B981)"
                       : evaluation.overall_fulfillment_percentage >= 50
-                      ? "linear-gradient(90deg, #D97706, #F59E0B)"
-                      : "linear-gradient(90deg, #DC2626, #EF4444)",
+                        ? "linear-gradient(90deg, #D97706, #F59E0B)"
+                        : "linear-gradient(90deg, #DC2626, #EF4444)",
                   borderRadius: "999px",
                   transition: "width 0.4s ease",
                 }}
@@ -620,10 +619,10 @@ export function CaseRequirementEvaluationView({
                       displayStatus === "complete"
                         ? "1.5px solid #A7F3D0"
                         : displayStatus === "missing"
-                        ? "1.5px solid #FECACA"
-                        : displayStatus === "needs_review"
-                        ? "1.5px solid #FDE68A"
-                        : "1px solid #DCE5E1",
+                          ? "1.5px solid #FECACA"
+                          : displayStatus === "needs_review"
+                            ? "1.5px solid #FDE68A"
+                            : "1px solid #DCE5E1",
                     boxShadow: "0 2px 8px rgba(6, 60, 61, 0.04)",
                     display: "flex",
                     flexDirection: "column",
@@ -741,11 +740,11 @@ export function CaseRequirementEvaluationView({
                           letterSpacing: "0.04em",
                         }}
                       >
-                        Evidentiary Matches ({item.evidence_matched.length}):
+                        Evidentiary Matches ({(item.evidence_matched ?? []).length}):
                       </span>
-                      {item.evidence_matched.length > 0 ? (
+                      {(item.evidence_matched ?? []).length > 0 ? (
                         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                          {item.evidence_matched.map((docId) => (
+                          {(item.evidence_matched ?? []).map((docId) => (
                             <span
                               key={docId}
                               style={{
@@ -788,7 +787,7 @@ export function CaseRequirementEvaluationView({
                         Declarative AST Checks:
                       </span>
                       <ul style={{ margin: 0, paddingLeft: "16px", color: "#374151", lineHeight: "1.5" }}>
-                        {item.validation_details.map((v, idx) => (
+                        {(item.validation_details ?? []).map((v, idx) => (
                           <li key={idx}>{v}</li>
                         ))}
                       </ul>
@@ -796,7 +795,7 @@ export function CaseRequirementEvaluationView({
                   </div>
 
                   {/* Blocking & Review Notices */}
-                  {item.blocking_reasons.length > 0 && (
+                  {(item.blocking_reasons ?? []).length > 0 && (
                     <div
                       style={{
                         fontSize: "12px",
@@ -808,7 +807,7 @@ export function CaseRequirementEvaluationView({
                       }}
                     >
                       ⛔ <strong>Blocked:</strong> Prerequisite requirement{" "}
-                      {item.blocking_reasons.join(", ")} must be satisfied first.
+                      {(item.blocking_reasons ?? []).join(", ")} must be satisfied first.
                     </div>
                   )}
 
@@ -1027,7 +1026,7 @@ export function CaseRequirementEvaluationView({
                 </span>
                 <div style={{ background: "#F8FAF9", border: "1px solid #E2E8E4", padding: "12px 16px", borderRadius: "8px" }}>
                   <ul style={{ margin: 0, paddingLeft: "16px", color: "#172322" }}>
-                    {selectedItemForDetails.validation_details.map((v, i) => (
+                    {(selectedItemForDetails.validation_details ?? []).map((v, i) => (
                       <li key={i}>{v}</li>
                     ))}
                   </ul>

@@ -160,8 +160,8 @@ export function PostOnboardingLaunchpadModal({
     const clientFullName = clientItem
       ? `${clientItem.first_name} ${clientItem.last_name}`.trim()
       : caseItem.client_name || "Client";
-    const tempPass = clientItem?.portal_temporary_password || "ClientPass2026!";
-    const loginEmail = clientItem?.email || "applicant@example.com";
+    const tempPass = clientItem?.portal_temporary_password || "";
+    const loginEmail = clientItem?.email || "";
 
     setWelcomeNote(
       `Welcome ${clientFullName} — your ${caseItem.visa_category} case file (${caseItem.case_number}) is now open with ${firmName}.\n` +
@@ -201,12 +201,12 @@ export function PostOnboardingLaunchpadModal({
     organization_id: caseItem.organization_id || "firm-org",
     first_name: (caseItem.client_name || "Applicant").split(" ")[0],
     last_name: (caseItem.client_name || "").split(" ").slice(1).join(" ") || "Client",
-    email: "applicant@portal.legal",
-    nationality: "USA",
+    email: "",
+    nationality: "",
     created_at: caseItem.created_at || new Date().toISOString(),
-    portal_credentials_provided: true,
+    portal_credentials_provided: Boolean(caseItem.client_id),
     portal_access_enabled: true,
-    portal_temporary_password: "ClientPass2026!",
+    portal_temporary_password: "",
   };
 
   const clientFullName = clientItem

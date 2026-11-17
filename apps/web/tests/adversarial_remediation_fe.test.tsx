@@ -23,6 +23,9 @@ import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashbo
 import {
   fetchCaseFilingPackages,
   resolveBackendBaseUrl,
+  api,
+} from "../lib/api";
+import {
   FIXTURE_CASES,
   FIXTURE_CLIENTS,
   FIXTURE_DOCUMENTS,
@@ -32,9 +35,8 @@ import {
   FIXTURE_AUDIT_EVENTS,
   FIXTURE_INVOICES,
   FIXTURE_CAPACITY,
-  api,
   DEMO_USERS,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 import { resolveBackendBaseUrl as resolveBackendBaseUrlClient } from "../lib/api/client";
 import { isRunningInTestEnv } from "../lib/testEnv";
 import { authenticateUser, PLATFORM_HQ_OPERATOR_EMAIL } from "../lib/auth";

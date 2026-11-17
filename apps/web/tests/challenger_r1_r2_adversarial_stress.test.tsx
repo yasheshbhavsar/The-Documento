@@ -459,9 +459,30 @@ describe("Adversarial Verification & Empirical Stress Suite: R1 & R2", () => {
         } as Response)
       );
 
-      const mockFile = new File(["dummy single passport text aarav sharma"], "aarav_passport.pdf", {
-        type: "application/pdf",
-      });
+      const binaryScanFile = new File(
+        ["%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\nstream\n\x00\x01\x02\nendstream\n%%EOF"],
+        "scanned_binary_only.pdf",
+        { type: "application/pdf" }
+      );
+      const binaryRes = await sortDocumentPacket(binaryScanFile);
+      expect(binaryRes.person_folders[0].canonical_name).toBe("Document Holder (Unidentified)");
+      expect(Object.keys(binaryRes.person_folders[0].documents[0].extracted_fields)).toHaveLength(0);
+
+      const mockFile = new File(
+        [
+          [
+            "REPUBLIC OF INDIA - PASSPORT",
+            "Type: P Code: IND Passport No: M9876543",
+            "Surname: SHARMA",
+            "Given Names: AARAV",
+            "Nationality: IND",
+          ].join("\n"),
+        ],
+        "aarav_passport.pdf",
+        {
+          type: "application/pdf",
+        }
+      );
 
       const res = await sortDocumentPacket(mockFile);
 
@@ -486,9 +507,27 @@ describe("Adversarial Verification & Empirical Stress Suite: R1 & R2", () => {
       const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
       expect(fileInput).not.toBeNull();
 
-      const packetFile = new File(["%PDF-1.4 family marriage packet ananya patel"], "Sharma_Family_Packet.pdf", {
-        type: "application/pdf",
-      });
+      const packetFile = new File(
+        [
+          [
+            "--- PAGE 1 ---",
+            "REPUBLIC OF INDIA - PASSPORT",
+            "Type: P Code: IND Passport No: M9876543",
+            "Surname: SHARMA",
+            "Given Names: AARAV",
+            "Nationality: IND",
+            "--- PAGE 2 ---",
+            "GOVERNMENT OF INDIA - CERTIFICATE OF MARRIAGE",
+            "FULL NAME OF THE BRIDEGROOM: AARAV SHARMA",
+            "FULL NAME OF THE BRIDE: ANANYA PATEL",
+            "Date of Marriage: 12 FEB 2020",
+          ].join("\n"),
+        ],
+        "Sharma_Family_Packet.pdf",
+        {
+          type: "application/pdf",
+        }
+      );
 
       await act(async () => {
         fireEvent.change(fileInput, { target: { files: [packetFile] } });

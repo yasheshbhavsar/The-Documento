@@ -27,8 +27,8 @@ import {
 import {
   api,
   fetchDocumentRequests,
-  FALLBACK_FILING_PACKAGE,
 } from "../lib/api";
+import { FALLBACK_FILING_PACKAGE } from "./helpers/testFixtures";
 import { ClientProfile, ImmigrationCase, UserContext } from "../lib/types";
 
 describe("Milestone 4 Empirical Challenger Stress Harness", () => {

@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { MetricCard } from "../common/MetricCard";
 import { DataTable, Column } from "../common/DataTable";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
+import { WorkspaceIcon, WorkspaceIconName } from "../common/WorkspaceIcons";
 import {
   ImmigrationCase,
   ClientProfile,
@@ -13,7 +13,7 @@ import {
   ManagerPriorityQueueResponse,
   UserContext,
 } from "../../lib/types";
-import { canDeleteClient } from "../../lib/auth";
+import { canDeleteClient, canDeleteCase } from "../../lib/auth";
 import { RuleAdministrationHub } from "../rules/RuleAdministrationHub";
 import { ExecutiveCommandCenter } from "../analytics/ExecutiveCommandCenter";
 import { AnalyticsExplorer } from "../analytics/AnalyticsExplorer";
@@ -80,18 +80,18 @@ export function getSectionForTab(tab: DashboardTabKey): BusinessSectionKey {
     case "manager_priority":
     case "team":
     case "conversation_inspector":
-    case "reliability_ops":
       return "operations";
     case "growth":
     case "partner_growth":
-    case "stage10_pathway_expansion":
+    case "billing":
       return "growth";
     case "governance":
     case "firm_config":
-    case "billing":
+    case "reliability_ops":
     case "rules":
     case "audit":
     case "stage9_release_governance":
+    case "stage10_pathway_expansion":
     case "extractor_lab":
       return "governance";
     default:
@@ -99,11 +99,12 @@ export function getSectionForTab(tab: DashboardTabKey): BusinessSectionKey {
   }
 }
 
-export function resolveEffectiveTab(tab: DashboardTabKey): Exclude<DashboardTabKey, "caseload" | "growth" | "governance"> {
+export function resolveEffectiveTab(tab: DashboardTabKey): Exclude<DashboardTabKey, "caseload" | "growth" | "governance" | "team"> {
   if (tab === "caseload") return "cases";
   if (tab === "growth") return "partner_growth";
   if (tab === "governance") return "firm_config";
-  return tab as Exclude<DashboardTabKey, "caseload" | "growth" | "governance">;
+  if (tab === "team") return "operations";
+  return tab as Exclude<DashboardTabKey, "caseload" | "growth" | "governance" | "team">;
 }
 
 export interface OwnerMasterDashboardProps {
@@ -118,26 +119,34 @@ export interface OwnerMasterDashboardProps {
   onSelectCase?: (c: ImmigrationCase) => void;
   onClientUpdated?: (c: ClientProfile) => void;
   onDeleteClient?: (clientId: string) => Promise<void> | void;
+  onDeleteCase?: (caseId: string) => Promise<void> | void;
   currentUser?: UserContext;
   onConvertLeadToClient?: (lead: CalculatorAgencyLeadRecord) => void;
   onOpenCaseKickoff?: (c: ImmigrationCase) => void;
   kickoffVersion?: number;
 }
 
+const EMPTY_OWNER_CASES: ImmigrationCase[] = [];
+const EMPTY_OWNER_CLIENTS: ClientProfile[] = [];
+const EMPTY_OWNER_AUDIT_EVENTS: NonNullable<OwnerMasterDashboardProps["auditEvents"]> = [];
+const EMPTY_OWNER_INVOICES: NonNullable<OwnerMasterDashboardProps["invoices"]> = [];
+const EMPTY_OWNER_CAPACITY: NonNullable<OwnerMasterDashboardProps["capacity"]> = [];
+
 export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
   const ws = useWorkspaceSafe();
 
-  const cases = props.cases ?? ws?.cases ?? [];
-  const clients = props.clients ?? ws?.clients ?? [];
-  const auditEvents = props.auditEvents ?? ws?.auditEvents ?? [];
-  const invoices = props.invoices ?? ws?.invoices ?? [];
-  const capacity = props.capacity ?? ws?.capacity ?? [];
+  const cases = props.cases ?? ws?.cases ?? EMPTY_OWNER_CASES;
+  const clients = props.clients ?? ws?.clients ?? EMPTY_OWNER_CLIENTS;
+  const auditEvents = props.auditEvents ?? ws?.auditEvents ?? EMPTY_OWNER_AUDIT_EVENTS;
+  const invoices = props.invoices ?? ws?.invoices ?? EMPTY_OWNER_INVOICES;
+  const capacity = props.capacity ?? ws?.capacity ?? EMPTY_OWNER_CAPACITY;
   const isLiveBackend = props.isLiveBackend ?? ws?.isLiveBackend ?? false;
   const onOpenCreateCase = props.onOpenCreateCase;
   const onOpenCreateClient = props.onOpenCreateClient ?? (() => {});
   const onSelectCase = props.onSelectCase ?? ((_c: ImmigrationCase) => {});
   const onClientUpdated = props.onClientUpdated ?? ws?.handleClientUpdated;
   const onDeleteClient = props.onDeleteClient ?? ws?.handleDeleteClient;
+  const onDeleteCase = props.onDeleteCase ?? ws?.handleDeleteCase;
   const currentUser = props.currentUser ?? ws?.currentUser ?? undefined;
   const onConvertLeadToClient = props.onConvertLeadToClient;
   const onOpenCaseKickoff =
@@ -279,8 +288,20 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
     countryCounts[c.jurisdiction] = (countryCounts[c.jurisdiction] || 0) + 1;
   });
 
-  // Permissions check: Owner and Managers can delete clients; Paralegals and Retained Clients cannot
+  // Permissions check: Owner and Managers can delete clients & cases; Paralegals and Retained Clients cannot
   const canDelete = currentUser ? canDeleteClient(currentUser) : true;
+  const canDeleteCases = currentUser ? canDeleteCase(currentUser) : true;
+
+  const handleDeleteCaseClick = async (caseItem: ImmigrationCase) => {
+    const confirmMsg = `Are you sure you want to permanently delete case "${caseItem.case_number}" (${caseItem.title})?\n\nThis will permanently remove the case along with its linked documents, tasks, findings, and intake sheets. Retained client profile (${caseItem.client_name || "Unlinked"}) will remain preserved. This action cannot be undone.`;
+    if (window.confirm(confirmMsg)) {
+      if (onDeleteCase) {
+        await onDeleteCase(caseItem.id);
+      } else {
+        await api.deleteCase(caseItem.id, currentUser?.role || "master_admin");
+      }
+    }
+  };
 
   const handleDeleteClientClick = async (client: ClientProfile) => {
     const clientCases = cases.filter(
@@ -349,14 +370,23 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
       key: "readiness_score",
       header: "Readiness",
       sortable: true,
-      render: (c) => (
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <div style={{ width: "60px", height: "6px", backgroundColor: "#e2e8f0", borderRadius: "3px", overflow: "hidden" }}>
-            <div style={{ width: `${c.readiness_score}%`, height: "100%", backgroundColor: c.readiness_score > 80 ? "var(--success)" : "var(--accent)" }} />
+      render: (c) => {
+        const readinessScore = Math.max(0, Math.min(100, Number(c.readiness_score ?? 0) || 0));
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ width: "60px", height: "6px", backgroundColor: "#e2e8f0", borderRadius: "3px", overflow: "hidden" }}>
+              <div
+                style={{
+                  width: `${readinessScore}%`,
+                  height: "100%",
+                  backgroundColor: readinessScore > 80 ? "var(--success)" : "var(--accent)",
+                }}
+              />
+            </div>
+            <span style={{ fontSize: "12px", fontWeight: 700 }}>{readinessScore}%</span>
           </div>
-          <span style={{ fontSize: "12px", fontWeight: 700 }}>{c.readiness_score}%</span>
-        </div>
-      ),
+        );
+      },
     },
     {
       key: "deadline",
@@ -383,6 +413,26 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             <Button variant="outline" size="sm" onClick={() => onSelectCase(c)}>
               Inspect
             </Button>
+            {canDeleteCases && (
+              <Button
+                variant="danger"
+                size="sm"
+                data-testid={`delete-case-${c.id}`}
+                aria-label={`Delete case ${c.case_number}`}
+                onClick={() => handleDeleteCaseClick(c)}
+                style={{
+                  background: "#FFF0F0",
+                  color: "#D32F2F",
+                  borderColor: "#FFCDD2",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                <WorkspaceIcon name="trash" size={13} /> Delete
+              </Button>
+            )}
           </div>
         );
       },
@@ -410,14 +460,15 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
     key: DashboardTabKey;
     id: string;
     label: string;
-    icon: string;
+    icon: WorkspaceIconName;
     count: number | null;
   }
 
   interface DashboardSectionConfig {
     sectionKey: BusinessSectionKey;
     sectionLabel: string;
-    icon: string;
+    ariaLabel: string;
+    icon: WorkspaceIconName;
     defaultTab: DashboardTabKey;
     items: DashboardNavItem[];
   }
@@ -425,61 +476,65 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
   const DASHBOARD_SECTIONS: DashboardSectionConfig[] = [
     {
       sectionKey: "overview",
-      sectionLabel: "Executive Overview",
-      icon: "🏢",
+      sectionLabel: "Overview",
+      ariaLabel: "Executive Overview Views",
+      icon: "building",
       defaultTab: "overview",
       items: [
-        { key: "overview", id: "tab-btn-overview", label: "Company Overview", icon: "🏢", count: null },
-        { key: "executive", id: "tab-btn-executive", label: "Executive Command Center", icon: "⚡", count: null },
-        { key: "analytics", id: "tab-btn-analytics", label: "Deep Analytics", icon: "📈", count: null },
+        { key: "overview", id: "tab-btn-overview", label: "Company Overview", icon: "building", count: null },
+        { key: "executive", id: "tab-btn-executive", label: "Executive Command Center", icon: "zap", count: null },
+        { key: "analytics", id: "tab-btn-analytics", label: "Deep Analytics", icon: "trending-up", count: null },
       ],
     },
     {
       sectionKey: "caseload",
-      sectionLabel: "Caseload & Retainers",
-      icon: "📋",
+      sectionLabel: "Clients & Cases",
+      ariaLabel: "Caseload & Retainers Views",
+      icon: "clipboard",
       defaultTab: "cases",
       items: [
-        { key: "cases", id: "tab-btn-cases", label: "All Cases", icon: "📋", count: cases.length },
-        { key: "clients", id: "tab-btn-clients", label: "Retained Clients", icon: "👥", count: clients.length },
-        { key: "financials", id: "tab-btn-financials", label: "Revenue & Billing", icon: "💳", count: null },
+        { key: "cases", id: "tab-btn-cases", label: "All Cases", icon: "clipboard", count: cases.length },
+        { key: "clients", id: "tab-btn-clients", label: "Retained Clients", icon: "users", count: clients.length },
+        { key: "financials", id: "tab-btn-financials", label: "Revenue & Billing", icon: "credit-card", count: null },
       ],
     },
     {
       sectionKey: "operations",
-      sectionLabel: "Casework Operations & Triage",
-      icon: "🚨",
+      sectionLabel: "Team & Bottlenecks",
+      ariaLabel: "Team & Bottlenecks Views",
+      icon: "alert-triangle",
       defaultTab: "manager_priority",
       items: [
-        { key: "manager_priority", id: "tab-btn-manager-priority", label: "Priority Command Board", icon: "🚨", count: priorityActionCount || null },
-        { key: "operations", id: "tab-btn-operations", label: "Operations Hub", icon: "👥", count: null },
-        { key: "team", id: "tab-btn-team", label: "Team Capacity", icon: "👥", count: capacity?.length || 0 },
-        { key: "conversation_inspector", id: "tab-btn-conversation-inspector", label: "Conversation Inspector", icon: "💬", count: null },
-        { key: "reliability_ops", id: "tab-btn-reliability-ops", label: "Reliability, Privacy & Security", icon: "🛡️", count: null },
+        { key: "manager_priority", id: "tab-btn-manager-priority", label: "Priority Command Board", icon: "alert-triangle", count: priorityActionCount || null },
+        { key: "operations", id: "tab-btn-operations", label: "Operations Hub", icon: "users", count: null },
+        { key: "conversation_inspector", id: "tab-btn-conversation-inspector", label: "Conversation Inspector", icon: "message-square", count: null },
       ],
     },
     {
       sectionKey: "growth",
-      sectionLabel: "Partner Growth",
-      icon: "🔗",
+      sectionLabel: "Billing & Growth",
+      ariaLabel: "Billing & Growth Views",
+      icon: "link",
       defaultTab: "partner_growth",
       items: [
-        { key: "partner_growth", id: "tab-btn-partner-growth", label: "Partner Onboarding & Leads", icon: "🔗", count: unreadCalculatorLeadsCount || null },
-        { key: "stage10_pathway_expansion", id: "tab-btn-stage10-pathway-expansion", label: "Pathway Expansion", icon: "🌐", count: null },
+        { key: "partner_growth", id: "tab-btn-partner-growth", label: "Partner Onboarding & Leads", icon: "link", count: unreadCalculatorLeadsCount || null },
+        { key: "billing", id: "tab-btn-billing", label: "Billing & Retainers", icon: "credit-card", count: null },
       ],
     },
     {
       sectionKey: "governance",
-      sectionLabel: "Firm Governance",
-      icon: "🏛️",
+      sectionLabel: "Governance & Advanced",
+      ariaLabel: "Firm Governance Views",
+      icon: "landmark",
       defaultTab: "firm_config",
       items: [
-        { key: "firm_config", id: "tab-btn-firm-config", label: "Firm Governance & Configuration", icon: "🏛️", count: null },
-        { key: "billing", id: "tab-btn-billing", label: "Billing & Retainers", icon: "💳", count: null },
-        { key: "rules", id: "tab-btn-rules", label: "Rules & Authorities", icon: "⚖️", count: null },
-        { key: "audit", id: "tab-btn-audit", label: "Audit Alerts", icon: "🛡️", count: auditEvents.length },
-        { key: "stage9_release_governance", id: "tab-btn-stage9-release-governance", label: "Release & Pilot Desk", icon: "🚀", count: null },
-        { key: "extractor_lab", id: "tab-btn-extractor-lab", label: "Extractor Lab", icon: "🔬", count: null },
+        { key: "firm_config", id: "tab-btn-firm-config", label: "Firm Governance & Configuration", icon: "landmark", count: null },
+        { key: "reliability_ops", id: "tab-btn-reliability-ops", label: "Reliability, Privacy & Security", icon: "shield", count: null },
+        { key: "rules", id: "tab-btn-rules", label: "Rules & Authorities", icon: "scale", count: null },
+        { key: "audit", id: "tab-btn-audit", label: "Audit Alerts", icon: "shield", count: auditEvents.length },
+        { key: "stage9_release_governance", id: "tab-btn-stage9-release-governance", label: "Release & Pilot Desk", icon: "rocket", count: null },
+        { key: "stage10_pathway_expansion", id: "tab-btn-stage10-pathway-expansion", label: "Pathway Expansion", icon: "globe", count: null },
+        { key: "extractor_lab", id: "tab-btn-extractor-lab", label: "Extractor Lab", icon: "microscope", count: null },
       ],
     },
   ];
@@ -532,10 +587,6 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
     clients: {
       title: "Retained Clients & Portal Access Control",
       subtitle: `Directory of Retained Applicants (${clients.length} profiles under representation). Credentials must be provided by Owner or Lead Paralegal for portal login.`,
-    },
-    team: {
-      title: "Team Capacity",
-      subtitle: `Attorney & Paralegal Workload Distribution (${capacity.length} legal specialists)`,
     },
     financials: {
       title: "Revenue & Billing",
@@ -597,53 +648,62 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
         }}
         className="documento-firm-sidebar"
       >
-        {/* Executive Suite Summary Card */}
+        {/* Firm Workspace Status Summary */}
         <div
           style={{
-            padding: "20px 18px 16px 18px",
+            padding: "16px 18px",
             borderBottom: "1px solid #DCE5E1",
           }}
         >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "6px" }}>
+            <span
+              style={{
+                fontSize: "10.5px",
+                fontWeight: 700,
+                color: "#6E7F7C",
+                textTransform: "uppercase",
+                letterSpacing: "0.07em",
+              }}
+            >
+              Firm Workspace
+            </span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                fontSize: "11px",
+                fontWeight: 650,
+                color: "#176B50",
+              }}
+            >
+              <span
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "#176B50",
+                }}
+                aria-hidden="true"
+              />
+              Active
+            </span>
+          </div>
           <div
             style={{
-              background: "#F8F7F2",
-              border: "1px solid #B9DED4",
-              borderRadius: "10px",
-              padding: "12px 14px",
+              fontSize: "13.5px",
+              fontWeight: 700,
+              color: "#063C3D",
+              lineHeight: 1.25,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-              <span
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  color: "#063C3D",
-                  fontFamily: "monospace",
-                  letterSpacing: "0.02em",
-                }}
-              >
-                {firmDisplayName}
-              </span>
-              <span
-                style={{
-                  background: "#EAF6F0",
-                  color: "#176B50",
-                  fontSize: "10px",
-                  fontWeight: 650,
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                  border: "1px solid #B9DED4",
-                }}
-              >
-                Active
-              </span>
-            </div>
-            <div style={{ fontSize: "12px", fontWeight: 650, color: "#172322", lineHeight: 1.3 }}>
-              Executive Command Center
-            </div>
-            <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>
-              Active Caseload: {activeCasesCount} Petitions
-            </div>
+            {firmDisplayName}
+          </div>
+          <div style={{ fontSize: "11.5px", color: "#526663", marginTop: "3px", fontVariantNumeric: "tabular-nums" }}>
+            {`Active Caseload: ${activeCasesCount} Petitions`}
           </div>
         </div>
 
@@ -652,7 +712,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           aria-label="Executive Navigation"
           style={{
             flex: 1,
-            padding: "16px 12px",
+            padding: "14px 12px",
             display: "flex",
             flexDirection: "column",
             gap: "12px",
@@ -677,7 +737,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>{section.icon}</span>
+                    <WorkspaceIcon name={section.icon} size={12} />
                     <span>{section.sectionLabel}</span>
                   </span>
                 </div>
@@ -702,8 +762,8 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                           alignItems: "center",
                           justifyContent: "space-between",
                           width: "100%",
-                          padding: "8px 12px 8px 14px",
-                          borderRadius: "8px",
+                          padding: "7px 12px 7px 14px",
+                          borderRadius: "7px",
                           border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
                           background: isActive ? "#EAF6F0" : "transparent",
                           color: isActive ? "#0D6866" : "#445451",
@@ -741,20 +801,21 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                             aria-hidden="true"
                           />
                         )}
-                        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span>{item.icon}</span>
-                          <span>{item.label}</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                          <WorkspaceIcon name={item.icon} size={15} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
                         </span>
                         {item.count !== null && item.count > 0 && (
                           <span
                             style={{
                               fontSize: "10px",
                               fontWeight: 700,
-                              padding: "2px 6px",
+                              padding: "1px 6px",
                               borderRadius: "10px",
                               background: isActive ? "#0D6866" : "#F1F6F4",
                               color: isActive ? "#FFFFFF" : "#445451",
                               border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
+                              fontVariantNumeric: "tabular-nums",
                             }}
                           >
                             {item.count}
@@ -769,7 +830,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           })}
         </nav>
 
-        {/* Managing Partner Footer Card */}
+        {/* Managing Partner Footer Profile */}
         <div
           style={{
             padding: "14px 16px",
@@ -777,7 +838,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             background: "#FAFAF7",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div
               style={{
                 width: "32px",
@@ -805,11 +866,6 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <Button variant="primary" size="sm" onClick={onOpenCreateClient} style={{ width: "100%", justifyContent: "center" }}>
-              + Onboard Client &amp; Case
-            </Button>
-          </div>
         </div>
       </aside>
 
@@ -817,12 +873,13 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           2. MAIN CONTENT AREA (Clean SaaS Grid Layout)
           ========================================================================= */}
       <main
+        className="documento-main-content"
         style={{
           flex: 1,
+          minWidth: 0,
           padding: "24px 32px 64px 32px",
-          maxWidth: "1320px",
-          margin: "0 auto",
           width: "100%",
+          maxWidth: "100%",
           boxSizing: "border-box",
           display: "flex",
           flexDirection: "column",
@@ -852,6 +909,9 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             aria-controls="executive-mobile-sections-menu"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
               padding: "6px 12px",
               background: "#EAF6F0",
               color: "#0D6866",
@@ -862,7 +922,8 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               cursor: "pointer",
             }}
           >
-            ☰ Switch Section
+            <WorkspaceIcon name="layers" size={14} />
+            Switch Section
           </button>
         </div>
 
@@ -874,7 +935,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             style={{
               marginBottom: "16px",
               background: "#FFFFFF",
-              border: "1px solid #B9DED4",
+              border: "1px solid #DCE5E1",
               borderRadius: "10px",
               padding: "8px",
               display: "flex",
@@ -911,7 +972,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span>{item.icon}</span>
+                    <WorkspaceIcon name={item.icon} size={15} />
                     <span>{item.label}</span>
                   </span>
                   {item.count !== null && item.count > 0 && (
@@ -934,120 +995,114 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           </div>
         )}
 
-        {/* Header Action Bar */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            gap: "16px",
-            background: "#FFFFFF",
-            border: "1px solid #DCE5E1",
-            borderRadius: "12px",
-            padding: "20px 24px",
-            boxShadow: "0 1px 3px rgba(6, 60, 61, 0.04)",
-          }}
-        >
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-              <h1
+        {/* Header Action Bar (suppressed when Operations Hub renders its own unified header) */}
+        {effectiveTab !== "operations" && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "16px",
+              paddingBottom: "4px",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <h1
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: 750,
+                    color: "#063C3D",
+                    margin: 0,
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  {activeTabInfo.title}
+                </h1>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 650,
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    background: "#EAF6F0",
+                    color: "#176B50",
+                    border: "1px solid #B9DED4",
+                  }}
+                >
+                  Managing Partner Suite
+                </span>
+              </div>
+              <p
                 style={{
-                  fontSize: "22px",
-                  fontWeight: 750,
-                  color: "#063C3D",
-                  margin: 0,
-                  letterSpacing: "-0.01em",
+                  fontSize: "13px",
+                  color: "#6E7F7C",
+                  margin: "4px 0 0 0",
+                  lineHeight: 1.4,
                 }}
               >
-                {activeTabInfo.title}
-              </h1>
-              <span
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 650,
-                  padding: "3px 8px",
-                  borderRadius: "6px",
-                  background: "#EAF6F0",
-                  color: "#176B50",
-                  border: "1px solid #B9DED4",
-                }}
-              >
-                Managing Partner Suite
-              </span>
+                {activeTabInfo.subtitle}
+              </p>
             </div>
-            <p
-              style={{
-                fontSize: "13px",
-                color: "#6E7F7C",
-                margin: "6px 0 0 0",
-              }}
-            >
-              {activeTabInfo.subtitle}
-            </p>
-          </div>
 
-          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
-              + Onboard Client &amp; Case
-            </Button>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
+                + Onboard Client &amp; Case
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Horizontal Sub-Navigation Pill Bar for Active Business Section */}
+        {/* Flush Hairline Sub-Navigation Tabstrip for Active Business Section */}
         {(() => {
           const currentSection = DASHBOARD_SECTIONS.find((s) => s.sectionKey === getSectionForTab(activeTab));
           if (!currentSection || currentSection.items.length <= 1) return null;
           return (
             <div
+              className="documento-tabstrip"
               role="tablist"
-              aria-label={`${currentSection.sectionLabel} Views`}
-              style={{
-                display: "flex",
-                gap: "8px",
-                padding: "6px",
-                background: "#FFFFFF",
-                border: "1px solid #DCE5E1",
-                borderRadius: "10px",
-                overflowX: "auto",
-                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.04)",
-              }}
+              aria-label={currentSection.ariaLabel}
+              style={{ overflowX: "auto" }}
             >
               {currentSection.items.map((subItem) => {
                 const isSubActive = effectiveTab === subItem.key;
                 return (
                   <button
                     key={`subnav-${subItem.key}`}
+                    type="button"
                     role="tab"
                     aria-selected={isSubActive}
                     onClick={() => setActiveTab(subItem.key)}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: "6px",
-                      padding: "8px 14px",
-                      borderRadius: "7px",
+                      gap: "7px",
+                      padding: "10px 14px",
+                      marginBottom: "-1px",
+                      background: "transparent",
+                      border: "none",
+                      borderBottom: isSubActive ? "2px solid #063C3D" : "2px solid transparent",
                       fontSize: "13px",
                       fontWeight: isSubActive ? 650 : 500,
-                      color: isSubActive ? "#063C3D" : "#445451",
-                      background: isSubActive ? "#EAF6F0" : "transparent",
-                      border: isSubActive ? "1px solid #B9DED4" : "1px solid transparent",
+                      color: isSubActive ? "#063C3D" : "#526663",
                       cursor: "pointer",
                       whiteSpace: "nowrap",
-                      transition: "all 0.15s ease",
+                      transition: "color 0.15s ease, border-color 0.15s ease",
                     }}
                   >
-                    <span>{subItem.icon}</span>
+                    <WorkspaceIcon name={subItem.icon} size={14} />
                     <span>{subItem.label}</span>
                     {subItem.count !== null && subItem.count > 0 && (
                       <span
                         style={{
-                          fontSize: "10px",
+                          fontSize: "10.5px",
                           fontWeight: 700,
-                          padding: "2px 6px",
+                          padding: "1px 6px",
                           borderRadius: "10px",
-                          background: isSubActive ? "#0D6866" : "#F1F6F4",
+                          background: isSubActive ? "#063C3D" : "#EAF0ED",
                           color: isSubActive ? "#FFFFFF" : "#445451",
+                          fontVariantNumeric: "tabular-nums",
                         }}
                       >
                         {subItem.count}
@@ -1065,7 +1120,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           <div
             data-testid="day0-agency-setup-callout"
             style={{
-              padding: "14px 18px",
+              padding: "12px 16px",
               borderRadius: "10px",
               background: currentUser?.is_sandbox_agency ? "#FFFBEB" : "#EAF6F0",
               border: `1px solid ${currentUser?.is_sandbox_agency ? "#FDE68A" : "#B9DED4"}`,
@@ -1104,6 +1159,70 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
       {/* OVERVIEW TAB */}
       {effectiveTab === "overview" && (
         <>
+          {/* Express Drop-to-Create Client & Case Action Bar */}
+          <div
+            data-testid="owner-express-drop-create-bar"
+            style={{
+              padding: "14px 18px",
+              borderRadius: "10px",
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", maxWidth: "780px" }}>
+              <span
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "#EAF6F0",
+                  color: "#063C3D",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <WorkspaceIcon name="zap" size={16} />
+              </span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                <strong style={{ fontSize: "13.5px", color: "#063C3D" }}>
+                  Express Drop-to-Create Client &amp; Case
+                </strong>
+                <span style={{ fontSize: "12.5px", color: "#526663" }}>
+                  Drop a Passport, Bank Statement, CRA NOA, or multi-person Family PDF Packet to auto-extract biodata and open an active case in one step.
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="owner-express-drop-create-btn"
+              onClick={onOpenCreateClient}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 14px",
+                borderRadius: "8px",
+                border: "1px solid #063C3D",
+                background: "#063C3D",
+                color: "#FFFFFF",
+                fontSize: "12.5px",
+                fontWeight: 650,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <WorkspaceIcon name="zap" size={13} />
+              Express Drop-to-Create Client &amp; Case →
+            </button>
+          </div>
+
           {pendingKickoffCases.length > 0 && (() => {
             const firstCase = pendingKickoffCases[0];
             const firstProg = getCaseKickoffProgress(firstCase.id);
@@ -1136,141 +1255,321 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             );
           })()}
 
-          {/* Key Metric Indicators with DEFINED MEANINGS and DRILL-DOWNS */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-              gap: "16px",
-            }}
-          >
-            <MetricCard
-              label="Operational Health & Tenant Boundary"
-              value="100% Strict"
-              subtext="Zero cross-tenant leaks"
-              meaning="Indicates that all database queries and document storage paths are strictly partitioned by organization_id with active server-side enforcement."
-              onDrilldown={() => setActiveTab("audit")}
-              drilldownLabel="View audit trace →"
-              isLiveApi={isLiveBackend}
-              statusBadge={<Badge variant="success" size="sm">Isolated</Badge>}
-            />
+          {/* Connected Hairline KPI Ribbon */}
+          <div className="documento-kpi-ribbon">
+            <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "8px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#526663" }}>
+                    Operational Health &amp; Tenant Boundary
+                  </span>
+                  <Badge variant="success" size="sm">Isolated</Badge>
+                </div>
+                <div style={{ fontSize: "24px", fontWeight: 700, color: "#063C3D", letterSpacing: "-0.02em", lineHeight: 1.15, fontVariantNumeric: "tabular-nums" }}>
+                  100% Strict
+                </div>
+                <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "4px" }}>
+                  Zero cross-tenant leaks
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab("audit")}
+                style={{
+                  alignSelf: "flex-start",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#0D6866",
+                  cursor: "pointer",
+                }}
+              >
+                View audit trace →
+              </button>
+            </div>
 
-            <MetricCard
-              label="Active Caseload & Retained Clients"
-              value={activeCasesCount}
-              subtext={`${clients.length} retained applicants total`}
-              meaning="Count of immigration petitions currently in progress across all caseworkers, excluding archived, closed, or denied cases."
-              onDrilldown={() => setActiveTab("cases")}
-              drilldownLabel="Filter active cases →"
-              isLiveApi={isLiveBackend}
-              trend={cases.length > 0 ? { value: `${activeCasesCount} active`, isPositive: true } : undefined}
-            />
+            <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "8px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#526663" }}>
+                    Active Caseload &amp; Retained Clients
+                  </span>
+                  {cases.length > 0 && (
+                    <Badge variant="success" size="sm">{activeCasesCount} active</Badge>
+                  )}
+                </div>
+                <div style={{ fontSize: "24px", fontWeight: 700, color: "#063C3D", letterSpacing: "-0.02em", lineHeight: 1.15, fontVariantNumeric: "tabular-nums" }}>
+                  {activeCasesCount}
+                </div>
+                <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "4px" }}>
+                  {clients.length} retained applicants total
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab("cases")}
+                style={{
+                  alignSelf: "flex-start",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#0D6866",
+                  cursor: "pointer",
+                }}
+              >
+                Filter active cases →
+              </button>
+            </div>
 
-            <MetricCard
-              label="Cases Requiring Owner Attention"
-              value={attentionCases.length}
-              subtext={attentionCases.length > 0 ? "Requires review or RFE response" : "No urgent flags"}
-              meaning="Petitions with flagged statutory evidentiary gaps, approaching statutory agency deadlines, or requiring attorney signoff."
-              onDrilldown={() => {
-                if (attentionCases.length > 0) onSelectCase(attentionCases[0]);
-              }}
-              drilldownLabel="Inspect priority case →"
-              isLiveApi={isLiveBackend}
-              trend={{ value: `${attentionCases.length} flagged`, isPositive: false }}
-              statusBadge={<Badge variant={attentionCases.length > 0 ? "action" : "success"} size="sm">{attentionCases.length > 0 ? "Attention" : "Clear"}</Badge>}
-            />
+            <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "8px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#526663" }}>
+                    Cases Requiring Owner Attention
+                  </span>
+                  <Badge variant={attentionCases.length > 0 ? "action" : "success"} size="sm">
+                    {attentionCases.length > 0 ? "Attention" : "Clear"}
+                  </Badge>
+                </div>
+                <div style={{ fontSize: "24px", fontWeight: 700, color: attentionCases.length > 0 ? "#B45309" : "#063C3D", letterSpacing: "-0.02em", lineHeight: 1.15, fontVariantNumeric: "tabular-nums" }}>
+                  {attentionCases.length}
+                </div>
+                <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "4px" }}>
+                  {attentionCases.length > 0 ? "Requires review or RFE response" : "No urgent flags"}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (attentionCases.length > 0) onSelectCase(attentionCases[0]);
+                }}
+                style={{
+                  alignSelf: "flex-start",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#0D6866",
+                  cursor: "pointer",
+                }}
+              >
+                Inspect priority case →
+              </button>
+            </div>
 
-            <MetricCard
-              label="Escrow & Retainer Revenue"
-              value={`$${totalRevenue.toLocaleString()}`}
-              subtext={`$${outstandingRevenue.toLocaleString()} pending escrow`}
-              meaning="Realized revenue from completed filing milestones alongside funds held in attorney trust escrow."
-              onDrilldown={() => setActiveTab("financials")}
-              drilldownLabel="View billing ledger →"
-              isLiveApi={isLiveBackend}
-              trend={invoices.length > 0 ? { value: "Retainer Backed", isPositive: true } : undefined}
-            />
+            <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "8px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#526663" }}>
+                    Escrow &amp; Retainer Revenue
+                  </span>
+                  {invoices.length > 0 && (
+                    <Badge variant="neutral" size="sm">Retainer Backed</Badge>
+                  )}
+                </div>
+                <div style={{ fontSize: "24px", fontWeight: 700, color: "#063C3D", letterSpacing: "-0.02em", lineHeight: 1.15, fontVariantNumeric: "tabular-nums" }}>
+                  ${totalRevenue.toLocaleString()}
+                </div>
+                <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+                  ${outstandingRevenue.toLocaleString()} pending escrow
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab("financials")}
+                style={{
+                  alignSelf: "flex-start",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#0D6866",
+                  cursor: "pointer",
+                }}
+              >
+                View billing ledger →
+              </button>
+            </div>
           </div>
 
-          {/* Pipeline by Processing Stage */}
-          <Card
-            title="Immigration Case Pipeline by Processing Stage"
-            subtitle="Real-time distribution of petitions across intake, evidence gathering, review, and filing."
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                gap: "12px",
-                marginTop: "6px",
-              }}
-            >
-              {[
-                { stage: "Intake", count: stageCounts.intake, color: "#475569" },
-                { stage: "Evidence Gathering", count: stageCounts.gathering, color: "#0284c7" },
-                { stage: "Caseworker Review", sub: "Attorney Review", count: stageCounts.review, color: "#b45309" },
-                { stage: "Package Assembly", count: stageCounts.assembly, color: "#1d4ed8" },
-                { stage: "Attorney Signoff", count: stageCounts.ready, color: "#047857" },
-                { stage: "Filed with Agency", count: stageCounts.filed, color: "#6d28d9" },
-              ].map((item) => (
+          {/* Connected Immigration Case Pipeline Funnel Strip */}
+          {(() => {
+            const pipelineStages = [
+              { step: "01", stage: "Intake", count: stageCounts.intake, color: "#64748B" },
+              { step: "02", stage: "Evidence Gathering", count: stageCounts.gathering, color: "#0284C7" },
+              { step: "03", stage: "Caseworker Review", sub: "Attorney Review", count: stageCounts.review, color: "#D97706" },
+              { step: "04", stage: "Package Assembly", count: stageCounts.assembly, color: "#2563EB" },
+              { step: "05", stage: "Attorney Signoff", count: stageCounts.ready, color: "#059669" },
+              { step: "06", stage: "Filed with Agency", count: stageCounts.filed, color: "#7C3AED" },
+            ];
+            return (
+              <section
+                style={{
+                  background: "#FFFFFF",
+                  border: "1px solid #DCE5E1",
+                  borderRadius: "10px",
+                  overflow: "hidden",
+                }}
+              >
                 <div
-                  key={item.stage}
                   style={{
-                    background: "var(--surface-subtle, #f8fafc)",
-                    border: "1px solid var(--border, #e2e8f0)",
-                    borderRadius: "8px",
-                    padding: "14px",
-                    textAlign: "center",
+                    padding: "16px 20px 12px 20px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-end",
+                    flexWrap: "wrap",
+                    gap: "12px",
                   }}
                 >
-                  <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 600, display: "block" }}>
-                    {item.stage}
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>
+                      Immigration Case Pipeline by Processing Stage
+                    </h2>
+                    <p style={{ margin: "2px 0 0 0", fontSize: "12.5px", color: "#6E7F7C" }}>
+                      Real-time distribution of petitions across intake, evidence gathering, review, and filing.
+                    </p>
+                  </div>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#526663", fontVariantNumeric: "tabular-nums" }}>
+                    {cases.length} total petitions
                   </span>
-                  {item.sub && (
-                    <span style={{ fontSize: "10px", color: "var(--quiet)", display: "block" }}>
-                      {item.sub}
-                    </span>
-                  )}
-                  <strong style={{ fontSize: "24px", color: item.color, display: "block", margin: "6px 0" }}>
-                    {item.count}
-                  </strong>
-                  <small style={{ color: "var(--quiet)", fontSize: "11px" }}>
-                    {cases.length > 0 ? Math.round((item.count / cases.length) * 100) : 0}% of caseload
-                  </small>
                 </div>
-              ))}
-            </div>
-          </Card>
+
+                {/* Connected Proportional Pipeline Bar */}
+                <div
+                  style={{
+                    margin: "0 20px 14px 20px",
+                    height: "6px",
+                    borderRadius: "3px",
+                    background: "#EDF2EF",
+                    display: "flex",
+                    overflow: "hidden",
+                    gap: "1px",
+                  }}
+                  aria-hidden="true"
+                >
+                  {cases.length > 0 &&
+                    pipelineStages.map((item) => {
+                      if (item.count === 0) return null;
+                      const widthPct = (item.count / cases.length) * 100;
+                      return (
+                        <div
+                          key={`bar-${item.step}`}
+                          style={{
+                            width: `${widthPct}%`,
+                            height: "100%",
+                            background: item.color,
+                          }}
+                        />
+                      );
+                    })}
+                </div>
+
+                <div className="documento-pipeline-stages">
+                  {pipelineStages.map((item) => {
+                    const pct = cases.length > 0 ? Math.round((item.count / cases.length) * 100) : 0;
+                    return (
+                      <button
+                        key={item.stage}
+                        type="button"
+                        onClick={() => setActiveTab("cases")}
+                        title={`Click to filter caseload at ${item.stage}`}
+                        style={{
+                          padding: "14px 16px",
+                          border: "none",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          gap: "6px",
+                          transition: "background 0.15s ease",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "10px", fontWeight: 700, color: "#6E7F7C", letterSpacing: "0.05em" }}>
+                            <span style={{ width: "6px", height: "6px", borderRadius: "2px", background: item.color }} aria-hidden="true" />
+                            STAGE {item.step}
+                          </span>
+                          <span style={{ color: "#6E7F7C", fontSize: "11px", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                            {pct}%
+                          </span>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: "12.5px", color: "#172322", fontWeight: 650, lineHeight: 1.25 }}>
+                            {item.stage}
+                          </div>
+                          {item.sub && (
+                            <div style={{ fontSize: "10.5px", color: "#6E7F7C", marginTop: "1px" }}>
+                              {item.sub}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "21px", fontWeight: 700, color: "#063C3D", lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>
+                          {item.count}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })()}
 
           {/* Cases by Country & Pathway + Urgent Attention Cases */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "20px" }}>
-            <Card
-              title="Cases by Country & Jurisdiction"
-              subtitle="Breakdown of petitions by target immigration authority."
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div className="documento-split-pane">
+            <div style={{ padding: "18px 20px" }}>
+              <div style={{ marginBottom: "12px" }}>
+                <h3 style={{ margin: 0, fontSize: "14.5px", fontWeight: 700, color: "#063C3D" }}>
+                  Cases by Country &amp; Jurisdiction
+                </h3>
+                <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#6E7F7C" }}>
+                  Breakdown of petitions by target immigration authority.
+                </p>
+              </div>
+              <div style={{ borderTop: "1px solid #EDF2EF" }}>
                 {Object.entries(countryCounts).length === 0 ? (
-                  <div style={{ padding: "16px", textAlign: "center", color: "#64748B", fontSize: "12px", border: "1px dashed #CBD5E1", borderRadius: "6px" }}>
+                  <div style={{ padding: "20px 0", textAlign: "center", color: "#6E7F7C", fontSize: "12.5px" }}>
                     No applicant nationalities registered yet
                   </div>
                 ) : (
                   Object.entries(countryCounts).map(([country, count]) => (
-                    <div key={country} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "13px" }}>
-                      <span style={{ color: "var(--text)", fontWeight: 600 }}>{country}</span>
+                    <div
+                      key={country}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontSize: "13px",
+                        padding: "10px 0",
+                        borderBottom: "1px solid #EDF2EF",
+                      }}
+                    >
+                      <span style={{ color: "#172322", fontWeight: 600 }}>{country}</span>
                       <Badge variant="neutral">{count} petitions</Badge>
                     </div>
                   ))
                 )}
               </div>
-            </Card>
+            </div>
 
-            <Card
-              title="Upcoming Deadlines & Priority Action Items"
-              subtitle="Agency filing clocks and RFE response deadlines."
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ padding: "18px 20px" }}>
+              <div style={{ marginBottom: "12px" }}>
+                <h3 style={{ margin: 0, fontSize: "14.5px", fontWeight: 700, color: "#063C3D" }}>
+                  Upcoming Deadlines &amp; Priority Action Items
+                </h3>
+                <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#6E7F7C" }}>
+                  Agency filing clocks and RFE response deadlines.
+                </p>
+              </div>
+              <div style={{ borderTop: "1px solid #EDF2EF" }}>
                 {cases.length === 0 ? (
-                  <div style={{ padding: "16px", textAlign: "center", color: "#64748B", fontSize: "12px", border: "1px dashed #CBD5E1", borderRadius: "6px" }}>
+                  <div style={{ padding: "20px 0", textAlign: "center", color: "#6E7F7C", fontSize: "12.5px" }}>
                     No Active Cases in Firm Workspace
                   </div>
                 ) : (
@@ -1281,22 +1580,22 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                         key={c.id}
                         onClick={() => onSelectCase(c)}
                         style={{
-                          padding: "10px 12px",
-                          background: "var(--surface-subtle, #f8fafc)",
-                          border: "1px solid var(--border, #e2e8f0)",
-                          borderRadius: "6px",
+                          padding: "10px 0",
+                          borderBottom: "1px solid #EDF2EF",
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
-                          gap: "10px",
+                          gap: "12px",
                           cursor: "pointer",
                         }}
                       >
-                        <div>
-                          <strong style={{ fontSize: "13px", display: "block" }}>{c.case_number}</strong>
-                          <span style={{ fontSize: "12px", color: "var(--muted)" }}>{c.client_name}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ fontSize: "13px", color: "#063C3D", display: "block", fontVariantNumeric: "tabular-nums" }}>
+                            {c.case_number}
+                          </strong>
+                          <span style={{ fontSize: "12px", color: "#526663" }}>{c.client_name}</span>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
                           {kp && !kp.isComplete && (
                             <Button
                               variant="secondary"
@@ -1310,10 +1609,10 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                             </Button>
                           )}
                           <div style={{ textAlign: "right" }}>
-                            <span style={{ fontSize: "12px", fontWeight: 700, color: c.attention_required ? "var(--critical)" : "var(--accent)" }}>
+                            <span style={{ fontSize: "12px", fontWeight: 700, color: c.attention_required ? "#B91C1C" : "#063C3D" }}>
                               {c.deadline || "Standard"}
                             </span>
-                            <small style={{ display: "block", color: "var(--quiet)" }}>Deadline</small>
+                            <small style={{ display: "block", color: "#6E7F7C", fontSize: "11px" }}>Deadline</small>
                           </div>
                         </div>
                       </div>
@@ -1321,7 +1620,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                   })
                 )}
               </div>
-            </Card>
+            </div>
           </div>
         </>
       )}
@@ -1355,7 +1654,11 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
 
       {/* OPERATIONS & WORKLOAD TAB */}
       {effectiveTab === "operations" && (
-        <BusinessOperationsHub isLiveBackend={isLiveBackend} />
+        <BusinessOperationsHub
+          isLiveBackend={isLiveBackend}
+          currentUser={currentUser}
+          capacity={capacity}
+        />
       )}
 
       {/* RELIABILITY, PRIVACY & SECURITY TAB */}
@@ -1386,11 +1689,25 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
 
       {/* ALL CASES TAB */}
       {effectiveTab === "cases" && (
-        <Card
-          title="Comprehensive Firm Caseload"
-          subtitle="Filter and inspect all active, filed, and in-review immigration petitions."
-          actions={
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#063C3D" }}>
+                Comprehensive Firm Caseload
+              </h2>
+              <p style={{ margin: "2px 0 0 0", fontSize: "12.5px", color: "#6E7F7C" }}>
+                Filter and inspect all active, filed, and in-review immigration petitions.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
               <Button variant="outline" size="sm" onClick={onOpenCreateCase || onOpenCreateClient}>
                 + Create Case
               </Button>
@@ -1398,9 +1715,9 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                 + Onboard Client &amp; Case
               </Button>
             </div>
-          }
-        >
+          </div>
           <DataTable
+            variant="boxed"
             columns={caseColumns}
             data={cases}
             keyExtractor={(c) => c.id}
@@ -1420,32 +1737,58 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             }}
             onRowClick={(c) => onSelectCase(c)}
           />
-        </Card>
+        </div>
       )}
 
       {/* RETAINED CLIENTS TAB */}
       {effectiveTab === "clients" && (
-        <Card
-          title="Retained Applicant Directory & Portal Access Control"
-          subtitle="All registered clients under organization representation. Credentials must be provided by Owner or Lead Paralegal for client portal sign-in."
-          actions={
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#063C3D" }}>
+                Retained Applicant Directory &amp; Portal Access Control
+              </h2>
+              <p style={{ margin: "2px 0 0 0", fontSize: "12.5px", color: "#6E7F7C" }}>
+                All registered clients under organization representation. Credentials must be provided by Owner or Lead Paralegal for client portal sign-in.
+              </p>
+            </div>
             <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
               + Onboard Client &amp; Case
             </Button>
-          }
-        >
+          </div>
           {clients.length === 0 ? (
             <div
               style={{
                 textAlign: "center",
                 padding: "48px 24px",
-                background: "#F8F7F2",
-                border: "2px dashed #B9DED4",
-                borderRadius: "12px",
-                margin: "12px 0",
+                background: "#FFFFFF",
+                border: "1px dashed #B9DED4",
+                borderRadius: "10px",
               }}
             >
-              <div style={{ fontSize: "36px", marginBottom: "12px" }}>👤</div>
+              <div
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "50%",
+                  background: "#EAF6F0",
+                  color: "#0D6866",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: "12px",
+                }}
+              >
+                <WorkspaceIcon name="user" size={22} />
+              </div>
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", marginBottom: "6px" }}>
                 No Retained Clients in Firm Directory (Clean Slate)
               </h3>
@@ -1458,6 +1801,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             </div>
           ) : (
             <DataTable
+              variant="boxed"
               columns={[
                 {
                   key: "name",
@@ -1523,8 +1867,10 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                           setSelectedClientForCredentials(c);
                           setIsProvisionModalOpen(true);
                         }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
                       >
-                        🔑 {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
+                        <WorkspaceIcon name="key" size={13} />
+                        {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
                       </Button>
                       {canDelete && (
                         <Button
@@ -1540,10 +1886,11 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                             fontWeight: 600,
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: "4px",
+                            gap: "5px",
                           }}
                         >
-                          🗑️ Delete Client
+                          <WorkspaceIcon name="trash" size={13} />
+                          Delete Client
                         </Button>
                       )}
                     </div>
@@ -1554,79 +1901,51 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               keyExtractor={(c) => c.id}
             />
           )}
-        </Card>
-      )}
-
-      {/* TEAM CAPACITY TAB */}
-      {effectiveTab === "team" && (
-        <Card title="Caseworker Workload & Review Capacity" subtitle="Monitor attorney caseload distribution and open peer reviews.">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
-            {capacity.map((member) => (
-              <div
-                key={member.id}
-                style={{
-                  border: "1px solid var(--border, #e2e8f0)",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  background: "var(--surface-subtle, #f8fafc)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "10px",
-                }}
-              >
-                <div>
-                  <strong style={{ fontSize: "15px", color: "var(--text)", display: "block" }}>{member.name}</strong>
-                  <span style={{ fontSize: "12px", color: "var(--muted)" }}>{member.role}</span>
-                </div>
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "4px" }}>
-                    <span>Active Caseload</span>
-                    <strong>{member.active_cases} / {member.max_capacity} cases</strong>
-                  </div>
-                  <div style={{ width: "100%", height: "6px", backgroundColor: "#e2e8f0", borderRadius: "3px", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        width: `${Math.min((member.active_cases / member.max_capacity) * 100, 100)}%`,
-                        height: "100%",
-                        backgroundColor: member.active_cases >= member.max_capacity ? "var(--critical)" : "var(--accent)",
-                      }}
-                    />
-                  </div>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--quiet)" }}>
-                  <span>Open Document Reviews</span>
-                  <Badge variant={member.open_reviews > 5 ? "warning" : "info"} size="sm">{member.open_reviews} pending</Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        </div>
       )}
 
       {/* FINANCIALS TAB */}
       {effectiveTab === "financials" && (
-        <Card title="Retainers, Invoices & Escrow Ledger" subtitle="Filing retainers and escrow balances where authorized by firm owner permissions.">
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#063C3D" }}>
+              Retainers, Invoices &amp; Escrow Ledger
+            </h2>
+            <p style={{ margin: "2px 0 0 0", fontSize: "12.5px", color: "#6E7F7C" }}>
+              Filing retainers and escrow balances where authorized by firm owner permissions.
+            </p>
+          </div>
           <DataTable
+            variant="boxed"
             columns={[
               { key: "invoice_number", header: "Invoice #", render: (i) => <strong>{i.invoice_number}</strong> },
               { key: "client_name", header: "Client", render: (i) => <span>{i.client_name}</span> },
               { key: "case_number", header: "Case Ref", render: (i) => <span>{i.case_number}</span> },
-              { key: "amount", header: "Amount", render: (i) => <strong>${i.amount.toLocaleString()}.00</strong> },
+              { key: "amount", header: "Amount", render: (i) => <strong style={{ fontVariantNumeric: "tabular-nums" }}>${i.amount.toLocaleString()}.00</strong> },
               { key: "status", header: "Payment Status", render: (i) => <Badge variant={i.status === "paid" ? "success" : i.status === "in_trust" ? "info" : "warning"}>{i.status.toUpperCase()}</Badge> },
               { key: "due_date", header: "Due Date", render: (i) => <span>{i.due_date}</span> },
             ]}
             data={invoices}
             keyExtractor={(i) => i.id}
           />
-        </Card>
+        </div>
       )}
 
       {/* AUDIT ALERTS TAB */}
       {effectiveTab === "audit" && (
-        <Card title="Append-Only Cryptographic Audit Log" subtitle="Tamper-evident system activity and multi-tenant boundary verifications.">
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#063C3D" }}>
+              Append-Only Cryptographic Audit Log
+            </h2>
+            <p style={{ margin: "2px 0 0 0", fontSize: "12.5px", color: "#6E7F7C" }}>
+              Tamper-evident system activity and multi-tenant boundary verifications.
+            </p>
+          </div>
           <DataTable
+            variant="boxed"
             columns={[
-              { key: "created_at", header: "Timestamp", render: (a) => <span style={{ fontFamily: "monospace", fontSize: "12px" }} suppressHydrationWarning>{new Date(a.created_at).toLocaleString()}</span> },
+              { key: "created_at", header: "Timestamp", render: (a) => <span style={{ fontSize: "12px", fontVariantNumeric: "tabular-nums" }} suppressHydrationWarning>{new Date(a.created_at).toLocaleString()}</span> },
               { key: "action", header: "Security Action", render: (a) => <Badge variant="neutral">{a.action}</Badge> },
               { key: "object_id", header: "Target Entity", render: (a) => <strong>{a.object_id}</strong> },
               { key: "actor_email", header: "Actor Identity", render: (a) => <span>{a.actor_email}</span> },
@@ -1635,7 +1954,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             data={auditEvents}
             keyExtractor={(a) => a.id}
           />
-        </Card>
+        </div>
       )}
 
       {/* FIRM GOVERNANCE & CONFIGURATION TAB */}
@@ -1666,20 +1985,19 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
 
       {/* OFFICER-CLIENT CONVERSATION INSPECTOR */}
       {effectiveTab === "conversation_inspector" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {/* Header & Case Selector */}
           <div
             style={{
               background: "#FFFFFF",
               border: "1px solid #DCE5E1",
-              borderRadius: "12px",
-              padding: "18px 22px",
+              borderRadius: "10px",
+              padding: "14px 18px",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
               flexWrap: "wrap",
               gap: "12px",
-              boxShadow: "0 1px 4px rgba(6, 60, 61, 0.03)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
@@ -1690,14 +2008,15 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                 value={selectedInspectorCaseId}
                 onChange={(e) => setSelectedInspectorCaseId(e.target.value)}
                 style={{
-                  padding: "8px 14px",
-                  borderRadius: "8px",
-                  border: "1px solid #B9DED4",
-                  background: "#F8FAF9",
+                  padding: "7px 12px",
+                  borderRadius: "7px",
+                  border: "1px solid #DCE5E1",
+                  background: "#FAFAF7",
                   fontSize: "13px",
-                  fontWeight: 650,
+                  fontWeight: 600,
                   color: "#063C3D",
                   cursor: "pointer",
+                  maxWidth: "100%",
                 }}
               >
                 {cases.map((c) => (
@@ -1708,11 +2027,11 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               </select>
             </div>
 
-            <div style={{ display: "flex", gap: "6px" }}>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
               {[
-                { key: "all", label: "All Messages" },
-                { key: "client_chat", label: "Client Chat" },
-                { key: "internal_notes", label: "🔒 Internal Notes" },
+                { key: "all", label: "All Messages", icon: null },
+                { key: "client_chat", label: "Client Chat", icon: null },
+                { key: "internal_notes", label: "Internal Notes", icon: "lock" as WorkspaceIconName },
               ].map((f) => {
                 const active = inspectorChannelFilter === f.key;
                 return (
@@ -1721,16 +2040,20 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                     type="button"
                     onClick={() => setInspectorChannelFilter(f.key as typeof inspectorChannelFilter)}
                     style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
                       padding: "6px 12px",
                       borderRadius: "6px",
                       fontSize: "12px",
-                      fontWeight: active ? 700 : 550,
-                      background: active ? "#063C3D" : "#F4F6F5",
+                      fontWeight: active ? 650 : 500,
+                      background: active ? "#063C3D" : "#FFFFFF",
                       color: active ? "#FFFFFF" : "#445451",
-                      border: "1px solid #DCE5E1",
+                      border: `1px solid ${active ? "#063C3D" : "#DCE5E1"}`,
                       cursor: "pointer",
                     }}
                   >
+                    {f.icon && <WorkspaceIcon name={f.icon} size={12} />}
                     {f.label}
                   </button>
                 );
@@ -1741,18 +2064,18 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           {/* Authorization Notice */}
           <div
             style={{
-              background: "#F0FDF4",
-              border: "1px solid #BBF7D0",
+              background: "#F4FAF7",
+              border: "1px solid #B9DED4",
               borderRadius: "8px",
               padding: "10px 14px",
               fontSize: "12px",
-              color: "#166534",
+              color: "#063C3D",
               display: "flex",
               alignItems: "center",
               gap: "8px",
             }}
           >
-            <span>🔒</span>
+            <WorkspaceIcon name="lock" size={14} style={{ color: "#176B50" }} />
             <span>
               <strong>Managing Partner Oversight Clearance:</strong> Full authorization to review case communications, audit trails, and quarantined legal work product pursuant to firm supervisory obligations.
             </span>
@@ -1760,13 +2083,28 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
 
           {/* Conversation Log Card */}
           <Card
+            variant="flat"
             title={`Conversation History & Supervisory Log: ${cases.find((c) => c.id === selectedInspectorCaseId)?.case_number || (cases[0]?.case_number || "All Active Files")}`}
             subtitle="Immutable transcript of applicant messaging, caseworker updates, and managing partner directives."
           >
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {cases.length === 0 || (inspectorMessages.length === 0 && supervisoryNotes.length === 0) ? (
-                <div style={{ padding: "36px 20px", textAlign: "center", color: "#6E7F7C", background: "#F8F7F2", borderRadius: "8px" }}>
-                  <div style={{ fontSize: "24px", marginBottom: "6px" }}>💬</div>
+                <div style={{ padding: "36px 20px", textAlign: "center", color: "#6E7F7C", background: "#FAFAF7", borderRadius: "8px", border: "1px dashed #DCE5E1" }}>
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      background: "#EAF6F0",
+                      color: "#0D6866",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <WorkspaceIcon name="message-square" size={18} />
+                  </div>
                   <strong style={{ fontSize: "14px", color: "#063C3D", display: "block" }}>No Conversation Messages Recorded</strong>
                   <p style={{ margin: "4px 0 0 0", fontSize: "12px" }}>
                     {cases.length === 0

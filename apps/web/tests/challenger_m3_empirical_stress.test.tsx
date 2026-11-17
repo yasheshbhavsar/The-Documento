@@ -16,7 +16,7 @@ import {
   FIXTURE_INVOICES,
   FIXTURE_CAPACITY,
   FIXTURE_NOTIFICATIONS,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Empirical Challenger Stress Harness — Milestone 3 (Dashboards & Selectors)", () => {
   describe("1. Legacy and Contract Selectors Invariant Verification", () => {
@@ -71,7 +71,6 @@ describe("Empirical Challenger Stress Harness — Milestone 3 (Dashboards & Sele
         "tab-btn-financials",
         "tab-btn-manager-priority",
         "tab-btn-operations",
-        "tab-btn-team",
         "tab-btn-conversation-inspector",
         "tab-btn-reliability-ops",
         "tab-btn-partner-growth",
@@ -234,8 +233,8 @@ describe("Empirical Challenger Stress Harness — Milestone 3 (Dashboards & Sele
         );
       });
 
-      expect(screen.getByText("Zero Petitions Assigned")).toBeDefined();
-      expect(screen.getByText(/Stage:\s*Awaiting New Matters/i)).toBeDefined();
+      // In zero-case state, sidebar header card is cleanly hidden and workspace renders gracefully
+      expect(screen.queryByText("Zero Petitions Assigned")).toBeNull();
 
       // Click on all-in-one studio with null active case
       const studioTabBtn = renderResult.container.querySelector('[data-testid="tab-btn-all_in_one_workspace"]');
@@ -388,7 +387,7 @@ describe("Empirical Challenger Stress Harness — Milestone 3 (Dashboards & Sele
       });
 
       const buttons = renderResult.container.querySelectorAll("aside button[id^='tab-btn-']");
-      expect(buttons.length).toBe(19);
+      expect(buttons.length).toBe(18);
 
       // Rapidly trigger all buttons forward and backward
       for (const btn of Array.from(buttons) as HTMLButtonElement[]) {

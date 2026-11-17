@@ -634,3 +634,74 @@ def compare_addresses(addr_a: str, addr_b: str) -> FieldComparisonResult:
         ),
     )
 
+
+PERSON_ROLE_ALIASES = {
+    "principal_applicant": "principal_applicant",
+    "primary_applicant": "principal_applicant",
+    "main_applicant": "principal_applicant",
+    "applicant": "principal_applicant",
+    "client": "principal_applicant",
+    "retained_client": "principal_applicant",
+    "primary": "principal_applicant",
+    "beneficiary": "principal_applicant",
+    "spouse_partner": "spouse_partner",
+    "spouse": "spouse_partner",
+    "partner": "spouse_partner",
+    "common_law_partner": "spouse_partner",
+    "co_signer_spouse": "spouse_partner",
+    "husband": "spouse_partner",
+    "wife": "spouse_partner",
+    "dependant_child": "dependant_child",
+    "dependent_child": "dependant_child",
+    "child": "dependant_child",
+    "son": "dependant_child",
+    "daughter": "dependant_child",
+    "minor_dependant": "dependant_child",
+    "dependant": "dependant_child",
+    "dependent": "dependant_child",
+    "overseas_sponsor_host": "overseas_sponsor_host",
+    "sponsor": "overseas_sponsor_host",
+    "host": "overseas_sponsor_host",
+    "inviter": "overseas_sponsor_host",
+    "financial_sponsor": "overseas_sponsor_host",
+    "canadian_host": "overseas_sponsor_host",
+    "uk_sponsor": "overseas_sponsor_host",
+    "uk_host": "overseas_sponsor_host",
+    "au_sponsor": "overseas_sponsor_host",
+    "australian_sponsor": "overseas_sponsor_host",
+    "son_in_canada": "overseas_sponsor_host",
+    "daughter_in_canada": "overseas_sponsor_host",
+    "overseas_host": "overseas_sponsor_host",
+    "canadian_crs_sibling": "canadian_crs_sibling",
+    "crs_sibling": "canadian_crs_sibling",
+    "canadian_sibling": "canadian_crs_sibling",
+    "sibling": "canadian_crs_sibling",
+    "brother": "canadian_crs_sibling",
+    "sister": "canadian_crs_sibling",
+}
+
+
+def normalize_person_role(role: Optional[str]) -> str:
+    """Normalizes free-form or schema role strings into canonical semantic person roles."""
+    if not role or not str(role).strip():
+        return ""
+    cleaned = re.sub(r"[\s\-]+", "_", str(role).strip().lower())
+    if cleaned in ("unknown", "unassigned", "none", "null", "na"):
+        return ""
+    return PERSON_ROLE_ALIASES.get(cleaned, cleaned)
+
+
+def are_roles_distinct_persons(role_a: str, role_b: str) -> bool:
+    """
+    Returns True when two semantic roles definitively belong to distinct individuals
+    (e.g., 'principal_applicant' vs 'overseas_sponsor_host', 'canadian_crs_sibling',
+    'spouse_partner', or 'dependant_child'), preventing false cross-document name/DOB/address
+    contradiction flags across family members and overseas sponsors.
+    """
+    norm_a = normalize_person_role(role_a)
+    norm_b = normalize_person_role(role_b)
+    if not norm_a or not norm_b:
+        return False
+    return norm_a != norm_b
+
+

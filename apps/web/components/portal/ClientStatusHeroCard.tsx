@@ -27,7 +27,7 @@ export interface ClientStatusHeroCardProps {
 export function ClientStatusHeroCard({
   myCase,
   currentUser,
-  firmDisplayName = "LexImmigration Law Firm",
+  firmDisplayName = "Legal Practice Portal",
   dynamicReadinessPct,
   activeMilestoneIndex,
   totalMilestones,
@@ -62,12 +62,16 @@ export function ClientStatusHeroCard({
           style={{
             background: "#FFFFFF",
             border: "1px dashed #B9DED4",
-            borderRadius: "14px",
-            padding: "28px 24px",
+            borderRadius: "12px",
+            padding: "24px 20px",
             textAlign: "center",
           }}
         >
-          <div style={{ fontSize: "32px", marginBottom: "8px" }}>📂</div>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px" }} aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+          </div>
           <h3 style={{ margin: "0 0 6px 0", fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
             Awaiting Case File Setup by Legal Team
           </h3>
@@ -92,7 +96,7 @@ export function ClientStatusHeroCard({
   const stageInfo = getCaseStageInfo(myCase.status);
   const officerDisplay = hasAssignedOfficer && assignedOfficerName
     ? assignedOfficerName
-    : myCase.assigned_manager || "Counsel Sarah Jenkins, Esq.";
+    : myCase.assigned_manager || "Assigned Legal Counsel";
 
   return (
     <div
@@ -105,14 +109,13 @@ export function ClientStatusHeroCard({
       {/* Pillar 1 Hero Card */}
       <div
         style={{
-          background: "linear-gradient(135deg, #FFFFFF 0%, #F5FAF8 100%)",
-          border: "1.5px solid #B9DED4",
-          borderRadius: "14px",
-          padding: "22px 24px",
-          boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
+          background: "#FFFFFF",
+          border: "1px solid #DCE5E1",
+          borderRadius: "12px",
+          padding: "20px 22px",
           display: "flex",
           flexDirection: "column",
-          gap: "16px",
+          gap: "14px",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
@@ -183,19 +186,18 @@ export function ClientStatusHeroCard({
 
           <div
             style={{
-              background: "#FFFFFF",
+              background: "#F8FAF9",
               border: "1px solid #DCE5E1",
-              borderRadius: "10px",
-              padding: "10px 16px",
+              borderRadius: "8px",
+              padding: "10px 14px",
               textAlign: "right",
               minWidth: "160px",
-              boxShadow: "0 1px 3px rgba(6, 60, 61, 0.03)",
             }}
           >
             <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 650, textTransform: "uppercase", letterSpacing: "0.04em" }}>
               Application Readiness
             </div>
-            <div style={{ fontSize: "24px", fontWeight: 800, color: "#0D6866", marginTop: "2px" }}>
+            <div style={{ fontSize: "24px", fontWeight: 800, color: "#0D6866", marginTop: "2px", fontVariantNumeric: "tabular-nums" }}>
               {dynamicReadinessPct}%
             </div>
             <div style={{ fontSize: "11px", color: "#166534", fontWeight: 600 }}>

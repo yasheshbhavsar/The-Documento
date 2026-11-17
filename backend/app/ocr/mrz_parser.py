@@ -20,15 +20,21 @@ from datetime import datetime
 from typing import Optional
 
 
-# ISO 3166-1 alpha-3 code mapping for common immigration jurisdictions
+# ISO 3166-1 alpha-3 / ICAO Doc 9303 code mapping for common immigration jurisdictions
 ICAO_COUNTRY_CODES: dict[str, str] = {
     "IND": "India",
     "CAN": "Canada",
     "USA": "United States",
     "GBR": "United Kingdom",
+    "GBD": "United Kingdom (British Overseas Territories)",
+    "GBN": "United Kingdom (British National Overseas)",
+    "GBO": "United Kingdom (British Overseas Citizen)",
+    "GBP": "United Kingdom (British Protected Person)",
+    "GBS": "United Kingdom (British Subject)",
     "AUS": "Australia",
     "NZL": "New Zealand",
     "DEU": "Germany",
+    "D": "Germany",
     "FRA": "France",
     "ARE": "United Arab Emirates",
     "SGP": "Singapore",
@@ -58,6 +64,14 @@ ICAO_COUNTRY_CODES: dict[str, str] = {
     "UKR": "Ukraine",
     "VNM": "Vietnam",
 }
+
+
+def _resolve_country_code(raw_code: str) -> tuple[str, str]:
+    """Normalize ICAO issuing/nationality code (including German 'D<<' -> 'DEU') and country name."""
+    cleaned = (raw_code or "").replace("<", "").strip().upper()
+    if cleaned == "D":
+        return "DEU", ICAO_COUNTRY_CODES["DEU"]
+    return cleaned, ICAO_COUNTRY_CODES.get(cleaned, cleaned)
 
 
 @dataclass
@@ -230,34 +244,33 @@ class MRZParser:
         line2_cand = None
 
         for c in candidates:
-            # Line 1 in TD3 starts with P<, followed by 3-letter issuer
-            if re.match(r"^P[<A-Z0-9][A-Z0-9<]{3}", c) and len(c) >= 28:
+            norm_l2 = cls._normalize_td3_line2_candidate(c)
+            if re.search(r"^[A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MF<][0-9]{6}", norm_l2) and len(c) >= 28:
+                line2_cand = norm_l2
+            elif re.match(r"^P[<A-Z0-9][A-Z0-9<]{3}", c) and len(c) >= 28:
                 raw_l1 = c.ljust(44, "<")[:44]
                 line1_cand = "P<" + cls._fix_alpha_slot(raw_l1[2:44])
-            else:
-                norm_l2 = cls._normalize_td3_line2_candidate(c)
-                if re.search(r"[A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MF<][0-9]{6}", norm_l2) and len(c) >= 28:
-                    line2_cand = norm_l2
 
         if not line1_cand or not line2_cand:
             return None
 
         # Parse Line 1:
         # Pos 0-1: Document Type (P<)
-        # Pos 2-4: Issuing State (e.g. IND)
+        # Pos 2-4: Issuing State (e.g. IND, CAN, GBR, D<<)
         # Pos 5-43: Name (Surname<<Given<Names<<<<)
-        issuing_code = line1_cand[2:5].replace("<", "")
-        issuing_country = ICAO_COUNTRY_CODES.get(issuing_code, issuing_code)
+        issuing_code, issuing_country = _resolve_country_code(line1_cand[2:5])
 
         name_part = line1_cand[5:44]
-        # Strip trailing '<' filler and OCR filler noise like '<K<<<' or 'K<KKKK' at the end
+        # Strip trailing '<' filler and explicit multi-char OCR filler noise like '<K<<<' or 'K<KK'
         name_trimmed = re.sub(r"<+$", "", name_part)
         name_trimmed = re.sub(r"(?:<+[KL0-9<]+|[KL]<[KL0-9<]+)+$", "", name_trimmed)
         name_trimmed = re.sub(r"<+$", "", name_trimmed)
 
         if "<<" not in name_trimmed:
-            # Repair common OCR misread of '<<' separator as 'K<', '<K', 'L<', '<L', or 'KK'
-            name_trimmed = re.sub(r"^([A-Z]{2,20}?)(?:[KL]<|<[KL]|KK)([A-Z])", r"\1<<\2", name_trimmed)
+            # Repair common OCR misread of '<<' separator as '<K', '<L', 'KK', or 'LL'.
+            # Never match '[KL]<' because real surnames ending in L/K (e.g. PATEL, NAIK)
+            # legitimately end with L/K followed by '<'.
+            name_trimmed = re.sub(r"^([A-Z]{2,20}?)(?:<[KL]|KK|LL)([A-Z])", r"\1<<\2", name_trimmed)
 
         surname = ""
         given_names = ""
@@ -265,8 +278,13 @@ class MRZParser:
             parts = name_trimmed.split("<<", 1)
             surname = parts[0].replace("<", " ").strip()
             given_names = parts[1].replace("<", " ").strip()
+        elif "<" in name_trimmed:
+            # OCR occasionally compresses the '<<' delimiter into a single '<' (e.g. PATEL<ROHAN<MAHESH)
+            parts = name_trimmed.split("<", 1)
+            surname = parts[0].strip()
+            given_names = parts[1].replace("<", " ").strip()
         else:
-            surname = name_trimmed.replace("<", " ").strip()
+            surname = name_trimmed.strip()
 
         # If OCR missed a single '<' space between compound Indian given names (e.g., HIMANSHUDAHYABHAI), split cleanly
         if given_names and " " not in given_names and len(given_names) >= 12:
@@ -289,8 +307,7 @@ class MRZParser:
         doc_num_check = line2_cand[9]
         doc_number = raw_doc_num.replace("<", "").strip()
 
-        nat_code = line2_cand[10:13].replace("<", "")
-        nationality = ICAO_COUNTRY_CODES.get(nat_code, nat_code)
+        nat_code, nationality = _resolve_country_code(line2_cand[10:13])
 
         raw_dob = line2_cand[13:19]
         dob_check = line2_cand[19]
@@ -341,21 +358,33 @@ class MRZParser:
 
     @classmethod
     def _try_parse_td2(cls, candidates: list[str]) -> Optional[MRZResult]:
-        """TD2 ID/Visa: 2 lines of 36 chars."""
+        """TD2 ID/Visa: 2 lines of 36 chars (e.g. Visas, BRPs, Official IDs)."""
         line1_cand = None
         line2_cand = None
 
         for c in candidates:
-            if re.match(r"^[ACIV][<A-Z][A-Z<]{3}", c) and len(c) >= 30:
-                line1_cand = c.ljust(36, "<")[:36]
-            elif re.search(r"[A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MF<][0-9]{6}", c) and len(c) >= 30:
-                line2_cand = c.ljust(36, "<")[:36]
+            if re.match(r"^[ACIVR][<A-Z0-9][A-Z0-9<]{3}", c) and len(c) >= 30:
+                padded_l1 = c.ljust(36, "<")[:36]
+                line1_cand = padded_l1[0:2] + cls._fix_alpha_slot(padded_l1[2:36])
+            elif len(c) >= 30:
+                padded_l2 = c.ljust(36, "<")[:36]
+                repaired_l2 = (
+                    padded_l2[0:9]
+                    + cls._fix_numeric_slot(padded_l2[9:10])
+                    + cls._fix_alpha_slot(padded_l2[10:13])
+                    + cls._fix_numeric_slot(padded_l2[13:20])
+                    + padded_l2[20:21]
+                    + cls._fix_numeric_slot(padded_l2[21:28])
+                    + padded_l2[28:35]
+                    + cls._fix_numeric_slot(padded_l2[35:36])
+                )
+                if re.search(r"[A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MF<][0-9]{6}", repaired_l2):
+                    line2_cand = repaired_l2
 
         if not line1_cand or not line2_cand:
             return None
 
-        issuing_code = line1_cand[2:5].replace("<", "")
-        issuing_country = ICAO_COUNTRY_CODES.get(issuing_code, issuing_code)
+        issuing_code, issuing_country = _resolve_country_code(line1_cand[2:5])
 
         name_part = line1_cand[5:36]
         surname = ""
@@ -372,14 +401,15 @@ class MRZParser:
         doc_num_check = line2_cand[9]
         doc_number = raw_doc_num.replace("<", "").strip()
 
-        nat_code = line2_cand[10:13].replace("<", "")
-        nationality = ICAO_COUNTRY_CODES.get(nat_code, nat_code)
+        nat_code, nationality = _resolve_country_code(line2_cand[10:13])
 
         raw_dob = line2_cand[13:19]
         raw_sex = line2_cand[20]
         gender = "Male" if raw_sex == "M" else "Female" if raw_sex == "F" else "Unspecified"
 
         raw_exp = line2_cand[21:27]
+        opt_data = line2_cand[28:35].replace("<", "").strip() or None
+        comp_data = line2_cand[0:10] + line2_cand[13:20] + line2_cand[21:35]
 
         iso_dob = cls.normalize_mrz_date(raw_dob, is_expiry=False)
         iso_exp = cls.normalize_mrz_date(raw_exp, is_expiry=True)
@@ -402,55 +432,116 @@ class MRZParser:
             document_number_checksum_valid=cls.verify_checksum(raw_doc_num, doc_num_check),
             dob_checksum_valid=cls.verify_checksum(raw_dob, line2_cand[19]),
             expiry_checksum_valid=cls.verify_checksum(raw_exp, line2_cand[27]),
+            composite_checksum_valid=cls.verify_checksum(comp_data, line2_cand[35]),
+            optional_data=opt_data,
         )
 
     @classmethod
     def _try_parse_td1(cls, candidates: list[str]) -> Optional[MRZResult]:
-        """TD1 ID Cards: 3 lines of 30 chars."""
+        """TD1 ID & PR Cards: 3 lines of 30 chars (supports I<CAN, CACAN, PRCAN, C1USA, UK BRP, EU IDs)."""
         line1_cand = None
         line2_cand = None
         line3_cand = None
 
+        td1_line1_re = re.compile(
+            r"^(?:I[<A-Z0-9]|A[<C-Z0-9]|C[<A-Z0-9]|CA|PR|IP|ID)[A-Z0-9<]{3}"
+        )
+
         for c in candidates:
-            if re.match(r"^I[<A-Z][A-Z<]{3}", c) and len(c) >= 28:
-                line1_cand = c.ljust(30, "<")[:30]
-            elif re.search(r"^[0-9]{6}[0-9][MF<][0-9]{6}[0-9][A-Z<]{3}", c) and len(c) >= 28:
-                line2_cand = c.ljust(30, "<")[:30]
-            elif "<<" in c and len(c) >= 25:
-                line3_cand = c.ljust(30, "<")[:30]
+            if line1_cand is None and len(c) >= 26 and td1_line1_re.match(c):
+                padded_l1 = c.ljust(30, "<")[:30]
+                line1_cand = (
+                    padded_l1[0:2]
+                    + cls._fix_alpha_slot(padded_l1[2:5])
+                    + padded_l1[5:30]
+                )
+            elif line2_cand is None and len(c) >= 26:
+                padded_l2 = c.ljust(30, "<")[:30]
+                repaired_l2 = (
+                    cls._fix_numeric_slot(padded_l2[0:7])
+                    + padded_l2[7:8]
+                    + cls._fix_numeric_slot(padded_l2[8:15])
+                    + cls._fix_alpha_slot(padded_l2[15:18])
+                    + padded_l2[18:29]
+                    + cls._fix_numeric_slot(padded_l2[29:30])
+                )
+                if re.match(r"^[0-9]{6}[0-9][MF<][0-9]{6}[0-9][A-Z<]{3}", repaired_l2):
+                    line2_cand = repaired_l2
+            elif line3_cand is None and "<<" in c and len(c) >= 22:
+                padded_l3 = c.ljust(30, "<")[:30]
+                line3_cand = cls._fix_alpha_slot(padded_l3)
 
         if not (line1_cand and line2_cand and line3_cand):
             return None
 
-        issuing_code = line1_cand[2:5].replace("<", "")
-        doc_number = line1_cand[5:14].replace("<", "").strip()
+        issuing_code, issuing_country = _resolve_country_code(line1_cand[2:5])
+
+        # ICAO Doc 9303 Part 5: standard 9-char doc_number (pos 5-13) + check digit (pos 14),
+        # or extended doc_number when pos 14 == '<' and overflow continues at pos 15.. before '<'.
+        raw_doc_field = line1_cand[5:14]
+        doc_check = cls._fix_numeric_slot(line1_cand[14:15])
+        opt_line1 = line1_cand[15:30]
+        if line1_cand[14] == "<" and "<" not in raw_doc_field:
+            overflow_seg = line1_cand[15:30].split("<", 1)[0]
+            if len(overflow_seg) >= 2:
+                raw_doc_field = raw_doc_field + overflow_seg[:-1]
+                doc_check = cls._fix_numeric_slot(overflow_seg[-1])
+                opt_line1 = line1_cand[15 + len(overflow_seg) : 30]
+            elif len(overflow_seg) == 1:
+                raw_doc_field = raw_doc_field + overflow_seg
+                opt_line1 = line1_cand[16:30]
+
+        doc_number = raw_doc_field.replace("<", "").strip()
 
         raw_dob = line2_cand[0:6]
+        dob_check = line2_cand[6]
         raw_sex = line2_cand[7]
         gender = "Male" if raw_sex == "M" else "Female" if raw_sex == "F" else "Unspecified"
         raw_exp = line2_cand[8:14]
-        nat_code = line2_cand[15:18].replace("<", "")
+        exp_check = line2_cand[14]
+        nat_code, nationality = _resolve_country_code(line2_cand[15:18])
+
+        opt_parts = [
+            p
+            for p in (
+                opt_line1.replace("<", "").strip(),
+                line2_cand[18:29].replace("<", "").strip(),
+            )
+            if p
+        ]
+        opt_data = " ".join(opt_parts) if opt_parts else None
+        comp_data = line1_cand[5:30] + line2_cand[0:7] + line2_cand[8:15] + line2_cand[18:29]
 
         surname = ""
         given_names = ""
-        if "<<" in line3_cand:
-            parts = line3_cand.split("<<", 1)
+        name_trimmed = re.sub(r"<+$", "", line3_cand)
+        if "<<" in name_trimmed:
+            parts = name_trimmed.split("<<", 1)
             surname = parts[0].replace("<", " ").strip()
             given_names = parts[1].replace("<", " ").strip()
+        else:
+            surname = name_trimmed.replace("<", " ").strip()
+
+        full_name = f"{given_names} {surname}".strip() if given_names and surname else surname or given_names
 
         return MRZResult(
             is_valid=True,
             doc_type="TD1",
             document_number=doc_number,
             issuing_country_code=issuing_code,
-            issuing_country=ICAO_COUNTRY_CODES.get(issuing_code, issuing_code),
+            issuing_country=issuing_country,
             nationality_code=nat_code,
-            nationality=ICAO_COUNTRY_CODES.get(nat_code, nat_code),
+            nationality=nationality,
             surname=surname.title(),
             given_names=given_names.title(),
-            full_name=f"{given_names} {surname}".strip().title(),
+            full_name=full_name.title(),
             date_of_birth=cls.normalize_mrz_date(raw_dob, is_expiry=False),
             gender=gender,
             expiry_date=cls.normalize_mrz_date(raw_exp, is_expiry=True),
             raw_mrz=f"{line1_cand}\n{line2_cand}\n{line3_cand}",
+            document_number_checksum_valid=cls.verify_checksum(raw_doc_field, doc_check) if doc_check.isdigit() else False,
+            dob_checksum_valid=cls.verify_checksum(raw_dob, dob_check),
+            expiry_checksum_valid=cls.verify_checksum(raw_exp, exp_check),
+            composite_checksum_valid=cls.verify_checksum(comp_data, line2_cand[29]),
+            optional_data=opt_data,
         )

@@ -72,27 +72,30 @@ export function WaitingStateBanner({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      {/* 1. Primary Immediate Next Action Card (Light Mode: Teal, Mint & Cream) */}
+    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      {/* 1. Primary Immediate Next Action Card */}
       {primary_next_action && (
         <div
           data-testid="primary-next-action-card"
           style={{
             background: "#F8F7F2",
-            border: "1.5px solid #B9DED4",
-            borderRadius: "14px",
-            padding: "20px 24px",
-            boxShadow: "0 2px 10px rgba(6, 60, 61, 0.05)",
+            border: "1px solid #B9DED4",
+            borderRadius: "10px",
+            padding: "16px 20px",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             flexWrap: "wrap",
-            gap: "16px",
+            gap: "14px",
           }}
         >
           <div style={{ flex: 1, minWidth: "260px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-              <span style={{ fontSize: "15px" }}>⚡</span>
+              <span style={{ display: "inline-flex", alignItems: "center" }} aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+              </span>
               <strong
                 style={{
                   fontSize: "11px",
@@ -123,7 +126,7 @@ export function WaitingStateBanner({
             <h3
               style={{
                 margin: "0 0 6px",
-                fontSize: "18px",
+                fontSize: "16px",
                 fontWeight: 700,
                 color: "#063C3D",
                 letterSpacing: "-0.01em",
@@ -156,8 +159,7 @@ export function WaitingStateBanner({
                 fontWeight: 650,
                 border: "none",
                 borderRadius: "8px",
-                padding: "10px 18px",
-                boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
+                padding: "9px 16px",
                 cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
@@ -172,8 +174,8 @@ export function WaitingStateBanner({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
-          gap: "16px",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
+          gap: "14px",
         }}
       >
         {/* Waiting on You (Client) */}
@@ -182,10 +184,8 @@ export function WaitingStateBanner({
           style={{
             background: "#FFFFFF",
             border: "1px solid #DCE5E1",
-            borderTop: "3.5px solid #0D6866",
             borderRadius: "10px",
-            padding: "16px 20px",
-            boxShadow: "0 2px 6px rgba(6, 60, 61, 0.04)",
+            padding: "16px 18px",
           }}
         >
           <div
@@ -197,8 +197,13 @@ export function WaitingStateBanner({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "16px" }}>👤</span>
-              <strong style={{ fontSize: "14px", color: "#063C3D", fontWeight: 700 }}>
+              <span style={{ display: "inline-flex", alignItems: "center" }} aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </span>
+              <strong style={{ fontSize: "13.5px", color: "#063C3D", fontWeight: 700 }}>
                 Waiting on You (Client)
               </strong>
             </div>
@@ -218,7 +223,7 @@ export function WaitingStateBanner({
               </p>
             )
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {waiting_on_client.map((item) => (
                 <div
                   key={item.id}
@@ -232,7 +237,7 @@ export function WaitingStateBanner({
                     }
                   }}
                   style={{
-                    padding: "10px 12px",
+                    padding: "9px 12px",
                     background: "#F8F7F2",
                     border: "1px solid #DCE5E1",
                     borderRadius: "8px",
@@ -251,10 +256,10 @@ export function WaitingStateBanner({
                   }}
                 >
                   <div>
-                    <strong style={{ fontSize: "13px", display: "block", color: "#172322" }}>
+                    <strong style={{ fontSize: "12.5px", display: "block", color: "#172322" }}>
                       {item.title}
                     </strong>
-                    <span style={{ fontSize: "12px", color: "#445451" }}>
+                    <span style={{ fontSize: "11.5px", color: "#445451" }}>
                       {item.description}
                     </span>
                   </div>
@@ -273,10 +278,8 @@ export function WaitingStateBanner({
           style={{
             background: "#FFFFFF",
             border: "1px solid #DCE5E1",
-            borderTop: "3.5px solid #176B50",
             borderRadius: "10px",
-            padding: "16px 20px",
-            boxShadow: "0 2px 6px rgba(6, 60, 61, 0.04)",
+            padding: "16px 18px",
           }}
         >
           <div
@@ -288,8 +291,16 @@ export function WaitingStateBanner({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "16px" }}>⚖️</span>
-              <strong style={{ fontSize: "14px", color: "#063C3D", fontWeight: 700 }}>
+              <span style={{ display: "inline-flex", alignItems: "center" }} aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#176B50" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" />
+                  <path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" />
+                  <path d="M7 21h10" />
+                  <path d="M12 3v18" />
+                  <path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2" />
+                </svg>
+              </span>
+              <strong style={{ fontSize: "13.5px", color: "#063C3D", fontWeight: 700 }}>
                 Waiting on the Firm (In Progress)
               </strong>
             </div>
@@ -298,12 +309,12 @@ export function WaitingStateBanner({
             </Badge>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {waiting_on_firm.map((item) => (
               <div
                 key={item.id}
                 style={{
-                  padding: "10px 12px",
+                  padding: "9px 12px",
                   background: "#F8F7F2",
                   border: "1px solid #DCE5E1",
                   borderRadius: "8px",
@@ -314,10 +325,10 @@ export function WaitingStateBanner({
                 }}
               >
                 <div>
-                  <strong style={{ fontSize: "13px", display: "block", color: "#172322" }}>
+                  <strong style={{ fontSize: "12.5px", display: "block", color: "#172322" }}>
                     {item.title}
                   </strong>
-                  <span style={{ fontSize: "12px", color: "#445451" }}>
+                  <span style={{ fontSize: "11.5px", color: "#445451" }}>
                     {item.description}
                   </span>
                 </div>
@@ -336,18 +347,17 @@ export function WaitingStateBanner({
           background: "#FFFFFF",
           border: "1px solid #DCE5E1",
           borderRadius: "10px",
-          padding: "16px 20px",
+          padding: "14px 18px",
           display: "flex",
           flexDirection: "column",
           gap: "8px",
-          boxShadow: "0 1px 3px rgba(6, 60, 61, 0.03)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
           <span style={{ fontWeight: 650, color: "#063C3D" }}>
             Petition Filing &amp; Onboarding Readiness
           </span>
-          <strong style={{ color: "#0D6866" }}>
+          <strong style={{ color: "#0D6866", fontVariantNumeric: "tabular-nums" }}>
             {profile_completeness_percentage}% Ready
           </strong>
         </div>
@@ -369,7 +379,7 @@ export function WaitingStateBanner({
             style={{
               width: `${profile_completeness_percentage}%`,
               height: "100%",
-              background: "linear-gradient(90deg, #0D6866 0%, #2A9288 100%)",
+              background: "#0D6866",
               transition: "width 0.5s ease",
             }}
           />

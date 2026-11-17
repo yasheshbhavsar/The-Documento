@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PackageBuilderView } from "../components/packages/PackageBuilderView";
-import { FALLBACK_FILING_PACKAGE } from "../lib/api";
+import { FALLBACK_FILING_PACKAGE } from "./helpers/testFixtures";
 
 describe("Phase 7 — Package Assembly and Local-Folder Workflow (Frontend)", () => {
   it("renders firm-configured package folders and supports switching to Canada template", () => {

@@ -1,5 +1,11 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  const { mockApiModuleWithFixtures } = await import("./helpers/mockApiFixtures");
+  return mockApiModuleWithFixtures(actual);
+});
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { WaitingStateBanner } from "../components/portal/WaitingStateBanner";
 import { DocumentRequestManager } from "../components/portal/DocumentRequestManager";
@@ -15,7 +21,7 @@ import {
   FALLBACK_DOCUMENT_REQUESTS,
   FALLBACK_MESSAGE_THREADS,
   FALLBACK_THREAD_MESSAGES,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Phase 7 — Client Portal, Requests, Messaging, and Notifications", () => {
   describe("WaitingStateBanner Component", () => {
@@ -201,13 +207,13 @@ describe("Phase 7 — Client Portal, Requests, Messaging, and Notifications", ()
       fireEvent.click(nextBtn2);
 
       expect(screen.getByText(/Authorized Family Dependants/i)).toBeDefined();
-      expect(screen.getByText(/Authorized to View Case/i)).toBeDefined();
+      expect(await screen.findByText(/Authorized to View Case/i)).toBeDefined();
 
       // Continue to Step 4: Questionnaire
       const nextBtn3 = screen.getByText(/Continue to Step 4 →/i);
       fireEvent.click(nextBtn3);
 
-      expect(screen.getByText(/Statutory Criteria & Extraordinary Ability Intake/i)).toBeDefined();
+      expect(await screen.findByText(/Statutory Criteria & Extraordinary Ability Intake/i)).toBeDefined();
       expect(screen.getByText(/Current Employer or Institutional Affiliation \*/i)).toBeDefined();
 
       // Continue to Step 5: Review
@@ -225,7 +231,7 @@ describe("Phase 7 — Client Portal, Requests, Messaging, and Notifications", ()
       const step3Tab = screen.getByText(/Family & Dependants/i);
       fireEvent.click(step3Tab);
 
-      expect(screen.getByText(/Authorized to View Case/i)).toBeDefined();
+      expect(await screen.findByText(/Authorized to View Case/i)).toBeDefined();
       const authCheckbox = screen.getAllByRole("checkbox")[0];
       fireEvent.click(authCheckbox);
       // Toggle state updated

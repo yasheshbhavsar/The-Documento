@@ -14,7 +14,7 @@ import {
   FIXTURE_MESSAGES,
   FIXTURE_INVOICES,
   FIXTURE_CAPACITY,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Stage 10 — Pathway Expansion & Regional Localization Desk (§10.1 - §10.3)", () => {
   describe("1. PathwayExpansionDesk Component", () => {

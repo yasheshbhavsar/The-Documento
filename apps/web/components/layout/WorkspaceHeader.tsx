@@ -79,18 +79,20 @@ export function WorkspaceHeader({
   return (
     <header
       style={{
-        background: "#063C3D",
+        background: "rgba(6, 60, 61, 0.96)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         color: "#F8F7F2",
         padding: "10px 24px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         gap: "16px",
-        borderBottom: "1px solid rgba(185, 222, 212, 0.2)",
+        borderBottom: "1px solid rgba(185, 222, 212, 0.15)",
         position: "sticky",
         top: 0,
         zIndex: 100,
-        boxShadow: "0 2px 10px rgba(6, 60, 61, 0.15)",
+        boxShadow: "0 2px 10px rgba(6, 60, 61, 0.12)",
       }}
     >
       {/* Left: Documento Brand + Tenant Info */}
@@ -322,7 +324,20 @@ export function WorkspaceHeader({
                     }}
                     title="Wipe mock/saved data and restart from Day 0 setup"
                   >
-                    <span>🔄</span>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                      <path d="M3 3v5h5" />
+                    </svg>
                     <span>Reset Workspace (Day 0 Clean Slate)</span>
                   </button>
                 </div>

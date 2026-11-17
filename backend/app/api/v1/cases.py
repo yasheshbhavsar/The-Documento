@@ -2202,3 +2202,67 @@ def audit_case_sop(
     )
 
 
+@router.delete("/{case_id}", status_code=status.HTTP_200_OK)
+def delete_case(
+    case_id: uuid.UUID,
+    ctx: AuthContext = Depends(require_permission("case:delete")),
+    db: Session = Depends(get_db),
+):
+    """Deletes an individual immigration case if permitted (Owner / Managing Partner / Case Manager only)."""
+    if ctx.is_retained_client():
+        raise PermissionDeniedError("Retained clients cannot delete case records")
+
+    if (
+        ctx.has_role(RoleCode.CASE_WORKER)
+        or ctx.has_role(RoleCode.DOCUMENT_REVIEWER)
+        or ctx.has_role(RoleCode.FINANCE_STAFF)
+        or ctx.has_role("paralegal")
+        or ctx.has_role("case_worker")
+    ):
+        raise PermissionDeniedError("Paralegals and support staff do not have permission to delete case records")
+
+    case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_id).first()
+    if not case:
+        raise EntityNotFoundError("ImmigrationCase", case_id)
+
+    ctx.assert_organization_access(case.organization_id)
+
+    # Clear self-referential reapplication links before deleting this case
+    db.query(ImmigrationCase).filter(ImmigrationCase.prior_case_id == case.id).update(
+        {ImmigrationCase.prior_case_id: None},
+        synchronize_session=False,
+    )
+
+    case_number = case.case_number
+    case_title = case.title
+    client_id = str(case.client_id)
+    now = datetime.now(timezone.utc)
+
+    audit = AuditEvent(
+        organization_id=ctx.organization_id,
+        actor_id=ctx.user_id,
+        action="case.deleted",
+        object_type="immigration_case",
+        object_id=str(case.id),
+        metadata_json={
+            "case_number": case_number,
+            "title": case_title,
+            "client_id": client_id,
+            "deleted_by_roles": list(ctx.roles),
+        },
+        occurred_at=now,
+    )
+    db.add(audit)
+    db.delete(case)
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": f"Case {case_number} deleted successfully",
+        "id": str(case_id),
+        "case_number": case_number,
+        "client_id": client_id,
+    }
+
+
+

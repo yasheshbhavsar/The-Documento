@@ -1,11 +1,17 @@
+import base64
 import uuid
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from datetime import datetime, timedelta, timezone
+from typing import Any, Literal, Optional
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
+from backend.app.ai.sponsor_intelligence import SponsorIntelligenceEngine
+from backend.app.api.v1.extractor import _extract_logical_doc_sync
 from backend.app.core.errors import AuthenticationError, EntityNotFoundError, PermissionDeniedError
 from backend.app.db.session import get_db
+from backend.app.documents.security import MAX_ALLOWED_FILE_SIZE
 from backend.app.domain.models import (
     AuditEvent,
     ClientConsent,
@@ -22,7 +28,7 @@ from backend.app.domain.models import (
     User,
 )
 from backend.app.notifications.service import NotificationService
-from backend.app.security.auth import AuthContext, get_auth_context
+from backend.app.security.auth import AuthContext, get_auth_context, get_optional_auth_context
 from backend.app.security.passwords import hash_password
 from backend.app.security.rbac import RoleCode
 from backend.app.security.tokens import generate_secure_random_token, hash_opaque_token
@@ -1072,3 +1078,664 @@ def get_per_applicant_checklist(
         total_outstanding=tot_out,
         applicants=applicants_result,
     )
+
+
+# ---------------------------------------------------------------------------
+# Passwordless Overseas Sponsor / Family Contributor Link & Privacy Shield API
+# ---------------------------------------------------------------------------
+
+# In-memory + DB-compatible runtime stores (zero schema migration required)
+_CONTRIBUTOR_LINKS_BY_TOKEN: dict[str, dict[str, Any]] = {}
+_CONTRIBUTIONS_BY_CASE_ID: dict[str, list[dict[str, Any]]] = {}
+
+_FIRM_STAFF_ROLES: frozenset[str] = frozenset(
+    {
+        "master_admin",
+        "organization_admin",
+        "company_admin",
+        "platform_super_admin",
+        "system_admin",
+        "case_manager",
+        "paralegal",
+        "attorney",
+        "senior_reviewer",
+        "case_worker",
+        "document_reviewer",
+        "intake_specialist",
+        "auditor",
+    }
+)
+
+
+class ContributorLinkCreateRequest(BaseModel):
+    case_id: str = Field(..., min_length=1, description="Case UUID or local demo case identifier")
+    sponsor_name: str = Field(..., min_length=2, description="Full name of overseas sponsor, host, or Canadian sibling")
+    relationship: str = Field(..., min_length=2, description="e.g. child_host, canadian_sibling, uk_sponsor, au_relative")
+    jurisdiction: Literal["CA", "UK", "AU"] = Field(default="CA")
+    pathway: str = Field(default="CA-SUPER-VISA")
+    privacy_shield: bool = Field(default=True)
+    applicant_first_name: Optional[str] = Field(
+        default=None,
+        description="Optional sanitized applicant first name (auto-derived from DB case when omitted)",
+    )
+    requested_items: Optional[list[dict[str, Any]]] = Field(default=None)
+    expires_in_days: int = Field(default=14, ge=1, le=90)
+
+
+async def _resolve_portal_optional_auth(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_organization_id: str | None = Header(default=None),
+    x_org_id: str | None = Header(default=None),
+    x_user_id: str | None = Header(default=None),
+    x_user_role: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> AuthContext | None:
+    """Resolves AuthContext if credentials/headers/overrides exist, or None for demo/local calls."""
+    override_fn = request.app.dependency_overrides.get(get_auth_context)
+    if override_fn is not None:
+        maybe_ctx = override_fn()
+        if hasattr(maybe_ctx, "__await__"):
+            return await maybe_ctx
+        return maybe_ctx
+    return await get_optional_auth_context(
+        request=request,
+        authorization=authorization,
+        x_organization_id=x_organization_id,
+        x_org_id=x_org_id,
+        x_user_id=x_user_id,
+        x_user_role=x_user_role,
+        db=db,
+    )
+
+
+def _is_firm_staff_context(ctx: AuthContext | None) -> bool:
+    if ctx is None:
+        return False
+    if ctx.is_retained_client():
+        return False
+    return any(str(r).lower() in _FIRM_STAFF_ROLES for r in ctx.roles)
+
+
+def _default_sponsor_requested_items(jurisdiction: str, pathway: str, relationship: str) -> list[dict[str, Any]]:
+    up_path = (pathway or "").upper()
+    low_rel = (relationship or "").lower()
+    if "EXPRESS" in up_path or "CRS" in up_path or "sibling" in low_rel:
+        return [
+            {
+                "item_id": "crs_sibling_status",
+                "label": "Canadian PR Card, CoPR, or Canadian Citizenship Certificate",
+                "category": "government_correspondence",
+                "status": "pending",
+            },
+            {
+                "item_id": "crs_sibling_residency",
+                "label": "Active Canadian Residential Proof (Hydro/Utility Bill, Lease, or CRA NOA)",
+                "category": "financial_evidence",
+                "status": "pending",
+            },
+            {
+                "item_id": "crs_sibling_birth_cert",
+                "label": "Sibling Birth Certificate Showing Shared Parent(s)",
+                "category": "civil_status_family",
+                "status": "pending",
+            },
+        ]
+    if jurisdiction == "UK":
+        return [
+            {
+                "item_id": "uk_sponsor_status",
+                "label": "British Passport or UKVI eVisa Share Code",
+                "category": "identity_passport",
+                "status": "pending",
+            },
+            {
+                "item_id": "uk_sponsor_income",
+                "label": "HMRC P60 / SA302 & 28-Day Consecutive Bank Statements",
+                "category": "financial_evidence",
+                "status": "pending",
+            },
+            {
+                "item_id": "uk_sponsor_accommodation",
+                "label": "UK Council Tax Statement or Tenancy Agreement",
+                "category": "other_evidence",
+                "status": "pending",
+            },
+        ]
+    if jurisdiction == "AU":
+        return [
+            {
+                "item_id": "au_sponsor_status",
+                "label": "Australian Passport / Citizenship or VEVO Entitlement Check",
+                "category": "government_correspondence",
+                "status": "pending",
+            },
+            {
+                "item_id": "au_sponsor_ato_noa",
+                "label": "Australian Taxation Office (ATO) Notice of Assessment",
+                "category": "financial_evidence",
+                "status": "pending",
+            },
+            {
+                "item_id": "au_sponsor_residency",
+                "label": "Australian Council Rates / Utility Bill & Form 1149 Undertaking",
+                "category": "other_evidence",
+                "status": "pending",
+            },
+        ]
+    return [
+        {
+            "item_id": "ca_sponsor_status",
+            "label": "Canadian PR Card, CoPR, or Canadian Passport",
+            "category": "identity_passport",
+            "status": "pending",
+        },
+        {
+            "item_id": "ca_sponsor_cra_noa",
+            "label": "CRA Notice of Assessment (Line 15000 Total Income)",
+            "category": "financial_evidence",
+            "status": "pending",
+        },
+        {
+            "item_id": "ca_sponsor_t4_employment",
+            "label": "T4 Statement of Remuneration / Canadian Employment Letter",
+            "category": "employment_records",
+            "status": "pending",
+        },
+        {
+            "item_id": "ca_sponsor_invitation",
+            "label": "Signed Host Invitation & Financial Undertaking Letter",
+            "category": "other_evidence",
+            "status": "pending",
+        },
+    ]
+
+
+def _normalize_requested_items(
+    raw_items: Optional[list[dict[str, Any]]],
+    jurisdiction: str,
+    pathway: str,
+    relationship: str,
+) -> list[dict[str, Any]]:
+    source = raw_items if raw_items else _default_sponsor_requested_items(jurisdiction, pathway, relationship)
+    normalized: list[dict[str, Any]] = []
+    for idx, item in enumerate(source):
+        normalized.append(
+            {
+                "item_id": str(item.get("item_id") or item.get("id") or f"sponsor_item_{idx + 1}"),
+                "label": str(item.get("label") or item.get("title") or "Required Sponsor Evidence"),
+                "category": str(item.get("category") or "financial_evidence"),
+                "status": str(item.get("status") or "pending"),
+            }
+        )
+    return normalized
+
+
+def _sanitize_first_name(raw_name: Optional[str]) -> str:
+    if not raw_name or not raw_name.strip():
+        return "Applicant"
+    tokens = [t for t in raw_name.strip().split() if t.lower().rstrip(".") not in ("dr", "mr", "mrs", "ms", "shri", "smt")]
+    return tokens[0] if tokens else raw_name.strip().split()[0]
+
+
+def _derive_subtype_and_sanitized_badge(
+    doc_payload: dict[str, Any],
+    statutory_eval: dict[str, Any],
+    jurisdiction: str,
+) -> tuple[str, str]:
+    """Produces a clean document subtype label and PII-free statutory verification badge."""
+    lower = f"{doc_payload.get('filename', '')} {doc_payload.get('extracted_text', '')}".lower()
+    cat = doc_payload.get("category", "supporting_evidence")
+
+    lico = statutory_eval.get("super_visa_lico") or {}
+    crs = statutory_eval.get("crs_sibling_points") or {}
+    uk_chk = statutory_eval.get("uk_sponsor_check") or {}
+    au_chk = statutory_eval.get("au_sponsor_check") or {}
+
+    if any(k in lower for k in ("notice of assessment", "canada revenue agency", "line 15000")):
+        subtype = "CRA Notice of Assessment (NOA)"
+        badge = (
+            "IRCC Super Visa LICO Threshold Met (IRPA s. 11(1))"
+            if lico.get("is_met")
+            else "CRA Tax Assessment Verified (Income Recorded)"
+        )
+        return subtype, badge
+
+    if any(k in lower for k in ("statement of remuneration paid", "form t4", "box 14")):
+        subtype = "Canadian T4 Statement of Remuneration"
+        badge = (
+            "IRCC Super Visa LICO Threshold Met (IRPA s. 11(1))"
+            if lico.get("is_met")
+            else "Canadian T4 Employment Remuneration Verified"
+        )
+        return subtype, badge
+
+    if any(k in lower for k in ("permanent resident card", "confirmation of permanent residence", "ecopr", "citizenship certificate")):
+        subtype = "Canadian PR / Citizenship Status Proof"
+        badge = "Canadian PR / Citizen Status Prong Verified"
+        return subtype, badge
+
+    if any(k in lower for k in ("hydro", "utility bill", "enbridge", "lease agreement", "property tax")):
+        subtype = "Canadian Residential Address Proof"
+        badge = "Active Canadian Residency Prong Verified"
+        return subtype, badge
+
+    if any(k in lower for k in ("hmrc", "p60", "sa302")):
+        subtype = "UK HMRC Tax / P60 Income Statement"
+        badge = "UK Sponsor HMRC Income Evidence Verified"
+        return subtype, badge
+
+    if any(k in lower for k in ("share code", "evisa", "indefinite leave to remain", "settled status", "british citizen")):
+        subtype = "UK Sponsor Immigration Status Proof"
+        badge = "UK Sponsor Status Entitlement Verified"
+        return subtype, badge
+
+    if "council tax" in lower:
+        return "UK Council Tax Accommodation Proof", "UK Sponsor Accommodation Verified"
+
+    if any(k in lower for k in ("australian taxation office", "ato")) and "assessment" in lower:
+        subtype = "ATO Notice of Assessment"
+        badge = "Australian Sponsor ATO Income Verified"
+        return subtype, badge
+
+    if "vevo" in lower or "visa entitlement verification" in lower:
+        return "Australian VEVO Entitlement Check", "Australian VEVO Active Status Verified"
+
+    if "form 1149" in lower or "council rates" in lower:
+        return "Australian Sponsor Undertaking / Residency Proof", "Subclass 600 Sponsor Evidence Verified"
+
+    if "birth" in lower or cat in ("civil_status_family", "civil_status"):
+        badge = (
+            "Express Entry +15 CRS Sibling Lineage Verified"
+            if crs.get("prongs", {}).get("shared_parent_verified")
+            else "Family Relationship Civil Record Verified"
+        )
+        return "Birth / Family Lineage Certificate", badge
+
+    if uk_chk.get("twenty_eight_day_rule_met"):
+        return "28-Day Financial Maintenance Statement", "UKVI 28-Day Consecutive Funds Rule Met"
+    if au_chk.get("is_compliant"):
+        return "Australian Sponsor Evidence", "Subclass 600 Sponsor Criteria Verified"
+
+    return cat.replace("_", " ").title(), f"{jurisdiction} Sponsor Evidence Verified"
+
+
+def _match_requested_item_for_upload(
+    requested_items: list[dict[str, Any]],
+    explicit_item_id: Optional[str],
+    subtype_label: str,
+    category: str,
+    text_lower: str,
+) -> Optional[dict[str, Any]]:
+    if explicit_item_id:
+        for it in requested_items:
+            if it["item_id"] == explicit_item_id:
+                return it
+
+    # Keyword affinity matching
+    for it in requested_items:
+        if it.get("status") == "received_verified":
+            continue
+        lbl_low = it["label"].lower()
+        if any(k in text_lower for k in ("notice of assessment", "line 15000", "cra")) and any(
+            k in lbl_low for k in ("noa", "assessment", "15000", "residency")
+        ):
+            return it
+        if any(k in text_lower for k in ("t4", "remuneration", "employment")) and any(
+            k in lbl_low for k in ("t4", "employment", "income")
+        ):
+            return it
+        if any(k in text_lower for k in ("permanent resident", "copr", "citizenship", "share code", "evisa", "vevo", "passport")) and any(
+            k in lbl_low for k in ("pr card", "status", "passport", "share code", "vevo")
+        ):
+            return it
+        if any(k in text_lower for k in ("hydro", "utility", "lease", "council tax", "council rates", "1149")) and any(
+            k in lbl_low for k in ("utility", "hydro", "residency", "council", "accommodation", "1149")
+        ):
+            return it
+        if any(k in text_lower for k in ("hmrc", "p60", "sa302", "ato")) and any(
+            k in lbl_low for k in ("hmrc", "p60", "ato", "assessment", "income")
+        ):
+            return it
+        if "birth" in text_lower and "birth" in lbl_low:
+            return it
+
+    # Category match on pending items
+    for it in requested_items:
+        if it.get("status") != "received_verified" and it.get("category") == category:
+            return it
+
+    # Fallback: first pending item
+    for it in requested_items:
+        if it.get("status") != "received_verified":
+            return it
+    return requested_items[0] if requested_items else None
+
+
+@router.post("/contributor-links", status_code=status.HTTP_201_CREATED)
+async def create_sponsor_contributor_link(
+    payload: ContributorLinkCreateRequest,
+    ctx: AuthContext | None = Depends(_resolve_portal_optional_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Creates a passwordless, token-scoped upload link for an overseas sponsor, host, or sibling.
+    Works seamlessly for authenticated retained clients, firm staff, and local/demo workflows.
+    """
+    applicant_first_name = _sanitize_first_name(payload.applicant_first_name) if payload.applicant_first_name else None
+    org_id_str: Optional[str] = str(ctx.organization_id) if ctx else None
+
+    # Check DB case if case_id is a valid UUID and exists in SQLite/Postgres
+    try:
+        case_uuid = uuid.UUID(str(payload.case_id))
+    except ValueError:
+        case_uuid = None
+
+    if case_uuid is not None:
+        db_case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_uuid).first()
+        if db_case is not None:
+            if ctx is not None:
+                ctx.assert_organization_access(db_case.organization_id)
+                if ctx.is_retained_client() and db_case.client and db_case.client.user_id != ctx.user_id:
+                    raise PermissionDeniedError("Retained client may only generate sponsor links for their own case.")
+            org_id_str = str(db_case.organization_id)
+            if not applicant_first_name and db_case.client:
+                applicant_first_name = _sanitize_first_name(db_case.client.first_name)
+
+    if not applicant_first_name:
+        applicant_first_name = "Applicant"
+
+    token = generate_secure_random_token(24)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=payload.expires_in_days)
+    req_items = _normalize_requested_items(
+        payload.requested_items,
+        payload.jurisdiction,
+        payload.pathway,
+        payload.relationship,
+    )
+
+    link_record: dict[str, Any] = {
+        "token": token,
+        "token_hash": hash_opaque_token(token),
+        "case_id": str(payload.case_id),
+        "organization_id": org_id_str,
+        "sponsor_name": payload.sponsor_name.strip(),
+        "applicant_first_name": applicant_first_name,
+        "relationship": payload.relationship.strip(),
+        "jurisdiction": payload.jurisdiction,
+        "pathway": payload.pathway.strip(),
+        "privacy_shield": bool(payload.privacy_shield),
+        "requested_items": req_items,
+        "uploaded_summaries": [],
+        "expires_at": expires_at.isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _CONTRIBUTOR_LINKS_BY_TOKEN[token] = link_record
+
+    return {
+        "token": token,
+        "case_id": link_record["case_id"],
+        "sponsor_name": link_record["sponsor_name"],
+        "applicant_first_name": link_record["applicant_first_name"],
+        "relationship": link_record["relationship"],
+        "jurisdiction": link_record["jurisdiction"],
+        "pathway": link_record["pathway"],
+        "privacy_shield": link_record["privacy_shield"],
+        "requested_items": link_record["requested_items"],
+        "expires_at": link_record["expires_at"],
+        "share_url": f"/contribute/{token}",
+    }
+
+
+@router.get("/contribute/{token}")
+async def get_public_contributor_link_scope(token: str) -> dict[str, Any]:
+    """
+    Public token-scoped endpoint for the overseas sponsor/sibling upload room.
+    Strictly returns ONLY sanitized scope metadata — zero applicant passport, SIN,
+    full surname, date of birth, email, or residential address PII is ever exposed.
+    """
+    link = _CONTRIBUTOR_LINKS_BY_TOKEN.get(token)
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contributor upload link not found.")
+
+    exp_dt = datetime.fromisoformat(link["expires_at"])
+    if exp_dt < datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Contributor upload link has expired.")
+
+    return {
+        "sponsor_name": link["sponsor_name"],
+        "applicant_first_name": link["applicant_first_name"],
+        "pathway": link["pathway"],
+        "jurisdiction": link["jurisdiction"],
+        "relationship": link["relationship"],
+        "privacy_shield": link["privacy_shield"],
+        "requested_items": link["requested_items"],
+        "uploaded_summaries": link["uploaded_summaries"],
+    }
+
+
+@router.post("/contribute/{token}/upload")
+async def upload_sponsor_contribution(
+    token: str,
+    file: UploadFile = File(...),
+    privacy_shield: bool = Form(True),
+    item_id: Optional[str] = Form(None),
+    family_size: int = Form(3),
+) -> dict[str, Any]:
+    """
+    Public token-scoped sponsor evidence upload endpoint.
+    Runs deterministic local OCR, classification & statutory verification, marks the
+    matching sponsor checklist item `"received_verified"`, and enforces Privacy Shield.
+    """
+    link = _CONTRIBUTOR_LINKS_BY_TOKEN.get(token)
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contributor upload link not found.")
+
+    exp_dt = datetime.fromisoformat(link["expires_at"])
+    if exp_dt < datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Contributor upload link has expired.")
+
+    buf = bytearray()
+    chunk_size = 1024 * 1024
+    while chunk := await file.read(chunk_size):
+        buf.extend(chunk)
+        if len(buf) > MAX_ALLOWED_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Uploaded file exceeds maximum limit of {MAX_ALLOWED_FILE_SIZE // (1024 * 1024)}MB.",
+            )
+    raw_bytes = bytes(buf)
+    if not raw_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
+
+    eff_privacy = privacy_shield if isinstance(privacy_shield, bool) else bool(link["privacy_shield"])
+    eff_item_id = item_id.strip() if isinstance(item_id, str) and item_id.strip() else None
+    eff_family_size = max(1, int(family_size)) if isinstance(family_size, int) else 3
+    fname = file.filename or "sponsor_evidence.pdf"
+    mime = file.content_type or "application/octet-stream"
+
+    extracted_doc = await run_in_threadpool(
+        _extract_logical_doc_sync,
+        raw_bytes,
+        fname,
+        mime,
+        None,
+        None,
+        None,
+        None,
+    )
+    default_role = (
+        "canadian_crs_sibling"
+        if ("sibling" in link["relationship"].lower() or "EXPRESS" in link["pathway"].upper())
+        else "overseas_sponsor_host"
+    )
+    extracted_doc["person_role"] = default_role
+
+    case_id = link["case_id"]
+    prior_docs = [c["_internal_doc"] for c in _CONTRIBUTIONS_BY_CASE_ID.get(case_id, []) if "_internal_doc" in c]
+    statutory_eval = SponsorIntelligenceEngine.evaluate_packet_or_case_intelligence(
+        prior_docs + [extracted_doc],
+        pathway=link["pathway"],
+        family_size=eff_family_size,
+        default_contributor_role=default_role,
+    )
+
+    subtype_label, pass_badge = _derive_subtype_and_sanitized_badge(
+        extracted_doc, statutory_eval, link["jurisdiction"]
+    )
+
+    matched_item = _match_requested_item_for_upload(
+        link["requested_items"],
+        eff_item_id,
+        subtype_label,
+        extracted_doc["category"],
+        f"{fname} {extracted_doc.get('extracted_text', '')}".lower(),
+    )
+    if matched_item is not None:
+        matched_item["status"] = "received_verified"
+
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+    contribution_id = str(uuid.uuid4())
+
+    sanitized_summary = {
+        "contribution_id": contribution_id,
+        "matched_item_id": matched_item["item_id"] if matched_item else None,
+        "subtype_label": subtype_label,
+        "status": "received_verified",
+        "statutory_pass_badge": pass_badge,
+        "privacy_shield": eff_privacy,
+        "uploaded_at": uploaded_at,
+    }
+    link["uploaded_summaries"].append(sanitized_summary)
+
+    full_record = {
+        "contribution_id": contribution_id,
+        "case_id": case_id,
+        "organization_id": link.get("organization_id"),
+        "sponsor_name": link["sponsor_name"],
+        "relationship": link["relationship"],
+        "jurisdiction": link["jurisdiction"],
+        "pathway": link["pathway"],
+        "matched_item_id": matched_item["item_id"] if matched_item else None,
+        "filename": fname,
+        "mime_type": mime,
+        "category": extracted_doc["category"],
+        "person_role": default_role,
+        "subtype_label": subtype_label,
+        "status": "received_verified",
+        "statutory_pass_badge": pass_badge,
+        "privacy_shield": eff_privacy,
+        "uploaded_at": uploaded_at,
+        "raw_text": extracted_doc.get("extracted_text", ""),
+        "extracted_fields": extracted_doc.get("extracted_fields", []),
+        "barcodes": extracted_doc.get("barcodes", []),
+        "statutory_evaluation": statutory_eval,
+        "download_bytes_b64": base64.b64encode(raw_bytes).decode("ascii"),
+        "_internal_doc": extracted_doc,
+    }
+    _CONTRIBUTIONS_BY_CASE_ID.setdefault(case_id, []).append(full_record)
+
+    return {
+        "status": "received_verified",
+        "contribution_id": contribution_id,
+        "matched_item_id": matched_item["item_id"] if matched_item else None,
+        "subtype_label": subtype_label,
+        "statutory_pass_badge": pass_badge,
+        "privacy_shield": eff_privacy,
+        "uploaded_at": uploaded_at,
+        "requested_items": link["requested_items"],
+    }
+
+
+@router.get("/cases/{case_id}/sponsor-contributions")
+async def list_case_sponsor_contributions(
+    case_id: str,
+    ctx: AuthContext | None = Depends(_resolve_portal_optional_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Lists overseas sponsor / family contributions for a case while strictly enforcing Privacy Shield:
+    - If caller is `retained_client` / `applicant` (or unauthenticated client view) AND `privacy_shield=True`:
+      Redacts raw OCR text, SIN/TFN/NI/account numbers, extracted financial fields, and file download bytes,
+      returning `{subtype_label, status: "Verified (Privacy Shield Active)", statutory_pass_badge, uploaded_at}`.
+    - If caller is authorized firm staff (`master_admin`, `case_manager`, `paralegal`, `attorney`, etc.):
+      Returns full extracted text, fields, statutory evaluation math, and download bytes.
+    """
+    # Enforce tenant isolation if case exists in DB and AuthContext is present
+    try:
+        case_uuid = uuid.UUID(str(case_id))
+    except ValueError:
+        case_uuid = None
+
+    if case_uuid is not None and ctx is not None:
+        db_case = db.query(ImmigrationCase).filter(ImmigrationCase.id == case_uuid).first()
+        if db_case is not None:
+            ctx.assert_organization_access(db_case.organization_id)
+
+    records = _CONTRIBUTIONS_BY_CASE_ID.get(str(case_id), [])
+    if ctx is not None:
+        # Also guard in-memory records created under a different org
+        for rec in records:
+            rec_org = rec.get("organization_id")
+            if rec_org and str(ctx.organization_id) != rec_org:
+                raise PermissionDeniedError("Cross-tenant access to sponsor contributions denied.")
+
+    is_staff = _is_firm_staff_context(ctx)
+    viewer_role = (ctx.roles[0] if (ctx and ctx.roles) else "retained_client")
+
+    items: list[dict[str, Any]] = []
+    for rec in records:
+        shield_active = bool(rec.get("privacy_shield", True))
+        if not is_staff and shield_active:
+            items.append(
+                {
+                    "contribution_id": rec["contribution_id"],
+                    "sponsor_name": rec["sponsor_name"],
+                    "relationship": rec["relationship"],
+                    "matched_item_id": rec["matched_item_id"],
+                    "subtype_label": rec["subtype_label"],
+                    "status": "Verified (Privacy Shield Active)",
+                    "statutory_pass_badge": rec["statutory_pass_badge"],
+                    "uploaded_at": rec["uploaded_at"],
+                    "privacy_shield": True,
+                    "redacted": True,
+                    "raw_text": None,
+                    "extracted_fields": [],
+                    "download_bytes_b64": None,
+                    "download_available": False,
+                }
+            )
+        else:
+            items.append(
+                {
+                    "contribution_id": rec["contribution_id"],
+                    "sponsor_name": rec["sponsor_name"],
+                    "relationship": rec["relationship"],
+                    "matched_item_id": rec["matched_item_id"],
+                    "filename": rec["filename"],
+                    "mime_type": rec["mime_type"],
+                    "category": rec["category"],
+                    "person_role": rec["person_role"],
+                    "subtype_label": rec["subtype_label"],
+                    "status": rec["status"],
+                    "statutory_pass_badge": rec["statutory_pass_badge"],
+                    "uploaded_at": rec["uploaded_at"],
+                    "privacy_shield": shield_active,
+                    "redacted": False,
+                    "raw_text": rec["raw_text"],
+                    "extracted_fields": rec["extracted_fields"],
+                    "barcodes": rec["barcodes"],
+                    "statutory_evaluation": rec["statutory_evaluation"],
+                    "download_bytes_b64": rec["download_bytes_b64"],
+                    "download_available": True,
+                }
+            )
+
+    return {
+        "case_id": str(case_id),
+        "viewer_role": viewer_role,
+        "is_firm_staff_view": is_staff,
+        "count": len(items),
+        "contributions": items,
+    }
+

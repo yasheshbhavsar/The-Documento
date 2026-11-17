@@ -10,7 +10,7 @@ import {
   FALLBACK_FORM_SCHEMAS,
   FALLBACK_READINESS_CHECKLIST,
   FALLBACK_FILING_PACKAGE,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Phase 8 — Application Forms, Readiness Checks, and Package Builder", () => {
   describe("ConfigurableFormViewer Component", () => {

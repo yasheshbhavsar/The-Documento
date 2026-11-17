@@ -418,6 +418,71 @@ PATHWAY_CHECKLISTS: Dict[str, List[Dict[str, Any]]] = {
             "is_mandatory": True,
             "acceptable_categories": ["employment_record"],
         },
+        {
+            "item_id": "catrv_host_residency_noa",
+            "label": "Canadian Host PR/Citizen Proof, Residency Utility/Lease & CRA NOA (If Hosted)",
+            "requirement_citation": "IRPR § 179(b) - Canadian Host Residency & Financial Support",
+            "is_mandatory": False,
+            "acceptable_categories": ["identity_passport", "financial_evidence", "government_correspondence", "other_evidence"],
+        },
+    ],
+    "CA-SUPER-VISA": [
+        {
+            "item_id": "casuper_passport",
+            "label": "Parent / Grandparent Valid Passport (Min 6 Months Validity)",
+            "requirement_citation": "IRPR § 52 - Primary Travel Document",
+            "is_mandatory": True,
+            "acceptable_categories": ["identity_passport"],
+        },
+        {
+            "item_id": "casuper_host_status",
+            "label": "Host Child / Grandchild Canadian PR Card, CoPR, or Citizenship Proof",
+            "requirement_citation": "IRPA s. 11(1) / Super Visa Ministerial Instructions - Host Status in Canada",
+            "is_mandatory": True,
+            "acceptable_categories": ["identity_passport", "visas_residence_permits", "government_correspondence"],
+        },
+        {
+            "item_id": "casuper_cra_noa_lico",
+            "label": "Host CRA Notice of Assessment (NOA Line 15000) Meeting IRCC LICO Threshold",
+            "requirement_citation": "IRPA s. 11(1) / IRPR Super Visa Ministerial Instructions - Minimum Necessary Income (LICO)",
+            "is_mandatory": True,
+            "acceptable_categories": ["financial_evidence", "government_correspondence"],
+        },
+        {
+            "item_id": "casuper_host_employment_t4",
+            "label": "Host T4 Slips & Canadian Employment Verification Letter",
+            "requirement_citation": "Super Visa Ministerial Instructions - Income & Employment Corroboration",
+            "is_mandatory": True,
+            "acceptable_categories": ["employment_record", "financial_evidence"],
+        },
+        {
+            "item_id": "casuper_medical_insurance",
+            "label": "Super Visa Medical Insurance Policy ($100,000+ CAD Coverage for 365 Days)",
+            "requirement_citation": "Super Visa Ministerial Instructions - Mandatory Emergency Health Coverage ($100k CAD / 1 Year)",
+            "is_mandatory": True,
+            "acceptable_categories": ["insurance_accommodation", "financial_evidence", "other_evidence"],
+        },
+        {
+            "item_id": "casuper_relationship_birth_cert",
+            "label": "Proof of Parent-Child Relationship (Child's Birth Certificate Naming Parent)",
+            "requirement_citation": "Super Visa Ministerial Instructions - Qualifying Lineage Verification",
+            "is_mandatory": True,
+            "acceptable_categories": ["civil_status"],
+        },
+        {
+            "item_id": "casuper_invitation_undertaking",
+            "label": "Signed Host Invitation & Financial Undertaking Letter",
+            "requirement_citation": "Super Visa Ministerial Instructions - Written Financial Support Undertaking",
+            "is_mandatory": True,
+            "acceptable_categories": ["other_evidence", "government_correspondence"],
+        },
+        {
+            "item_id": "casuper_upfront_medical",
+            "label": "Upfront Medical Exam Confirmation from IRCC Panel Physician",
+            "requirement_citation": "IRPR § 30 - Medical Admissibility Clearance",
+            "is_mandatory": True,
+            "acceptable_categories": ["police_medical", "other_evidence", "government_correspondence"],
+        },
     ],
     "CA-SOWP": [
         {
@@ -510,6 +575,57 @@ PATHWAY_CHECKLISTS: Dict[str, List[Dict[str, Any]]] = {
             "item_id": "caee_medical",
             "label": "Upfront eMedical Examination Confirmation Sheet",
             "requirement_citation": "IRPR § 30 - Medical Admissibility",
+            "is_mandatory": True,
+            "acceptable_categories": ["other_evidence", "government_correspondence"],
+        },
+        {
+            "item_id": "ca_ee_crs_sibling_proof",
+            "label": "+15 CRS Points: Sibling PR/Citizenship + Canadian Utility/Lease + Shared-Parent Birth Certificates",
+            "requirement_citation": "Express Entry Ministerial Instructions s. 29(2) — Sibling in Canada (+15 CRS)",
+            "is_mandatory": False,
+            "acceptable_categories": ["civil_status", "identity_passport", "government_correspondence", "other_evidence"],
+        },
+    ],
+    "UK-VISITOR-SPONSOR": [
+        {
+            "item_id": "uksp_passport",
+            "label": "Valid Applicant Passport (Min 1 Blank Page)",
+            "requirement_citation": "Immigration Rules Appendix V: V 4.2",
+            "is_mandatory": True,
+            "acceptable_categories": ["identity_passport"],
+        },
+        {
+            "item_id": "uksp_applicant_financials_ties",
+            "label": "Applicant 6-Month Bank Statements, ITRs & Home-Country Ties / Leave NOC",
+            "requirement_citation": "Appendix V: V 4.2–4.3 - Genuine Visitor & Home Ties",
+            "is_mandatory": True,
+            "acceptable_categories": ["financial_evidence", "employment_record"],
+        },
+        {
+            "item_id": "uksp_sponsor_status",
+            "label": "UK Sponsor Status — British Passport, ILR, or UKVI eVisa Share Code",
+            "requirement_citation": "Appendix V: V 4.3 - Qualifying UK Sponsor Immigration Status",
+            "is_mandatory": True,
+            "acceptable_categories": ["identity_passport", "visas_residence_permits", "government_correspondence"],
+        },
+        {
+            "item_id": "uksp_sponsor_hmrc_income",
+            "label": "UK Sponsor HMRC P60 / SA302 Tax Calculation & Payslips / 28-Day Bank Proof",
+            "requirement_citation": "Appendix V: V 4.3 & Appendix Finance - Sponsor Financial Maintenance",
+            "is_mandatory": True,
+            "acceptable_categories": ["financial_evidence", "employment_record"],
+        },
+        {
+            "item_id": "uksp_accommodation_proof",
+            "label": "UK Council Tax Bill / Tenancy Agreement Accommodation Proof",
+            "requirement_citation": "Appendix V: V 4.2 - Adequate UK Accommodation",
+            "is_mandatory": True,
+            "acceptable_categories": ["insurance_accommodation", "financial_evidence", "other_evidence"],
+        },
+        {
+            "item_id": "uksp_undertaking_letter",
+            "label": "Signed UK Sponsor Invitation & Maintenance Undertaking Letter",
+            "requirement_citation": "Appendix V: V 4.3 - Third-Party Undertaking",
             "is_mandatory": True,
             "acceptable_categories": ["other_evidence", "government_correspondence"],
         },
@@ -669,6 +785,50 @@ PATHWAY_CHECKLISTS: Dict[str, List[Dict[str, Any]]] = {
             "acceptable_categories": ["civil_status", "other_evidence"],
         },
     ],
+    "AU-SUBCLASS-600-SPONSOR": [
+        {
+            "item_id": "au600sp_passport",
+            "label": "Valid Applicant Passport",
+            "requirement_citation": "Migration Regulations 1994, Subclass 600",
+            "is_mandatory": True,
+            "acceptable_categories": ["identity_passport"],
+        },
+        {
+            "item_id": "au600sp_financials_ties",
+            "label": "Applicant Financial & Home-Ties Proof (Bank Statements, ITRs, Leave Letter)",
+            "requirement_citation": "Subclass 600.211 - Genuine Visitor & Home-Country Incentives",
+            "is_mandatory": True,
+            "acceptable_categories": ["financial_evidence", "employment_record"],
+        },
+        {
+            "item_id": "au600sp_sponsor_status_vevo",
+            "label": "Australian Sponsor Passport / Citizenship Certificate or VEVO Active Visa Check",
+            "requirement_citation": "Subclass 600 Sponsored Family Stream - Sponsor Australian Status",
+            "is_mandatory": True,
+            "acceptable_categories": ["identity_passport", "visas_residence_permits", "government_correspondence"],
+        },
+        {
+            "item_id": "au600sp_ato_noa",
+            "label": "Sponsor ATO Notice of Assessment / PAYG Income Proof",
+            "requirement_citation": "Subclass 600.211 - Sponsor Financial Capacity",
+            "is_mandatory": True,
+            "acceptable_categories": ["financial_evidence", "employment_record", "government_correspondence"],
+        },
+        {
+            "item_id": "au600sp_residency_proof",
+            "label": "Sponsor Council Rates / Utility Bill Australian Residency Proof",
+            "requirement_citation": "Subclass 600 Sponsored Family Stream - Settled Australian Residence",
+            "is_mandatory": True,
+            "acceptable_categories": ["insurance_accommodation", "other_evidence", "financial_evidence"],
+        },
+        {
+            "item_id": "au600sp_invitation_form1149",
+            "label": "Sponsor Invitation Letter / Form 1149 Sponsorship Statutory Declaration",
+            "requirement_citation": "Migration Regulations 1994 - Form 1149 Sponsorship Undertaking",
+            "is_mandatory": True,
+            "acceptable_categories": ["other_evidence", "government_correspondence", "civil_status"],
+        },
+    ],
     "AU-SUBCLASS-500": [
         {
             "item_id": "au500_passport",
@@ -782,10 +942,17 @@ PATHWAY_CHECKLISTS: Dict[str, List[Dict[str, Any]]] = {
     ],
 }
 
+# Alias CA-EXPRESS-ENTRY to EXPRESS_ENTRY for direct key lookups
+PATHWAY_CHECKLISTS["CA-EXPRESS-ENTRY"] = PATHWAY_CHECKLISTS["EXPRESS_ENTRY"]
+
 
 def _match_pathway_checklist_template(category_str: str) -> List[Dict[str, Any]]:
     """Smartly resolves a case's visa category string into the appropriate statutory checklist."""
-    raw = (category_str or "").upper().replace("-", " ").replace("_", " ")
+    exact_key = (category_str or "").strip().upper()
+    if exact_key in PATHWAY_CHECKLISTS:
+        return PATHWAY_CHECKLISTS[exact_key]
+
+    raw = exact_key.replace("-", " ").replace("_", " ")
 
     # Canada Matchers
     if any(k in raw for k in ["STUDY PERMIT", "STUDENT VISA CANADA", "CA STUDY", "SDS"]):
@@ -794,6 +961,8 @@ def _match_pathway_checklist_template(category_str: str) -> List[Dict[str, Any]]
         return PATHWAY_CHECKLISTS["EXPRESS_ENTRY"]
     if any(k in raw for k in ["SOWP", "SPOUSAL OPEN WORK", "SPOUSAL WORK"]):
         return PATHWAY_CHECKLISTS["CA-SOWP"]
+    if "SUPER VISA" in raw and "TRV" not in raw and "VISITOR VISA" not in raw:
+        return PATHWAY_CHECKLISTS["CA-SUPER-VISA"]
     if any(k in raw for k in ["CANADA VISITOR", "CA VISITOR", "TRV", "SUPER VISA"]):
         return PATHWAY_CHECKLISTS["CA-VISITOR-TRV"]
 
@@ -818,10 +987,14 @@ def _match_pathway_checklist_template(category_str: str) -> List[Dict[str, Any]]
         return PATHWAY_CHECKLISTS["UK-STUDENT-VISA"]
     if any(k in raw for k in ["UK SKILLED", "SKILLED WORKER", "TIER 2"]):
         return PATHWAY_CHECKLISTS["UK-SKILLED-WORKER"]
+    if ("UK" in raw or "VISITOR" in raw) and "SPONSOR" in raw and "600" not in raw and "AU" not in raw and "AUSTRALIA" not in raw:
+        return PATHWAY_CHECKLISTS["UK-VISITOR-SPONSOR"]
     if any(k in raw for k in ["UK VISITOR", "STANDARD VISITOR", "UK TOURIST"]):
         return PATHWAY_CHECKLISTS["UK-STANDARD-VISITOR"]
 
     # Australia Matchers
+    if any(k in raw for k in ["600", "AU VISITOR", "AUSTRALIA VISITOR"]) and "SPONSOR" in raw:
+        return PATHWAY_CHECKLISTS["AU-SUBCLASS-600-SPONSOR"]
     if any(k in raw for k in ["600", "AU VISITOR", "AUSTRALIA VISITOR"]):
         return PATHWAY_CHECKLISTS["AU-SUBCLASS-600"]
     if any(k in raw for k in ["500", "AU STUDENT", "AUSTRALIA STUDENT"]):

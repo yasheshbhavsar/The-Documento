@@ -17,7 +17,7 @@ import {
   UserContext,
 } from "../../lib/types";
 import { api, FIXTURE_AI_FINDINGS, fetchCaseInterimReports, resolveDocumentAnomaly } from "../../lib/api";
-import { canDeleteClient } from "../../lib/auth";
+import { canDeleteClient, canDeleteCase } from "../../lib/auth";
 import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 import { CaseMilestoneTimeline } from "./CaseMilestoneTimeline";
 import { CaseDiscrepancyAlertCenter } from "./CaseDiscrepancyAlertCenter";
@@ -33,6 +33,7 @@ interface CaseDetailModalProps {
   activeRole?: RoleCode;
   currentUser?: UserContext | null;
   onDeleteClient?: (clientId: string) => void | Promise<void>;
+  onDeleteCase?: (caseId: string) => void | Promise<void>;
 }
 
 const LIFECYCLE_STAGES: { stage: CaseStage; label: string }[] = [
@@ -54,6 +55,7 @@ export function CaseDetailModal({
   activeRole = "case_manager",
   currentUser,
   onDeleteClient,
+  onDeleteCase,
 }: CaseDetailModalProps) {
   const ws = useWorkspaceSafe();
   const effectiveUser =
@@ -65,6 +67,7 @@ export function CaseDetailModal({
           ? ({ role: activeRole, experience: activeRole } as UserContext)
           : null);
   const isDeleteClientAllowed = canDeleteClient(effectiveUser);
+  const isDeleteCaseAllowed = canDeleteCase(effectiveUser);
 
   const [activeTab, setActiveTab] = useState<
     "overview" | "approval_gates" | "milestones" | "tasks" | "dependants" | "notes" | "audit" | "interim_reports"
@@ -176,7 +179,7 @@ export function CaseDetailModal({
             due_date: "2026-10-22",
             priority: "high",
             is_completed: true,
-            assigned_to: "Sarah Jenkins, Esq.",
+            assigned_to: "Assigned Case Counsel",
           },
           {
             id: "t-2",
@@ -185,7 +188,7 @@ export function CaseDetailModal({
             due_date: "2026-10-28",
             priority: "critical",
             is_completed: false,
-            assigned_to: "Sarah Jenkins, Esq.",
+            assigned_to: "Assigned Case Counsel",
           },
         ];
         setTasks(initialTasks);
@@ -194,7 +197,7 @@ export function CaseDetailModal({
           {
             id: "n-1",
             case_id: caseItem.id,
-            author_name: "Sarah Jenkins, Esq.",
+            author_name: "Assigned Case Counsel",
             note_type: "legal_strategy",
             content: "Strategy: Formulate critical role prong citing Matter of Chawathe standards with quantitative impact metrics.",
             is_client_visible: false,
@@ -204,7 +207,7 @@ export function CaseDetailModal({
           {
             id: "n-2",
             case_id: caseItem.id,
-            author_name: "Sarah Jenkins, Esq.",
+            author_name: "Assigned Case Counsel",
             note_type: "client_communication",
             content: "Applicant update: Exhibit B-4 citation dossier has been successfully prepared and indexed.",
             is_client_visible: true,
@@ -228,7 +231,7 @@ export function CaseDetailModal({
 
         setAuditEvents([
           { action: "case.created", occurred_at: "2026-08-10T10:00:00Z", actor: "system", detail: "Case registered" },
-          { action: "case.status_changed", occurred_at: "2026-09-01T15:00:00Z", actor: "sarah.jenkins@lex.com", detail: "Moved to processing" },
+          { action: "case.status_changed", occurred_at: "2026-09-01T15:00:00Z", actor: "counsel@practice-domain.com", detail: "Moved to processing" },
         ]);
 
         api.getAIFindings(caseItem.id)
@@ -332,7 +335,7 @@ export function CaseDetailModal({
                 {
                   timestamp: new Date().toISOString(),
                   action: "resolve",
-                  reviewer_email: "attorney@lexai.com",
+                  reviewer_email: "counsel@practice-domain.com",
                   note,
                 },
               ],
@@ -362,7 +365,7 @@ export function CaseDetailModal({
                 {
                   timestamp: new Date().toISOString(),
                   action: "escalate",
-                  reviewer_email: "attorney@lexai.com",
+                  reviewer_email: "counsel@practice-domain.com",
                   note,
                 },
               ],
@@ -393,7 +396,7 @@ export function CaseDetailModal({
                 {
                   timestamp: new Date().toISOString(),
                   action: "routed",
-                  reviewer_email: "attorney@lexai.com",
+                  reviewer_email: "counsel@practice-domain.com",
                   note: `Routed to ${payload.owner_user_id}: ${payload.note}`,
                 },
               ],
@@ -674,6 +677,23 @@ export function CaseDetailModal({
     onClose();
   };
 
+  const handleDeleteCaseClick = async () => {
+    if (!currentCase?.id) return;
+    const ok = window.confirm(
+      `Permanently delete case "${currentCase.case_number}" (${currentCase.title}) along with its documents, tasks, and findings? Retained client profile (${currentCase.client_name || "Unlinked"}) will remain preserved. This action cannot be undone.`
+    );
+    if (!ok) return;
+
+    if (onDeleteCase) {
+      await onDeleteCase(currentCase.id);
+    } else if (ws?.handleDeleteCase) {
+      await ws.handleDeleteCase(currentCase.id);
+    } else {
+      await api.deleteCase(currentCase.id, effectiveUser?.role || activeRole);
+    }
+    onClose();
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -682,8 +702,8 @@ export function CaseDetailModal({
       title={`${currentCase.case_number}: ${currentCase.title}`}
       subtitle={`Principal Client: ${currentCase.client_name} • Destination: ${currentCase.jurisdiction} (${currentCase.visa_category})`}
       footer={
-        <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             {!isClient && currentCase.status !== "closed" && currentCase.status !== "archived" && (
               <Button variant="outline" size="sm" onClick={handleCloseCase}>
                 🔒 Close Case
@@ -696,7 +716,19 @@ export function CaseDetailModal({
             )}
             {!isClient && currentCase.status === "closed" && (
               <Button variant="outline" size="sm" onClick={handleArchiveCase}>
-                🗄️ Archive Case
+                Archive Case
+              </Button>
+            )}
+            {isDeleteCaseAllowed && (
+              <Button
+                variant="danger"
+                size="sm"
+                data-testid="delete-case-modal-btn"
+                aria-label={`Delete case ${currentCase.case_number}`}
+                onClick={handleDeleteCaseClick}
+                style={{ background: "#FEF2F2", color: "#DC2626", borderColor: "#FCA5A5" }}
+              >
+                Delete Case
               </Button>
             )}
             {isDeleteClientAllowed && currentCase.client_id && (
@@ -706,8 +738,9 @@ export function CaseDetailModal({
                 data-testid="delete-client-modal-btn"
                 aria-label={`Delete client ${currentCase.client_name || ""}`.trim()}
                 onClick={handleDeleteClientClick}
+                style={{ background: "#FEF2F2", color: "#DC2626", borderColor: "#FCA5A5" }}
               >
-                🗑️ Delete Client
+                Delete Client
               </Button>
             )}
           </div>
@@ -818,14 +851,14 @@ export function CaseDetailModal({
           }}
         >
           {[
-            { id: "overview", label: "📋 Overview & Team" },
-            { id: "approval_gates", label: "🛡️ Approval Gates" },
-            { id: "milestones", label: `⏳ Milestones (${milestones.length})` },
-            { id: "tasks", label: `✓ Tasks (${tasks.filter((t) => !t.is_completed).length})` },
-            { id: "dependants", label: `👨‍👩‍👧 Dependants & Consents (${dependants.length})` },
-            { id: "notes", label: `📝 Notes & Activity (${notes.length})` },
-            { id: "interim_reports", label: `📦 Interim Snapshots & Anomalies (${interimReports.length})` },
-            { id: "audit", label: "📜 History Audit" },
+            { id: "overview", label: "Overview & Team" },
+            { id: "approval_gates", label: "Approval Gates" },
+            { id: "milestones", label: `Milestones (${milestones.length})` },
+            { id: "tasks", label: `Tasks (${tasks.filter((t) => !t.is_completed).length})` },
+            { id: "dependants", label: `Dependants & Consents (${dependants.length})` },
+            { id: "notes", label: `Notes & Activity (${notes.length})` },
+            { id: "interim_reports", label: `Interim Snapshots & Anomalies (${interimReports.length})` },
+            { id: "audit", label: "History Audit" },
           ].map((tab) => (
             <button
               key={tab.id}

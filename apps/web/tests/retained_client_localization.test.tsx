@@ -1,5 +1,11 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  const { mockApiModuleWithFixtures } = await import("./helpers/mockApiFixtures");
+  return mockApiModuleWithFixtures(actual);
+});
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ClientPortal } from "../components/dashboards/ClientPortal";
 import { ClientLanguageBar } from "../components/portal/ClientLanguageBar";
@@ -13,12 +19,13 @@ import {
   saveClientLanguage,
 } from "../lib/clientLocalization";
 import {
+  FALLBACK_VISA_FILE_UPDATES,
   FIXTURE_CASES,
   FIXTURE_DOCUMENTS,
   FIXTURE_MESSAGES,
   FIXTURE_NOTIFICATIONS,
   FIXTURE_INVOICES,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Retained Client Localization — Gujarati (ગુજરાતી) & Hindi (हिन्दी) Support", () => {
   beforeEach(() => {
@@ -200,6 +207,7 @@ describe("Retained Client Localization — Gujarati (ગુજરાતી) & Hi
       render(
         <VisaFileUpdatesView
           myCase={FIXTURE_CASES[0]}
+          updates={FALLBACK_VISA_FILE_UPDATES}
           language="gu"
           onNavigateTab={vi.fn()}
         />
@@ -224,6 +232,7 @@ describe("Retained Client Localization — Gujarati (ગુજરાતી) & Hi
       render(
         <VisaFileUpdatesView
           myCase={FIXTURE_CASES[0]}
+          updates={FALLBACK_VISA_FILE_UPDATES}
           language="hi"
           onNavigateTab={vi.fn()}
         />

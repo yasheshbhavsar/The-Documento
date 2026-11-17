@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
 import { AIFindingInspectorModal } from "../components/modals/AIFindingInspectorModal";
 import { EvidenceSummaryModal } from "../components/modals/EvidenceSummaryModal";
-import { FIXTURE_AI_FINDINGS, FIXTURE_CASES, FIXTURE_CLIENTS, FIXTURE_DOCUMENTS, FIXTURE_TASKS, FIXTURE_MESSAGES } from "../lib/api";
+import { FIXTURE_AI_FINDINGS, FIXTURE_CASES, FIXTURE_CLIENTS, FIXTURE_DOCUMENTS, FIXTURE_TASKS, FIXTURE_MESSAGES } from "./helpers/testFixtures";
 import { EvidenceBackedSummary } from "../lib/types";
 
 describe("Phase 5 — AI Document Analysis, Discrepancy Detection & Finding Disposition", () => {
@@ -137,7 +137,7 @@ describe("Phase 5 — AI Document Analysis, Discrepancy Detection & Finding Disp
     expect(screen.getByText(/Please provide an explanatory resolution note/i)).toBeDefined();
 
     // Enter note and submit
-    const textarea = screen.getByPlaceholderText(/Verified spelling difference/i);
+    const textarea = screen.getByPlaceholderText(/Enter attorney resolution rationale/i);
     fireEvent.change(textarea, {
       target: { value: "Verified standard Ukrainian transliteration. Disclosed on Form I-140 Part 3." },
     });

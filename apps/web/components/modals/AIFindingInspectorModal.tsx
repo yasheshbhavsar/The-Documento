@@ -611,7 +611,7 @@ export const AIFindingInspectorModal: React.FC<AIFindingInspectorModalProps> = (
                       rows={4}
                       value={resolveNote}
                       onChange={(e) => setResolveNote(e.target.value)}
-                      placeholder="e.g., Verified spelling difference is standard Cyrillic transliteration. Added alias 'Yelena' to Form I-140 Part 3."
+                      placeholder="Enter attorney resolution rationale and supporting evidence notes..."
                       style={{
                         width: "100%",
                         padding: "10px",

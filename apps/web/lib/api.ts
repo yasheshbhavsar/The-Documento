@@ -133,12 +133,19 @@ import {
 
 
 import {
+  AgencyTeamRole,
+  formatStaffRoleLabel,
   getAgencyForOrganization,
   getAgencyTeamInvites,
   incrementAgencyUsageMetrics,
   inviteAgencyTeamMember,
   purgeLegacyDemoStorageOnce,
+  removeAgencyTeamMember,
+  resetAgencyOwnerPassword,
+  updateAgencyTeamMember,
 } from "./agencyPlatformStore";
+import { removeCaseKickoffRecord } from "./caseKickoffStore";
+import { removeRawPacketsForCase } from "./rawClientPacketStore";
 
 export function resolveBackendBaseUrl(): string {
   if (typeof window !== "undefined") {
@@ -161,852 +168,40 @@ export const DEMO_ORG_ID = "11111111-1111-1111-1111-111111111111";
 export const DEMO_USERS = {
   master_admin: {
     id: "22222222-2222-2222-2222-222222222222",
-    email: "elena.vance@leximmigration.com",
-    name: "Elena Vance (Managing Partner)",
+    email: "partner@firm.example.com",
+    name: "Managing Partner",
     role: "master_admin" as RoleCode,
   },
   case_manager: {
     id: "33333333-3333-3333-3333-333333333333",
-    email: "sarah.jenkins@leximmigration.com",
-    name: "Sarah Jenkins, Esq. (Senior Reviewer)",
+    email: "counsel@firm.example.com",
+    name: "Assigned Case Counsel",
     role: "case_manager" as RoleCode,
   },
   client_applicant: {
     id: "44444444-4444-4444-4444-444444444444",
-    email: "elena.rostova@stanford.edu",
-    name: "Dr. Elena Rostova (Applicant)",
+    email: "client@example.com",
+    name: "Retained Client",
     role: "retained_client" as RoleCode,
   },
 };
 
 // Realistic development fixtures for full offline / decoupled presentation
-export const FIXTURE_CASES: ImmigrationCase[] = [
-  {
-    id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "EB-1A Alien of Extraordinary Ability: Dr. Elena Rostova",
-    client_id: "client-01",
-    client_name: "Dr. Elena Rostova",
-    jurisdiction: "United States (USCIS)",
-    visa_category: "EB-1A Extraordinary Ability",
-    status: "review",
-    readiness_score: 82,
-    assigned_manager: "Sarah Jenkins, Esq.",
-    deadline: "2026-11-15",
-    priority_date: "2026-08-10",
-    attention_required: true,
-    attention_reason: "Major citation record update required before final petition brief indexing",
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-08-10T10:00:00Z",
-  },
-  {
-    id: "case-02",
-    case_number: "CASE-US-8842",
-    title: "O-1A Extraordinary Ability in AI Systems: Marcus Thorne",
-    client_id: "client-02",
-    client_name: "Marcus Thorne",
-    jurisdiction: "United States (USCIS)",
-    visa_category: "O-1A Nonimmigrant",
-    status: "assembly",
-    readiness_score: 94,
-    assigned_manager: "Sarah Jenkins, Esq.",
-    deadline: "2026-10-30",
-    priority_date: "2026-09-01",
-    attention_required: false,
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-09-01T14:30:00Z",
-  },
-  {
-    id: "case-03",
-    case_number: "CASE-US-8843",
-    title: "EB-2 National Interest Waiver: Amina Al-Mansoor",
-    client_id: "client-03",
-    client_name: "Amina Al-Mansoor",
-    jurisdiction: "United States (USCIS)",
-    visa_category: "EB-2 NIW",
-    status: "gathering",
-    readiness_score: 45,
-    assigned_manager: "David Cho",
-    deadline: "2026-12-01",
-    priority_date: "2026-09-18",
-    attention_required: false,
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-09-18T09:15:00Z",
-  },
-  {
-    id: "case-04",
-    case_number: "CASE-US-8844",
-    title: "L-1A Executive Transfer: Kenji Sato (QuantumScale Inc.)",
-    client_id: "client-04",
-    client_name: "Kenji Sato",
-    jurisdiction: "United States (USCIS)",
-    visa_category: "L-1A Intracompany Transferee",
-    status: "ready",
-    readiness_score: 98,
-    assigned_manager: "David Cho",
-    deadline: "2026-10-25",
-    priority_date: "2026-07-22",
-    attention_required: false,
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-07-22T11:45:00Z",
-  },
-  {
-    id: "case-05",
-    case_number: "CASE-UK-3310",
-    title: "UK Global Talent Visa (Digital Technology): Priya Nair",
-    client_id: "client-05",
-    client_name: "Priya Nair",
-    jurisdiction: "United Kingdom (Home Office)",
-    visa_category: "Global Talent Tech Nation",
-    status: "intake",
-    readiness_score: 28,
-    assigned_manager: "Sarah Jenkins, Esq.",
-    deadline: "2026-11-20",
-    priority_date: "2026-10-02",
-    attention_required: true,
-    attention_reason: "Missing letters of recommendation from recognized enterprise founders",
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-10-02T16:20:00Z",
-  },
-  {
-    id: "case-06",
-    case_number: "CASE-CA-1904",
-    title: "Canada Express Entry Provincial Nominee: Carlos Gomez",
-    client_id: "client-06",
-    client_name: "Carlos Gomez",
-    jurisdiction: "Canada (IRCC)",
-    visa_category: "Express Entry PNP",
-    status: "filed",
-    readiness_score: 100,
-    assigned_manager: "David Cho",
-    deadline: "2027-01-15",
-    priority_date: "2026-05-14",
-    attention_required: false,
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-05-14T08:00:00Z",
-  },
-];
+export const FIXTURE_CASES: ImmigrationCase[] = [];
 
-export const FIXTURE_CLIENTS: ClientProfile[] = [
-  {
-    id: "client-01",
-    first_name: "Elena",
-    last_name: "Rostova",
-    email: "elena.rostova@stanford.edu",
-    phone: "+1 (650) 498-0021",
-    nationality: "Ukraine",
-    date_of_birth: "1988-04-12",
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-08-10T10:00:00Z",
-  },
-  {
-    id: "client-02",
-    first_name: "Marcus",
-    last_name: "Thorne",
-    email: "marcus@thorne-ai.co.uk",
-    phone: "+44 20 7946 0912",
-    nationality: "United Kingdom",
-    date_of_birth: "1991-09-23",
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-09-01T14:30:00Z",
-  },
-  {
-    id: "client-03",
-    first_name: "Amina",
-    last_name: "Al-Mansoor",
-    email: "amina.mansoor@biotech.ae",
-    phone: "+971 4 312 9900",
-    nationality: "United Arab Emirates",
-    date_of_birth: "1985-11-30",
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-09-18T09:15:00Z",
-  },
-  {
-    id: "client-04",
-    first_name: "Kenji",
-    last_name: "Sato",
-    email: "k.sato@quantumscale.jp",
-    phone: "+81 3 5555 0143",
-    nationality: "Japan",
-    date_of_birth: "1979-02-14",
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-07-22T11:45:00Z",
-  },
-  {
-    id: "client-05",
-    first_name: "Priya",
-    last_name: "Nair",
-    email: "priya.nair@techscale.in",
-    phone: "+91 80 2345 6789",
-    nationality: "India",
-    date_of_birth: "1994-06-05",
-    organization_id: DEMO_ORG_ID,
-    created_at: "2026-10-02T16:20:00Z",
-  },
-];
+export const FIXTURE_CLIENTS: ClientProfile[] = [];
 
-export const FIXTURE_DOCUMENTS: DocumentItem[] = [
-  {
-    id: "doc-01",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "US_Passport_Biodata_Elena_Rostova.pdf",
-    filename: "US_Passport_Biodata_Elena_Rostova.pdf",
-    category: "identity_passport",
-    file_size: "2.4 MB",
-    byte_size: 2516582,
-    mime_type: "application/pdf",
-    version: 1,
-    is_current_version: true,
-    uploaded_by: "Dr. Elena Rostova",
-    status: "verified",
-    processing_status: "completed",
-    verification_status: "verified",
-    sha256_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    uploaded_at: "2026-08-12T11:00:00Z",
-    tamper_verified: true,
-    detected_language: "en",
-    page_count: 1,
-    ocr_applied: false,
-    extracted_text: "PASSPORT / PASSEPORT\nUNITED STATES OF AMERICA\nType: P Code: USA Passport No: C09812491\nSurname: ROSTOVA\nGiven Names: ELENA\nNationality: USA\nDate of Birth: 12 APR 1988\nSex: F\nP<USAROSTOVA<<ELENA<<<<<<<<<<<<<<<<<<<<<<<<<\nC098124914USA8804128F3105094<<<<<<<<<<<<<<06",
-    extracted_fields: [
-      {
-        id: "field-01",
-        field_name: "passport_number",
-        field_label: "Passport Number",
-        original_value: "C09812491",
-        normalized_value: "C09812491",
-        source_page: 1,
-        source_location: { x0: 72, y0: 120, x1: 280, y1: 144, block_idx: 2 },
-        extraction_method: "pymupdf_mrz_parser",
-        model_version: "rule_mrz_v2.1",
-        ocr_confidence: 0.99,
-        extraction_confidence: 0.99,
-        validation_status: "verified",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-02",
-        field_name: "full_name",
-        field_label: "Full Name",
-        original_value: "ROSTOVA, ELENA",
-        normalized_value: "Elena Rostova",
-        source_page: 1,
-        source_location: { x0: 72, y0: 144, x1: 320, y1: 168, block_idx: 3 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_identity_v1.4",
-        ocr_confidence: 0.98,
-        extraction_confidence: 0.97,
-        validation_status: "verified",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-03",
-        field_name: "date_of_birth",
-        field_label: "Date of Birth",
-        original_value: "12 APR 1988",
-        normalized_value: "1988-04-12",
-        source_page: 1,
-        source_location: { x0: 72, y0: 192, x1: 240, y1: 216, block_idx: 5 },
-        extraction_method: "pymupdf_mrz_parser",
-        model_version: "rule_mrz_v2.1",
-        ocr_confidence: 0.99,
-        extraction_confidence: 0.99,
-        validation_status: "verified",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-04",
-        field_name: "nationality",
-        field_label: "Nationality",
-        original_value: "UNITED STATES OF AMERICA",
-        normalized_value: "USA",
-        source_page: 1,
-        source_location: { x0: 72, y0: 168, x1: 340, y1: 192, block_idx: 4 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_iso3166_v1",
-        ocr_confidence: 0.99,
-        extraction_confidence: 0.99,
-        validation_status: "verified",
-        is_manually_corrected: false,
-      },
-    ],
-    verified_at: "2026-08-12T14:30:00Z",
-    verified_by_user_id: "33333333-3333-3333-3333-333333333333",
-    verification_notes: "Physical passport inspected against state biometric registry match.",
-    malware_scan_status: "clean",
-    download_url: "/api/v1/documents/doc-01/download?token=demo_token",
-  },
-  {
-    id: "doc-02",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "Stanford_PhD_Diploma_Certificate.pdf",
-    filename: "Stanford_PhD_Diploma_Certificate.pdf",
-    category: "educational_records",
-    file_size: "4.1 MB",
-    byte_size: 4300192,
-    mime_type: "application/pdf",
-    version: 1,
-    is_current_version: true,
-    uploaded_by: "Dr. Elena Rostova",
-    status: "under_review",
-    processing_status: "completed",
-    verification_status: "unverified",
-    sha256_hash: "7d1a54127b222502f5b79b5fb0803061152a44f92b37e23c65dd0f32937ec844",
-    uploaded_at: "2026-08-14T09:20:00Z",
-    tamper_verified: true,
-    detected_language: "en",
-    page_count: 1,
-    ocr_applied: false,
-    extracted_text: "STANFORD UNIVERSITY\nTHE TRUSTEES OF THE UNIVERSITY CONFER UPON\nELENA ROSTOVA\nTHE DEGREE OF DOCTOR OF PHILOSOPHY\nIN COMPUTER SCIENCE AND ARTIFICIAL INTELLIGENCE\nCUMULATIVE GPA: 3.96 / 4.00\nCONFERRED ON: 15 JUNE 2018",
-    extracted_fields: [
-      {
-        id: "field-05",
-        field_name: "degree_title",
-        field_label: "Conferred Degree Title",
-        original_value: "DOCTOR OF PHILOSOPHY",
-        normalized_value: "Doctor Of Philosophy",
-        source_page: 1,
-        source_location: { x0: 72, y0: 144, x1: 420, y1: 168, block_idx: 3 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_edu_v1.0",
-        ocr_confidence: 0.98,
-        extraction_confidence: 0.95,
-        validation_status: "unvalidated",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-06",
-        field_name: "institution_name",
-        field_label: "Academic Institution",
-        original_value: "STANFORD UNIVERSITY",
-        normalized_value: "Stanford University",
-        source_page: 1,
-        source_location: { x0: 72, y0: 72, x1: 300, y1: 96, block_idx: 0 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_edu_v1.0",
-        ocr_confidence: 0.99,
-        extraction_confidence: 0.96,
-        validation_status: "unvalidated",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-07",
-        field_name: "gpa",
-        field_label: "Grade Point Average (GPA)",
-        original_value: "3.96 / 4.00",
-        normalized_value: "3.96 / 4.00",
-        source_page: 1,
-        source_location: { x0: 72, y0: 216, x1: 250, y1: 240, block_idx: 5 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_edu_v1.0",
-        ocr_confidence: 0.97,
-        extraction_confidence: 0.95,
-        validation_status: "unvalidated",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-08",
-        field_name: "graduation_date",
-        field_label: "Graduation Date",
-        original_value: "15 JUNE 2018",
-        normalized_value: "2018-06-15",
-        source_page: 1,
-        source_location: { x0: 72, y0: 240, x1: 280, y1: 264, block_idx: 6 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_date_v2.0",
-        ocr_confidence: 0.97,
-        extraction_confidence: 0.92,
-        validation_status: "unvalidated",
-        is_manually_corrected: false,
-      },
-    ],
-    malware_scan_status: "clean",
-  },
-  {
-    id: "doc-03",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "Employment_Verification_NeuralDynamics.pdf",
-    filename: "Employment_Verification_NeuralDynamics.pdf",
-    category: "employment_records",
-    file_size: "1.8 MB",
-    byte_size: 1887436,
-    mime_type: "application/pdf",
-    version: 2,
-    is_current_version: true,
-    uploaded_by: "Sarah Jenkins, Esq.",
-    status: "under_review",
-    processing_status: "completed",
-    verification_status: "under_review",
-    sha256_hash: "bf5b8f2bf13597d6da3fe4c2b95b45f1b1c35b8f7236d81e05a8bf12185be168",
-    uploaded_at: "2026-09-02T14:15:00Z",
-    tamper_verified: true,
-    detected_language: "en",
-    page_count: 1,
-    ocr_applied: false,
-    extracted_text: "NEURALDYNAMICS AI TECHNOLOGIES INC.\nEMPLOYMENT VERIFICATION LETTER\nJob Title: Senior AI Principal Research Scientist\nEmployment Start Date: 01 September 2018\nAnnual Salary: $245,000.00 USD per year\nHours: 40 hours per week",
-    extracted_fields: [
-      {
-        id: "field-09",
-        field_name: "job_title",
-        field_label: "Job Title",
-        original_value: "Senior AI Principal Research Scientist",
-        normalized_value: "Senior Ai Principal Research Scientist",
-        source_page: 1,
-        source_location: { x0: 72, y0: 120, x1: 450, y1: 144, block_idx: 2 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_emp_v1.0",
-        ocr_confidence: 0.98,
-        extraction_confidence: 0.96,
-        validation_status: "verified",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-10",
-        field_name: "annual_salary",
-        field_label: "Annual Compensation",
-        original_value: "$245,000.00 USD",
-        normalized_value: "245000.00 USD",
-        source_page: 1,
-        source_location: { x0: 72, y0: 168, x1: 350, y1: 192, block_idx: 4 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_emp_v1.0",
-        ocr_confidence: 0.97,
-        extraction_confidence: 0.95,
-        validation_status: "verified",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-11",
-        field_name: "employment_start_date",
-        field_label: "Employment Start Date",
-        original_value: "01 September 2018",
-        normalized_value: "2018-09-01",
-        source_page: 1,
-        source_location: { x0: 72, y0: 144, x1: 360, y1: 168, block_idx: 3 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_date_v2.0",
-        ocr_confidence: 0.98,
-        extraction_confidence: 0.95,
-        validation_status: "corrected",
-        is_manually_corrected: true,
-        corrected_value: "2018-09-01",
-        corrected_at: "2026-09-03T10:00:00Z",
-        correction_reason: "Standardized to ISO-8601 date format for petition index.",
-        correction_history: [
-          {
-            old_value: "01 September 2018",
-            new_value: "2018-09-01",
-            reason: "Standardized to ISO-8601 date format for petition index.",
-            corrected_by: "Sarah Jenkins, Esq.",
-            corrected_at: "2026-09-03T10:00:00Z",
-          },
-        ],
-      },
-    ],
-    malware_scan_status: "clean",
-  },
-  {
-    id: "doc-04",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "Chase_Private_Client_Bank_Statement.pdf",
-    filename: "Chase_Private_Client_Bank_Statement.pdf",
-    category: "financial_evidence",
-    file_size: "1.2 MB",
-    byte_size: 1258291,
-    mime_type: "application/pdf",
-    version: 1,
-    is_current_version: true,
-    uploaded_by: "Dr. Elena Rostova",
-    status: "under_review",
-    processing_status: "completed",
-    verification_status: "unverified",
-    sha256_hash: "3295c76ac127da6ced4e0f9b6e82f70ac6f8b1c8f237d65b71948332159f8164",
-    uploaded_at: "2026-09-28T16:40:00Z",
-    tamper_verified: true,
-    detected_language: "en",
-    page_count: 1,
-    ocr_applied: false,
-    extracted_text: "JPMORGAN CHASE BANK, N.A.\nPRIVATE CLIENT ACCOUNT STATEMENT\nAccount ending in: ...4921\nStatement Date: 30 September 2026\nClosing Balance: $148,250.75 USD",
-    extracted_fields: [
-      {
-        id: "field-12",
-        field_name: "financial_institution",
-        field_label: "Financial Institution",
-        original_value: "JPMORGAN CHASE BANK",
-        normalized_value: "Jpmorgan Chase Bank",
-        source_page: 1,
-        source_location: { x0: 72, y0: 72, x1: 340, y1: 96, block_idx: 0 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_fin_v1.0",
-        ocr_confidence: 0.98,
-        extraction_confidence: 0.94,
-        validation_status: "unvalidated",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-13",
-        field_name: "closing_balance",
-        field_label: "Closing Balance",
-        original_value: "$148,250.75 USD",
-        normalized_value: "148250.75 USD",
-        source_page: 1,
-        source_location: { x0: 72, y0: 168, x1: 340, y1: 192, block_idx: 4 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_fin_v1.0",
-        ocr_confidence: 0.99,
-        extraction_confidence: 0.96,
-        validation_status: "unvalidated",
-        is_manually_corrected: false,
-      },
-    ],
-    malware_scan_status: "clean",
-  },
-  {
-    id: "doc-05",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "USCIS_I797_O1A_Approval_Notice.pdf",
-    filename: "USCIS_I797_O1A_Approval_Notice.pdf",
-    category: "visas_residence_permits",
-    file_size: "1.1 MB",
-    byte_size: 1153433,
-    mime_type: "application/pdf",
-    version: 1,
-    is_current_version: true,
-    uploaded_by: "Sarah Jenkins, Esq.",
-    status: "verified",
-    processing_status: "completed",
-    verification_status: "verified",
-    sha256_hash: "a4920b72f102c91834190c102a901f1847120481029481928374910284719203",
-    uploaded_at: "2026-10-01T12:00:00Z",
-    tamper_verified: true,
-    detected_language: "en",
-    page_count: 1,
-    ocr_applied: false,
-    extracted_text: "UNITED STATES CITIZENSHIP AND IMMIGRATION SERVICES\nRECEIPT NUMBER: WAC2190084122\nNOTICE TYPE: APPROVAL NOTICE\nCLASS: O-1A\nVALID FROM 10/01/2023 TO 09/30/2026",
-    extracted_fields: [
-      {
-        id: "field-14",
-        field_name: "receipt_number",
-        field_label: "USCIS Receipt Number",
-        original_value: "WAC2190084122",
-        normalized_value: "WAC2190084122",
-        source_page: 1,
-        source_location: { x0: 72, y0: 96, x1: 300, y1: 120, block_idx: 1 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_uscis_v1.0",
-        ocr_confidence: 0.99,
-        extraction_confidence: 0.99,
-        validation_status: "verified",
-        is_manually_corrected: false,
-      },
-      {
-        id: "field-15",
-        field_name: "visa_class",
-        field_label: "Visa Classification",
-        original_value: "O-1A",
-        normalized_value: "O-1A",
-        source_page: 1,
-        source_location: { x0: 72, y0: 144, x1: 220, y1: 168, block_idx: 3 },
-        extraction_method: "pymupdf_regex_parser",
-        model_version: "rule_uscis_v1.0",
-        ocr_confidence: 0.98,
-        extraction_confidence: 0.98,
-        validation_status: "verified",
-        is_manually_corrected: false,
-      },
-    ],
-    verified_at: "2026-10-01T14:00:00Z",
-    verified_by_user_id: "33333333-3333-3333-3333-333333333333",
-    verification_notes: "Direct match against USCIS online case status verification system.",
-    malware_scan_status: "clean",
-  },
-  {
-    id: "doc-06",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "State_Police_Clearance_Certificate.pdf",
-    filename: "State_Police_Clearance_Certificate.pdf",
-    category: "police_medical",
-    file_size: "3.2 MB",
-    byte_size: 3355443,
-    mime_type: "application/pdf",
-    version: 1,
-    is_current_version: true,
-    uploaded_by: "Dr. Elena Rostova",
-    status: "under_review",
-    processing_status: "processing",
-    verification_status: "unverified",
-    sha256_hash: "cc31802931a01294812401824091280918230912830192830129830129381029",
-    uploaded_at: "2026-10-10T15:30:00Z",
-    tamper_verified: true,
-    malware_scan_status: "clean",
-  },
-  {
-    id: "doc-07",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "Certified_Apostille_Birth_Record.pdf",
-    filename: "Certified_Apostille_Birth_Record.pdf",
-    category: "civil_status",
-    file_size: "950 KB",
-    byte_size: 972800,
-    mime_type: "application/pdf",
-    version: 1,
-    is_current_version: true,
-    uploaded_by: "Dr. Elena Rostova",
-    status: "action_needed",
-    processing_status: "failed",
-    verification_status: "unverified",
-    processing_error: "Low scan resolution (detected 72 DPI, minimum 150 DPI required for legal transcription). Please re-upload 300 DPI flatbed scan.",
-    sha256_hash: "45f0912830192830192830192830192830192830192830192830192830192830",
-    uploaded_at: "2026-10-11T09:10:00Z",
-    tamper_verified: true,
-    malware_scan_status: "clean",
-  },
-];
+export const FIXTURE_DOCUMENTS: DocumentItem[] = [];
 
-export const FIXTURE_AUDIT_EVENTS: AuditEvent[] = [
-  {
-    id: "audit-01",
-    action: "document.immutable_stored",
-    object_type: "document",
-    object_id: "DOC-04",
-    actor_email: "elena.rostova@stanford.edu",
-    created_at: "2026-10-11T13:42:00Z",
-    metadata: {
-      file: "First_Author_Nature_Biotech_Publications.pdf",
-      sha256: "3295c76ac...8164",
-      storage_mode: "private_immutable",
-    },
-  },
-  {
-    id: "audit-02",
-    action: "case.stage_transition",
-    object_type: "case",
-    object_id: "CASE-US-8841",
-    actor_email: "sarah.jenkins@leximmigration.com",
-    created_at: "2026-10-10T17:15:00Z",
-    metadata: {
-      from_stage: "gathering",
-      to_stage: "review",
-      readiness: "82%",
-    },
-  },
-  {
-    id: "audit-03",
-    action: "rbac.tenant_isolated_query",
-    object_type: "organization",
-    object_id: DEMO_ORG_ID,
-    actor_email: "elena.vance@leximmigration.com",
-    created_at: "2026-10-10T09:00:00Z",
-    metadata: {
-      target_branches: ["NYC", "LDN"],
-      cross_tenant_denied: 0,
-    },
-  },
-  {
-    id: "audit-04",
-    action: "security.session_created",
-    object_type: "session",
-    object_id: "sess-88124",
-    actor_email: "sarah.jenkins@leximmigration.com",
-    created_at: "2026-10-09T08:30:00Z",
-    metadata: {
-      ip_address: "192.168.1.104",
-      user_agent: "Chrome 128 / macOS",
-      mfa_verified: true,
-    },
-  },
-];
+export const FIXTURE_AUDIT_EVENTS: AuditEvent[] = [];
 
-export const FIXTURE_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: "notif-01",
-    title: "Document Verification Completed",
-    body: "PhD Degree Certificate for Dr. Elena Rostova was cryptographically verified and matched against US equivalency criteria.",
-    status: "unread",
-    created_at: "2026-10-11T14:10:00Z",
-  },
-  {
-    id: "notif-02",
-    title: "Critical Filing Deadline Alert",
-    body: "CASE-US-8844 (Kenji Sato L-1A) status clock has 14 days remaining before standard processing window closes.",
-    status: "unread",
-    created_at: "2026-10-10T11:00:00Z",
-  },
-  {
-    id: "notif-03",
-    title: "Retainer Payment Received",
-    body: "Invoice #INV-2026-089 for Priya Nair ($4,500.00) successfully cleared trust escrow deposit.",
-    status: "read",
-    created_at: "2026-10-08T16:45:00Z",
-  },
-];
+export const FIXTURE_NOTIFICATIONS: NotificationItem[] = [];
 
-export const FIXTURE_TASKS: CaseTask[] = [
-  {
-    id: "task-01",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "Review expert letter draft from Dr. Venkatesh (MIT)",
-    due_date: "2026-10-18",
-    priority: "critical",
-    is_completed: false,
-    assigned_to: "Sarah Jenkins, Esq.",
-  },
-  {
-    id: "task-02",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    title: "Confirm Google Scholar citation count (currently 842 citations)",
-    due_date: "2026-10-22",
-    priority: "high",
-    is_completed: true,
-    assigned_to: "Sarah Jenkins, Esq.",
-  },
-  {
-    id: "task-03",
-    case_id: "case-02",
-    case_number: "CASE-US-8842",
-    title: "Assemble final Exhibit Tab list for O-1A filing binder",
-    due_date: "2026-10-24",
-    priority: "high",
-    is_completed: false,
-    assigned_to: "Sarah Jenkins, Esq.",
-  },
-  {
-    id: "task-04",
-    case_id: "case-04",
-    case_number: "CASE-US-8844",
-    title: "Obtain certified foreign entity payroll records for past 3 years",
-    due_date: "2026-10-20",
-    priority: "medium",
-    is_completed: false,
-    assigned_to: "David Cho",
-  },
-];
+export const FIXTURE_TASKS: CaseTask[] = [];
 
-export const FIXTURE_AI_FINDINGS: AIFinding[] = [
-  {
-    id: "finding-01",
-    case_id: "case-01",
-    finding_type: "consistency_discrepancy",
-    category: "consistency",
-    severity: "minor",
-    status: "needs_review",
-    title: "Cyrillic Transliteration Name Variation",
-    description: "Passport biodata extracts 'ROSTOVA, YELENA' while profile intake records 'Elena Rostova'. Standard East Slavic transliteration pattern detected.",
-    evidence_text: "Ukrainian Passport Machine Readable Zone: P<UKRROSTOVA<<YELENA vs Intake Form Full Name: Elena Rostova",
-    source_location: { document_id: "doc-01", document_title: "US_Passport_Biodata_Elena_Rostova.pdf", page: 1 },
-    related_documents: [{ document_id: "doc-01", title: "Passport Biodata", category: "identity_passport", page: 1 }],
-    related_fields: [
-      { field_name: "full_name", field_label: "Intake Full Name", original_value: "Elena Rostova", normalized_value: "Elena Rostova" },
-      { field_name: "passport_name", field_label: "Passport Surname/Given", original_value: "ROSTOVA, YELENA", normalized_value: "Yelena Rostova" },
-    ],
-    relevant_requirement: "8 CFR § 204.5(a) - Accurate Identification and Name Concordance",
-    recommended_action: "Disclose 'Yelena Rostova' under Form I-140 Part 3 (Other Names Used) to avoid identity query.",
-    clarification_question: "Does the applicant have foreign educational certificates or publications issued under 'Yelena' to list under aliases?",
-    uncertainty_limitations: "Deterministically matched via Ukrainian BGN/PCGN transliteration table. No confirmed identity contradiction.",
-    is_confirmed_contradiction: false,
-    resolution_history: [],
-    citation: "Matter of Chawathe, 25 I&N Dec. 369 (AAO 2010)",
-  },
-  {
-    id: "finding-02",
-    case_id: "case-01",
-    finding_type: "document_quality",
-    category: "evidence_gap",
-    severity: "critical",
-    status: "needs_review",
-    title: "Missing Pages Detected in PhD Degree Scan",
-    description: "Header on page 1 explicitly states 'Page 1 of 4', but uploaded document contains only 1 page. Coursework transcripts and registrar apostille appear missing.",
-    evidence_text: "Header text extracted on page 1: 'STANFORD UNIVERSITY — OFFICIAL DOCTORAL CONFERRAL (Page 1 of 4)'",
-    source_location: { document_id: "doc-02", document_title: "Stanford_PhD_Diploma_Certificate.pdf", page: 1 },
-    related_documents: [{ document_id: "doc-02", title: "Stanford PhD Diploma", category: "educational_records", page: 1 }],
-    relevant_requirement: "8 CFR § 204.5(k)(3) - Official academic record must be complete and unredacted",
-    recommended_action: "Request client upload complete 4-page unredacted scan including registrar signature and coursework pages.",
-    clarification_question: "Please upload the complete 4-page certified academic diploma including transcripts and registrar certification.",
-    uncertainty_limitations: "Extracted from pagination pattern. Physical pages 2, 3, and 4 are absent from the file stream.",
-    is_confirmed_contradiction: false,
-    resolution_history: [],
-    citation: "8 CFR § 204.5(k)(3)(i)(A)",
-  },
-  {
-    id: "finding-03",
-    case_id: "case-01",
-    finding_type: "apparent_expiration",
-    category: "evidence_gap",
-    severity: "major",
-    status: "needs_review",
-    title: "Passport Nearing 6-Month Expiration Window",
-    description: "Foreign passport validity expires within 6 months of target petition submission date (2026-11-20).",
-    evidence_text: "Passport biodata validity field: EXP 20 NOV 2026",
-    source_location: { document_id: "doc-01", document_title: "Foreign_Passport.pdf", page: 1 },
-    related_documents: [{ document_id: "doc-01", title: "Passport Biodata", category: "identity_passport", page: 1 }],
-    relevant_requirement: "INA § 212(a)(7)(B)(i)(I) - Passport validity requirement (6-month rule)",
-    recommended_action: "Notify client to initiate passport renewal with consulate promptly to avoid travel or visa issuance delays.",
-    clarification_question: "Has the applicant initiated consular passport renewal for expiration in November 2026?",
-    uncertainty_limitations: "Direct date comparison against petition timeline. Expiration date is explicitly printed on document.",
-    is_confirmed_contradiction: false,
-    resolution_history: [],
-    citation: "INA § 212(a)(7)(B)(i)(I)",
-  },
-  {
-    id: "finding-04",
-    case_id: "case-01",
-    finding_type: "form_evidence_conflict",
-    category: "contradiction",
-    severity: "critical",
-    status: "needs_review",
-    title: "Employment Start Overlaps Full-Time Resident Degree",
-    description: "Employment verification claims full-time 40 hr/week engineering employment commenced in Kyiv on 2012-06-01, but bachelor's diploma confirms in-person resident degree program in Kharkiv until 2013-05-30.",
-    evidence_text: "NeuralDynamics verification: 40 hrs/wk from 2012-06-01 vs Kharkiv University enrollment certificate: full-time resident student through May 2013",
-    source_location: { document_id: "doc-03", document_title: "Employment_Verification_NeuralDynamics.pdf", page: 1 },
-    related_documents: [
-      { document_id: "doc-03", title: "Employment Verification", category: "employment_records", page: 1 },
-      { document_id: "doc-02", title: "Academic Record", category: "educational_records", page: 1 },
-    ],
-    related_fields: [
-      { field_name: "employment_start", field_label: "Employment Start Date", original_value: "2012-06-01" },
-      { field_name: "degree_conferral", field_label: "Degree Conferral Date", original_value: "2013-05-30" },
-    ],
-    relevant_requirement: "Matter of Ho, 19 I&N Dec. 582 - Petitioner must resolve inconsistencies in the record with independent objective evidence",
-    recommended_action: "Obtain employer affidavit clarifying student intern or remote contractor status prior to degree completion.",
-    clarification_question: "Was the 2012-2013 engagement conducted remotely or on a part-time student internship basis prior to graduation?",
-    uncertainty_limitations: "Dates verified from source documents. Direct overlap between full-time employment and full-time resident coursework.",
-    is_confirmed_contradiction: true,
-    resolution_history: [],
-    citation: "Matter of Ho, 19 I&N Dec. 582 (Comm. 1988)",
-  },
-  {
-    id: "finding-05",
-    case_id: "case-01",
-    finding_type: "missing_evidence",
-    category: "statutory_criteria",
-    severity: "major",
-    status: "needs_review",
-    title: "EB-1A Statutory Checklist: Major Media Coverage Missing",
-    description: "Statutory checklist for EB-1A Extraordinary Ability requires satisfaction of at least 3 regulatory criteria. Evidence under 8 CFR § 204.5(h)(3)(iii) (Published material about alien in major media) is currently missing from petition dossier.",
-    relevant_requirement: "8 CFR § 204.5(h)(3)(iii) - Published material about the alien in professional or major trade publications or major media",
-    recommended_action: "Request applicant provide clippings, media coverage articles, or recognized press features concerning their AI research.",
-    clarification_question: "Can the applicant provide press articles or profiles in major trade publications (e.g. Wired, IEEE Spectrum, MIT Tech Review)?",
-    uncertainty_limitations: "Evaluation based on uploaded documents. Applicant may have evidence not yet uploaded to the platform.",
-    is_confirmed_contradiction: false,
-    resolution_history: [],
-    citation: "8 CFR § 204.5(h)(3)(iii)",
-  },
-];
+export const FIXTURE_AI_FINDINGS: AIFinding[] = [];
 
 // Local Storage Synchronization Helpers for Fresh State & Persistence
-const isTestEnv =
-  (typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.env.VITEST === "true")) ||
-  (typeof import.meta !== "undefined" && Boolean((import.meta as any).env?.VITEST));
-
 function getStored<T>(key: string, fallback: T): T {
   if (typeof window !== "undefined") {
     try {
@@ -1048,105 +243,13 @@ const SPONSORS_STORAGE_KEY = "documento_sponsors_v3_clean";
 const ENGAGEMENTS_STORAGE_KEY = "documento_engagements_v3_clean";
 const BILLING_INVOICES_STORAGE_KEY = "documento_billing_invoices_v3_clean";
 
-let localFindings: AIFinding[] = getStored(FINDINGS_STORAGE_KEY, isTestEnv ? [...FIXTURE_AI_FINDINGS] : []);
+let localFindings: AIFinding[] = getStored(FINDINGS_STORAGE_KEY, []);
 
-export const FIXTURE_MESSAGES: MessageItem[] = [
-  {
-    id: "msg-01",
-    sender: "Sarah Jenkins, Esq.",
-    sender_role: "attorney",
-    content: "Dr. Rostova, we have reviewed your updated publication list. The 3 Nature Biotechnology papers are exemplary. Please upload your IEEE Senior Membership confirmation when available.",
-    timestamp: "Yesterday at 4:15 PM",
-  },
-  {
-    id: "msg-02",
-    sender: "Dr. Elena Rostova",
-    sender_role: "client",
-    content: "Thank you Sarah! I just requested the official membership certificate from IEEE headquarters. I expect to receive the PDF within 48 hours and will upload it immediately.",
-    timestamp: "Yesterday at 5:30 PM",
-  },
-  {
-    id: "msg-03",
-    sender: "Sarah Jenkins, Esq.",
-    sender_role: "attorney",
-    content: "Excellent. Once that is uploaded, our package readiness score will reach 90% and we will begin drafting the Form I-140 formal petition letter.",
-    timestamp: "Today at 9:15 AM",
-  },
-];
+export const FIXTURE_MESSAGES: MessageItem[] = [];
 
-export const FIXTURE_INVOICES: InvoiceItem[] = [
-  {
-    id: "inv-01",
-    invoice_number: "INV-2026-081",
-    case_number: "CASE-US-8841",
-    client_name: "Dr. Elena Rostova",
-    amount: 5500.0,
-    status: "paid",
-    due_date: "2026-08-15",
-  },
-  {
-    id: "inv-02",
-    invoice_number: "INV-2026-082",
-    case_number: "CASE-US-8841",
-    client_name: "Dr. Elena Rostova",
-    amount: 3500.0,
-    status: "in_trust",
-    due_date: "2026-11-01",
-  },
-  {
-    id: "inv-03",
-    invoice_number: "INV-2026-085",
-    case_number: "CASE-US-8842",
-    client_name: "Marcus Thorne",
-    amount: 6000.0,
-    status: "paid",
-    due_date: "2026-09-10",
-  },
-  {
-    id: "inv-04",
-    invoice_number: "INV-2026-089",
-    case_number: "CASE-UK-3310",
-    client_name: "Priya Nair",
-    amount: 4500.0,
-    status: "outstanding",
-    due_date: "2026-10-30",
-  },
-];
+export const FIXTURE_INVOICES: InvoiceItem[] = [];
 
-export const FIXTURE_CAPACITY: TeamMemberCapacity[] = [
-  {
-    id: "tm-01",
-    name: "Sarah Jenkins, Esq.",
-    role: "Senior Reviewer & Partner",
-    active_cases: 18,
-    max_capacity: 20,
-    open_reviews: 4,
-  },
-  {
-    id: "tm-02",
-    name: "David Cho",
-    role: "Immigration Case Manager",
-    active_cases: 15,
-    max_capacity: 20,
-    open_reviews: 2,
-  },
-  {
-    id: "tm-03",
-    name: "Michael Chen",
-    role: "Document Reviewer",
-    active_cases: 22,
-    max_capacity: 25,
-    open_reviews: 7,
-  },
-  {
-    id: "tm-04",
-    name: "Rebecca Taylor",
-    role: "Immigration Case Manager",
-    active_cases: 12,
-    max_capacity: 20,
-    open_reviews: 1,
-  },
-];
+export const FIXTURE_CAPACITY: TeamMemberCapacity[] = [];
 
 // Initial Day-0 Audit Event and Notification for Clean Slate
 export const INITIAL_AUDIT_EVENT: AuditEvent = {
@@ -1170,19 +273,19 @@ export const INITIAL_NOTIFICATION: NotificationItem = {
 };
 
 // Ensure Day-0 clean slate in browser runtime — purge any legacy demo keys once
-if (typeof window !== "undefined" && !isTestEnv) {
+if (typeof window !== "undefined") {
   purgeLegacyDemoStorageOnce();
 }
 
 // In-memory mutation state with clean localStorage persistence
-let localCases: ImmigrationCase[] = getStored(CASES_STORAGE_KEY, isTestEnv ? [...FIXTURE_CASES] : []);
-let localClients: ClientProfile[] = getStored(CLIENTS_STORAGE_KEY, isTestEnv ? [...FIXTURE_CLIENTS] : []);
-let localDocuments: DocumentItem[] = getStored(DOCS_STORAGE_KEY, isTestEnv ? [...FIXTURE_DOCUMENTS] : []);
-let localAuditEvents: AuditEvent[] = getStored(AUDIT_STORAGE_KEY, isTestEnv ? [...FIXTURE_AUDIT_EVENTS] : []);
-let localNotifications: NotificationItem[] = getStored(NOTIFS_STORAGE_KEY, isTestEnv ? [...FIXTURE_NOTIFICATIONS] : []);
-let localTasks: CaseTask[] = getStored(TASKS_STORAGE_KEY, isTestEnv ? [...FIXTURE_TASKS] : []);
-let localMessages: MessageItem[] = getStored(MESSAGES_STORAGE_KEY, isTestEnv ? [...FIXTURE_MESSAGES] : []);
-let localInvoices: InvoiceItem[] = getStored(INVOICES_STORAGE_KEY, isTestEnv ? [...FIXTURE_INVOICES] : []);
+let localCases: ImmigrationCase[] = getStored(CASES_STORAGE_KEY, []);
+let localClients: ClientProfile[] = getStored(CLIENTS_STORAGE_KEY, []);
+let localDocuments: DocumentItem[] = getStored(DOCS_STORAGE_KEY, []);
+let localAuditEvents: AuditEvent[] = getStored(AUDIT_STORAGE_KEY, []);
+let localNotifications: NotificationItem[] = getStored(NOTIFS_STORAGE_KEY, []);
+let localTasks: CaseTask[] = getStored(TASKS_STORAGE_KEY, []);
+let localMessages: MessageItem[] = getStored(MESSAGES_STORAGE_KEY, []);
+let localInvoices: InvoiceItem[] = getStored(INVOICES_STORAGE_KEY, []);
 
 interface ActiveSessionContext {
   hasSession: boolean;
@@ -1234,15 +337,15 @@ function getActiveSessionContext(fallbackRole: RoleCode = "master_admin"): Activ
 
 function syncFromStorage(): void {
   if (typeof window === "undefined") return;
-  localCases = getStored(CASES_STORAGE_KEY, isTestEnv ? [...FIXTURE_CASES] : []);
-  localClients = getStored(CLIENTS_STORAGE_KEY, isTestEnv ? [...FIXTURE_CLIENTS] : []);
-  localDocuments = getStored(DOCS_STORAGE_KEY, isTestEnv ? [...FIXTURE_DOCUMENTS] : []);
-  localAuditEvents = getStored(AUDIT_STORAGE_KEY, isTestEnv ? [...FIXTURE_AUDIT_EVENTS] : []);
-  localNotifications = getStored(NOTIFS_STORAGE_KEY, isTestEnv ? [...FIXTURE_NOTIFICATIONS] : []);
-  localTasks = getStored(TASKS_STORAGE_KEY, isTestEnv ? [...FIXTURE_TASKS] : []);
-  localFindings = getStored(FINDINGS_STORAGE_KEY, isTestEnv ? [...FIXTURE_AI_FINDINGS] : []);
-  localMessages = getStored(MESSAGES_STORAGE_KEY, isTestEnv ? [...FIXTURE_MESSAGES] : []);
-  localInvoices = getStored(INVOICES_STORAGE_KEY, isTestEnv ? [...FIXTURE_INVOICES] : []);
+  localCases = getStored(CASES_STORAGE_KEY, []);
+  localClients = getStored(CLIENTS_STORAGE_KEY, []);
+  localDocuments = getStored(DOCS_STORAGE_KEY, []);
+  localAuditEvents = getStored(AUDIT_STORAGE_KEY, []);
+  localNotifications = getStored(NOTIFS_STORAGE_KEY, []);
+  localTasks = getStored(TASKS_STORAGE_KEY, []);
+  localFindings = getStored(FINDINGS_STORAGE_KEY, []);
+  localMessages = getStored(MESSAGES_STORAGE_KEY, []);
+  localInvoices = getStored(INVOICES_STORAGE_KEY, []);
 }
 
 function filterByActiveOrg<T extends { organization_id?: string }>(
@@ -1430,11 +533,15 @@ export const api = {
       if (res.ok) {
         const data: ImmigrationCase[] = await res.json();
         const enrichedBackendCases = data.map((c) => {
-          if (c.client_name) return c;
-          const matchedClient = localClients.find((cl) => cl.id === c.client_id);
+          const base = {
+            ...c,
+            readiness_score: c.readiness_score ?? 0,
+          };
+          if (base.client_name) return base;
+          const matchedClient = localClients.find((cl) => cl.id === base.client_id);
           return matchedClient
-            ? { ...c, client_name: `${matchedClient.first_name} ${matchedClient.last_name}`.trim() }
-            : c;
+            ? { ...base, client_name: `${matchedClient.first_name} ${matchedClient.last_name}`.trim() }
+            : base;
         });
         const seenIds = new Set(enrichedBackendCases.map((c) => c.id));
         const seenNumbers = new Set(enrichedBackendCases.map((c) => c.case_number).filter(Boolean));
@@ -1648,6 +755,95 @@ export const api = {
     }
 
     return fallbackResponse(updatedCase);
+  },
+
+  async deleteCase(
+    caseId: string,
+    role: RoleCode = "master_admin"
+  ): Promise<ApiResponse<{ success: boolean; id: string }>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/cases/${caseId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(role),
+      });
+      if (res.ok) {
+        syncFromStorage();
+        const ctx = getActiveSessionContext(role);
+        const caseToDelete = localCases.find((c) => c.id === caseId);
+        purgeLocalCaseArtifacts([caseId]);
+        if (caseToDelete && ctx.hasSession) {
+          incrementAgencyUsageMetrics(caseToDelete.organization_id || ctx.organizationId, {
+            casesDelta: -1,
+          });
+        }
+        return { data: { success: true, id: caseId }, isLiveBackend: true };
+      } else {
+        const isBackendUnavailable =
+          res.status >= 500 ||
+          res.status === 404 ||
+          (res.status === 422 && caseId.startsWith("case-")) ||
+          (res.status === 401 && !getAccessToken());
+        if (!isBackendUnavailable || process.env.NODE_ENV === "production") {
+          const errorData = await res.json().catch(() => null);
+          const errorMsg =
+            errorData?.detail ||
+            errorData?.message ||
+            `Failed to delete case record (Server status ${res.status})`;
+          throw new Error(errorMsg);
+        }
+      }
+    } catch (err: any) {
+      if (err instanceof Error && !err.message.includes("fetch") && err.name !== "TypeError") {
+        throw err;
+      }
+    }
+
+    // Fallback RBAC enforcement: Paralegals, Finance Staff, and Retained Clients cannot delete cases
+    if (
+      role === "retained_client" ||
+      role === "applicant" ||
+      role === "case_worker" ||
+      role === "document_reviewer" ||
+      role === "finance_staff"
+    ) {
+      throw new Error("Paralegals, support staff, and retained clients do not have permission to delete case records.");
+    }
+
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    const caseToDelete = localCases.find((c) => c.id === caseId);
+
+    purgeLocalCaseArtifacts([caseId]);
+
+    if (caseToDelete && ctx.hasSession) {
+      incrementAgencyUsageMetrics(caseToDelete.organization_id || ctx.organizationId, {
+        casesDelta: -1,
+      });
+    }
+
+    localAuditEvents = [
+      {
+        id: `audit-${Date.now()}`,
+        action: "case.deleted",
+        object_type: "case",
+        object_id: caseToDelete?.case_number || caseId,
+        actor_email: ctx.email,
+        created_at: new Date().toISOString(),
+        metadata: {
+          case_id: caseId,
+          case_number: caseToDelete?.case_number,
+          title: caseToDelete?.title,
+          client_id: caseToDelete?.client_id,
+          client_name: caseToDelete?.client_name,
+          deleted_by_role: role,
+          organization_id: ctx.organizationId,
+        },
+      },
+      ...localAuditEvents,
+    ];
+    setStored(AUDIT_STORAGE_KEY, localAuditEvents);
+
+    return fallbackResponse({ success: true, id: caseId });
   },
 
   // Clients
@@ -1915,21 +1111,7 @@ export const api = {
                 c.client_name.toLowerCase().includes(`${clientToDelete.first_name} ${clientToDelete.last_name}`.toLowerCase()))
           );
           const linkedCaseIds = linkedCases.map((c) => c.id);
-          if (linkedCaseIds.length > 0) {
-            localCases = localCases.filter((c) => !linkedCaseIds.includes(c.id));
-            setStored(CASES_STORAGE_KEY, localCases);
-            localDocuments = localDocuments.filter((d) => !linkedCaseIds.includes(d.case_id));
-            setStored(DOCS_STORAGE_KEY, localDocuments);
-            localTasks = localTasks.filter((t) => !linkedCaseIds.includes(t.case_id));
-            setStored(TASKS_STORAGE_KEY, localTasks);
-
-            if (typeof window !== "undefined") {
-              for (const cid of linkedCaseIds) {
-                window.localStorage.removeItem(`documento_initial_info_sheet_${cid}`);
-                window.localStorage.removeItem(`documento_questionnaire_${cid}`);
-              }
-            }
-          }
+          purgeLocalCaseArtifacts(linkedCaseIds);
         }
         localClients = localClients.filter((c) => c.id !== clientId);
         setStored(CLIENTS_STORAGE_KEY, localClients);
@@ -1987,21 +1169,7 @@ export const api = {
 
     const linkedCaseIds = linkedCases.map((c) => c.id);
     if (cascade && linkedCaseIds.length > 0) {
-      localCases = localCases.filter((c) => !linkedCaseIds.includes(c.id));
-      setStored(CASES_STORAGE_KEY, localCases);
-
-      localDocuments = localDocuments.filter((d) => !linkedCaseIds.includes(d.case_id));
-      setStored(DOCS_STORAGE_KEY, localDocuments);
-
-      localTasks = localTasks.filter((t) => !linkedCaseIds.includes(t.case_id));
-      setStored(TASKS_STORAGE_KEY, localTasks);
-
-      if (typeof window !== "undefined") {
-        for (const cid of linkedCaseIds) {
-          window.localStorage.removeItem(`documento_initial_info_sheet_${cid}`);
-          window.localStorage.removeItem(`documento_questionnaire_${cid}`);
-        }
-      }
+      purgeLocalCaseArtifacts(linkedCaseIds);
     }
 
     localClients = localClients.filter((c) => c.id !== clientId);
@@ -2062,7 +1230,7 @@ export const api = {
       // Fallback
     }
     const ctx = getActiveSessionContext();
-    let stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+    let stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
     stored = filterByActiveOrg(stored, ctx);
     if (filters?.case_id) stored = stored.filter((a) => a.case_id === filters.case_id);
     if (filters?.status && filters.status !== "all") {
@@ -2082,7 +1250,7 @@ export const api = {
       });
       if (res.ok) {
         const appt = await res.json();
-        const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+        const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
         setStored(APPOINTMENTS_STORAGE_KEY, [appt, ...stored]);
         return { data: appt, isLiveBackend: true };
       }
@@ -2111,7 +1279,7 @@ export const api = {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+    const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
     setStored(APPOINTMENTS_STORAGE_KEY, [newAppt, ...stored]);
     return fallbackResponse(newAppt);
   },
@@ -2125,7 +1293,7 @@ export const api = {
       });
       if (res.ok) {
         const updated = await res.json();
-        const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+        const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
         setStored(
           APPOINTMENTS_STORAGE_KEY,
           stored.map((a) => (a.id === id ? updated : a))
@@ -2135,7 +1303,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+    const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
     const idx = stored.findIndex((a) => a.id === id);
     const existing = idx !== -1 ? stored[idx] : ({ id } as VisaAppointment);
     const updated = { ...existing, ...data, updated_at: new Date().toISOString() };
@@ -2154,7 +1322,7 @@ export const api = {
         headers: getAuthHeaders(),
       });
       if (res.ok) {
-        const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+        const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
         setStored(
           APPOINTMENTS_STORAGE_KEY,
           stored.filter((a) => a.id !== id)
@@ -2164,7 +1332,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, isTestEnv ? [...FALLBACK_APPOINTMENTS] : []);
+    const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
     setStored(
       APPOINTMENTS_STORAGE_KEY,
       stored.filter((a) => a.id !== id)
@@ -3177,91 +2345,11 @@ export const api = {
     }
 
     syncFromStorage();
-    const currentCase = localCases.find((c) => c.id === caseId) || (isTestEnv ? FIXTURE_CASES.find((c) => c.id === caseId) : undefined);
+    const currentCase = localCases.find((c) => c.id === caseId);
     const category = (currentCase?.visa_category || "").toLowerCase();
     const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
 
-    // Only return legacy case-01 fixture checklist inside Vitest unit tests
-    if (isTestEnv && caseId === "case-01") {
-      const demoReport: ChecklistAuditReport = {
-        jurisdiction: currentCase?.jurisdiction || "US",
-        visa_category: "EB-1A",
-        statutory_framework: "8 CFR § 204.5(h)(3)",
-        items: [
-          {
-            id: "item-01",
-            title: "Identity & Travel Document (Passport)",
-            statutory_citation: "8 CFR § 204.5(a)",
-            description: "Unexpired passport biodata showing nationality and identity",
-            is_mandatory: true,
-            status: "satisfied",
-            matched_documents: [{ document_id: "doc-01", title: "US_Passport_Biodata_Elena_Rostova.pdf", verification_status: "verified" }],
-          },
-          {
-            id: "item-02",
-            title: "Curriculum Vitae / Professional Background",
-            statutory_citation: "8 CFR § 204.5(h)(3)",
-            description: "Comprehensive professional record of career trajectory and honors",
-            is_mandatory: true,
-            status: "satisfied",
-            matched_documents: [{ document_id: "doc-03", title: "Employment_Verification_NeuralDynamics.pdf", verification_status: "under_review" }],
-          },
-          {
-            id: "item-03",
-            title: "Evidence of Participation as a Judge / Peer Review",
-            statutory_citation: "8 CFR § 204.5(h)(3)(iv)",
-            description: "Documented evaluation of the work of others in the same or allied field",
-            is_mandatory: false,
-            status: "satisfied",
-            matched_documents: [{ document_id: "doc-04", title: "Peer_Review_Invitation_IEEE.pdf", verification_status: "verified" }],
-          },
-          {
-            id: "item-04",
-            title: "Original Scientific or Scholarly Contributions",
-            statutory_citation: "8 CFR § 204.5(h)(3)(v)",
-            description: "Evidence of major significance in the field (citations, adoption metrics)",
-            is_mandatory: false,
-            status: "satisfied",
-            matched_documents: [{ document_id: "doc-02", title: "Stanford_PhD_Diploma_Certificate.pdf", verification_status: "verified" }],
-          },
-          {
-            id: "item-05",
-            title: "Authorship of Scholarly Articles",
-            statutory_citation: "8 CFR § 204.5(h)(3)(vi)",
-            description: "Published research in international journals or major industry conferences",
-            is_mandatory: false,
-            status: "satisfied",
-            matched_documents: [{ document_id: "doc-02", title: "Stanford_PhD_Diploma_Certificate.pdf", verification_status: "verified" }],
-          },
-          {
-            id: "item-06",
-            title: "Leading or Critical Role in Distinguished Organizations",
-            statutory_citation: "8 CFR § 204.5(h)(3)(viii)",
-            description: "Letters from founders/executives attesting to critical organizational role",
-            is_mandatory: false,
-            status: "missing",
-            matched_documents: [],
-          },
-          {
-            id: "item-07",
-            title: "Published Material About Alien in Major Media",
-            statutory_citation: "8 CFR § 204.5(h)(3)(iii)",
-            description: "Published articles in major newspapers, trade journals, or media outlets",
-            is_mandatory: false,
-            status: "missing",
-            matched_documents: [],
-          },
-        ],
-        fulfillment_percentage: 71.4,
-        total_mandatory: 2,
-        satisfied_mandatory: 2,
-        missing_items: [
-          "Leading or Critical Role in Distinguished Organizations (8 CFR § 204.5(h)(3)(viii))",
-          "Published Material About Alien in Major Media (8 CFR § 204.5(h)(3)(iii))",
-        ],
-      };
-      return fallbackResponse(demoReport);
-    }
+    // Fallback computes checklist directly from live/local cases and documents below
 
     // Pathway definitions for statutory checklists
     let statutoryFramework = "Immigration Statutory Framework";
@@ -3685,59 +2773,6 @@ export const api = {
       // Fallback
     }
 
-    if (isTestEnv && caseId === "case-01") {
-      const demoSummary: EvidenceBackedSummary = {
-        case_number: "CASE-US-8841",
-        jurisdiction: "US",
-        visa_category: "EB-1A",
-        applicant_name: "Elena Rostova",
-        generated_at: new Date().toISOString(),
-        verified_facts: [
-          { category: "Identity", key: "Passport Number", value: "C09812491", source_document: "US_Passport_Biodata_Elena_Rostova.pdf", source_page: 1 },
-          { category: "Identity", key: "Date of Birth", value: "1988-04-12", source_document: "US_Passport_Biodata_Elena_Rostova.pdf", source_page: 1 },
-          { category: "Education", key: "Doctor of Philosophy (Computer Science)", value: "Stanford University (conferred 2018-06-15)", source_document: "Stanford_PhD_Diploma_Certificate.pdf", source_page: 1 },
-          { category: "Employment", key: "Senior AI Principal Research Scientist", value: "NeuralDynamics Inc. ($245k/yr since 2018-09-01)", source_document: "Employment_Verification_NeuralDynamics.pdf", source_page: 1 },
-        ],
-        potential_discrepancies: [
-          {
-            title: "Cyrillic Transliteration Name Variation",
-            severity: "minor",
-            details: "Passport records 'Yelena' while petition uses 'Elena'. Standard Cyrillic transliteration.",
-            recommendation: "Disclose alias on Form I-140 Part 3.",
-          },
-          {
-            title: "Missing Pages in Academic Diploma",
-            severity: "critical",
-            details: "Uploaded document contains 1 page but header states 'Page 1 of 4'.",
-            recommendation: "Obtain complete 4-page certified academic diploma including transcripts.",
-          },
-        ],
-        missing_statutory_evidence: [
-          "Major media coverage (8 CFR § 204.5(h)(3)(iii))",
-          "Letters attesting to critical role (8 CFR § 204.5(h)(3)(viii))",
-        ],
-        suggested_clarification_questions: [
-          {
-            target: "client",
-            question: "Does the applicant have foreign educational certificates or publications issued under 'Yelena' to list under aliases on Form I-140?",
-            rationale: "Ensures USCIS background check captures all prior publications and degrees without RFE.",
-          },
-          {
-            target: "client",
-            question: "Please upload the complete 4-page certified academic diploma including transcripts and registrar certification.",
-            rationale: "USCIS requires unredacted complete academic credentials under 8 CFR § 204.5(k)(3).",
-          },
-        ],
-        uncertainty_disclosures: [
-          "AI findings are analytical aids and do not constitute formal legal conclusions or guarantee petition approval.",
-          "Transliteration variance was evaluated using rule-based BGN/PCGN linguistic tables; official civil records must verify legal aliases.",
-          "Checklist criteria evaluated based only on documents uploaded to date.",
-        ],
-        summary_markdown: `### Evidence-Backed Case Summary — CASE-US-8841\n**Applicant:** Elena Rostova | **Category:** EB-1A Extraordinary Ability\n\n#### Verified Facts\n- **Passport Number:** C09812491 [US_Passport_Biodata_Elena_Rostova.pdf, Page 1]\n- **Degree Conferred:** Ph.D. in Computer Science, Stanford University [Stanford_PhD_Diploma_Certificate.pdf, Page 1]\n- **Current Role:** Senior AI Principal Research Scientist [Employment_Verification_NeuralDynamics.pdf, Page 1]\n\n#### Open Review Items\n1. **Critical:** Missing pages in PhD degree record (1 of 4 pages uploaded).\n2. **Major:** Passport expiration within 6 months.\n3. **Minor:** Transliteration difference ('Yelena' vs 'Elena').`,
-      };
-      return fallbackResponse(demoSummary);
-    }
-
     syncFromStorage();
     const currentCase = localCases.find((c) => c.id === caseId);
     const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
@@ -3785,7 +2820,7 @@ export const api = {
       summary_markdown:
         verifiedFacts.length > 0
           ? `### Evidence-Backed Case Summary — ${caseNumber}\n**Applicant:** ${applicantName} | **Category:** ${visaCategory}\n\n#### Uploaded Evidence (${caseDocs.length} file${caseDocs.length === 1 ? "" : "s"})\n` +
-            caseDocs.map((d) => `- **${d.title}** (${d.category}) — Status: ${d.verification_status || d.status}`).join("\n")
+          caseDocs.map((d) => `- **${d.title}** (${d.category}) — Status: ${d.verification_status || d.status}`).join("\n")
           : `### Evidence-Backed Case Summary — ${caseNumber}\n**Applicant:** ${applicantName} | **Category:** ${visaCategory}\n\nNo evidentiary documents have been uploaded to this petition yet. Upload primary identity and pathway-required documents to populate verified facts.`,
     };
 
@@ -3997,19 +3032,6 @@ export const api = {
   async getTeamCapacity(): Promise<ApiResponse<TeamMemberCapacity[]>> {
     syncFromStorage();
     const ctx = getActiveSessionContext();
-    if (isTestEnv && !ctx.hasSession) {
-      const calculated = FIXTURE_CAPACITY.map((tm) => {
-        const activeCount = localCases.filter(
-          (c) => (c.assigned_manager || "").toLowerCase().includes(tm.name.split(" ")[0].toLowerCase())
-        ).length;
-        return {
-          ...tm,
-          active_cases: activeCount,
-          open_reviews: localDocuments.filter((d) => d.status === "under_review").length,
-        };
-      });
-      return fallbackResponse(calculated);
-    }
 
     const orgCases = filterByActiveOrg(localCases, ctx);
     const orgCaseIds = getOrgCaseIds(ctx);
@@ -4042,8 +3064,8 @@ export const api = {
         roster.push({
           id: inv.id,
           name: inv.fullName,
-          role: inv.role === "paralegal" ? "Paralegal" : "Case Manager",
-          maxCapacity: 20,
+          role: formatStaffRoleLabel(inv.role),
+          maxCapacity: inv.nominalCapacity || 20,
         });
       }
     }
@@ -4143,10 +3165,7 @@ export const api = {
 
     syncFromStorage();
     const ctx = getActiveSessionContext("case_manager");
-    const orgClients =
-      isTestEnv && !ctx.hasSession && localClients.length === 0
-        ? FIXTURE_CLIENTS
-        : filterByActiveOrg(localClients, ctx);
+    const orgClients = filterByActiveOrg(localClients, ctx);
     const matches: DuplicateCandidate[] = [];
     if (payload.email) {
       const match = orgClients.find(
@@ -4408,13 +3427,7 @@ export const api = {
     const newNote: CaseNote = {
       id: `note-${Date.now()}`,
       case_id: caseId,
-      author_name: ctx.hasSession
-        ? ctx.fullName
-        : isTestEnv
-          ? role === "retained_client"
-            ? "Dr. Elena Rostova"
-            : "Sarah Jenkins, Esq."
-          : "Authorized Counsel",
+      author_name: ctx.hasSession ? ctx.fullName : "Authorized Counsel",
       note_type: payload.note_type as any,
       content: payload.content,
       is_client_visible: payload.is_client_visible,
@@ -4911,25 +3924,14 @@ export const api = {
 
     syncFromStorage();
     const ctx = getActiveSessionContext(role);
-    if (isTestEnv && !ctx.hasSession) {
-      return fallbackResponse({
-        evaluation_id: "eval-eb1a-demo",
-        case_id: caseId,
-        rule_set_version_id: "ver-eb1a-100",
-        version_number: "1.0.0",
-        status: "needs_review",
-        overall_fulfillment_percentage: 75.0,
-        evaluated_at: new Date().toISOString(),
-        is_superseded: false,
-        results: FALLBACK_EVALUATION.results,
-      });
-    }
 
     const currentCase = localCases.find((c) => c.id === caseId);
     const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
     const verifiedPassport = caseDocs.some((d) => d.category === "identity_passport" && d.status === "verified");
     const hasPassport = caseDocs.some((d) => d.category === "identity_passport");
     const hasSupporting = caseDocs.filter((d) => d.category !== "identity_passport").length > 0;
+    const passportDocIds = caseDocs.filter((d) => d.category === "identity_passport").map((d) => d.id);
+    const supportingDocIds = caseDocs.filter((d) => d.category !== "identity_passport").map((d) => d.id);
     const dynamicRequirements: CaseRequirementEvaluation["results"]["requirements"] = [
       {
         requirement_id: `req-id-${caseId}`,
@@ -4938,16 +3940,20 @@ export const api = {
         category: "mandatory_identity",
         statutory_citation: `${currentCase?.jurisdiction || "STATUTORY"} — Travel & Identity Verification`,
         is_applicable: true,
+        is_mandatory: true,
         status: verifiedPassport ? "complete" : hasPassport ? "needs_review" : "missing",
-        explanation: verifiedPassport
-          ? "Verified passport biodata on file."
-          : hasPassport
-            ? "Passport uploaded; awaiting legal verification."
-            : "Mandatory identity passport has not been uploaded yet.",
-        requires_human_review: false,
-        blocking_dependencies: [],
-        matched_document_ids: caseDocs.filter((d) => d.category === "identity_passport").map((d) => d.id),
-      } as any,
+        evidence_matched: passportDocIds,
+        validation_details: [
+          verifiedPassport
+            ? "Verified passport biodata on file."
+            : hasPassport
+              ? "Passport uploaded; awaiting legal verification."
+              : "Mandatory identity passport has not been uploaded yet.",
+        ],
+        blocking_reasons: [],
+        requires_human_signoff: false,
+        human_signoff_completed: verifiedPassport,
+      },
       {
         requirement_id: `req-ev-${caseId}`,
         code: "PATHWAY_CORE_EVIDENCE",
@@ -4955,14 +3961,18 @@ export const api = {
         category: "eligibility",
         statutory_citation: `${currentCase?.jurisdiction || "STATUTORY"} — ${currentCase?.visa_category || "Pathway"} Criteria`,
         is_applicable: true,
+        is_mandatory: true,
         status: hasSupporting ? "needs_review" : "missing",
-        explanation: hasSupporting
-          ? `${caseDocs.filter((d) => d.category !== "identity_passport").length} supporting document(s) uploaded for counsel review.`
-          : "Supporting eligibility evidence has not been uploaded yet.",
-        requires_human_review: true,
-        blocking_dependencies: ["IDENTITY_PASSPORT"],
-        matched_document_ids: caseDocs.filter((d) => d.category !== "identity_passport").map((d) => d.id),
-      } as any,
+        evidence_matched: supportingDocIds,
+        validation_details: [
+          hasSupporting
+            ? `${supportingDocIds.length} supporting document(s) uploaded for counsel review.`
+            : "Supporting eligibility evidence has not been uploaded yet.",
+        ],
+        blocking_reasons: verifiedPassport ? [] : ["IDENTITY_PASSPORT"],
+        requires_human_signoff: true,
+        human_signoff_completed: false,
+      },
     ];
     const completeCount = dynamicRequirements.filter((r) => r.status === "complete").length;
     const missingCount = dynamicRequirements.filter((r) => r.status === "missing").length;
@@ -5018,10 +4028,6 @@ export const api = {
       // Fallback
     }
 
-    const ctx = getActiveSessionContext(role);
-    if (isTestEnv && !ctx.hasSession) {
-      return fallbackResponse([FALLBACK_EVALUATION]);
-    }
     const storedEvals = getStored<Record<string, CaseRequirementEvaluation[]>>("documento_case_evaluations_v3_clean", {});
     return fallbackResponse(storedEvals[caseId] || []);
   },
@@ -5205,8 +4211,8 @@ export const FALLBACK_RULE_VERSIONS: RuleSetVersion[] = [
     change_summary: "Initial codified baseline pilot for 8 CFR § 204.5(h) 10 criteria plus identity and intent mandates.",
     published_at: "2023-09-12T00:00:00Z",
     approval_history: [
-      { stage: "review", action: "approved", actor_id: "Senior Reviewer (Sarah Jenkins)", timestamp: "2023-09-11T14:00:00Z", comments: "Validated against USCIS Policy Manual Vol 6 Part F" },
-      { stage: "publication", action: "published", actor_id: "Managing Partner (Elena Vance)", timestamp: "2023-09-12T09:00:00Z", comments: "Published as operational pilot baseline" },
+      { stage: "review", action: "approved", actor_id: "Senior Reviewer", timestamp: "2023-09-11T14:00:00Z", comments: "Validated against USCIS Policy Manual Vol 6 Part F" },
+      { stage: "publication", action: "published", actor_id: "Managing Partner", timestamp: "2023-09-12T09:00:00Z", comments: "Published as operational pilot baseline" },
     ],
     created_at: "2023-09-12T00:00:00Z",
     requirements_count: 12,
@@ -5323,386 +4329,47 @@ export const FALLBACK_REQUIREMENTS: RuleRequirement[] = [
 ];
 
 export const FALLBACK_EVALUATION: CaseRequirementEvaluation = {
-  id: "eval-eb1a-demo",
-  case_id: "case-01",
-  rule_set_version_id: "ver-eb1a-100",
+  id: "",
+  case_id: "",
+  rule_set_version_id: "",
   version_number: "1.0.0",
   status: "needs_review",
-  overall_fulfillment_percentage: 75.0,
-  evaluated_at: "2026-10-11T12:30:00Z",
+  overall_fulfillment_percentage: 0,
+  evaluated_at: "",
   is_superseded: false,
   results: {
     summary: {
-      total: 6,
-      applicable: 6,
-      complete: 3,
-      missing: 1,
-      needs_review: 2,
+      total: 0,
+      applicable: 0,
+      complete: 0,
+      missing: 0,
+      needs_review: 0,
       blocked: 0,
       expired: 0,
       not_applicable: 0,
       unknown: 0,
     },
     version_number: "1.0.0",
-    rule_set_id: "ruleset-eb1a-01",
-    requirements: [
-      {
-        code: "EB1A-MAND-ID",
-        title: "Valid Unexpired Identity & Passport",
-        requirement_id: "req-eb1a-id",
-        category: "mandatory_identity",
-        statutory_citation: "8 CFR § 204.5(a); INA § 221",
-        status: "complete",
-        is_applicable: true,
-        is_mandatory: true,
-        evidence_matched: ["doc-01"],
-        validation_details: ["All evidence requirements, declarative validations, and approvals satisfied."],
-        blocking_reasons: [],
-        requires_human_signoff: true,
-        human_signoff_completed: true,
-      },
-      {
-        code: "EB1A-MAND-INTENT",
-        title: "Intent to Continue Work in Field of Expertise in the United States",
-        requirement_id: "req-eb1a-intent",
-        category: "statutory_mandate",
-        statutory_citation: "8 CFR § 204.5(h)(5)",
-        status: "needs_review",
-        is_applicable: true,
-        is_mandatory: true,
-        evidence_matched: ["doc-04"],
-        validation_details: ["Evidence matches all criteria. Awaiting human legal professional sign-off."],
-        blocking_reasons: [],
-        requires_human_signoff: true,
-        human_signoff_completed: false,
-      },
-      {
-        code: "EB1A-EVID-ARTICLES",
-        title: "Authorship of Scholarly Articles in Professional Publications",
-        requirement_id: "req-eb1a-articles",
-        category: "regulatory_criteria",
-        statutory_citation: "8 CFR § 204.5(h)(3)(vi)",
-        status: "complete",
-        is_applicable: true,
-        is_mandatory: false,
-        evidence_matched: ["doc-02"],
-        validation_details: ["Field 'article_title' verified present", "Human verification confirmed"],
-        blocking_reasons: [],
-        requires_human_signoff: true,
-        human_signoff_completed: true,
-      },
-      {
-        code: "EB1A-EVID-JUDGING",
-        title: "Participation as a Judge of the Work of Others",
-        requirement_id: "req-eb1a-judging",
-        category: "regulatory_criteria",
-        statutory_citation: "8 CFR § 204.5(h)(3)(iv)",
-        status: "complete",
-        is_applicable: true,
-        is_mandatory: false,
-        evidence_matched: ["doc-03"],
-        validation_details: ["Verified peer reviewer status for IEEE Transactions"],
-        blocking_reasons: [],
-        requires_human_signoff: true,
-        human_signoff_completed: true,
-      },
-      {
-        code: "EB1A-EVID-CONTRIBUTION",
-        title: "Original Contributions of Major Significance in the Field",
-        requirement_id: "req-eb1a-contribution",
-        category: "regulatory_criteria",
-        statutory_citation: "8 CFR § 204.5(h)(3)(v)",
-        status: "needs_review",
-        is_applicable: true,
-        is_mandatory: false,
-        evidence_matched: ["doc-05"],
-        validation_details: ["2 recommendation letters submitted. Awaiting attorney review of independent standing."],
-        blocking_reasons: [],
-        requires_human_signoff: true,
-        human_signoff_completed: false,
-      },
-      {
-        code: "EB1A-EVID-AWARDS",
-        title: "Nationally or Internationally Recognized Prizes or Awards",
-        requirement_id: "req-eb1a-awards",
-        category: "regulatory_criteria",
-        statutory_citation: "8 CFR § 204.5(h)(3)(i)",
-        status: "missing",
-        is_applicable: true,
-        is_mandatory: false,
-        evidence_matched: [],
-        validation_details: ["Missing required evidence. Expected at least 1 document(s) in category: award_certificate"],
-        blocking_reasons: ["evidence_missing"],
-        requires_human_signoff: true,
-        human_signoff_completed: false,
-      },
-    ],
+    rule_set_id: "",
+    requirements: [],
   },
 };
 
 // --- PHASE 7 FALLBACK FIXTURES & API CLIENTS ---
 
-export const FALLBACK_DOCUMENT_REQUESTS: DocumentRequestItem[] = [
-  {
-    id: "req-01",
-    case_id: "case-01",
-    requested_from_client_id: "client-01",
-    title: "IEEE Senior Member Grade Certificate",
-    description: "Official confirmation of IEEE Senior Member grade issued by the IEEE Executive Committee.",
-    category: "supporting_evidence",
-    rationale: "Required under 8 CFR § 204.5(h)(3)(ii) to satisfy the criteria for membership in associations requiring outstanding achievements.",
-    statutory_requirement_code: "EB1A-CRIT-MEMBERSHIP",
-    accepted_formats: ["application/pdf", "image/png", "image/jpeg"],
-    acceptable_alternatives: "If official certificate is delayed, submit IEEE official membership card accompanied by membership portal confirmation screenshot.",
-    due_date: "2026-11-01T00:00:00Z",
-    instructions: "Please upload the high-resolution PDF certificate directly issued by IEEE.",
-    translation_guidance: "If certificate is issued in another language, attach a certified English translation.",
-    status: "requested",
-    status_history: [
-      {
-        status: "requested",
-        changed_by: "Sarah Jenkins, Esq.",
-        timestamp: "2026-10-01T10:00:00Z",
-        notes: "Initial evidence request issued by case manager.",
-      },
-    ],
-    created_at: "2026-10-01T10:00:00Z",
-    updated_at: "2026-10-01T10:00:00Z",
-    comments_count: 1,
-  },
-  {
-    id: "req-02",
-    case_id: "case-01",
-    requested_from_client_id: "client-01",
-    title: "Certified English Translation of Master's Diploma",
-    description: "Certified translation of Ukrainian National Academy of Sciences diploma.",
-    category: "educational_credential",
-    rationale: "Under 8 CFR § 103.2(b)(3), any foreign language document must be submitted with a complete English translation and certification of translator competence.",
-    statutory_requirement_code: "8 CFR § 103.2(b)(3)",
-    accepted_formats: ["application/pdf"],
-    acceptable_alternatives: "ATA-certified translation or letter from a professional translation agency.",
-    due_date: "2026-10-25T00:00:00Z",
-    instructions: "Ensure the certification of competence and translator signature is visibly stamped on the final page.",
-    translation_guidance: "Mandatory ATA or notarized translator certification required.",
-    status: "rejected",
-    fulfilled_document_id: "doc-legacy-scan",
-    rejection_reason: "Low resolution photocopy. Transcripts page 2 is blurred and unreadable. Translator certificate was missing signature and ATA accreditation stamp. Please upload certified version.",
-    status_history: [
-      {
-        status: "requested",
-        changed_by: "Sarah Jenkins, Esq.",
-        timestamp: "2026-09-15T09:00:00Z",
-      },
-      {
-        status: "submitted",
-        changed_by: "Dr. Elena Rostova",
-        timestamp: "2026-09-20T14:30:00Z",
-        notes: "Uploaded initial translation scan.",
-      },
-      {
-        status: "rejected",
-        changed_by: "Sarah Jenkins, Esq.",
-        timestamp: "2026-09-22T11:15:00Z",
-        rejection_reason: "Low resolution photocopy. Transcripts page 2 is blurred and unreadable. Translator certificate was missing signature and ATA accreditation stamp. Please upload certified version.",
-      },
-    ],
-    created_at: "2026-09-15T09:00:00Z",
-    updated_at: "2026-09-22T11:15:00Z",
-    comments_count: 2,
-  },
-  {
-    id: "req-04",
-    case_id: "case-01",
-    requested_from_client_id: "client-01",
-    title: "Official Master's Degree Diploma & Transcripts",
-    description: "Certified university graduation diploma and complete academic transcripts.",
-    category: "educational_credential",
-    rationale: "Required to substantiate the advanced degree prerequisite under 8 CFR § 204.5(k)(3).",
-    statutory_requirement_code: "8 CFR § 204.5(k)(3)",
-    accepted_formats: ["application/pdf"],
-    acceptable_alternatives: "Official registrar transcript with sealed degree conferral verification letter.",
-    due_date: "2026-11-15T00:00:00Z",
-    instructions: "Please upload full color scan of front and back including university seal.",
-    translation_guidance: "Include certified English translation if original is in Ukrainian.",
-    status: "submitted",
-    fulfilled_document_id: "doc-04-sub",
-    status_history: [
-      {
-        status: "requested",
-        changed_by: "Sarah Jenkins, Esq.",
-        timestamp: "2026-10-02T10:00:00Z",
-      },
-      {
-        status: "submitted",
-        changed_by: "Dr. Elena Rostova",
-        timestamp: "2026-10-05T16:20:00Z",
-        notes: "Uploaded original diplomas and translation package.",
-      },
-    ],
-    created_at: "2026-10-02T10:00:00Z",
-    updated_at: "2026-10-05T16:20:00Z",
-    comments_count: 1,
-  },
-  {
-    id: "req-03",
-    case_id: "case-01",
-    requested_from_client_id: "client-01",
-    title: "Unexpired Foreign Passport Biographical Page",
-    description: "Color scan of unexpired passport identification page.",
-    category: "identity_document",
-    rationale: "Statutory identification prerequisite under 8 CFR § 204.5(a).",
-    statutory_requirement_code: "EB1A-MAND-ID",
-    accepted_formats: ["application/pdf", "image/png", "image/jpeg"],
-    due_date: "2026-09-01T00:00:00Z",
-    status: "approved",
-    fulfilled_document_id: "doc-01",
-    status_history: [
-      {
-        status: "requested",
-        changed_by: "Sarah Jenkins, Esq.",
-        timestamp: "2026-08-15T10:00:00Z",
-      },
-      {
-        status: "submitted",
-        changed_by: "Dr. Elena Rostova",
-        timestamp: "2026-08-16T12:00:00Z",
-      },
-      {
-        status: "approved",
-        changed_by: "Sarah Jenkins, Esq.",
-        timestamp: "2026-08-17T09:00:00Z",
-        notes: "Passport validity confirmed through 2031.",
-      },
-    ],
-    created_at: "2026-08-15T10:00:00Z",
-    updated_at: "2026-08-17T09:00:00Z",
-    comments_count: 0,
-  },
-];
+export const FALLBACK_DOCUMENT_REQUESTS: DocumentRequestItem[] = [];
 
-export const FALLBACK_MESSAGE_THREADS: MessageThreadItem[] = [
-  {
-    id: "thread-01",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    subject: "EB-1A Petition Strategy & Evidentiary Roadmap",
-    thread_type: "case_update",
-    status: "open",
-    messages_count: 3,
-    unread_count: 1,
-    last_message_preview: "We have finalized the exhibit indexing for your scholarly citations.",
-    created_at: "2026-10-02T10:00:00Z",
-    updated_at: "2026-10-10T15:30:00Z",
-  },
-  {
-    id: "thread-02",
-    case_id: "case-01",
-    case_number: "CASE-US-8841",
-    subject: "IEEE Expert Testimonial Guidance",
-    thread_type: "client_inquiry",
-    status: "open",
-    messages_count: 2,
-    unread_count: 0,
-    last_message_preview: "Thank you for the template; I sent it to Prof. Vance.",
-    created_at: "2026-10-05T14:00:00Z",
-    updated_at: "2026-10-08T11:20:00Z",
-  },
-];
+export const FALLBACK_MESSAGE_THREADS: MessageThreadItem[] = [];
 
-export const FALLBACK_THREAD_MESSAGES: ThreadMessageItem[] = [
-  {
-    id: "msg-01",
-    thread_id: "thread-01",
-    sender_id: "staff-01",
-    sender_name: "Sarah Jenkins, Esq.",
-    sender_role: "lawyer",
-    content: "Hello Dr. Rostova, we reviewed your Google Scholar profile and confirmed over 840 citations across 14 journal articles.",
-    is_internal: false,
-    attachment_document_ids: ["doc-02"],
-    delivery_status: "delivered",
-    read_at: "2026-10-02T11:00:00Z",
-    delivered_at: "2026-10-02T10:05:00Z",
-    created_at: "2026-10-02T10:00:00Z",
-  },
-  {
-    id: "msg-02",
-    thread_id: "thread-01",
-    sender_id: "client-01",
-    sender_name: "Dr. Elena Rostova",
-    sender_role: "client",
-    content: "Thank you Sarah! I also uploaded my IEEE Senior Member confirmation and the peer review records.",
-    is_internal: false,
-    attachment_document_ids: [],
-    delivery_status: "delivered",
-    read_at: undefined,
-    delivered_at: "2026-10-02T12:35:00Z",
-    created_at: "2026-10-02T12:30:00Z",
-  },
-  {
-    id: "msg-03",
-    thread_id: "thread-01",
-    sender_id: "staff-01",
-    sender_name: "Sarah Jenkins, Esq.",
-    sender_role: "lawyer",
-    content: "INTERNAL STRATEGY: Kazarian prong 1 satisfied for 3 criteria (articles, judging, original). Drafting prong 2 final merits brief.",
-    is_internal: true,
-    attachment_document_ids: [],
-    delivery_status: "delivered",
-    read_at: undefined,
-    delivered_at: "2026-10-10T15:30:00Z",
-    created_at: "2026-10-10T15:30:00Z",
-  },
-];
+export const FALLBACK_THREAD_MESSAGES: ThreadMessageItem[] = [];
 
 export const FALLBACK_WAITING_STATE: WaitingStateData = {
-  waiting_on_client_count: 2,
-  waiting_on_firm_count: 2,
-  primary_next_action: {
-    id: "req-01",
-    type: "document_request",
-    title: "Upload IEEE Senior Member Grade Certificate",
-    description: "Required to document membership in associations requiring outstanding achievement (8 CFR § 204.5(h)(3)(ii)).",
-    due_date: "2026-11-01T00:00:00Z",
-    priority: "high",
-    action_url: "/portal/requests/req-01",
-  },
-  waiting_on_client: [
-    {
-      id: "req-01",
-      type: "document_request",
-      title: "Upload IEEE Senior Member Grade Certificate",
-      description: "Required to document membership in associations requiring outstanding achievement.",
-      due_date: "2026-11-01T00:00:00Z",
-      priority: "high",
-      action_url: "/portal/requests/req-01",
-    },
-    {
-      id: "req-02",
-      type: "document_request",
-      title: "Action Needed: Re-upload Master's Diploma Translation",
-      description: "Translator certificate was missing signature and ATA accreditation stamp. Please upload certified version.",
-      due_date: "2026-10-25T00:00:00Z",
-      priority: "critical",
-      action_url: "/portal/requests/req-02",
-    },
-  ],
-  waiting_on_firm: [
-    {
-      id: "firm-01",
-      type: "drafting",
-      title: "Formal Legal Brief & Kazarian Two-Part Argument Drafting",
-      description: "Our Senior Immigration Attorney is synthesizing your exhibits into the formal USCIS petition brief.",
-      priority: "medium",
-    },
-    {
-      id: "firm-02",
-      type: "firm_review",
-      title: "Review of Submitted Recommendation Testimonial Letters",
-      description: "Legal team is reviewing the independent standing of your external expert testimonials.",
-      priority: "medium",
-    },
-  ],
-  profile_completeness_percentage: 85.0,
+  waiting_on_client_count: 0,
+  waiting_on_firm_count: 0,
+  primary_next_action: undefined,
+  waiting_on_client: [],
+  waiting_on_firm: [],
+  profile_completeness_percentage: 0,
   onboarding_completed: false,
 };
 
@@ -5769,8 +4436,7 @@ export async function fetchDocumentRequests(caseId?: string, statusFilter?: stri
   }
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
-  let filtered = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  let filtered = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, []);
   if (ctx.hasSession) {
     const orgCaseIds = getOrgCaseIds(ctx);
     filtered = filtered.filter((r) => !r.case_id || orgCaseIds.has(r.case_id));
@@ -5814,8 +4480,7 @@ export async function createDocumentRequest(payload: Partial<DocumentRequestItem
     updated_at: new Date().toISOString(),
     comments_count: 0,
   };
-  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
-  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, []);
   setStored(DOC_REQUESTS_STORAGE_KEY, [created, ...stored]);
   return created;
 }
@@ -5838,8 +4503,7 @@ export async function respondToDocumentRequest(
     }
   }
   const ctx = getActiveSessionContext("retained_client");
-  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
-  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, []);
   const item = stored.find((r) => r.id === requestId);
   if (item) {
     item.status = "submitted";
@@ -5876,8 +4540,7 @@ export async function reviewDocumentRequest(
     }
   }
   const ctx = getActiveSessionContext("case_manager");
-  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
-  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, []);
   const item = stored.find((r) => r.id === requestId);
   if (item) {
     item.status = decision;
@@ -5913,8 +4576,7 @@ export async function replaceDocumentRequestEvidence(
     }
   }
   const ctx = getActiveSessionContext("retained_client");
-  const defaultPool = isTestEnv && !ctx.hasSession ? [...FALLBACK_DOCUMENT_REQUESTS] : [];
-  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, defaultPool);
+  const stored = getStored<DocumentRequestItem[]>(DOC_REQUESTS_STORAGE_KEY, []);
   const item = stored.find((r) => r.id === requestId);
   if (item) {
     item.status = "submitted";
@@ -5944,10 +4606,6 @@ export async function fetchMessageThreads(caseId?: string): Promise<MessageThrea
   }
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession) {
-    if (localCases.length === 0) return [];
-    return [...FALLBACK_MESSAGE_THREADS];
-  }
 
   let threads = getStored<MessageThreadItem[]>(MSG_THREADS_STORAGE_KEY, []);
   const orgCaseIds = getOrgCaseIds(ctx);
@@ -5991,11 +4649,6 @@ export async function fetchThreadMessages(threadId: string): Promise<ThreadMessa
     }
   }
   syncFromStorage();
-  const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession) {
-    if (localCases.length === 0) return [];
-    return FALLBACK_THREAD_MESSAGES.filter((m) => m.thread_id === threadId);
-  }
   const stored = getStored<ThreadMessageItem[]>(THREAD_MSGS_STORAGE_KEY, []);
   return stored.filter((m) => m.thread_id === threadId);
 }
@@ -6032,12 +4685,8 @@ export async function postThreadMessage(
     delivery_status: "delivered",
     created_at: new Date().toISOString(),
   };
-  if (isTestEnv && !ctx.hasSession) {
-    FALLBACK_THREAD_MESSAGES.push(msg);
-  } else {
-    const stored = getStored<ThreadMessageItem[]>(THREAD_MSGS_STORAGE_KEY, []);
-    setStored(THREAD_MSGS_STORAGE_KEY, [...stored, msg]);
-  }
+  const stored = getStored<ThreadMessageItem[]>(THREAD_MSGS_STORAGE_KEY, []);
+  setStored(THREAD_MSGS_STORAGE_KEY, [...stored, msg]);
   return msg;
 }
 
@@ -6053,31 +4702,17 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
   }
   syncFromStorage();
   const ctx = getActiveSessionContext("retained_client");
-  if (isTestEnv && !ctx.hasSession) {
-    if (localCases.length === 0) {
-      return {
-        waiting_on_client_count: 0,
-        waiting_on_firm_count: 0,
-        primary_next_action: null as any,
-        waiting_on_client: [],
-        waiting_on_firm: [],
-        profile_completeness_percentage: 0,
-        onboarding_completed: false,
-      };
-    }
-    return { ...FALLBACK_WAITING_STATE };
-  }
 
   const orgCases = filterByActiveOrg(localCases, ctx);
   const clientScopedCases =
     ctx.hasSession && (ctx.role === "retained_client" || ctx.role === "applicant")
       ? orgCases.filter(
-          (c) =>
-            c.client_id === ctx.userId ||
-            (c.client_name &&
-              ctx.fullName &&
-              c.client_name.trim().toLowerCase() === ctx.fullName.trim().toLowerCase())
-        )
+        (c) =>
+          c.client_id === ctx.userId ||
+          (c.client_name &&
+            ctx.fullName &&
+            c.client_name.trim().toLowerCase() === ctx.fullName.trim().toLowerCase())
+      )
       : orgCases;
   const targetCase = caseId
     ? orgCases.find((c) => c.id === caseId)
@@ -6196,10 +4831,7 @@ export async function fetchClientProfile(): Promise<ClientProfileData> {
       completeness_score: clientCases.length > 0 ? (clientCases[0].readiness_score || 40) : 20,
     };
   }
-  if (isTestEnv && !ctx.hasSession) {
-    return { ...FALLBACK_CLIENT_PROFILE };
-  }
-  const nameParts = (ctx.fullName || "").trim().split(/\s+/);
+  const nameParts = ctx.hasSession ? (ctx.fullName || "").trim().split(/\s+/) : [];
   const firstName = nameParts[0] || "";
   const lastName = nameParts.slice(1).join(" ");
   return {
@@ -6229,9 +4861,6 @@ export async function fetchQuestionnaires(caseId?: string): Promise<ClientQuesti
   }
   syncFromStorage();
   const ctx = getActiveSessionContext("retained_client");
-  if (isTestEnv && !ctx.hasSession) {
-    return [{ ...FALLBACK_QUESTIONNAIRE }];
-  }
   const scopeKey = caseId || (ctx.hasSession ? ctx.userId : "anonymous");
   const storedMap = getStored<Record<string, ClientQuestionnaireItem>>("documento_questionnaires_v3_clean", {});
   if (storedMap[scopeKey]) {
@@ -6275,13 +4904,6 @@ export async function saveQuestionnaire(
     }
   }
   const ctx = getActiveSessionContext("retained_client");
-  if (isTestEnv && !ctx.hasSession) {
-    FALLBACK_QUESTIONNAIRE.responses = { ...FALLBACK_QUESTIONNAIRE.responses, ...responses };
-    if (submitForReview) {
-      FALLBACK_QUESTIONNAIRE.status = "submitted";
-    }
-    return { status: "ok", questionnaire_status: FALLBACK_QUESTIONNAIRE.status };
-  }
   const storedMap = getStored<Record<string, ClientQuestionnaireItem>>("documento_questionnaires_v3_clean", {});
   const scopeKey = questionnaireId.startsWith("q-")
     ? questionnaireId.slice(2)
@@ -6508,353 +5130,86 @@ export const FALLBACK_FORM_SCHEMAS: FormSchemaItem[] = [
 ];
 
 export const FALLBACK_FORM_SUBMISSION: FormSubmissionItem = {
-  id: "sub-i140-01",
-  case_id: "case-01",
+  id: "",
+  case_id: "",
   form_code: "USCIS_I140",
   form_name: "Form I-140: Immigrant Petition for Alien Workers",
   version_number: "v2026.1",
   status: "draft",
-  completion_percentage: 82.5,
-  has_unconfirmed_ai_fields: true,
+  completion_percentage: 0,
+  has_unconfirmed_ai_fields: false,
   sensitive_fields_reviewed: false,
   revision_number: 1,
   reviewer_notes: null,
   reviewed_at: null,
-  answers: {
-    petitioner_is_self: {
-      value: true,
-      source_type: "client_profile",
-      source_id: "case-01",
-      source_label: "Case Filing Structure (Self-Petition)",
-      is_confirmed: true,
-      confirmed_by_user_id: "22222222-2222-2222-2222-222222222222",
-      confirmed_at: "2026-10-10T12:00:00Z",
-    },
-    petitioner_family_name: {
-      value: "Rostova",
-      source_type: "client_profile",
-      source_id: "client-01",
-      source_label: "Client Profile (Elena Rostova)",
-      is_confirmed: true,
-      confirmed_by_user_id: "22222222-2222-2222-2222-222222222222",
-      confirmed_at: "2026-10-10T12:00:00Z",
-    },
-    petitioner_given_name: {
-      value: "Elena",
-      source_type: "client_profile",
-      source_id: "client-01",
-      source_label: "Client Profile (Elena Rostova)",
-      is_confirmed: true,
-      confirmed_by_user_id: "22222222-2222-2222-2222-222222222222",
-      confirmed_at: "2026-10-10T12:00:00Z",
-    },
-    petitioner_email: {
-      value: "elena.rostova@example.com",
-      source_type: "client_profile",
-      source_id: "client-01",
-      source_label: "Client Profile Primary Email",
-      is_confirmed: true,
-      confirmed_by_user_id: "22222222-2222-2222-2222-222222222222",
-      confirmed_at: "2026-10-10T12:00:00Z",
-    },
-    visa_classification: {
-      value: "EB1A_EXTRAORDINARY",
-      source_type: "client_profile",
-      source_id: "case-01",
-      source_label: "Case Visa Category Designation",
-      is_confirmed: true,
-      confirmed_by_user_id: "22222222-2222-2222-2222-222222222222",
-      confirmed_at: "2026-10-10T12:00:00Z",
-    },
-    beneficiary_family_name: {
-      value: "Rostova",
-      source_type: "client_profile",
-      source_id: "client-01",
-      source_label: "Client Profile (Elena Rostova)",
-      is_confirmed: true,
-      confirmed_by_user_id: "22222222-2222-2222-2222-222222222222",
-      confirmed_at: "2026-10-10T12:00:00Z",
-    },
-    beneficiary_given_name: {
-      value: "Elena",
-      source_type: "client_profile",
-      source_id: "client-01",
-      source_label: "Client Profile (Elena Rostova)",
-      is_confirmed: true,
-      confirmed_by_user_id: "22222222-2222-2222-2222-222222222222",
-      confirmed_at: "2026-10-10T12:00:00Z",
-    },
-    beneficiary_passport_number: {
-      value: "EP8849201",
-      source_type: "document_ocr",
-      source_id: "doc-01",
-      source_document_id: "doc-01",
-      source_page: 1,
-      source_location: "Page 1, MRZ line 1, col 1-9",
-      extraction_confidence: 0.98,
-      source_label: "Verified OCR: Elena_Rostova_Passport_Bio.pdf",
-      is_confirmed: false,
-      confirmed_by_user_id: null,
-      confirmed_at: null,
-    },
-    beneficiary_country_of_citizenship: {
-      value: "Germany",
-      source_type: "client_profile",
-      source_id: "client-01",
-      source_label: "Client Nationality Record",
-      is_confirmed: true,
-      confirmed_by_user_id: "22222222-2222-2222-2222-222222222222",
-      confirmed_at: "2026-10-10T12:00:00Z",
-    },
-    prior_removal_or_criminal_record: {
-      value: false,
-      source_type: "user_provided",
-      source_id: null,
-      source_label: "Intake Questionnaire Declaration",
-      is_confirmed: false,
-      confirmed_by_user_id: null,
-      confirmed_at: null,
-    },
-    proposed_endeavor_summary: {
-      value: "Developing fault-tolerant quantum optical neural networks and algorithms to advance high-performance computing in the United States.",
-      source_type: "ai_generated",
-      source_id: "case-01",
-      source_label: "AI Extracted Proposed Endeavor (Draft Synthesis)",
-      is_confirmed: false,
-      confirmed_by_user_id: null,
-      confirmed_at: null,
-    },
-    soc_code: {
-      value: "19-1029",
-      source_type: "user_provided",
-      source_id: null,
-      source_label: "Default Regulatory SOC Mapping",
-      is_confirmed: true,
-      confirmed_by_user_id: "22222222-2222-2222-2222-222222222222",
-      confirmed_at: "2026-10-10T12:00:00Z",
-    },
-  },
+  answers: {},
   schema_definition: FALLBACK_FORM_SCHEMAS[0].versions[0].schema_definition,
-  revision_history: [
-    {
-      revision: 1,
-      updated_by: "System Intake Auto-Populator",
-      timestamp: "2026-10-10T12:00:00Z",
-      changes_summary: "Initial draft auto-populated from Client Profile and verified Passport OCR.",
-    },
-  ],
+  revision_history: [],
 };
 
 export const FALLBACK_READINESS_CHECKLIST: PackageReadinessChecklist = {
-  case_id: "case-01",
-  case_number: "CASE-US-8841",
+  case_id: "",
+  case_number: "",
   evaluated_at: new Date().toISOString(),
-  is_ready_for_package_assembly: true,
-  total_checks_evaluated: 10,
-  passed_checks_count: 7,
+  is_ready_for_package_assembly: false,
+  total_checks_evaluated: 0,
+  passed_checks_count: 0,
   blocking_failures_count: 0,
-  warnings_count: 3,
+  warnings_count: 0,
   prohibition_disclaimer: "Deterministic internal readiness evaluation only. In compliance with strict legal ethics, this platform does not calculate or display a probability of government approval.",
-  checks: [
-    {
-      code: "applicable_requirements",
-      name: "Applicable Statutory Requirements",
-      status: "passed",
-      is_blocking: true,
-      summary: "3 of 3 mandatory statutory rules evaluated under INA § 203(b)(1)(A).",
-      details: { rules_evaluated: ["USCIS_EB1A_MAJOR_PRIZE", "USCIS_EB1A_ORIGINAL_CONTRIBUTIONS", "USCIS_EB1A_SCHOLARLY_ARTICLES"] },
-    },
-    {
-      code: "evidence_received",
-      name: "Evidence Documents Received",
-      status: "passed",
-      is_blocking: true,
-      summary: "4 verified evidence documents uploaded and cryptographically hashed.",
-      details: { verified_documents_count: 4 },
-    },
-    {
-      code: "missing_evidence",
-      name: "Missing Evidence Gaps",
-      status: "passed",
-      is_blocking: true,
-      summary: "All mandatory evidentiary categories have at least one uploaded document.",
-      details: { missing_categories: [] },
-    },
-    {
-      code: "unresolved_findings",
-      name: "Unresolved AI Findings & Discrepancies",
-      status: "warning",
-      is_blocking: false,
-      summary: "1 informational finding remains open for attorney review.",
-      details: { open_findings_count: 1, critical_count: 0 },
-    },
-    {
-      code: "unverified_extracted_fields",
-      name: "Unverified Extracted Fields",
-      status: "warning",
-      is_blocking: false,
-      summary: "1 extracted document field (passport number) awaits human confirmation.",
-      details: { unconfirmed_fields: ["beneficiary_passport_number"] },
-    },
-    {
-      code: "expired_outdated_documents",
-      name: "Expired or Outdated Documents",
-      status: "passed",
-      is_blocking: true,
-      summary: "All identity and civil documents remain valid through at least 2028.",
-      details: { expired_count: 0 },
-    },
-    {
-      code: "incomplete_forms",
-      name: "Incomplete Application Forms",
-      status: "passed",
-      is_blocking: true,
-      summary: "Form I-140 draft answers 82.5% complete; all mandatory questions answered.",
-      details: { forms_evaluated: 1, incomplete_count: 0 },
-    },
-    {
-      code: "outstanding_client_responses",
-      name: "Outstanding Client Requests",
-      status: "passed",
-      is_blocking: true,
-      summary: "All client document requests have been responded to and uploaded.",
-      details: { open_requests_count: 0 },
-    },
-    {
-      code: "pending_reviewer_decisions",
-      name: "Pending Reviewer Decisions",
-      status: "warning",
-      is_blocking: false,
-      summary: "Sensitive background fields review is awaiting partner certification.",
-      details: { sensitive_fields_reviewed: false },
-    },
-    {
-      code: "unmet_package_validation_criteria",
-      name: "Unmet Package Assembly Criteria",
-      status: "passed",
-      is_blocking: true,
-      summary: "All core folder templates and manifest criteria satisfied for assembly.",
-      details: { criteria_satisfied: true },
-    },
-  ],
+  checks: [],
 };
 
 export const FALLBACK_FILING_PACKAGE: FilingPackageItem = {
-  id: "pkg-01",
-  case_id: "case-01",
-  name: "Dr. Elena Rostova - EB-1A Immigrant Petition Package",
+  id: "",
+  case_id: "",
+  name: "Filing Package Workspace",
   version_number: "v1.0.0",
-  status: "in_review",
-  package_hash: "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
-  folder_template_name: "USCIS Standard Immigrant Petition Template",
+  status: "draft",
+  package_hash: "",
+  folder_template_name: "Standard Petition Binder Template",
   submission_method: "manual_filing",
   submission_instructions:
-    "Assemble physical submission with two-hole top punch and exhibit tabs. Send via trackable courier (FedEx/UPS) to the designated USCIS Lockbox. Automated portal submission is strictly prohibited.",
+    "Assemble physical submission with two-hole top punch and exhibit tabs. Send via trackable courier to the designated filing lockbox.",
   manifest: {
     package_generation_time: new Date().toISOString(),
-    rule_version_used: "USCIS-EB1A-2026.2",
-    items_count: 5,
-    internal_items_count: 1,
-    external_items_count: 4,
-    merkle_root_hash: "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
-    items: [
-      {
-        file_name: "Case_Summary_Exhibits_Index.pdf",
-        folder_code: "00_Case_Summary",
-        folder_path: "00_Case_Summary/Case_Summary_Exhibits_Index.pdf",
-        document_category: "case_summary",
-        version: 1,
-        sha256_hash: "d41d8cd98f00b204e9800998ecf8427e00000000000000000000000000000001",
-        review_status: "verified",
-        related_requirement_code: "CASE_OVERVIEW",
-        is_internal_only: false,
-        page_count: 4,
-        file_size: "0.8 MB",
-      },
-      {
-        file_name: "Elena_Rostova_Passport_Bio.pdf",
-        folder_code: "01_Identity_and_Civil_Status",
-        folder_path: "01_Identity_and_Civil_Status/Elena_Rostova_Passport_Bio.pdf",
-        document_category: "identity_passport",
-        version: 1,
-        sha256_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        review_status: "verified",
-        related_requirement_code: "IDENTITY_VERIFICATION",
-        is_internal_only: false,
-        page_count: 2,
-        file_size: "2.4 MB",
-      },
-      {
-        file_name: "Form_I140_Executed_Rev1.pdf",
-        folder_code: "02_Application_Forms",
-        folder_path: "02_Application_Forms/Form_I140_Executed_Rev1.pdf",
-        document_category: "application_forms",
-        version: 1,
-        sha256_hash: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
-        review_status: "pending_review",
-        related_requirement_code: "USCIS_FORM_I140",
-        is_internal_only: false,
-        page_count: 8,
-        file_size: "2.4 MB",
-      },
-      {
-        file_name: "Major_Prize_Optics_Award_Cert.pdf",
-        folder_code: "03_Pathway_Evidence",
-        folder_path: "03_Pathway_Evidence/Major_Prize_Optics_Award_Cert.pdf",
-        document_category: "supporting_evidence",
-        version: 1,
-        sha256_hash: "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
-        review_status: "verified",
-        related_requirement_code: "USCIS_EB1A_MAJOR_PRIZE",
-        is_internal_only: false,
-        page_count: 12,
-        file_size: "4.1 MB",
-      },
-      {
-        file_name: "Attorney_Confidential_Strategy_Memo.pdf",
-        folder_code: "09_Internal_Review",
-        folder_path: "09_Internal_Review/Attorney_Confidential_Strategy_Memo.pdf",
-        document_category: "internal_review",
-        version: 1,
-        sha256_hash: "c3d4e5f6a7b8c3d4e5f6a7b8c3d4e5f6a7b8c3d4e5f6a7b8c3d4e5f6a7b8c3d4",
-        review_status: "verified",
-        related_requirement_code: "INTERNAL_LEGAL_ANALYSIS",
-        is_internal_only: true, // EXCLUDED FROM SUBMISSION BUNDLE
-        page_count: 5,
-        file_size: "0.5 MB",
-      },
-    ],
+    rule_version_used: "",
+    items_count: 0,
+    internal_items_count: 0,
+    external_items_count: 0,
+    merkle_root_hash: "",
+    items: [],
   },
   approval_chain: [
     {
       stage: "evidence_and_forms_check",
       title: "1. Evidence and Form Check",
-      status: "passed",
+      status: "pending",
       actor: "Deterministic Readiness Engine",
-      timestamp: "2026-10-10T14:00:00Z",
-      notes: "0 blocking criteria detected. 10 of 10 checks evaluated.",
+      timestamp: null,
+      notes: null,
     },
     {
       stage: "findings_disposition",
       title: "2. Required Findings Resolution",
-      status: "passed",
-      actor: "Legal Caseworker (Sarah Jenkins)",
-      timestamp: "2026-10-10T14:15:00Z",
-      notes: "All critical findings disposed with cited evidence.",
+      status: "pending",
+      actor: "Assigned Caseworker",
+      timestamp: null,
+      notes: null,
     },
     {
       stage: "authorized_staff_review",
       title: "3. Authorized Staff Review",
-      status: "approved",
-      actor: "Sarah Jenkins (Paralegal)",
-      timestamp: "2026-10-10T14:30:00Z",
-      notes: "Checked document hashes and exhibit order tabs.",
+      status: "pending",
+      actor: "Paralegal Reviewer",
+      timestamp: null,
+      notes: null,
     },
     {
       stage: "senior_review",
       title: "4. Senior Managing Attorney Review",
       status: "pending",
-      actor: "Elena Vance (Managing Partner)",
+      actor: "Managing Partner",
       timestamp: null,
       notes: null,
     },
@@ -6862,7 +5217,7 @@ export const FALLBACK_FILING_PACKAGE: FilingPackageItem = {
       stage: "client_confirmation",
       title: "5. Client Confirmation",
       status: "pending",
-      actor: "Dr. Elena Rostova",
+      actor: "Retained Client",
       timestamp: null,
       notes: null,
     },
@@ -6870,7 +5225,7 @@ export const FALLBACK_FILING_PACKAGE: FilingPackageItem = {
       stage: "final_package_approval",
       title: "6. Final Package Approval",
       status: "pending",
-      actor: "G-28 Signatory of Record",
+      actor: "Signatory of Record",
       timestamp: null,
       notes: null,
     },
@@ -6884,19 +5239,13 @@ export const FALLBACK_FILING_PACKAGE: FilingPackageItem = {
     },
   ],
   manual_filing_instructions: {
-    jurisdiction: "USCIS (United States)",
-    submission_method: "Trackable Express Courier (FedEx/UPS/USPS Priority Express)",
-    primary_filing_address: "USCIS Texas Service Center, Attn: Premium I-140, 6046 N Belt Line Rd STE 110, Irving, TX 75038",
-    filing_fee_usd: 715,
+    jurisdiction: "",
+    submission_method: "Trackable Express Courier",
+    primary_filing_address: "",
+    filing_fee_usd: 0,
     portal_submission_disclaimer:
-      "Automated government portal submission is explicitly disabled. Government regulations require manual wet-ink physical filing or verified attorney portal authentication.",
-    steps: [
-      "Download and inspect the submission bundle ZIP (internal materials in 09_Internal_Review are excluded).",
-      "Print double-sided using 20lb paper; insert bottom tab exhibit dividers between folders 00 through 08.",
-      "Fasten top using two-hole ACCO fasteners in standard legal order (G-28, Form I-140, Brief, Exhibits).",
-      "Attach two separate cashier's checks: $715 (Form I-140 fee) + $300 (Asylum Program Fee).",
-      "Ship via FedEx or UPS to the Texas Lockbox address above; log the courier tracking number in the system.",
-    ],
+      "Automated government portal submission is explicitly disabled. Government regulations require manual filing or verified attorney portal authentication.",
+    steps: [],
   },
   created_at: new Date().toISOString(),
 };
@@ -6935,9 +5284,6 @@ export async function fetchFormSchemaDetail(schemaId: string): Promise<FormSchem
 function buildDynamicFormSubmission(caseId: string): FormSubmissionItem {
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && caseId === "case-01") {
-    return { ...FALLBACK_FORM_SUBMISSION, case_id: caseId };
-  }
   const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
   if (storedMap[caseId]) return storedMap[caseId];
 
@@ -7124,11 +5470,9 @@ export async function updateFormAnswers(
   const existingKey = Object.keys(storedMap).find((k) => storedMap[k]?.id === submissionId);
   const baseSubmission = existingKey
     ? storedMap[existingKey]
-    : submissionId.startsWith("sub-") && submissionId !== "sub-i140-01"
+    : submissionId.startsWith("sub-")
       ? buildDynamicFormSubmission(submissionId.slice(4))
-      : isTestEnv && !ctx.hasSession
-        ? { ...FALLBACK_FORM_SUBMISSION }
-        : buildDynamicFormSubmission(submissionId);
+      : buildDynamicFormSubmission(submissionId);
   const current: FormSubmissionItem = {
     ...baseSubmission,
     answers: { ...baseSubmission.answers },
@@ -7173,13 +5517,6 @@ export async function confirmFormField(submissionId: string, fieldKey: string): 
     }
   }
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && submissionId === "sub-i140-01") {
-    if (FALLBACK_FORM_SUBMISSION.answers[fieldKey]) {
-      FALLBACK_FORM_SUBMISSION.answers[fieldKey].is_confirmed = true;
-      FALLBACK_FORM_SUBMISSION.answers[fieldKey].confirmed_at = new Date().toISOString();
-    }
-    return { success: true, field_key: fieldKey };
-  }
   const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
   const existingKey = Object.keys(storedMap).find((k) => storedMap[k]?.id === submissionId);
   const target = existingKey
@@ -7212,13 +5549,6 @@ export async function reviewSensitiveFields(submissionId: string, notes: string)
     } catch {
       // Fallback
     }
-  }
-  const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && submissionId === "sub-i140-01") {
-    FALLBACK_FORM_SUBMISSION.sensitive_fields_reviewed = true;
-    FALLBACK_FORM_SUBMISSION.reviewer_notes = notes;
-    FALLBACK_FORM_SUBMISSION.reviewed_at = new Date().toISOString();
-    return { success: true, sensitive_fields_reviewed: true };
   }
   const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
   const existingKey = Object.keys(storedMap).find((k) => storedMap[k]?.id === submissionId);
@@ -7253,17 +5583,6 @@ export async function finalizeFormSubmission(
       // Fallback
     }
   }
-  const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && submissionId === "sub-i140-01") {
-    FALLBACK_FORM_SUBMISSION.status = targetStatus;
-    FALLBACK_FORM_SUBMISSION.has_unconfirmed_ai_fields = false;
-    return {
-      success: true,
-      submission_id: submissionId,
-      status: targetStatus,
-      completion_percentage: 100.0,
-    };
-  }
   const storedMap = getStored<Record<string, FormSubmissionItem>>("documento_form_submissions_v3_clean", {});
   const existingKey = Object.keys(storedMap).find((k) => storedMap[k]?.id === submissionId);
   const target = existingKey
@@ -7289,9 +5608,6 @@ export async function finalizeFormSubmission(
 function buildDynamicFilingPackage(caseId: string, customName?: string): FilingPackageItem {
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && caseId === "case-01") {
-    return { ...FALLBACK_FILING_PACKAGE, case_id: caseId, ...(customName ? { name: customName } : {}) };
-  }
   const realCase = localCases.find((c) => c.id === caseId);
   const clientLabel = realCase?.client_name || "Applicant";
   const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
@@ -7378,10 +5694,6 @@ export async function fetchCaseReadinessChecklist(caseId: string): Promise<Packa
     }
   }
   syncFromStorage();
-  const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && caseId === "case-01") {
-    return { ...FALLBACK_READINESS_CHECKLIST, case_id: caseId };
-  }
   const realCase = localCases.find((c) => c.id === caseId);
   const caseDocs = localDocuments.filter((d) => d.case_id === caseId);
   const verifiedCount = caseDocs.filter((d) => d.status === "verified").length;
@@ -7480,10 +5792,6 @@ export async function fetchCaseFilingPackages(caseId: string): Promise<FilingPac
       // Fallback
     }
   }
-  const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && caseId === "case-01") {
-    return [{ ...FALLBACK_FILING_PACKAGE, case_id: caseId }];
-  }
   const storedPkgs = getStored<Record<string, FilingPackageItem[]>>("documento_filing_packages_v3_clean", {});
   if (storedPkgs[caseId] && storedPkgs[caseId].length > 0) {
     return storedPkgs[caseId];
@@ -7530,28 +5838,18 @@ export async function advancePackageApproval(
     }
   }
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && packageId === "pkg-01") {
-    const current = { ...FALLBACK_FILING_PACKAGE };
-    const target = current.approval_chain.find((s) => s.stage === stage);
-    if (target) {
-      target.status = decision === "approved" ? "approved" : "rejected";
-      target.timestamp = new Date().toISOString();
-      target.notes = notes || null;
-    }
-    return current;
-  }
   const existingPkg = await fetchFilingPackage(packageId);
   const current: FilingPackageItem = {
     ...existingPkg,
     approval_chain: existingPkg.approval_chain.map((s) =>
       s.stage === stage
         ? {
-            ...s,
-            status: decision === "approved" ? "approved" : "rejected",
-            actor: ctx.fullName || s.actor,
-            timestamp: new Date().toISOString(),
-            notes: notes || null,
-          }
+          ...s,
+          status: decision === "approved" ? "approved" : "rejected",
+          actor: ctx.fullName || s.actor,
+          timestamp: new Date().toISOString(),
+          notes: notes || null,
+        }
         : s
     ),
   };
@@ -7602,31 +5900,13 @@ function triggerBrowserDownload(blob: Blob, filename: string): void {
 }
 
 export const FALLBACK_PHASE7_MANIFEST: Phase7CanonicalManifest = {
-  case_reference: "CASE-CA-2026-001",
-  generated_at: new Date().toISOString(),
-  generated_by: "officer-dev-01",
+  case_reference: "",
+  generated_at: "",
+  generated_by: "authorized-counsel",
   package_template_version: "v1.0.0",
-  checklist_rule_version: "IRCC-EE-2026.1",
-  documents: [
-    {
-      document_version_id: "doc-pass:v1",
-      relative_path: "DOCUMENTS/Passport.pdf",
-      sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      review_status: "HUMAN_VERIFIED",
-    },
-    {
-      document_version_id: "doc-ita:v1",
-      relative_path: "CIC CORRESPONDENCE/ITA_Letter.pdf",
-      sha256: "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
-      review_status: "HUMAN_VERIFIED",
-    },
-  ],
-  exclusions: [
-    {
-      document_version_id: "doc-blocked:v1",
-      reason_code: "UNRESOLVED_ANOMALY",
-    },
-  ],
+  checklist_rule_version: "STATUTORY-2026.1",
+  documents: [],
+  exclusions: [],
   folder_structure: [
     { folder_code: "01_Cic_Correspondence", folder_name: "CIC CORRESPONDENCE" },
     { folder_code: "02_Documents", folder_name: "DOCUMENTS" },
@@ -7650,9 +5930,6 @@ export async function fetchCanonicalManifest(packageId: string): Promise<Phase7C
   }
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && (packageId === "pkg-01" || packageId === "pkg-ca-01")) {
-    return FALLBACK_PHASE7_MANIFEST;
-  }
   const pkg = await fetchFilingPackage(packageId);
   const realCase = localCases.find((c) => c.id === pkg.case_id);
   return {
@@ -7864,314 +6141,62 @@ export const FALLBACK_SERVICES: ServiceCatalogItem[] = [
   },
 ];
 
-export const FALLBACK_ENGAGEMENTS: ClientEngagementItem[] = [
-  {
-    id: "eng-01",
-    engagement_number: "ENG-2026-0001",
-    client_id: "client-01",
-    case_id: "case-01",
-    service_id: "srv-01",
-    status: "active",
-    retainer_amount: 4250.0,
-    agreed_fee: 8500.0,
-    billing_terms: "fixed_split",
-    responsible_attorney_id: "usr-01",
-    signed_agreement_date: "2026-09-15T10:00:00Z",
-    notes: "50% retainer on engagement signing, 50% prior to filing package lock.",
-    created_at: "2026-09-15T10:00:00Z",
-  },
-];
+export const FALLBACK_ENGAGEMENTS: ClientEngagementItem[] = [];
 
-export const FALLBACK_INVOICES: InvoiceDetailItem[] = [
-  {
-    id: "inv-01",
-    invoice_number: "INV-2026-0001",
-    client_id: "client-01",
-    client_name: "Dr. Elena Rostova",
-    case_id: "case-01",
-    issue_date: "2026-09-15T10:00:00Z",
-    due_date: "2026-10-15T10:00:00Z",
-    subtotal: 4250.0,
-    tax_amount: 0.0,
-    discount_amount: 0.0,
-    total_amount: 4250.0,
-    paid_amount: 4250.0,
-    balance_due: 0.0,
-    currency: "USD",
-    status: "paid",
-    payment_provider: "stripe_verified",
-    notes: "Retainer Phase 1 received via verified ACH transfer.",
-    line_items_count: 1,
-    line_items: [
-      {
-        id: "li-01",
-        description: "EB-1A Retainer Fee (Phase 1)",
-        quantity: 1,
-        unit_price: 4250.0,
-        total: 4250.0,
-        line_type: "service_fee",
-      },
-    ],
-    payments: [
-      {
-        id: "pay-01",
-        transaction_reference: "txn_stripe_tok_99182371",
-        amount: 4250.0,
-        currency: "USD",
-        payment_method: "ach_bank_transfer",
-        status: "succeeded",
-        card_brand: null,
-        card_last4: null,
-        payment_date: "2026-09-15T14:30:00Z",
-      },
-    ],
-  },
-  {
-    id: "inv-02",
-    invoice_number: "INV-2026-0002",
-    client_id: "client-01",
-    client_name: "Dr. Elena Rostova",
-    case_id: "case-01",
-    issue_date: "2026-10-01T09:00:00Z",
-    due_date: "2026-10-31T09:00:00Z",
-    subtotal: 4965.0,
-    tax_amount: 0.0,
-    discount_amount: 0.0,
-    total_amount: 4965.0,
-    paid_amount: 0.0,
-    balance_due: 4965.0,
-    currency: "USD",
-    status: "issued",
-    payment_provider: "stripe_verified",
-    notes: "Filing Phase: Final representation fee + Form I-140 statutory government filing fee.",
-    line_items_count: 2,
-    line_items: [
-      {
-        id: "li-02",
-        description: "EB-1A Final Representation Fee (Phase 2)",
-        quantity: 1,
-        unit_price: 4250.0,
-        total: 4250.0,
-        line_type: "service_fee",
-      },
-      {
-        id: "li-03",
-        description: "USCIS Form I-140 Statutory Government Filing Fee",
-        quantity: 1,
-        unit_price: 715.0,
-        total: 715.0,
-        line_type: "filing_fee",
-      },
-    ],
-    payments: [],
-  },
-  {
-    id: "inv-03",
-    invoice_number: "INV-2026-0003",
-    client_id: "client-02",
-    client_name: "Aarav Sharma",
-    case_id: "case-02",
-    issue_date: "2026-10-10T10:00:00Z",
-    due_date: "2026-11-10T10:00:00Z",
-    subtotal: 45000.0,
-    tax_amount: 8100.0,
-    discount_amount: 0.0,
-    total_amount: 53100.0,
-    paid_amount: 53100.0,
-    balance_due: 0.0,
-    currency: "INR",
-    status: "paid",
-    payment_provider: "razorpay_verified",
-    gst_rate: 0.18,
-    cgst_amount: 4050.0,
-    sgst_amount: 4050.0,
-    igst_amount: 0.0,
-    sac_code: "998311",
-    gstin: "27AABCU9603R1ZM",
-    place_of_supply: "Maharashtra (27)",
-    notes: "Tax Invoice under SAC 998311 for Student Visa Statutory & Evidentiary Consultation.",
-    line_items_count: 1,
-    line_items: [
-      {
-        id: "li-04",
-        description: "Study Permit Strategy & Financial Sponsor Packaging (SAC 998311)",
-        quantity: 1,
-        unit_price: 45000.0,
-        total: 45000.0,
-        line_type: "service_fee",
-        sac_code: "998311",
-        gst_rate: 0.18,
-      },
-    ],
-    payments: [
-      {
-        id: "pay-02",
-        transaction_reference: "txn_rzp_tok_88291044",
-        amount: 53100.0,
-        currency: "INR",
-        payment_method: "upi_verified",
-        status: "succeeded",
-        card_brand: null,
-        card_last4: null,
-        payment_date: "2026-10-10T11:15:00Z",
-      },
-    ],
-  },
-];
+export const FALLBACK_INVOICES: InvoiceDetailItem[] = [];
 
-export const FALLBACK_APPOINTMENTS: VisaAppointment[] = [
-  {
-    id: "appt-01",
-    organization_id: "org-01",
-    case_id: "case-01",
-    client_id: "client-01",
-    vac_center: "Mumbai VAC (Bandra Kurla Complex)",
-    consular_post: "U.S. Consulate General Mumbai",
-    ofc_biometrics_slot: "2026-11-12T09:30:00Z",
-    consular_interview_slot: "2026-11-14T10:15:00Z",
-    dropbox_eligible: false,
-    tracking_number_blue_dart: "BD-884920194IN",
-    courier_status: "in_transit",
-    status_221g: false,
-    status_221g_color: null,
-    appointment_status: "scheduled",
-    notes: "OFC biometrics appointment confirmed. Biometrics confirmation letter printed.",
-    created_at: "2026-10-15T12:00:00Z",
-    updated_at: "2026-10-15T12:00:00Z",
-  },
-  {
-    id: "appt-02",
-    organization_id: "org-01",
-    case_id: "case-02",
-    client_id: "client-02",
-    vac_center: "New Delhi VAC (Shivaji Stadium)",
-    consular_post: "U.S. Embassy New Delhi",
-    ofc_biometrics_slot: "2026-11-20T11:00:00Z",
-    consular_interview_slot: null,
-    dropbox_eligible: true,
-    tracking_number_blue_dart: "BD-993810231IN",
-    courier_status: "ready_for_pickup",
-    status_221g: false,
-    status_221g_color: null,
-    appointment_status: "scheduled",
-    notes: "Interview Waiver / Dropbox eligible for F-1 renewal under 48-month statutory rule.",
-    created_at: "2026-10-16T14:00:00Z",
-    updated_at: "2026-10-16T14:00:00Z",
-  },
-];
+export const FALLBACK_APPOINTMENTS: VisaAppointment[] = [];
 
-export const FALLBACK_SPONSORS: FinancialSponsor[] = [
-  {
-    id: "sp-01",
-    organization_id: "org-01",
-    case_id: "case-01",
-    client_id: "client-01",
-    name: "Rajesh Kumar Sharma",
-    relationship: "parent",
-    sponsor_type: "individual",
-    pan: "ABCPS1234F",
-    itr_gross_income: 2850000.0,
-    liquid_funds: 4500000.0,
-    currency: "INR",
-    bank_name: "State Bank of India (SBI)",
-    loan_sanction_amount: 3500000.0,
-    affidavit_doc_id: null,
-    notes: "Primary financial sponsor with verified ITR-V past 3 years and SBI education loan sanction letter.",
-    created_at: "2026-10-12T10:00:00Z",
-    updated_at: "2026-10-12T10:00:00Z",
-  },
-];
+export const FALLBACK_SPONSORS: FinancialSponsor[] = [];
 
 export const FALLBACK_FINANCIAL_REPORTS: FinancialReportsData = {
   period: {
-    start_date: "2026-08-01T00:00:00Z",
-    end_date: "2026-10-11T23:59:59Z",
+    start_date: "",
+    end_date: "",
   },
   summary: {
-    total_invoiced: 9215.0,
-    total_collected: 4250.0,
-    total_outstanding: 4965.0,
-    total_refunded: 0.0,
-    net_collections: 4250.0,
+    total_invoiced: 0,
+    total_collected: 0,
+    total_outstanding: 0,
+    total_refunded: 0,
+    net_collections: 0,
     currency: "USD",
   },
   accounts_receivable_aging: {
-    current_not_due: 4965.0,
-    overdue_1_to_30_days: 0.0,
-    overdue_31_to_60_days: 0.0,
-    overdue_61_to_90_days: 0.0,
-    overdue_greater_90_days: 0.0,
-    total_overdue: 0.0,
+    current_not_due: 0,
+    overdue_1_to_30_days: 0,
+    overdue_31_to_60_days: 0,
+    overdue_61_to_90_days: 0,
+    overdue_greater_90_days: 0,
+    total_overdue: 0,
   },
-  collections_by_pathway: {
-    "EB-1A": 4250.0,
-  },
+  collections_by_pathway: {},
   invoice_counts: {
-    total: 2,
-    paid: 1,
-    issued: 1,
+    total: 0,
+    paid: 0,
+    issued: 0,
     partially_paid: 0,
     overdue: 0,
   },
 };
 
-export const FALLBACK_WORKLOAD: StaffWorkloadItem[] = [
-  {
-    user_id: "usr-01",
-    full_name: "Sarah Jenkins, Esq.",
-    email: "sarah.jenkins@leximmigration.com",
-    roles: ["case_manager", "senior_reviewer"],
-    assigned_cases: 12,
-    pending_tasks: 4,
-    nominal_capacity: 25,
-    utilization_pct: 48.0,
-    status: "normal",
-    branch_id: "branch-01",
-    team_id: "team-01",
-  },
-  {
-    user_id: "usr-02",
-    full_name: "Marcus Reed",
-    email: "marcus.reed@leximmigration.com",
-    roles: ["case_manager"],
-    assigned_cases: 18,
-    pending_tasks: 7,
-    nominal_capacity: 25,
-    utilization_pct: 72.0,
-    status: "normal",
-    branch_id: "branch-01",
-    team_id: "team-01",
-  },
-  {
-    user_id: "usr-03",
-    full_name: "Elena Vance, Managing Partner",
-    email: "elena.vance@leximmigration.com",
-    roles: ["company_admin", "master_admin"],
-    assigned_cases: 4,
-    pending_tasks: 2,
-    nominal_capacity: 25,
-    utilization_pct: 16.0,
-    status: "normal",
-    branch_id: "branch-01",
-    team_id: "team-01",
-  },
-];
+export const FALLBACK_WORKLOAD: StaffWorkloadItem[] = [];
 
 export const FALLBACK_EXECUTIVE_DASHBOARD: ExecutiveDashboardData = {
   time_window_days: 30,
-  generated_at: "2026-10-11T21:00:00Z",
+  generated_at: "",
   metrics: {
     active_cases: {
-      value: 6,
-      total_cases: 8,
+      value: 0,
+      total_cases: 0,
       calculation_method: "Count of immigration cases with status NOT IN ('approved', 'closed', 'denied', 'withdrawn')",
       time_window: "Current active snapshot",
       drill_down_path: "/cases?status=active",
       status: "available",
     },
     new_retained_clients: {
-      value: 3,
-      total_clients: 6,
+      value: 0,
+      total_clients: 0,
       calculation_method: "Count of client profiles created within the last 30 days",
       time_window: "Last 30 days",
       drill_down_path: "/clients?filter=new_retained",
@@ -8179,8 +6204,8 @@ export const FALLBACK_EXECUTIVE_DASHBOARD: ExecutiveDashboardData = {
     },
     cases_by_country_and_pathway: {
       value: null,
-      by_country: { US: 4, CA: 1, GB: 1 },
-      by_pathway: { "EB-1A": 3, "EB-2 NIW": 1, "Express Entry": 1, "Global Talent": 1 },
+      by_country: {},
+      by_pathway: {},
       calculation_method: "Active cases grouped by jurisdiction code and visa category",
       time_window: "Current active caseload",
       drill_down_path: "/cases",
@@ -8188,28 +6213,15 @@ export const FALLBACK_EXECUTIVE_DASHBOARD: ExecutiveDashboardData = {
     },
     cases_by_workflow_stage: {
       value: null,
-      stages: { intake: 2, gathering: 2, review: 1, ready: 1, approved: 2 },
+      stages: { intake: 0, gathering: 0, review: 0, ready: 0, approved: 0 },
       calculation_method: "All organization cases grouped by workflow status",
       time_window: "All-time case repository",
       drill_down_path: "/cases?filter=by_stage",
       status: "available",
     },
     cases_needing_attention: {
-      value: 2,
-      items: [
-        {
-          case_id: "case-01",
-          case_number: "CASE-US-8841",
-          title: "Dr. Elena Rostova EB-1A",
-          reasons: ["Unresolved statutory discrepancies", "Overdue task deadlines"],
-        },
-        {
-          case_id: "case-03",
-          case_number: "CASE-US-9912",
-          title: "Rajesh Patel EB-2 NIW",
-          reasons: ["Document OCR processing failure"],
-        },
-      ],
+      value: 0,
+      items: [],
       calculation_method: "Distinct cases with open statutory discrepancies (CaseAIFinding), overdue tasks, or failed document scans",
       time_window: "Immediate attention backlog",
       drill_down_path: "/cases?filter=needing_attention",
@@ -8217,20 +6229,20 @@ export const FALLBACK_EXECUTIVE_DASHBOARD: ExecutiveDashboardData = {
     },
     deadlines: {
       value: null,
-      overdue_milestones: 1,
-      overdue_tasks: 2,
-      upcoming_milestones_14d: 3,
-      upcoming_tasks_14d: 5,
-      total_overdue: 3,
-      total_upcoming: 8,
+      overdue_milestones: 0,
+      overdue_tasks: 0,
+      upcoming_milestones_14d: 0,
+      upcoming_tasks_14d: 0,
+      total_overdue: 0,
+      total_upcoming: 0,
       calculation_method: "Milestones and tasks past due date with status != 'completed', plus upcoming within 14 days",
       time_window: "Past due + next 14 days",
       drill_down_path: "/cases/deadlines",
       status: "available",
     },
     unassigned_cases: {
-      value: 1,
-      sample: [{ id: "case-04", case_number: "CASE-CA-4412", title: "Express Entry Federal Skilled Worker" }],
+      value: 0,
+      sample: [],
       calculation_method: "Active cases with zero CaseAssignment records",
       time_window: "Current active cases",
       drill_down_path: "/cases?filter=unassigned",
@@ -8238,7 +6250,7 @@ export const FALLBACK_EXECUTIVE_DASHBOARD: ExecutiveDashboardData = {
     },
     staff_workload_and_capacity: {
       value: null,
-      staff_members: FALLBACK_WORKLOAD,
+      staff_members: [],
       calculation_method: "Active case assignments and pending tasks per user against nominal capacity threshold (25 cases)",
       time_window: "Current staffing allocation",
       drill_down_path: "/teams/workload",
@@ -8246,27 +6258,27 @@ export const FALLBACK_EXECUTIVE_DASHBOARD: ExecutiveDashboardData = {
     },
     applications_prepared_reviewed_submitted: {
       value: null,
-      prepared: 3,
-      reviewed: 2,
-      submitted: 1,
+      prepared: 0,
+      reviewed: 0,
+      submitted: 0,
       calculation_method: "FilingPackage records categorized into draft/assembly (prepared), review stages (reviewed), and version-locked (submitted)",
       time_window: "All filing packages",
       drill_down_path: "/packages",
       status: "available",
     },
     outstanding_client_requests: {
-      value: 4,
-      avg_days_pending: 6.4,
+      value: 0,
+      avg_days_pending: 0,
       calculation_method: "Count of DocumentRequest records with status='requested' and average elapsed days since request issuance",
       time_window: "Open evidentiary requests",
       drill_down_path: "/requests?status=requested",
       status: "available",
     },
     processing_failures: {
-      value: 1,
-      failed_documents: 1,
+      value: 0,
+      failed_documents: 0,
       failed_notifications: 0,
-      total_failures: 1,
+      total_failures: 0,
       calculation_method: "Documents with processing_status='failed' or infected scan, plus failed delivery notifications",
       time_window: "All-time failure log",
       drill_down_path: "/documents?status=failed",
@@ -8274,26 +6286,7 @@ export const FALLBACK_EXECUTIVE_DASHBOARD: ExecutiveDashboardData = {
     },
     recent_company_activity: {
       value: null,
-      items: [
-        {
-          id: "act-01",
-          action: "billing.payment_recorded",
-          object_type: "payment_record",
-          object_id: "pay-01",
-          occurred_at: "2026-10-11T19:40:00Z",
-          actor_id: "usr-01",
-          metadata: { invoice_number: "INV-2026-0001", amount: 4250.0 },
-        },
-        {
-          id: "act-02",
-          action: "packages.package_locked",
-          object_type: "filing_package",
-          object_id: "pkg-01",
-          occurred_at: "2026-10-11T18:15:00Z",
-          actor_id: "usr-03",
-          metadata: { package_number: "PKG-US-EB1A-20261011-001" },
-        },
-      ],
+      items: [],
       calculation_method: "Latest 15 immutable AuditEvent records for the organization",
       time_window: "Most recent events",
       drill_down_path: "/governance/audit-logs",
@@ -8301,8 +6294,8 @@ export const FALLBACK_EXECUTIVE_DASHBOARD: ExecutiveDashboardData = {
     },
     financial_snapshot: {
       value: null,
-      paid_revenue: 4250.0,
-      outstanding_balance: 4965.0,
+      paid_revenue: 0,
+      outstanding_balance: 0,
       currency: "USD",
       calculation_method: "Sum of paid_amount vs balance_due from issued organization invoices",
       time_window: "Accounts receivable ledger",
@@ -8318,35 +6311,35 @@ export const FALLBACK_OPERATIONS_ANALYTICS: OperationsAnalyticsData = {
     pathway: "all",
     stage: "all",
   },
-  total_cases_in_window: 8,
-  completed_cases_count: 2,
+  total_cases_in_window: 0,
+  completed_cases_count: 0,
   turnaround_time: {
-    average_days: 58.4,
-    completed_cases_evaluated: 2,
+    average_days: 0,
+    completed_cases_evaluated: 0,
     reopened_cases_adjusted_count: 0,
     incomplete_timestamp_cases_count: 0,
     calculation_formula: "mean(completion_timestamp - effective_start_timestamp); Reopened cases use reopening timestamp; in-progress cases excluded",
     status: "available",
   },
   overdue_work: {
-    total_overdue: 3,
-    overdue_less_than_7_days: 2,
-    overdue_7_to_30_days: 1,
+    total_overdue: 0,
+    overdue_less_than_7_days: 0,
+    overdue_7_to_30_days: 0,
     overdue_greater_than_30_days: 0,
     calculation_formula: "Count of open milestones and tasks past target/due dates partitioned by lateness tiers",
     status: "available",
   },
   client_response_time: {
-    average_hours: 46.2,
-    average_days: 1.9,
-    requests_evaluated: 6,
+    average_hours: 0,
+    average_days: 0,
+    requests_evaluated: 0,
     calculation_formula: "mean(request_submitted_timestamp - request_created_timestamp) for all completed requests",
     status: "available",
   },
 };
 
 export const FALLBACK_ORG_SETTINGS: OrganizationSettingsData = {
-  firm_name: "Lex Immigration Global Law Group",
+  firm_name: "Immigration Practice Workspace",
   billing_currency: "USD",
   default_jurisdiction: "US",
   invoice_prefix: "INV",
@@ -8370,9 +6363,6 @@ export async function fetchExecutiveDashboard(windowDays = 30): Promise<Executiv
   }
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && localCases.length > 0) {
-    return FALLBACK_EXECUTIVE_DASHBOARD;
-  }
 
   const orgCases = filterByActiveOrg(localCases, ctx);
   const orgClients = filterByActiveOrg(localClients, ctx);
@@ -8385,10 +6375,10 @@ export async function fetchExecutiveDashboard(windowDays = 30): Promise<Executiv
   const orgClientIds = new Set(orgClients.map((c) => c.id));
   const orgAuditEvents = ctx.hasSession
     ? localAuditEvents.filter(
-        (e) =>
-          e.metadata?.organization_id === ctx.organizationId ||
-          (e.object_id && (orgCaseIds.has(e.object_id) || orgClientIds.has(e.object_id)))
-      )
+      (e) =>
+        e.metadata?.organization_id === ctx.organizationId ||
+        (e.object_id && (orgCaseIds.has(e.object_id) || orgClientIds.has(e.object_id)))
+    )
     : localAuditEvents;
 
   const activeCount = orgCases.filter((c) => c.status !== "filed" && c.status !== "approved").length;
@@ -8452,13 +6442,13 @@ export async function fetchExecutiveDashboard(windowDays = 30): Promise<Executiv
   const avgDaysPending =
     openRequests.length > 0
       ? Number(
-          (
-            openRequests.reduce((sum, r) => {
-              const created = r.created_at ? new Date(r.created_at).getTime() : nowMs;
-              return sum + Math.max(0, (nowMs - created) / 86400000);
-            }, 0) / openRequests.length
-          ).toFixed(1)
-        )
+        (
+          openRequests.reduce((sum, r) => {
+            const created = r.created_at ? new Date(r.created_at).getTime() : nowMs;
+            return sum + Math.max(0, (nowMs - created) / 86400000);
+          }, 0) / openRequests.length
+        ).toFixed(1)
+      )
       : 0;
 
   const failedDocs = orgDocs.filter((d) => d.processing_status === "failed").length;
@@ -8578,9 +6568,6 @@ export async function fetchOperationsAnalytics(filters: Record<string, any> = {}
   }
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession && localCases.length > 0) {
-    return FALLBACK_OPERATIONS_ANALYTICS;
-  }
 
   const orgCases = filterByActiveOrg(localCases, ctx);
   const orgCaseIds = getOrgCaseIds(ctx);
@@ -8688,10 +6675,7 @@ export async function fetchEngagements(clientId?: string): Promise<ClientEngagem
   }
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  const stored = getStored<ClientEngagementItem[]>(
-    ENGAGEMENTS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_ENGAGEMENTS] : []
-  );
+  const stored = getStored<ClientEngagementItem[]>(ENGAGEMENTS_STORAGE_KEY, []);
   const orgClientIds = new Set(filterByActiveOrg(localClients, ctx).map((c) => c.id));
   let filtered = ctx.hasSession ? stored.filter((e) => orgClientIds.has(e.client_id)) : stored;
   if (clientId) filtered = filtered.filter((e) => e.client_id === clientId);
@@ -8715,17 +6699,14 @@ export async function createEngagement(data: Partial<ClientEngagementItem>): Pro
   const created: ClientEngagementItem = {
     id: `eng-${Date.now()}`,
     engagement_number: `ENG-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-    client_id: data.client_id || "client-01",
+    client_id: data.client_id || "",
     status: data.status || "active",
     retainer_amount: data.retainer_amount || 0,
     agreed_fee: data.agreed_fee || 0,
     billing_terms: data.billing_terms || "fixed_split",
     created_at: new Date().toISOString(),
   };
-  const stored = getStored<ClientEngagementItem[]>(
-    ENGAGEMENTS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_ENGAGEMENTS] : []
-  );
+  const stored = getStored<ClientEngagementItem[]>(ENGAGEMENTS_STORAGE_KEY, []);
   setStored(ENGAGEMENTS_STORAGE_KEY, [created, ...stored]);
   return created;
 }
@@ -8742,10 +6723,7 @@ export async function fetchInvoices(filter: Record<string, any> = {}): Promise<I
   }
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  const stored = getStored<InvoiceDetailItem[]>(
-    BILLING_INVOICES_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_INVOICES] : []
-  );
+  const stored = getStored<InvoiceDetailItem[]>(BILLING_INVOICES_STORAGE_KEY, []);
   const orgClientIds = new Set(filterByActiveOrg(localClients, ctx).map((c) => c.id));
   let filtered = ctx.hasSession ? stored.filter((inv) => orgClientIds.has(inv.client_id)) : stored;
   if (filter.client_id) filtered = filtered.filter((inv) => inv.client_id === filter.client_id);
@@ -8772,7 +6750,7 @@ export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
   const resolvedClientId =
     data.client_id && (orgClients.some((c) => c.id === data.client_id) || !ctx.hasSession)
       ? data.client_id
-      : orgClients[0]?.id || data.client_id || "client-01";
+      : orgClients[0]?.id || data.client_id || "";
   const matchedClient = localClients.find((c) => c.id === resolvedClientId);
   const clientFullName = matchedClient
     ? `${matchedClient.first_name} ${matchedClient.last_name}`.trim()
@@ -8808,10 +6786,7 @@ export async function createInvoice(data: any): Promise<InvoiceDetailItem> {
     place_of_supply: data.place_of_supply || null,
     line_items: data.line_items,
   };
-  const stored = getStored<InvoiceDetailItem[]>(
-    BILLING_INVOICES_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_INVOICES] : []
-  );
+  const stored = getStored<InvoiceDetailItem[]>(BILLING_INVOICES_STORAGE_KEY, []);
   setStored(BILLING_INVOICES_STORAGE_KEY, [mockInv, ...stored]);
   // Keep summary invoices list synchronized for executive & client views
   const linkedCaseForInv = data.case_id ? localCases.find((c) => c.id === data.case_id) : undefined;
@@ -8862,9 +6837,9 @@ export async function recordInvoicePayment(invoiceId: string, data: any): Promis
     localInvoices = localInvoices.map((summary) =>
       summary.id === invoiceId || summary.invoice_number === paidTarget.invoice_number
         ? {
-            ...summary,
-            status: paidTarget.balance_due <= 0 ? "paid" : summary.status,
-          }
+          ...summary,
+          status: paidTarget.balance_due <= 0 ? "paid" : summary.status,
+        }
         : summary
     );
     setStored(INVOICES_STORAGE_KEY, localInvoices);
@@ -8982,10 +6957,7 @@ export async function fetchAllAppointments(filters?: {
   }
 
   const ctx = getActiveSessionContext();
-  let filtered = getStored<VisaAppointment[]>(
-    APPOINTMENTS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
-  );
+  let filtered = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
   if (ctx.hasSession) {
     filtered = filtered.filter((a) => !a.organization_id || a.organization_id === ctx.organizationId);
   }
@@ -9019,11 +6991,7 @@ export async function deleteCaseAppointment(caseId: string, appointmentId: strin
       // Fallback
     }
   }
-  const ctx = getActiveSessionContext();
-  const stored = getStored<VisaAppointment[]>(
-    APPOINTMENTS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
-  );
+  const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
   setStored(
     APPOINTMENTS_STORAGE_KEY,
     stored.filter((a) => a.id !== appointmentId)
@@ -9042,15 +7010,9 @@ export async function fetchCaseAppointments(caseId: string): Promise<VisaAppoint
       // Fallback
     }
   }
-  const ctx = getActiveSessionContext();
-  const stored = getStored<VisaAppointment[]>(
-    APPOINTMENTS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
-  );
+  const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
   return fallbackData(
-    stored.filter(
-      (a) => a.case_id === caseId || (isTestEnv && !ctx.hasSession && (caseId === "case-01" || caseId === "case-02"))
-    ),
+    stored.filter((a) => a.case_id === caseId),
     "fetchCaseAppointments"
   );
 }
@@ -9088,10 +7050,7 @@ export async function createCaseAppointment(caseId: string, data: any): Promise<
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  const stored = getStored<VisaAppointment[]>(
-    APPOINTMENTS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
-  );
+  const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
   setStored(APPOINTMENTS_STORAGE_KEY, [newAppt, ...stored]);
   return fallbackData(newAppt, "createCaseAppointment");
 }
@@ -9109,12 +7068,10 @@ export async function updateCaseAppointment(caseId: string, appointmentId: strin
       // Fallback
     }
   }
-  const ctx = getActiveSessionContext();
-  const stored = getStored<VisaAppointment[]>(
-    APPOINTMENTS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_APPOINTMENTS] : []
-  );
-  const existing = stored.find((a) => a.id === appointmentId) || FALLBACK_APPOINTMENTS[0];
+  const stored = getStored<VisaAppointment[]>(APPOINTMENTS_STORAGE_KEY, []);
+  const existing =
+    stored.find((a) => a.id === appointmentId) ||
+    ({ id: appointmentId, case_id: caseId } as VisaAppointment);
   const updated: VisaAppointment = { ...existing, ...data, updated_at: new Date().toISOString() };
   setStored(
     APPOINTMENTS_STORAGE_KEY,
@@ -9136,15 +7093,9 @@ export async function fetchCaseSponsors(caseId: string): Promise<FinancialSponso
       // Fallback
     }
   }
-  const ctx = getActiveSessionContext();
-  const stored = getStored<FinancialSponsor[]>(
-    SPONSORS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_SPONSORS] : []
-  );
+  const stored = getStored<FinancialSponsor[]>(SPONSORS_STORAGE_KEY, []);
   return fallbackData(
-    stored.filter(
-      (s) => s.case_id === caseId || (isTestEnv && !ctx.hasSession && (caseId === "case-01" || caseId === "case-02"))
-    ),
+    stored.filter((s) => s.case_id === caseId),
     "fetchCaseSponsors"
   );
 }
@@ -9167,7 +7118,7 @@ export async function createCaseSponsor(caseId: string, data: any): Promise<Fina
     id: `sp-${Date.now()}`,
     organization_id: ctx.organizationId,
     case_id: caseId,
-    client_id: data.client_id || "client-01",
+    client_id: data.client_id || "",
     name: data.name || "Sponsor Name",
     relationship: data.relationship || "parent",
     sponsor_type: data.sponsor_type || "individual",
@@ -9182,10 +7133,7 @@ export async function createCaseSponsor(caseId: string, data: any): Promise<Fina
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  const stored = getStored<FinancialSponsor[]>(
-    SPONSORS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_SPONSORS] : []
-  );
+  const stored = getStored<FinancialSponsor[]>(SPONSORS_STORAGE_KEY, []);
   setStored(SPONSORS_STORAGE_KEY, [newSponsor, ...stored]);
   return fallbackData(newSponsor, "createCaseSponsor");
 }
@@ -9202,11 +7150,7 @@ export async function deleteCaseSponsor(caseId: string, sponsorId: string): Prom
       // Fallback
     }
   }
-  const ctx = getActiveSessionContext();
-  const stored = getStored<FinancialSponsor[]>(
-    SPONSORS_STORAGE_KEY,
-    isTestEnv && !ctx.hasSession ? [...FALLBACK_SPONSORS] : []
-  );
+  const stored = getStored<FinancialSponsor[]>(SPONSORS_STORAGE_KEY, []);
   setStored(
     SPONSORS_STORAGE_KEY,
     stored.filter((s) => s.id !== sponsorId)
@@ -9226,10 +7170,6 @@ export async function fetchFinancialReports(startDate?: string, endDate?: string
     } catch {
       // Fallback
     }
-  }
-  const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession) {
-    return FALLBACK_FINANCIAL_REPORTS;
   }
   const invoices = await fetchInvoices();
   const totalInvoiced = invoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0);
@@ -9267,6 +7207,24 @@ export async function fetchFinancialReports(startDate?: string, endDate?: string
   };
 }
 
+function matchesAssigneeIdentity(
+  assigneeField: string | undefined | null,
+  fullName: string,
+  email: string
+): boolean {
+  const hay = (assigneeField || "").trim().toLowerCase();
+  if (!hay) return false;
+  const normName = fullName.trim().toLowerCase();
+  const normEmail = email.trim().toLowerCase();
+  const firstToken = normName.split(/\s+/)[0];
+  return (
+    hay === normName ||
+    hay === normEmail ||
+    (normName.length >= 3 && hay.includes(normName)) ||
+    (firstToken.length >= 3 && hay.includes(firstToken))
+  );
+}
+
 export async function fetchStaffWorkload(): Promise<StaffWorkloadItem[]> {
   if (isLiveBackend) {
     try {
@@ -9280,58 +7238,94 @@ export async function fetchStaffWorkload(): Promise<StaffWorkloadItem[]> {
   }
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession) {
-    return FALLBACK_WORKLOAD;
-  }
 
   const orgCases = filterByActiveOrg(localCases, ctx);
   const orgCaseIds = getOrgCaseIds(ctx);
   const orgTasks = localTasks.filter(
-    (t) => !t.is_completed && (!t.case_id || orgCaseIds.has(t.case_id) || (t.case_number && orgCaseIds.has(t.case_number)))
+    (t) =>
+      !t.is_completed &&
+      (!t.case_id || orgCaseIds.has(t.case_id) || (t.case_number && orgCaseIds.has(t.case_number)))
   );
 
   const agency = getAgencyForOrganization(ctx.organizationId);
   const invites = getAgencyTeamInvites(ctx.organizationId);
   const members: StaffWorkloadItem[] = [];
 
+  // Track cases/tasks explicitly assigned to invited staff so unassigned items roll up to the Owner cleanly
+  const staffMatchedCaseIds = new Set<string>();
+  const staffMatchedTaskIds = new Set<string>();
+  for (const inv of invites) {
+    for (const c of orgCases) {
+      if (matchesAssigneeIdentity(c.assigned_manager, inv.fullName, inv.email)) {
+        staffMatchedCaseIds.add(c.id);
+      }
+    }
+    for (const t of orgTasks) {
+      if (matchesAssigneeIdentity(t.assigned_to, inv.fullName, inv.email)) {
+        staffMatchedTaskIds.add(t.id);
+      }
+    }
+  }
+
   if (agency) {
-    const firstToken = agency.ownerFullName.split(" ")[0].toLowerCase();
     const assigned = orgCases.filter(
-      (c) => !c.assigned_manager || c.assigned_manager.toLowerCase().includes(firstToken)
+      (c) =>
+        !staffMatchedCaseIds.has(c.id) &&
+        (!c.assigned_manager ||
+          matchesAssigneeIdentity(c.assigned_manager, agency.ownerFullName, agency.ownerEmail))
     ).length;
     const pendingTasks = orgTasks.filter(
-      (t) => !t.assigned_to || t.assigned_to.toLowerCase().includes(firstToken)
+      (t) =>
+        !staffMatchedTaskIds.has(t.id) &&
+        (!t.assigned_to ||
+          matchesAssigneeIdentity(t.assigned_to, agency.ownerFullName, agency.ownerEmail))
     ).length;
-    const util = Math.round((assigned / 25) * 100);
+    const ownerCap = 25;
+    const util = Math.round((assigned / ownerCap) * 100);
     members.push({
       user_id: `usr-owner-${agency.slug}`,
+      is_owner: true,
       full_name: agency.ownerFullName,
       email: agency.ownerEmail,
-      roles: ["company_admin", "master_admin"],
+      roles: ["master_admin"],
+      branch_office: `${agency.hqCity} HQ`,
       assigned_cases: assigned,
       pending_tasks: pendingTasks,
-      nominal_capacity: 25,
+      nominal_capacity: ownerCap,
       utilization_pct: util,
       status: util >= 100 ? "overloaded" : "normal",
+      login_enabled: agency.status !== "suspended",
+      passcode: agency.temporaryPassword,
+      invited_at: agency.createdAt,
       branch_id: "branch-hq",
       team_id: "team-core",
     });
   } else if (ctx.hasSession && ctx.role !== "retained_client") {
-    const firstToken = ctx.fullName.split(" ")[0].toLowerCase();
     const assigned = orgCases.filter(
-      (c) => !c.assigned_manager || c.assigned_manager.toLowerCase().includes(firstToken)
+      (c) =>
+        !staffMatchedCaseIds.has(c.id) &&
+        (!c.assigned_manager || matchesAssigneeIdentity(c.assigned_manager, ctx.fullName, ctx.email))
     ).length;
-    const util = Math.round((assigned / 25) * 100);
+    const pendingTasks = orgTasks.filter(
+      (t) =>
+        !staffMatchedTaskIds.has(t.id) &&
+        (!t.assigned_to || matchesAssigneeIdentity(t.assigned_to, ctx.fullName, ctx.email))
+    ).length;
+    const ownerCap = 25;
+    const util = Math.round((assigned / ownerCap) * 100);
     members.push({
       user_id: ctx.userId,
+      is_owner: ctx.role === "master_admin",
       full_name: ctx.fullName,
       email: ctx.email,
       roles: [ctx.role],
+      branch_office: "Primary Office",
       assigned_cases: assigned,
-      pending_tasks: orgTasks.length,
-      nominal_capacity: 25,
+      pending_tasks: pendingTasks,
+      nominal_capacity: ownerCap,
       utilization_pct: util,
       status: util >= 100 ? "overloaded" : "normal",
+      login_enabled: true,
       branch_id: "branch-hq",
       team_id: "team-core",
     });
@@ -9339,20 +7333,30 @@ export async function fetchStaffWorkload(): Promise<StaffWorkloadItem[]> {
 
   for (const inv of invites) {
     if (members.some((m) => m.email.toLowerCase() === inv.email.toLowerCase())) continue;
-    const firstToken = inv.fullName.split(" ")[0].toLowerCase();
-    const assigned = orgCases.filter((c) => (c.assigned_manager || "").toLowerCase().includes(firstToken)).length;
-    const pendingTasks = orgTasks.filter((t) => (t.assigned_to || "").toLowerCase().includes(firstToken)).length;
-    const util = Math.round((assigned / 20) * 100);
+    const assigned = orgCases.filter((c) =>
+      matchesAssigneeIdentity(c.assigned_manager, inv.fullName, inv.email)
+    ).length;
+    const pendingTasks = orgTasks.filter((t) =>
+      matchesAssigneeIdentity(t.assigned_to, inv.fullName, inv.email)
+    ).length;
+    const cap = inv.nominalCapacity || 20;
+    const util = Math.round((assigned / Math.max(1, cap)) * 100);
     members.push({
       user_id: inv.id,
+      invite_id: inv.id,
+      is_owner: false,
       full_name: inv.fullName,
       email: inv.email,
-      roles: [inv.role === "paralegal" ? "case_worker" : inv.role],
+      roles: [inv.role],
+      branch_office: inv.branchOffice || "Primary Office",
       assigned_cases: assigned,
       pending_tasks: pendingTasks,
-      nominal_capacity: 20,
+      nominal_capacity: cap,
       utilization_pct: util,
       status: util >= 100 ? "overloaded" : "normal",
+      login_enabled: inv.loginEnabled !== false,
+      passcode: inv.passcode,
+      invited_at: inv.invitedAt,
       branch_id: "branch-hq",
       team_id: "team-core",
     });
@@ -9366,7 +7370,7 @@ export async function reassignWork(fromUserId: string, toUserId: string, opts: a
     try {
       const res = await fetch(`${API_BASE}/operations/reassign`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ from_user_id: fromUserId, to_user_id: toUserId, ...opts }),
       });
       if (res.ok) return await res.json();
@@ -9374,11 +7378,81 @@ export async function reassignWork(fromUserId: string, toUserId: string, opts: a
       // Fallback
     }
   }
+
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  const roster = await fetchStaffWorkload();
+  const fromMember = roster.find((m) => m.user_id === fromUserId || m.invite_id === fromUserId);
+  const toMember = roster.find((m) => m.user_id === toUserId || m.invite_id === toUserId);
+
+  const scope = opts?.scope || "cases_and_tasks";
+  let casesReassigned = 0;
+  let tasksReassigned = 0;
+
+  if (fromMember && toMember) {
+    if (scope === "cases_and_tasks" || scope === "cases_only") {
+      localCases = localCases.map((c) => {
+        const sameOrg = !ctx.hasSession || !c.organization_id || c.organization_id === ctx.organizationId;
+        const isMatch =
+          sameOrg &&
+          (matchesAssigneeIdentity(c.assigned_manager, fromMember.full_name, fromMember.email) ||
+            (fromMember.is_owner && !c.assigned_manager));
+        if (isMatch) {
+          casesReassigned += 1;
+          return { ...c, assigned_manager: toMember.full_name };
+        }
+        return c;
+      });
+      setStored(CASES_STORAGE_KEY, localCases);
+    }
+
+    if (scope === "cases_and_tasks" || scope === "tasks_only") {
+      const orgCaseIds = getOrgCaseIds(ctx);
+      localTasks = localTasks.map((t) => {
+        const sameOrg =
+          !ctx.hasSession ||
+          !t.case_id ||
+          orgCaseIds.has(t.case_id) ||
+          (t.case_number && orgCaseIds.has(t.case_number));
+        const isMatch =
+          !t.is_completed &&
+          sameOrg &&
+          (matchesAssigneeIdentity(t.assigned_to, fromMember.full_name, fromMember.email) ||
+            (fromMember.is_owner && !t.assigned_to));
+        if (isMatch) {
+          tasksReassigned += 1;
+          return { ...t, assigned_to: toMember.full_name };
+        }
+        return t;
+      });
+      setStored(TASKS_STORAGE_KEY, localTasks);
+    }
+
+    const auditEntry: AuditEvent = {
+      id: `aud-reassign-${Date.now()}`,
+      action: "operations.work_reassigned",
+      object_type: "staff_workload",
+      object_id: `${fromMember.email} -> ${toMember.email}`,
+      actor_email: ctx.email || "system",
+      created_at: new Date().toISOString(),
+      metadata: {
+        organization_id: ctx.organizationId,
+        from_staff: fromMember.full_name,
+        to_staff: toMember.full_name,
+        cases_reassigned: casesReassigned,
+        tasks_reassigned: tasksReassigned,
+        reason: opts?.reason || "Workload balancing",
+      },
+    };
+    localAuditEvents = [auditEntry, ...localAuditEvents];
+    setStored(AUDIT_STORAGE_KEY, localAuditEvents);
+  }
+
   return {
     from_user_id: fromUserId,
     to_user_id: toUserId,
-    cases_reassigned: 0,
-    tasks_reassigned: 0,
+    cases_reassigned: casesReassigned,
+    tasks_reassigned: tasksReassigned,
     reassigned_at: new Date().toISOString(),
   };
 }
@@ -9395,9 +7469,6 @@ export async function fetchOrganizationSettings(): Promise<OrganizationSettingsD
     }
   }
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession) {
-    return FALLBACK_ORG_SETTINGS;
-  }
   const orgKey = ctx.hasSession ? ctx.organizationId : "default";
   const storedMap = getStored<Record<string, Partial<OrganizationSettingsData>>>("documento_org_settings_v3_clean", {});
   const saved = storedMap[orgKey] || {};
@@ -9446,9 +7517,6 @@ export async function fetchAccessReport(opts: any = {}): Promise<any[]> {
   }
   syncFromStorage();
   const ctx = getActiveSessionContext();
-  if (isTestEnv && !ctx.hasSession) {
-    return FALLBACK_EXECUTIVE_DASHBOARD.metrics.recent_company_activity.items;
-  }
   const orgCaseIds = getOrgCaseIds(ctx);
   const orgClientIds = new Set(filterByActiveOrg(localClients, ctx).map((c) => c.id));
   return localAuditEvents
@@ -9489,27 +7557,45 @@ export async function exportAnalyticsReport(reportType = "executive_summary"): P
   };
 }
 
+function normalizeStaffRoleCode(raw: string): AgencyTeamRole {
+  const clean = (raw || "").trim().toLowerCase();
+  if (clean === "company_admin" || clean === "organization_admin" || clean === "master_admin") {
+    return "company_admin";
+  }
+  if (clean === "paralegal" || clean === "case_worker") {
+    return "paralegal";
+  }
+  if (clean === "intake_finance" || clean === "finance_staff" || clean === "document_reviewer") {
+    return "intake_finance";
+  }
+  return "case_manager";
+}
+
 export async function inviteStaffMember(data: {
   full_name?: string;
   email: string;
   role_code: string;
   branch?: string;
+  password?: string;
+  nominal_capacity?: number;
+  login_enabled?: boolean;
 }): Promise<any> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/organizations/invitations`, {
+      const res = await fetch(`${API_BASE}/operations/staff`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       if (res.ok) return await res.json();
     } catch {
-      // Fallback
+      // Fallback to local multi-tenant store
     }
   }
+
+  syncFromStorage();
   const ctx = getActiveSessionContext();
-  const normalizedRole: "case_manager" | "paralegal" =
-    data.role_code === "paralegal" ? "paralegal" : "case_manager";
+  const normalizedRole = normalizeStaffRoleCode(data.role_code);
   const derivedName =
     data.full_name?.trim() ||
     data.email
@@ -9517,31 +7603,234 @@ export async function inviteStaffMember(data: {
       .replace(/[._-]+/g, " ")
       .replace(/\b\w/g, (ch) => ch.toUpperCase());
 
-  if (ctx.hasSession && getAgencyForOrganization(ctx.organizationId)) {
-    const invite = inviteAgencyTeamMember({
-      organizationId: ctx.organizationId,
-      fullName: derivedName,
-      email: data.email,
-      role: normalizedRole,
-      branchOffice: data.branch,
-    });
-    return {
-      id: invite.id,
+  const targetOrgId = ctx.hasSession ? ctx.organizationId : DEMO_ORG_ID;
+  const targetOrgName = ctx.hasSession ? ctx.organizationName : "Partner Immigration Practice";
+
+  const invite = inviteAgencyTeamMember({
+    organizationId: targetOrgId,
+    fullName: derivedName,
+    email: data.email,
+    role: normalizedRole,
+    branchOffice: data.branch,
+    customPasscode: data.password,
+    nominalCapacity: data.nominal_capacity,
+    loginEnabled: data.login_enabled !== false,
+    fallbackOrganizationName: targetOrgName,
+    actorEmail: ctx.email || "system",
+  });
+
+  const auditEntry: AuditEvent = {
+    id: `aud-staff-add-${Date.now()}`,
+    action: "staff.account_provisioned",
+    object_type: "team_member",
+    object_id: invite.email,
+    actor_email: ctx.email || "system",
+    created_at: invite.invitedAt,
+    metadata: {
+      organization_id: targetOrgId,
       full_name: invite.fullName,
-      email: invite.email,
-      role_code: invite.role,
+      role: invite.role,
       branch: invite.branchOffice,
-      temporary_password: invite.passcode,
-      created_at: invite.invitedAt,
-    };
-  }
+      nominal_capacity: invite.nominalCapacity,
+      login_enabled: invite.loginEnabled !== false,
+    },
+  };
+  localAuditEvents = [auditEntry, ...localAuditEvents];
+  setStored(AUDIT_STORAGE_KEY, localAuditEvents);
 
   return {
-    id: `inv-${Date.now()}`,
-    full_name: derivedName,
-    email: data.email,
-    role_code: data.role_code,
+    id: invite.id,
+    full_name: invite.fullName,
+    email: invite.email,
+    role_code: invite.role,
+    branch: invite.branchOffice,
+    nominal_capacity: invite.nominalCapacity,
+    login_enabled: invite.loginEnabled !== false,
+    temporary_password: invite.passcode,
+    created_at: invite.invitedAt,
+  };
+}
+
+export async function updateStaffMember(
+  memberId: string,
+  patch: {
+    full_name?: string;
+    role_code?: string;
+    branch?: string;
+    nominal_capacity?: number;
+    login_enabled?: boolean;
+    password?: string;
+  }
+): Promise<any> {
+  if (isLiveBackend) {
+    try {
+      const res = await fetch(`${API_BASE}/operations/staff/${encodeURIComponent(memberId)}`, {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback to local multi-tenant store
+    }
+  }
+
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+
+  // Support rotating the Primary Agency Owner's password via resetAgencyOwnerPassword if requested
+  if (memberId.startsWith("usr-owner-")) {
+    const agency = getAgencyForOrganization(ctx.organizationId);
+    if (agency && patch.password && patch.password.trim().length >= 8) {
+      const updatedTenant = resetAgencyOwnerPassword(
+        agency.organizationId,
+        patch.password.trim(),
+        ctx.email || agency.ownerEmail
+      );
+      return {
+        id: memberId,
+        email: updatedTenant.ownerEmail,
+        temporary_password: updatedTenant.temporaryPassword,
+        login_enabled: updatedTenant.status !== "suspended",
+      };
+    }
+    if (patch.password && patch.password.trim().length < 8) {
+      throw new Error("Password must be at least 8 characters.");
+    }
+    return { id: memberId };
+  }
+
+  const updated = updateAgencyTeamMember(
+    memberId,
+    {
+      fullName: patch.full_name,
+      role: patch.role_code ? normalizeStaffRoleCode(patch.role_code) : undefined,
+      branchOffice: patch.branch,
+      nominalCapacity: patch.nominal_capacity,
+      loginEnabled: patch.login_enabled,
+      passcode: patch.password,
+    },
+    ctx.email || "system"
+  );
+
+  const auditEntry: AuditEvent = {
+    id: `aud-staff-upd-${Date.now()}`,
+    action: patch.password ? "staff.credentials_rotated" : "staff.membership_updated",
+    object_type: "team_member",
+    object_id: updated.email,
+    actor_email: ctx.email || "system",
     created_at: new Date().toISOString(),
+    metadata: {
+      organization_id: updated.organizationId,
+      role: updated.role,
+      branch: updated.branchOffice,
+      nominal_capacity: updated.nominalCapacity,
+      login_enabled: updated.loginEnabled !== false,
+    },
+  };
+  localAuditEvents = [auditEntry, ...localAuditEvents];
+  setStored(AUDIT_STORAGE_KEY, localAuditEvents);
+
+  return {
+    id: updated.id,
+    full_name: updated.fullName,
+    email: updated.email,
+    role_code: updated.role,
+    branch: updated.branchOffice,
+    nominal_capacity: updated.nominalCapacity,
+    login_enabled: updated.loginEnabled !== false,
+    temporary_password: updated.passcode,
+  };
+}
+
+export async function deleteStaffMember(
+  memberId: string,
+  opts?: {
+    transferToUserId?: string;
+    reason?: string;
+  }
+): Promise<{
+  deleted_id: string;
+  deleted_email: string;
+  cases_transferred: number;
+  tasks_transferred: number;
+}> {
+  if (memberId.startsWith("usr-owner-")) {
+    throw new Error("The Founding Managing Partner account is protected and cannot be deleted.");
+  }
+
+  if (isLiveBackend) {
+    try {
+      const qs = new URLSearchParams();
+      if (opts?.transferToUserId) qs.set("transfer_to_user_id", opts.transferToUserId);
+      if (opts?.reason) qs.set("reason", opts.reason);
+      const res = await fetch(
+        `${API_BASE}/operations/staff/${encodeURIComponent(memberId)}?${qs.toString()}`,
+        {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        }
+      );
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback to local multi-tenant store
+    }
+  }
+
+  syncFromStorage();
+  const ctx = getActiveSessionContext();
+  const roster = await fetchStaffWorkload();
+  const departing = roster.find((m) => m.user_id === memberId || m.invite_id === memberId);
+
+  if (departing?.is_owner) {
+    throw new Error("The Founding Managing Partner account is protected and cannot be deleted.");
+  }
+
+  const hasActiveWork =
+    (departing?.assigned_cases || 0) > 0 || (departing?.pending_tasks || 0) > 0;
+  if (hasActiveWork && !opts?.transferToUserId) {
+    throw new Error(
+      "Select a receiving team member to transfer active cases and pending tasks before deleting this account."
+    );
+  }
+
+  let casesTransferred = 0;
+  let tasksTransferred = 0;
+  if (opts?.transferToUserId) {
+    const transferRes = await reassignWork(memberId, opts.transferToUserId, {
+      scope: "cases_and_tasks",
+      reason: opts.reason || "Atomic case transfer during staff offboarding & seat deletion",
+    });
+    casesTransferred = transferRes.cases_reassigned || 0;
+    tasksTransferred = transferRes.tasks_reassigned || 0;
+  }
+
+  const removed = removeAgencyTeamMember(memberId, ctx.email || "system");
+
+  const auditEntry: AuditEvent = {
+    id: `aud-staff-del-${Date.now()}`,
+    action: "staff.offboarded_and_deleted",
+    object_type: "team_member",
+    object_id: removed.email,
+    actor_email: ctx.email || "system",
+    created_at: new Date().toISOString(),
+    metadata: {
+      organization_id: ctx.organizationId,
+      full_name: "",
+      role: "",
+      cases_reassigned: 0,
+      tasks_reassigned: 0,
+      reason: "Cleanup",
+    },
+  };
+  localAuditEvents = [auditEntry, ...localAuditEvents];
+  setStored(AUDIT_STORAGE_KEY, localAuditEvents);
+
+  return {
+    deleted_id: removed.id,
+    deleted_email: removed.email,
+    cases_transferred: casesTransferred,
+    tasks_transferred: tasksTransferred,
   };
 }
 
@@ -9617,7 +7906,7 @@ export async function submitBatchUpload(
     is_duplicate: i === 1 && files.length > 2,
     existing_document_id: i === 1 && files.length > 2 ? "doc-01" : undefined,
     proposed_category: category,
-    proposed_applicant_name: applicantDependantId ? "Priya Patel (Spouse)" : "Raj Patel (Primary)",
+    proposed_applicant_name: applicantDependantId ? "Dependant / Family Member" : "Primary Applicant",
     is_assignment_confirmed: Boolean(applicantDependantId),
   }));
 
@@ -9712,36 +8001,6 @@ export async function fetchCaseInterimReports(
     // fallback
   }
 
-  const ctx = getActiveSessionContext(role);
-  if (isTestEnv && !ctx.hasSession) {
-    return [
-      {
-        id: "ir-01",
-        case_id: caseId,
-        trigger_action: "hold_applied",
-        report_title: "Interim Snapshot: Case Placed on Legal Hold",
-        manifest_snapshot_json: {
-          total_documents: 8,
-          verified_count: 5,
-          anomaly_count: 1,
-          generated_at: "2026-10-15T09:00:00Z",
-        },
-        ocr_summary_json: {
-          completed_runs: 8,
-          average_confidence: 0.97,
-        },
-        anomaly_report_json: {
-          unresolved_anomalies: [
-            {
-              document_id: "doc-04",
-              anomaly: "Low lighting glare detected on bottom signature corner",
-            },
-          ],
-        },
-        created_at: "2026-10-15T09:00:00Z",
-      },
-    ];
-  }
   const stored = getStored<Record<string, CaseInterimReport[]>>("documento_interim_reports_v3_clean", {});
   return stored[caseId] || [];
 }
@@ -11400,7 +9659,7 @@ export async function getCasePinnedChecklist(
   const realCase = localCases.find((c) => c.id === caseId);
   return {
     case_id: caseId,
-    case_number: realCase?.case_number || (isTestEnv ? "CAS-CA-001" : caseId),
+    case_number: realCase?.case_number || caseId,
     is_pinned: true,
     pinned_rule_version_id: "v-ca-fsw-100",
     snapshot_pinned_at: realCase?.created_at || new Date().toISOString(),
@@ -11541,345 +9800,106 @@ export async function compareRuleVersions(
 // =========================================================================
 
 export const FALLBACK_MANAGER_PRIORITY_QUEUE: ManagerPriorityQueueResponse = {
-  generated_at: "2026-10-17T12:00:00Z",
+  generated_at: "",
   organization_id: DEMO_ORG_ID,
   summary: {
-    critical_overdue_deadlines_count: 3,
-    unassigned_cases_count: 2,
-    blocked_cases_count: 2,
-    overdue_client_responses_count: 2,
-    pending_reviews_count: 3,
-    quality_issues_count: 3,
+    critical_overdue_deadlines_count: 0,
+    unassigned_cases_count: 0,
+    blocked_cases_count: 0,
+    overdue_client_responses_count: 0,
+    pending_reviews_count: 0,
+    quality_issues_count: 0,
     payment_summary: {
-      paid_count: 5,
-      pending_count: 3,
-      partially_paid_count: 2,
-      paid_amount: 14750.0,
-      pending_amount: 8500.0,
-      partially_paid_amount: 3200.0,
+      paid_count: 0,
+      pending_count: 0,
+      partially_paid_count: 0,
+      paid_amount: 0,
+      pending_amount: 0,
+      partially_paid_amount: 0,
     },
-    first_time_pass_rate_percent: 94.2,
+    first_time_pass_rate_percent: 0,
   },
   ranks: [
     {
       rank: 1,
       title: "Critical/Overdue Deadlines (Especially Authority Requests)",
       priority: "P1_CRITICAL",
-      count: 3,
+      count: 0,
       description: "USCIS RFE/NOID, IRCC PFL, court/biometrics, and statutory filing deadlines",
-      items: [
-        {
-          id: "m-rfe-01",
-          type: "authority_request",
-          title: "USCIS Form I-140 Request for Evidence (RFE) Response Window",
-          case_id: "case-01",
-          case_number: "CASE-US-8841",
-          client_name: "Dr. Elena Rostova",
-          deadline: "2026-10-24T17:00:00Z",
-          days_remaining: 7,
-          is_overdue: false,
-          is_authority_request: true,
-          authority_type: "USCIS RFE/NOID",
-          severity: "CRITICAL",
-        },
-        {
-          id: "m-pfl-02",
-          type: "authority_request",
-          title: "IRCC Procedural Fairness Letter (PFL) Evidentiary Cure",
-          case_id: "case-ca-02",
-          case_number: "CASE-CA-4091",
-          client_name: "Rajesh Sharma",
-          deadline: "2026-10-20T17:00:00Z",
-          days_remaining: 3,
-          is_overdue: false,
-          is_authority_request: true,
-          authority_type: "IRCC PFL",
-          severity: "CRITICAL",
-        },
-        {
-          id: "m-bio-03",
-          type: "authority_task",
-          title: "Mandatory Biometrics Capture & ASC Appointment Notice",
-          case_id: "case-us-8842",
-          case_number: "CASE-US-8842",
-          client_name: "Fatima Al-Mansoor",
-          deadline: "2026-10-15T09:00:00Z",
-          days_remaining: -2,
-          is_overdue: true,
-          is_authority_request: true,
-          authority_type: "Statutory Biometrics Deadline",
-          severity: "CRITICAL",
-        },
-      ],
+      items: [],
     },
     {
       rank: 2,
       title: "Workload & Allocation",
       priority: "P2_HIGH",
-      count: 3,
-      unassigned_cases_count: 2,
+      count: 0,
+      unassigned_cases_count: 0,
       description: "Officer caseload distribution, capacity utilization %, and unassigned queue",
-      staff_allocation: [
-        {
-          user_id: "usr-01",
-          full_name: "Sarah Jenkins, Esq.",
-          email: "attorney@lexai.com",
-          assigned_cases_count: 22,
-          pending_tasks_count: 8,
-          capacity_limit: 25,
-          utilization_percent: 88.0,
-          allocation_status: "OPTIMAL",
-        },
-        {
-          user_id: "usr-02",
-          full_name: "Marcus Vance",
-          email: "paralegal@lexai.com",
-          assigned_cases_count: 27,
-          pending_tasks_count: 14,
-          capacity_limit: 25,
-          utilization_percent: 108.0,
-          allocation_status: "OVERLOADED",
-        },
-        {
-          user_id: "usr-03",
-          full_name: "Priya Nair",
-          email: "pnair@lexai.com",
-          assigned_cases_count: 12,
-          pending_tasks_count: 4,
-          capacity_limit: 25,
-          utilization_percent: 48.0,
-          allocation_status: "AVAILABLE",
-        },
-      ],
-      unassigned_cases: [
-        {
-          case_id: "case-unassigned-01",
-          case_number: "CASE-US-9012",
-          title: "O-1A Extraordinary Ability Petition in Athletics",
-          visa_category: "O-1A",
-          created_at: "2026-10-16T14:30:00Z",
-        },
-        {
-          case_id: "case-unassigned-02",
-          case_number: "CASE-CA-4105",
-          title: "Express Entry PNP Ontario Nomination Review",
-          visa_category: "Express Entry - PNP",
-          created_at: "2026-10-17T09:15:00Z",
-        },
-      ],
+      staff_allocation: [],
+      unassigned_cases: [],
     },
     {
       rank: 3,
       title: "Blocked Cases",
       priority: "P3_HIGH",
-      count: 2,
+      count: 0,
       description: "Hard statutory blockers, critical discrepancies, and unresolved anomalies",
-      items: [
-        {
-          case_id: "case-01",
-          case_number: "CASE-US-8841",
-          title: "EB-1A Extraordinary Ability Petition",
-          client_name: "Dr. Elena Rostova",
-          visa_category: "EB-1A",
-          status: "review",
-          blocker_reasons: [
-            "Statutory Anomaly: Peer review evidence missing official publication timestamp",
-            "Document Issue: Foreign diploma translation certificate unverified",
-          ],
-          blockers_count: 2,
-        },
-        {
-          case_id: "case-ca-02",
-          case_number: "CASE-CA-4091",
-          title: "Express Entry Federal Skilled Worker",
-          client_name: "Rajesh Sharma",
-          visa_category: "FSW-Express Entry",
-          status: "gathering",
-          blocker_reasons: [
-            "Document Issue: Reference letter date precedes incorporation date (Failed hash check)",
-          ],
-          blockers_count: 1,
-        },
-      ],
+      items: [],
     },
     {
       rank: 4,
       title: "Overdue Client Responses",
       priority: "P4_MEDIUM",
-      count: 2,
+      count: 0,
       description: "Overdue document requests and stalled evidentiary questionnaires",
-      items: [
-        {
-          id: "req-overdue-01",
-          type: "document_request",
-          title: "Certified English Translation of Medical License",
-          case_id: "case-01",
-          case_number: "CASE-US-8841",
-          client_name: "Dr. Elena Rostova",
-          due_date: "2026-10-12T17:00:00Z",
-          days_overdue: 5,
-          status: "requested",
-        },
-        {
-          id: "q-stalled-02",
-          type: "questionnaire_stalled",
-          title: "Intake Questionnaire (42% filled)",
-          case_id: "case-ca-02",
-          case_number: "CASE-CA-4091",
-          client_name: "Rajesh Sharma",
-          due_date: "2026-10-10T17:00:00Z",
-          days_overdue: 7,
-          status: "in_progress",
-        },
-      ],
+      items: [],
     },
     {
       rank: 5,
       title: "Pending Reviews",
       priority: "P5_MEDIUM",
-      count: 3,
+      count: 0,
       description: "Evidence awaiting verification, submitted application forms, and packages in review",
-      items: [
-        {
-          id: "doc-pending-01",
-          item_type: "document",
-          title: "Curriculum Vitae & Citation Metrics Index",
-          case_id: "case-01",
-          case_number: "CASE-US-8841",
-          submitted_at: "2026-10-16T18:00:00Z",
-          review_state: "under_review",
-        },
-        {
-          id: "form-pending-02",
-          item_type: "form_submission",
-          title: "Application Form (Form I-140)",
-          case_id: "case-01",
-          case_number: "CASE-US-8841",
-          submitted_at: "2026-10-15T11:30:00Z",
-          review_state: "submitted",
-        },
-        {
-          id: "pkg-pending-03",
-          item_type: "filing_package",
-          title: "Filing Dossier Package (v1)",
-          case_id: "case-ca-02",
-          case_number: "CASE-CA-4091",
-          submitted_at: "2026-10-14T15:20:00Z",
-          review_state: "ready_for_review",
-        },
-      ],
+      items: [],
     },
     {
       rank: 6,
       title: "Quality Issues, Corrections & Escalations",
       priority: "P6_MEDIUM",
-      count: 3,
+      count: 0,
       description: "Rejected documents, manual field overrides, and partner escalations",
-      items: [
-        {
-          id: "doc-rej-01",
-          issue_type: "document_rejected",
-          title: "Passport Photo Page (Blurry Scan)",
-          case_id: "case-01",
-          case_number: "CASE-US-8841",
-          structured_reason_code: "BLURRY_IMAGE",
-          explanation: "The MRZ barcode and expiration date are unreadable due to glare. Please re-upload with flat lighting.",
-          timestamp: "2026-10-16T16:20:00Z",
-        },
-        {
-          id: "field-corr-02",
-          issue_type: "field_correction",
-          title: "Manual Field Override: Beneficiary Date of Birth",
-          case_id: "case-01",
-          case_number: "CASE-US-8841",
-          structured_reason_code: "OCR_EXTRACTION_CORRECTION",
-          explanation: "OCR extracted 05/12/1984 instead of 12/05/1984 based on passport DD/MM/YYYY standard.",
-          timestamp: "2026-10-15T14:10:00Z",
-        },
-        {
-          id: "esc-finding-03",
-          issue_type: "supervisor_escalation",
-          title: "Kazarian Major Significant Contributions Criterion Evaluation",
-          case_id: "case-01",
-          case_number: "CASE-US-8841",
-          structured_reason_code: "FINDING_ESCALATED",
-          explanation: "Escalated to managing partner to verify if patent citations meet Ninth Circuit legal standard.",
-          timestamp: "2026-10-14T09:45:00Z",
-        },
-      ],
+      items: [],
     },
     {
       rank: 7,
       title: "Payment Status",
       priority: "P7_FINANCIAL",
-      count: 10,
-      paid_count: 5,
-      pending_count: 3,
-      partially_paid_count: 2,
-      paid_amount: 14750.0,
-      pending_amount: 8500.0,
-      partially_paid_amount: 3200.0,
+      count: 0,
+      paid_count: 0,
+      pending_count: 0,
+      partially_paid_count: 0,
+      paid_amount: 0,
+      pending_amount: 0,
+      partially_paid_amount: 0,
       description: "Accounts receivable aging and retainer fees: Paid, Pending, and Partially Paid",
-      items: [
-        {
-          id: "inv-01",
-          invoice_number: "INV-2026-0001",
-          client_id: "cl-01",
-          status: "PAID",
-          amount: 4250.0,
-          paid_amount: 4250.0,
-          balance_due: 0.0,
-          due_date: "2026-09-30T00:00:00Z",
-        },
-        {
-          id: "inv-02",
-          invoice_number: "INV-2026-0002",
-          client_id: "cl-02",
-          status: "PENDING",
-          amount: 5000.0,
-          paid_amount: 0.0,
-          balance_due: 5000.0,
-          due_date: "2026-10-31T00:00:00Z",
-        },
-        {
-          id: "inv-03",
-          invoice_number: "INV-2026-0003",
-          client_id: "cl-03",
-          status: "PARTIALLY_PAID",
-          amount: 6000.0,
-          paid_amount: 2800.0,
-          balance_due: 3200.0,
-          due_date: "2026-10-25T00:00:00Z",
-        },
-      ],
+      items: [],
     },
     {
       rank: 8,
       title: "Performance View & Quality Improvement",
       priority: "P8_PERFORMANCE",
-      count: 1,
-      first_time_pass_rate_percent: 94.2,
+      count: 0,
+      first_time_pass_rate_percent: 0,
       description: "Visual and numeric metrics supporting quality improvement, not blame-only management",
       metrics: {
-        first_time_right_percentage: 94.2,
-        median_turnaround_hours: 18.5,
-        correction_cycle_time_days: 1.8,
-        quality_improvement_index: 94.2,
-        weekly_trajectory: [
-          { week: "W1", accuracy_score: 88.4, first_time_right: 84.1 },
-          { week: "W2", accuracy_score: 89.9, first_time_right: 86.0 },
-          { week: "W3", accuracy_score: 91.2, first_time_right: 88.5 },
-          { week: "W4", accuracy_score: 93.0, first_time_right: 90.2 },
-          { week: "W5", accuracy_score: 93.8, first_time_right: 91.6 },
-          { week: "W6", accuracy_score: 94.5, first_time_right: 93.0 },
-        ],
+        first_time_right_percentage: 0,
+        median_turnaround_hours: 0,
+        correction_cycle_time_days: 0,
+        quality_improvement_index: 0,
+        weekly_trajectory: [],
         philosophy: "Metrics support quality improvement, training, and team enablement rather than blame-only punitive management.",
       },
-      coaching_focus_areas: [
-        "Proactive camera scanning guidance reduced illegible uploads by 41%",
-        "Cross-checking statutory criteria prior to filing lowered RFE rates",
-        "Weekly quality circles on USCIS EB-1A Kazarian precedents",
-      ],
+      coaching_focus_areas: [],
     },
   ],
 };
@@ -11900,9 +9920,6 @@ export async function fetchManagerPriorityQueue(
 
   syncFromStorage();
   const ctx = getActiveSessionContext(role);
-  if (isTestEnv && !ctx.hasSession && localCases.length > 0) {
-    return FALLBACK_MANAGER_PRIORITY_QUEUE;
-  }
 
   const orgCases = filterByActiveOrg(localCases, ctx);
   const orgClients = filterByActiveOrg(localClients, ctx);
@@ -12259,23 +10276,7 @@ export const FALLBACK_FIRM_CONFIGURATION: FirmConfiguration = {
   },
 };
 
-export const FALLBACK_FIRM_AUDIT_LOG: FirmConfigAuditLogItem[] = [
-  {
-    id: "audit-01",
-    organization_id: DEMO_ORG_ID,
-    domain: "checklist_versions",
-    version: 1,
-    old_version: 1,
-    new_version: 1,
-    actor_id: DEMO_USERS.master_admin.id,
-    actor_email: "managing-partner@firm.internal",
-    old_version_json: {},
-    new_version_json: { standard_version: "v2026.1" },
-    reason: "Initial baseline configuration of firm governance domains",
-    effective_date: "2026-01-01T00:00:00Z",
-    created_at: "2026-01-01T00:00:00Z",
-  },
-];
+export const FALLBACK_FIRM_AUDIT_LOG: FirmConfigAuditLogItem[] = [];
 
 export async function fetchFirmConfiguration(
   orgId?: string,
@@ -12293,9 +10294,6 @@ export async function fetchFirmConfiguration(
     // fallback
   }
   const ctx = getActiveSessionContext(role);
-  if (isTestEnv && !ctx.hasSession) {
-    return FALLBACK_FIRM_CONFIGURATION;
-  }
   const resolvedOrg = orgId || (ctx.hasSession ? ctx.organizationId : "default");
   const storedConfigs = getStored<Record<string, FirmConfiguration>>("documento_firm_config_v3_clean", {});
   if (storedConfigs[resolvedOrg]) {
@@ -12371,7 +10369,7 @@ export async function updateDomainConfiguration(
     old_version: nextVersion - 1,
     new_version: nextVersion,
     actor_id: ctx.userId,
-    actor_email: ctx.hasSession ? ctx.email : "owner@firm.local",
+    actor_email: ctx.hasSession ? ctx.email : "system",
     old_version_json: prevDomain,
     new_version_json: data,
     reason,
@@ -12406,11 +10404,6 @@ export async function fetchFirmConfigAuditLog(
     // fallback
   }
   const ctx = getActiveSessionContext(role);
-  if (isTestEnv && !ctx.hasSession) {
-    return domain
-      ? FALLBACK_FIRM_AUDIT_LOG.filter((l) => l.domain === domain)
-      : FALLBACK_FIRM_AUDIT_LOG;
-  }
   const resolvedOrg = orgId || (ctx.hasSession ? ctx.organizationId : "default");
   const storedAudit = getStored<Record<string, FirmConfigAuditLogItem[]>>("documento_firm_audit_v3_clean", {});
   const list = storedAudit[resolvedOrg] || [];
@@ -12437,10 +10430,10 @@ export async function fetchCase(
   const ctx = getActiveSessionContext(role);
   return {
     id: caseId,
-    case_number: isTestEnv && !ctx.hasSession ? "CASE-DEMO-01" : caseId,
-    title: isTestEnv && !ctx.hasSession ? "Skilled Worker Visa Case" : "Unassigned Matter",
-    client_id: isTestEnv && !ctx.hasSession ? "client-01" : "",
-    client_name: isTestEnv && !ctx.hasSession ? "Jane Doe" : "Applicant",
+    case_number: caseId,
+    title: "Unassigned Matter",
+    client_id: "",
+    client_name: "Applicant",
     jurisdiction: "GBR",
     visa_category: "Skilled Worker",
     status: "intake",
@@ -13417,6 +11410,40 @@ export async function getOperationalDashboardTelemetry(
   return await res.json();
 }
 
+function purgeLocalCaseArtifacts(caseIds: string[]): void {
+  if (caseIds.length === 0) return;
+  const idSet = new Set(caseIds);
+  localCases = localCases.filter((c) => !idSet.has(c.id));
+  setStored(CASES_STORAGE_KEY, localCases);
+  localDocuments = localDocuments.filter((d) => !(d.case_id && idSet.has(d.case_id)));
+  setStored(DOCS_STORAGE_KEY, localDocuments);
+  localTasks = localTasks.filter((t) => !idSet.has(t.case_id));
+  setStored(TASKS_STORAGE_KEY, localTasks);
+  localFindings = localFindings.filter((f) => !idSet.has(f.case_id));
+  setStored(FINDINGS_STORAGE_KEY, localFindings);
+
+  for (const cid of caseIds) {
+    removeCaseKickoffRecord(cid);
+    removeRawPacketsForCase(cid);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(`documento_initial_info_sheet_${cid}`);
+      window.localStorage.removeItem(`documento_questionnaire_${cid}`);
+    }
+  }
+}
+
+export async function deleteCase(
+  caseId: string,
+  roleCode?: string
+): Promise<{ success: boolean; deleted_case_id: string }> {
+  const role = (roleCode as RoleCode) || "master_admin";
+  const res = await api.deleteCase(caseId, role);
+  return {
+    success: res.data.success,
+    deleted_case_id: res.data.id || caseId,
+  };
+}
+
 export async function deleteClient(
   clientId: string,
   roleCode?: string,
@@ -13430,5 +11457,3 @@ export async function deleteClient(
     deleted_client_id: res.data.id || clientId,
   };
 }
-
-

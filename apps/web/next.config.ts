@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.resolve(__dirname),
   experimental: {
     proxyTimeout: 120000,
+    agentUpgrade: "security",
   },
   turbopack: {
     root: path.resolve(__dirname),

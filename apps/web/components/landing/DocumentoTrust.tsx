@@ -115,10 +115,14 @@ export function DocumentoTrust() {
         padding: "88px 24px",
         scrollMarginTop: "80px",
         background: "#F8FAF9",
-        borderBottom: "1px solid rgba(13, 104, 102, 0.1)",
+        borderBottom: "1px solid #DCE7E3",
       }}
     >
       <InteractiveSectionBackground variant="ambient-mesh" />
+      {/* Anchor for #trust links */}
+      <div id="trust" style={{ position: "relative", top: "-80px", visibility: "hidden" }} />
+      {/* Anchor for #capabilities links */}
+      <div id="capabilities" style={{ position: "relative", top: "-80px", visibility: "hidden" }} />
       <div id="capabilities-content" style={{ position: "relative", top: "-80px", visibility: "hidden" }} />
 
       <div style={{ position: "relative", zIndex: 1, maxWidth: "1240px", margin: "0 auto" }}>
@@ -126,40 +130,46 @@ export function DocumentoTrust() {
         <div
           className="animate-on-scroll section-header-reveal"
           data-motion="up"
-          style={{ textAlign: "center", maxWidth: "740px", margin: "0 auto 40px auto" }}
+          style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto 44px auto" }}
         >
-          <span
+          <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
               fontSize: "12px",
-              fontWeight: 650,
-              letterSpacing: "0.06em",
+              fontWeight: 700,
+              letterSpacing: "0.08em",
               textTransform: "uppercase",
-              color: "#0D6866",
+              color: "#07594F",
               marginBottom: "12px",
             }}
           >
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#169B77" }} />
-            <span>Governance &amp; Safeguards</span>
-          </span>
+            Governance &amp; Safeguards
+          </div>
 
           <h2
             style={{
-              fontSize: "clamp(28px, 3.5vw, 42px)",
+              fontSize: "clamp(28px, 3.6vw, 44px)",
               fontWeight: 700,
               color: "#063C3D",
-              lineHeight: 1.15,
+              lineHeight: 1.14,
               letterSpacing: "-0.03em",
-              margin: "0 0 14px 0",
+              margin: "0 0 16px 0",
               fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
             }}
           >
             Built for qualified legal judgment, not unverified automation.
           </h2>
 
-          <p style={{ fontSize: "16px", color: "#4F6360", lineHeight: 1.6, margin: 0 }}>
+          <p
+            style={{
+              fontSize: "15.5px",
+              color: "#475955",
+              lineHeight: 1.6,
+              margin: 0,
+              maxWidth: "680px",
+              marginLeft: "auto",
+              marginRight: "auto",
+            }}
+          >
             Immigration casework demands accountable human oversight. Documento pairs verified operational capabilities with immutable governance guardrails.
           </p>
 
@@ -172,23 +182,23 @@ export function DocumentoTrust() {
               alignItems: "center",
               background: "#FFFFFF",
               padding: "4px",
-              borderRadius: "10px",
-              border: "1px solid rgba(13, 104, 102, 0.14)",
+              borderRadius: "8px",
+              border: "1px solid #DCE5E1",
               marginTop: "24px",
-              boxShadow: "0 4px 14px rgba(6, 60, 61, 0.04)",
+              boxShadow: "0 2px 10px rgba(6, 60, 61, 0.04)",
             }}
           >
             <button
               type="button"
               onClick={() => setActiveViewMode("principles")}
               style={{
-                padding: "7px 18px",
-                borderRadius: "7px",
+                padding: "8px 20px",
+                borderRadius: "6px",
                 border: "none",
                 background: activeViewMode === "principles" ? "#07594F" : "transparent",
                 color: activeViewMode === "principles" ? "#FFFFFF" : "#526663",
                 fontSize: "13px",
-                fontWeight: 600,
+                fontWeight: 650,
                 cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
@@ -199,13 +209,13 @@ export function DocumentoTrust() {
               type="button"
               onClick={() => setActiveViewMode("capabilities")}
               style={{
-                padding: "7px 18px",
-                borderRadius: "7px",
+                padding: "8px 20px",
+                borderRadius: "6px",
                 border: "none",
                 background: activeViewMode === "capabilities" ? "#07594F" : "transparent",
                 color: activeViewMode === "capabilities" ? "#FFFFFF" : "#526663",
                 fontSize: "13px",
-                fontWeight: 600,
+                fontWeight: 650,
                 cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
@@ -240,8 +250,8 @@ export function DocumentoTrust() {
                     onClick={() => setActivePrincipleIdx(idx)}
                     style={{
                       background: "#FFFFFF",
-                      border: isSelected ? "1.5px solid #0D6866" : "1px solid rgba(13, 104, 102, 0.12)",
-                      borderRadius: "16px",
+                      border: isSelected ? "1.5px solid #0D6866" : "1px solid #DCE5E1",
+                      borderRadius: "12px",
                       padding: "24px",
                       textAlign: "left",
                       cursor: "pointer",
@@ -249,10 +259,10 @@ export function DocumentoTrust() {
                       flexDirection: "column",
                       justifyContent: "space-between",
                       gap: "16px",
-                      transition: "all 0.2s ease",
+                      transition: "all 0.15s ease",
                       boxShadow: isSelected
-                        ? "0 16px 36px -12px rgba(13, 104, 102, 0.1)"
-                        : "0 4px 16px -8px rgba(6, 60, 61, 0.03)",
+                        ? "0 8px 24px -8px rgba(13, 104, 102, 0.1)"
+                        : "0 2px 10px rgba(6, 60, 61, 0.03)",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
@@ -260,7 +270,7 @@ export function DocumentoTrust() {
                         style={{
                           width: "36px",
                           height: "36px",
-                          borderRadius: "10px",
+                          borderRadius: "8px",
                           background: "#EAF5EF",
                           display: "flex",
                           alignItems: "center",
@@ -273,11 +283,12 @@ export function DocumentoTrust() {
                       <span
                         style={{
                           fontSize: "11px",
-                          fontWeight: 650,
+                          fontWeight: 700,
                           color: "#07594F",
                           background: "#EAF5EF",
                           padding: "3px 9px",
-                          borderRadius: "999px",
+                          borderRadius: "4px",
+                          border: "1px solid #B9DED4",
                         }}
                       >
                         {p.tag}
@@ -285,10 +296,18 @@ export function DocumentoTrust() {
                     </div>
 
                     <div>
-                      <h3 style={{ fontSize: "16px", fontWeight: 650, color: "#063C3D", margin: "0 0 6px 0" }}>
+                      <h3
+                        style={{
+                          fontSize: "16.5px",
+                          fontWeight: 700,
+                          color: "#063C3D",
+                          margin: "0 0 6px 0",
+                          fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
+                        }}
+                      >
                         {p.title}
                       </h3>
-                      <p style={{ fontSize: "13.5px", color: "#526663", lineHeight: 1.55, margin: 0 }}>
+                      <p style={{ fontSize: "13.5px", color: "#475955", lineHeight: 1.55, margin: 0 }}>
                         {p.description}
                       </p>
                     </div>
@@ -297,7 +316,7 @@ export function DocumentoTrust() {
               })}
             </div>
 
-            {/* Operational Boundaries Matrix (Compact 2-Column) */}
+            {/* Operational Boundaries Matrix */}
             <div
               style={{
                 display: "grid",
@@ -312,19 +331,20 @@ export function DocumentoTrust() {
                 data-motion="left"
                 style={{
                   background: "#FFFFFF",
-                  borderRadius: "16px",
-                  border: "1px solid rgba(13, 104, 102, 0.14)",
+                  borderRadius: "12px",
+                  border: "1px solid #DCE5E1",
                   padding: "28px",
+                  boxShadow: "0 2px 12px rgba(6, 60, 61, 0.03)",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
                   <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#169B77" }} />
-                  <span style={{ fontSize: "16px", fontWeight: 650, color: "#063C3D" }}>
+                  <span style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)" }}>
                     Documento helps with
                   </span>
                 </div>
 
-                <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "10px", fontSize: "13.5px", color: "#526663", lineHeight: 1.55 }}>
+                <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "10px", fontSize: "13.5px", color: "#475955", lineHeight: 1.55 }}>
                   <li style={{ display: "flex", gap: "10px" }}>
                     <span style={{ color: "#169B77", fontWeight: 700 }}>•</span>
                     <span><strong style={{ color: "#063C3D" }}>Document organization:</strong> Structuring client records and exhibits in an audited repository.</span>
@@ -350,19 +370,20 @@ export function DocumentoTrust() {
                 data-motion="right"
                 style={{
                   background: "#FFFFFF",
-                  borderRadius: "16px",
-                  border: "1px solid rgba(13, 104, 102, 0.14)",
+                  borderRadius: "12px",
+                  border: "1px solid #DCE5E1",
                   padding: "28px",
+                  boxShadow: "0 2px 12px rgba(6, 60, 61, 0.03)",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
                   <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#C0392B" }} />
-                  <span style={{ fontSize: "16px", fontWeight: 650, color: "#063C3D" }}>
+                  <span style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)" }}>
                     Documento does not do
                   </span>
                 </div>
 
-                <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "10px", fontSize: "13.5px", color: "#526663", lineHeight: 1.55 }}>
+                <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "10px", fontSize: "13.5px", color: "#475955", lineHeight: 1.55 }}>
                   <li style={{ display: "flex", gap: "10px" }}>
                     <span style={{ color: "#C0392B", fontWeight: 700 }}>•</span>
                     <span><strong style={{ color: "#063C3D" }}>Replace legal professionals:</strong> Software cannot substitute for the legal analysis, strategy, and advice of licensed counsel.</span>
@@ -406,9 +427,9 @@ export function DocumentoTrust() {
                   onClick={() => setActiveCapabilityId(cap.id)}
                   style={{
                     padding: "24px",
-                    borderRadius: "16px",
+                    borderRadius: "12px",
                     background: "#FFFFFF",
-                    border: isSelected ? "1.5px solid #0D6866" : "1px solid rgba(13, 104, 102, 0.12)",
+                    border: isSelected ? "1.5px solid #0D6866" : "1px solid #DCE5E1",
                     cursor: "pointer",
                     display: "flex",
                     flexDirection: "column",
@@ -421,20 +442,21 @@ export function DocumentoTrust() {
                       style={{
                         display: "inline-block",
                         fontSize: "11px",
-                        fontWeight: 650,
+                        fontWeight: 700,
                         color: "#07594F",
                         background: "#EAF5EF",
                         padding: "3px 10px",
-                        borderRadius: "999px",
+                        borderRadius: "4px",
                         marginBottom: "10px",
+                        border: "1px solid #B9DED4",
                       }}
                     >
                       {cap.tag}
                     </span>
-                    <div style={{ fontSize: "16px", fontWeight: 650, color: "#063C3D", marginBottom: "6px" }}>
+                    <div style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", marginBottom: "6px", fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)" }}>
                       {cap.title}
                     </div>
-                    <p style={{ fontSize: "13.5px", color: "#526663", lineHeight: 1.55, margin: 0 }}>
+                    <p style={{ fontSize: "13.5px", color: "#475955", lineHeight: 1.55, margin: 0 }}>
                       {cap.description}
                     </p>
                   </div>
@@ -444,21 +466,21 @@ export function DocumentoTrust() {
           </div>
         )}
 
-        {/* Clean Legal Disclaimer Footer Bar */}
+        {/* Legal Disclaimer Footer Bar */}
         <div
           className="animate-on-scroll spotlight-card"
           data-motion="up"
           style={{
             background: "#FFFFFF",
-            border: "1px solid rgba(13, 104, 102, 0.12)",
-            borderRadius: "14px",
+            border: "1px solid #DCE5E1",
+            borderRadius: "12px",
             padding: "18px 24px",
             fontSize: "12.5px",
-            color: "#526663",
+            color: "#475955",
             lineHeight: 1.6,
           }}
         >
-          <span style={{ fontWeight: 650, color: "#063C3D" }}>
+          <span style={{ fontWeight: 700, color: "#063C3D" }}>
             Legal Safeguards &amp; Regulatory Boundaries:
           </span>{" "}
           Documento is an immigration casework and evidence intelligence platform, not a law firm. Documento does not provide legal representation, statutory interpretation, or legal advice, and is not affiliated with USCIS, UKVI, IRCC, or any government body. Consequential legal conclusions, petition brief drafting, and final case authorization strictly require the evaluation and signature of a licensed immigration attorney or accredited representative.

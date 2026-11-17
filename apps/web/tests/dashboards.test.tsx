@@ -1,5 +1,11 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  const { mockApiModuleWithFixtures } = await import("./helpers/mockApiFixtures");
+  return mockApiModuleWithFixtures(actual);
+});
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { OwnerMasterDashboard } from "../components/dashboards/OwnerMasterDashboard";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
@@ -15,7 +21,7 @@ import {
   FIXTURE_INVOICES,
   FIXTURE_CAPACITY,
   FIXTURE_NOTIFICATIONS,
-} from "../lib/api";
+} from "./helpers/testFixtures";
 
 describe("Three Separate Role Experiences", () => {
   describe("A. Owner Master Dashboard", () => {
@@ -69,13 +75,13 @@ describe("Three Separate Role Experiences", () => {
       });
       expect(handleSelectCase).toHaveBeenCalled();
 
-      // 4. Switch to Team Capacity tab
-      const teamTabBtn = screen.getByRole("button", { name: /Team Capacity/i });
+      // 4. Switch to unified Operations Hub (which now governs Team Capacity & Logins)
+      const opsTabBtn = screen.getByRole("button", { name: /Operations Hub/i });
       act(() => {
-        fireEvent.click(teamTabBtn);
+        fireEvent.click(opsTabBtn);
       });
-      expect(screen.getByText("Caseworker Workload & Review Capacity")).toBeDefined();
-      expect(screen.getByText("Sarah Jenkins, Esq.")).toBeDefined();
+      expect(await screen.findByText("Company Operations, Workload & Governance")).toBeDefined();
+      expect(await screen.findByText(/Sarah Jenkins/i)).toBeDefined();
 
       // 5. Switch to Financials tab
       const finTabBtn = screen.getByRole("button", { name: /Revenue & Billing/i });

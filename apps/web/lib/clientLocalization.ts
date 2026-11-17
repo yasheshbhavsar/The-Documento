@@ -118,12 +118,28 @@ export interface ClientTranslations {
   translationLabel: string;
   messagePlaceholder: string;
   sendMessageButton: string;
-  promptChips: {
-    timeline: { title: string; prompt: string };
-    travel: { title: string; prompt: string };
-    taxReturns: { title: string; prompt: string };
-    approvalCopy: { title: string; prompt: string };
-  };
+    promptChips: {
+      timeline: { title: string; prompt: string };
+      travel: { title: string; prompt: string };
+      taxReturns: { title: string; prompt: string };
+      approvalCopy: { title: string; prompt: string };
+    };
+
+  // Guided 3-Step Plain-Language Journey & Sponsor Collaboration
+  journeyStep1Label: string;
+  journeyStep2Label: string;
+  journeyStep3Label: string;
+  nextStepBadge: string;
+  nextStepDropSentence: string;
+  nextStepReviewDetailsSentence: string;
+  autoFillReadyTitle: string;
+  autoFillConfirmButton: string;
+  autoFillConfirmedLabel: string;
+  sponsorCardTitle: string;
+  sponsorCardSubtitle: string;
+  sponsorGenerateLinkButton: string;
+  sponsorCopyLinkButton: string;
+  sponsorVerifiedShieldLabel: string;
 }
 
 export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
@@ -238,6 +254,25 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
         prompt: "Dear Officer, could you please provide a certified digital copy of my Form I-797 Approval Notice for my personal records?",
       },
     },
+
+    journeyStep1Label: "1. Home & Upload",
+    journeyStep2Label: "2. My Details",
+    journeyStep3Label: "3. Messages & Status",
+    nextStepBadge: "Your Next Step",
+    nextStepDropSentence:
+      "Drop your Passport, Bank Statement, or Family PDF Packet below — we sort and fill your details automatically.",
+    nextStepReviewDetailsSentence:
+      "Your documents are uploaded — review and confirm your pre-filled details in Step 2 with one click.",
+    autoFillReadyTitle:
+      "Details Extracted from Your Documents — Ready for 1-Click Confirmation",
+    autoFillConfirmButton: "✓ Confirm Auto-Filled Details",
+    autoFillConfirmedLabel: "✓ Confirmed & Saved to Your File",
+    sponsorCardTitle: "Invite Overseas Sponsor or Family Member to Upload Directly",
+    sponsorCardSubtitle:
+      "Generate a passwordless upload link for a Child/Grandchild in Canada (Super Visa), Sibling in Canada (+15 CRS), UK Sponsor, or AU Sponsor. Their private tax filings stay protected under Privacy Shield while showing you verified completion.",
+    sponsorGenerateLinkButton: "Create Passwordless Sponsor Upload Link",
+    sponsorCopyLinkButton: "Copy Link",
+    sponsorVerifiedShieldLabel: "✓ Verified (Privacy Shield Active)",
   },
 
   // =========================================================================
@@ -351,6 +386,25 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
         prompt: "[ગુજરાતી]: નમસ્તે, મારા અંગત રેકોર્ડ માટે મારા ફોર્મ I-797 મંજૂરી પત્રની પ્રમાણિત ડિજિટલ નકલ મોકલવા વિનંતી છે.\n[English for Officer]: Dear Officer, could you please provide a certified digital copy of my Form I-797 Approval Notice for my personal records?",
       },
     },
+
+    journeyStep1Label: "૧. મુખ્ય પૃષ્ઠ અને અપલોડ (1. Home & Upload)",
+    journeyStep2Label: "૨. મારી વિગતો (2. My Details)",
+    journeyStep3Label: "૩. સંદેશા અને સ્થિતિ (3. Messages & Status)",
+    nextStepBadge: "તમારું આગામી પગલું (Your Next Step)",
+    nextStepDropSentence:
+      "તમારો પાસપોર્ટ, બેંક સ્ટેટમેન્ટ અથવા ફેમિલી PDF પેકેટ નીચે મૂકો — અમે તમારી વિગતો આપમેળે ગોઠવીને ભરી દઈશું.",
+    nextStepReviewDetailsSentence:
+      "તમારા દસ્તાવેજો અપલોડ થઈ ગયા છે — પગલું ૨ માં પહેલાથી ભરેલી વિગતો એક ક્લિકથી ચકાસીને મંજૂર કરો.",
+    autoFillReadyTitle:
+      "તમારા દસ્તાવેજોમાંથી વિગતો તૈયાર છે — ૧-ક્લિકથી પુષ્ટિ કરો",
+    autoFillConfirmButton: "✓ આપમેળે ભરાયેલી વિગતો મંજૂર કરો",
+    autoFillConfirmedLabel: "✓ પુષ્ટિ થઈ અને તમારી ફાઇલમાં સાચવ્યું",
+    sponsorCardTitle: "વિદેશમાં રહેતા સ્પોન્સર કે પરિવારના સભ્યને સીધા અપલોડ કરવા આમંત્રિત કરો",
+    sponsorCardSubtitle:
+      "કેનેડામાં રહેતા સંતાન (સુપર વિઝા), ભાઈ-બહેન (+15 CRS), UK કે AU સ્પોન્સર માટે પાસવર્ડ વગરની લિંક બનાવો. પ્રાઇવસી શીલ્ડ હેઠળ તેમના ખાનગી ટેક્સ પેપર્સ ગુપ્ત રહેશે અને તમને માત્ર ચકાસણી સ્થિતિ દેખાશે.",
+    sponsorGenerateLinkButton: "સ્પોન્સર અપલોડ લિંક બનાવો",
+    sponsorCopyLinkButton: "લિંક કોપી કરો",
+    sponsorVerifiedShieldLabel: "✓ ચકાસાયેલ (Privacy Shield Active)",
   },
 
   // =========================================================================
@@ -464,6 +518,25 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
         prompt: "[हिन्दी]: नमस्ते, कृपया मेरे व्यक्तिगत रिकॉर्ड के लिए मेरे फॉर्म I-797 स्वीकृति पत्र की प्रमाणित डिजिटल प्रति प्रदान करें।\n[English for Officer]: Dear Officer, could you please provide a certified digital copy of my Form I-797 Approval Notice for my personal records?",
       },
     },
+
+    journeyStep1Label: "१. मुख्य पृष्ठ और अपलोड (1. Home & Upload)",
+    journeyStep2Label: "२. मेरा विवरण (2. My Details)",
+    journeyStep3Label: "३. संदेश और स्थिति (3. Messages & Status)",
+    nextStepBadge: "आपका अगला कदम (Your Next Step)",
+    nextStepDropSentence:
+      "अपना पासपोर्ट, बैंक स्टेटमेंट या फ़ैमिली PDF पैकेट नीचे डालें — हम आपके विवरण को अपने आप छाँटकर भर देंगे।",
+    nextStepReviewDetailsSentence:
+      "आपके दस्तावेज़ अपलोड हो चुके हैं — चरण २ में पहले से भरे गए विवरण की एक क्लिक से पुष्टि करें।",
+    autoFillReadyTitle:
+      "आपके दस्तावेज़ों से विवरण निकाले गए हैं — १-क्लिक से पुष्टि करें",
+    autoFillConfirmButton: "✓ स्वतः भरे विवरण की पुष्टि करें",
+    autoFillConfirmedLabel: "✓ पुष्टि की गई और आपकी फ़ाइल में सहेजा गया",
+    sponsorCardTitle: "विदेश में रहने वाले प्रायोजक या परिवार के सदस्य को सीधे अपलोड करने के लिए आमंत्रित करें",
+    sponsorCardSubtitle:
+      "कनाडा में रहने वाले संतान (सुपर वीज़ा), भाई-बहन (+15 CRS), UK या AU प्रायोजक के लिए बिना पासवर्ड वाला लिंक बनाएँ। प्राइवेसी शील्ड के तहत उनके निजी टैक्स दस्तावेज़ गोपनीय रहते हैं और आपको सत्यापित स्थिति दिखती है।",
+    sponsorGenerateLinkButton: "प्रायोजक अपलोड लिंक बनाएँ",
+    sponsorCopyLinkButton: "लिंक कॉपी करें",
+    sponsorVerifiedShieldLabel: "✓ सत्यापित (Privacy Shield Active)",
   },
 };
 

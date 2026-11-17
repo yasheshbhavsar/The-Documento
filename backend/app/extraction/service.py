@@ -832,6 +832,26 @@ def extract_structured_fields(
         if indian_passport.holder_name and "full_name" not in added_keys:
             add_field("full_name", "Full Name", indian_passport.holder_name, indian_passport.holder_name.title(), 1, 0.95, method="statutory_identity_resolver")
             add_field("applicant_name", "Candidate Applicant Name", indian_passport.holder_name, indian_passport.holder_name.title(), 1, 0.95, method="statutory_identity_resolver")
+
+        # Reconcile noisy MRZ name fields when visual passport text stripped trailing '<' -> 'K'/'L' noise
+        def _refine_noisy_mrz_field(target_key: str, refined_val: Optional[str], as_upper: bool = False) -> None:
+            if not refined_val or target_key not in added_keys:
+                return
+            ref_alpha = re.sub(r"[^A-Z]", "", refined_val.upper())
+            for ef in extracted_fields:
+                if ef.field_name != target_key:
+                    continue
+                cur_alpha = re.sub(r"[^A-Z]", "", (ef.normalized_value or ef.original_value or "").upper())
+                if cur_alpha != ref_alpha and len(ref_alpha) >= 3 and cur_alpha.startswith(ref_alpha) and len(cur_alpha) - len(ref_alpha) <= 3:
+                    if set(cur_alpha[len(ref_alpha):]).issubset({"K", "L", "E", "C"}):
+                        formatted = refined_val.upper() if as_upper else refined_val.title()
+                        ef.original_value = refined_val
+                        ef.normalized_value = formatted
+
+        _refine_noisy_mrz_field("surname", indian_passport.surname, as_upper=False)
+        _refine_noisy_mrz_field("given_names", indian_passport.given_names, as_upper=False)
+        _refine_noisy_mrz_field("full_name", indian_passport.holder_name, as_upper=False)
+        _refine_noisy_mrz_field("applicant_name", indian_passport.holder_name, as_upper=False)
         if indian_passport.place_of_birth and "place_of_birth" not in added_keys:
             add_field("place_of_birth", "Place of Birth", indian_passport.place_of_birth, indian_passport.place_of_birth.title(), 1, 0.95, method="statutory_identity_resolver")
         if indian_passport.date_of_birth and "date_of_birth" not in added_keys:
@@ -2597,6 +2617,506 @@ def extract_structured_fields(
                 raw_irdate = indic_rdate_m.group(1).strip()
                 add_field("birth_registration_date", "Date of Registration", raw_irdate, normalize_date(raw_irdate) or raw_irdate, 1, 0.95)
 
+    # 13. CA / UK / AU SPONSOR, HOST & SIBLING STRUCTURED FIELD EXTRACTION
+    upper_full = full_text.upper()
+
+    # 13A. Canada CRA Notice of Assessment (NOA), Option C Printout & T4 Statement of Remuneration
+    is_cra_doc = any(
+        kw in upper_full
+        for kw in (
+            "CANADA REVENUE AGENCY",
+            "NOTICE OF ASSESSMENT",
+            "LINE 15000",
+            "LINE 23600",
+            "OPTION C PRINTOUT",
+            "PROOF OF INCOME STATEMENT",
+            "STATEMENT OF REMUNERATION PAID",
+        )
+    )
+    if is_cra_doc or category in ("financial_evidence", "employment_records"):
+        # Tax Year (CRA NOA / Option C / T4)
+        if is_cra_doc and "tax_year" not in added_keys:
+            cra_ty_m = re.search(
+                r"(?:Tax(?:ation)?\s*year[\s:]*([12][09][0-9]{2})|for\s+the\s+([12][09][0-9]{2})\s+tax\s+year|\b([12][09][0-9]{2})\s+Notice\s+of\s+Assessment|Year\s*[\r\n:]+\s*([12][09][0-9]{2})\b)",
+                full_text,
+                re.IGNORECASE,
+            )
+            if cra_ty_m:
+                ty_val = next(g for g in cra_ty_m.groups() if g)
+                add_field("tax_year", "Taxation Year", ty_val, ty_val, 1, 0.98)
+
+        # CRA Line 15000 Total Income
+        l15000_m = re.search(
+            r"(?:Line\s*15000[^\r\n0-9\$]{0,45}\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)|Total\s+income\s*(?:\(\s*Line\s*15000\s*\))?[\s:\.\$]*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?)|\b15000\s+Total\s+income[\s:\.\$]*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?))",
+            full_text,
+            re.IGNORECASE,
+        )
+        if l15000_m and "cra_line_15000_income" not in added_keys:
+            raw_15000 = next(g for g in l15000_m.groups() if g)
+            add_field(
+                "cra_line_15000_income",
+                "CRA Total Income (Line 15000)",
+                f"CAD ${raw_15000}",
+                f"{float(raw_15000.replace(',', '')):.2f}",
+                1,
+                0.99,
+            )
+
+        # CRA Line 23600 Net Income
+        l23600_m = re.search(
+            r"(?:Line\s*23600[^\r\n0-9\$]{0,45}\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)|Net\s+income\s*(?:\(\s*Line\s*23600\s*\))?[\s:\.\$]*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?)|\b23600\s+Net\s+income[\s:\.\$]*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?))",
+            full_text,
+            re.IGNORECASE,
+        )
+        if l23600_m and "cra_line_23600_income" not in added_keys:
+            raw_23600 = next(g for g in l23600_m.groups() if g)
+            add_field(
+                "cra_line_23600_income",
+                "CRA Net Income (Line 23600)",
+                f"CAD ${raw_23600}",
+                f"{float(raw_23600.replace(',', '')):.2f}",
+                1,
+                0.99,
+            )
+
+        # CRA Masked SIN (XXX-XXX-123)
+        sin_m = re.search(
+            r"(?:Social\s*Insurance\s*Number|SIN)\s*[:#\-]?\s*([Xx\*0-9]{3}[\s-]?[Xx\*0-9]{3}[\s-]?([0-9]{3}))\b",
+            full_text,
+            re.IGNORECASE,
+        )
+        if sin_m and "sin_masked" not in added_keys:
+            masked_sin = f"XXX-XXX-{sin_m.group(2)}"
+            add_field("sin_masked", "Social Insurance Number (Masked)", masked_sin, masked_sin, 1, 0.99, method="statutory_identity_resolver")
+
+        # CRA Taxpayer Name on NOA / Option C
+        if is_cra_doc and "full_name" not in added_keys:
+            cra_nm_m = re.search(
+                r"(?:Taxpayer(?:\s*Name)?|Client\s*Name|Assessed\s*for)\s*[:\-]\s*([A-Z][A-Za-z\s'-]{3,50}?)(?=\r|\n|SIN|Social|Tax\s*Year|$)",
+                full_text,
+                re.IGNORECASE,
+            )
+            if cra_nm_m:
+                raw_cnm = cra_nm_m.group(1).strip()
+                add_field("full_name", "Taxpayer Full Name", raw_cnm, raw_cnm.title(), 1, 0.96)
+                if "taxpayer_name" not in added_keys:
+                    add_field("taxpayer_name", "Taxpayer Name", raw_cnm, raw_cnm.title(), 1, 0.96)
+
+        # CRA T4 Box 14 Employment Income & Employer
+        if "STATEMENT OF REMUNERATION PAID" in upper_full or re.search(r"\bBox\s*14\b|\bT4\b", full_text, re.IGNORECASE):
+            t4_inc_m = re.search(
+                r"(?:Employment\s*income[^\r\n0-9\$]{0,35}(?:Box\s*14|line\s*10100)?[\s:\$]*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?)|Box\s*14[^\r\n0-9\$]{0,30}\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?))",
+                full_text,
+                re.IGNORECASE,
+            )
+            if t4_inc_m and "t4_employment_income" not in added_keys:
+                raw_t4 = next(g for g in t4_inc_m.groups() if g)
+                add_field(
+                    "t4_employment_income",
+                    "T4 Employment Income (Box 14)",
+                    f"CAD ${raw_t4}",
+                    f"{float(raw_t4.replace(',', '')):.2f}",
+                    1,
+                    0.98,
+                )
+            if "employer_name" not in added_keys:
+                t4_emp_m = re.search(
+                    r"Employer(?:'s)?\s*name\s*[\r\n:]+\s*([A-Z0-9][A-Za-z0-9\s,\.&'-]{2,60}?)(?=\r|\n|Employee|Social|Year|Box)",
+                    full_text,
+                    re.IGNORECASE,
+                )
+                if t4_emp_m:
+                    raw_t4e = t4_emp_m.group(1).strip()
+                    add_field("employer_name", "Employer Name", raw_t4e, raw_t4e.title(), 1, 0.96)
+
+    # 13B. Canadian PR Card, Citizenship Certificate, Canadian Passport, eCoPR & Work/Study Permit
+    has_canadian_status_doc = any(
+        kw in upper_full
+        for kw in (
+            "PERMANENT RESIDENT CARD",
+            "CARTE DE RESIDENT PERMANENT",
+            "CONFIRMATION OF PERMANENT RESIDENCE",
+            "CERTIFICATE OF CANADIAN CITIZENSHIP",
+            "CANADIAN CITIZENSHIP CERTIFICATE",
+            "CANADIAN PASSPORT",
+            "PASSEPORT CANADA",
+            "WORK PERMIT / PERMIS DE TRAVAIL",
+            "STUDY PERMIT / PERMIS",
+            "CACAN",
+        )
+    )
+    if has_canadian_status_doc or "uci_number" in added_keys:
+        uci_any_m = re.search(
+            r"(?:UCI|Client\s*ID|ID\s*No\s*/?\s*No\s*ID)\s*[:#\-]?\s*(\d{2}[-\s]?\d{4}[-\s]?\d{4}|\d{4}[-\s]?\d{4}|\d{8,10})\b",
+            full_text,
+            re.IGNORECASE,
+        )
+        if uci_any_m:
+            raw_uci_v = uci_any_m.group(1).strip()
+            digits_uci = re.sub(r"\D", "", raw_uci_v)
+            norm_uci_v = (
+                f"{digits_uci[:2]}-{digits_uci[2:6]}-{digits_uci[6:]}"
+                if len(digits_uci) == 10 and "-" in raw_uci_v
+                else (f"{digits_uci[:4]}-{digits_uci[4:]}" if len(digits_uci) == 8 and "-" in raw_uci_v else digits_uci or raw_uci_v)
+            )
+            if "ircc_uci" not in added_keys:
+                add_field("ircc_uci", "IRCC Unique Client Identifier (UCI)", raw_uci_v, norm_uci_v, 1, 0.99)
+            if "uci_number" not in added_keys:
+                add_field("uci_number", "Unique Client Identifier (UCI)", raw_uci_v, digits_uci or raw_uci_v, 1, 0.99)
+        elif "uci_number" in added_keys and "ircc_uci" not in added_keys:
+            existing_uci = next((f.normalized_value for f in extracted_fields if f.field_name == "uci_number"), "")
+            if existing_uci:
+                add_field("ircc_uci", "IRCC Unique Client Identifier (UCI)", existing_uci, existing_uci, 1, 0.99)
+
+        if has_canadian_status_doc:
+            ca_status_val: str | None = None
+            if (
+                "CERTIFICATE OF CANADIAN CITIZENSHIP" in upper_full
+                or "CANADIAN CITIZENSHIP CERTIFICATE" in upper_full
+                or "CANADIAN PASSPORT" in upper_full
+                or "PASSEPORT CANADA" in upper_full
+                or "P<CAN" in upper_full
+            ):
+                ca_status_val = "Canadian Citizen"
+            elif (
+                "PERMANENT RESIDENT CARD" in upper_full
+                or "CARTE DE RESIDENT PERMANENT" in upper_full
+                or "CONFIRMATION OF PERMANENT RESIDENCE" in upper_full
+                or "CACAN" in upper_full
+            ):
+                ca_status_val = "Canadian Permanent Resident"
+            elif "WORK PERMIT" in upper_full:
+                ca_status_val = "Work Permit Holder"
+            elif "STUDY PERMIT" in upper_full:
+                ca_status_val = "Study Permit Holder"
+
+            if ca_status_val and "immigration_status" not in added_keys:
+                add_field("immigration_status", "Canadian Immigration Status", ca_status_val, ca_status_val, 1, 0.98)
+
+            ca_doc_m = re.search(
+                r"(?:Document\s*No\.?|Certificate\s*(?:Number|No\.?)|Card\s*No\.?)\s*[:#\-]?\s*([A-Z]{1,2}[0-9]{7,10})\b",
+                full_text,
+                re.IGNORECASE,
+            )
+            if ca_doc_m and "document_number" not in added_keys:
+                d_val = ca_doc_m.group(1).upper()
+                add_field("document_number", "Document / Certificate Number", d_val, d_val, 1, 0.98)
+
+            # PR Card Front Name: "Name / Nom\nSHAH\nPRIYA ROHAN"
+            if "full_name" not in added_keys and "PERMANENT RESIDENT CARD" in upper_full:
+                pr_nm_m = re.search(
+                    r"Name\s*/\s*Nom\s*[\r\n]+\s*([A-Z][A-Z\s'-]{1,30})\s*[\r\n]+\s*([A-Z][A-Z\s'-]{1,35})(?=\r|\n|ID\s*No|UCI|Nationality)",
+                    full_text,
+                )
+                if pr_nm_m:
+                    pr_full = f"{pr_nm_m.group(2).strip()} {pr_nm_m.group(1).strip()}"
+                    add_field("full_name", "Permanent Resident Full Name", pr_full, pr_full.title(), 1, 0.97)
+
+    # 13C. Super Visa Medical Insurance Duration (365 days check)
+    if category in ("insurance_accommodation", "supporting_evidence") and (
+        "SUPER VISA" in upper_full or "EMERGENCY MEDICAL INSURANCE" in upper_full or "insurance_coverage_amount" in added_keys
+    ):
+        dur_m = re.search(r"\b([0-9]{2,3})\s*days?\b", full_text, re.IGNORECASE)
+        if dur_m and "insurance_duration_days" not in added_keys:
+            d_cnt = dur_m.group(1)
+            add_field("insurance_duration_days", "Insurance Coverage Duration", f"{d_cnt} days", f"{d_cnt} days", 1, 0.97)
+        elif "insurance_duration_days" not in added_keys:
+            eff_f = next((f.normalized_value for f in extracted_fields if f.field_name == "insurance_effective_date"), None)
+            exp_f = next((f.normalized_value for f in extracted_fields if f.field_name == "insurance_expiry_date"), None)
+            if eff_f and exp_f:
+                try:
+                    from datetime import date as _dt_date
+
+                    d1 = _dt_date.fromisoformat(str(eff_f)[:10])
+                    d2 = _dt_date.fromisoformat(str(exp_f)[:10])
+                    span_days = (d2 - d1).days
+                    # Inclusive policy period (e.g. 2026-06-01 to 2027-05-31 == 364 diff -> 365 inclusive days)
+                    if span_days in (364, 365):
+                        span_days = max(span_days, 365) if span_days == 364 else span_days
+                    if span_days > 0:
+                        add_field(
+                            "insurance_duration_days",
+                            "Insurance Coverage Duration",
+                            f"{span_days} days",
+                            f"{span_days} days",
+                            1,
+                            0.95,
+                        )
+                except Exception:
+                    pass
+
+    # 13D. Canadian Residency Proof (Hydro / Utility / Lease / Provincial DL / Property Tax)
+    ca_postal_m = re.search(
+        r"([0-9]{1,6}\s+[A-Za-z0-9\s,\.\-#]{4,75}?,\s*(?:ON|Ontario|BC|British\s+Columbia|AB|Alberta|QC|Quebec|MB|Manitoba|SK|Saskatchewan|NS|Nova\s+Scotia|NB|New\s+Brunswick|NL|PE)[,\s]+([A-CEGHJ-NPR-TVXY]\d[A-CEGHJ-NPR-TV-Z]\s?\d[A-CEGHJ-NPR-TV-Z]\d))\b",
+        full_text,
+        re.IGNORECASE,
+    )
+    if ca_postal_m:
+        raw_ca_addr = " ".join(ca_postal_m.group(1).split())
+        if "canadian_residential_address" not in added_keys:
+            add_field("canadian_residential_address", "Canadian Residential Address", raw_ca_addr, raw_ca_addr, 1, 0.96)
+        prov_map = {
+            "ON": "Ontario",
+            "ONTARIO": "Ontario",
+            "BC": "British Columbia",
+            "BRITISH COLUMBIA": "British Columbia",
+            "AB": "Alberta",
+            "ALBERTA": "Alberta",
+            "QC": "Quebec",
+            "QUEBEC": "Quebec",
+            "MB": "Manitoba",
+            "MANITOBA": "Manitoba",
+            "SK": "Saskatchewan",
+            "SASKATCHEWAN": "Saskatchewan",
+            "NS": "Nova Scotia",
+            "NOVA SCOTIA": "Nova Scotia",
+            "NB": "New Brunswick",
+            "NEW BRUNSWICK": "New Brunswick",
+        }
+        prov_m = re.search(
+            r"\b(Ontario|British\s+Columbia|Alberta|Quebec|Manitoba|Saskatchewan|Nova\s+Scotia|New\s+Brunswick|ON|BC|AB|QC|MB|SK|NS|NB)\b",
+            raw_ca_addr,
+            re.IGNORECASE,
+        )
+        if prov_m and "province" not in added_keys:
+            p_key = " ".join(prov_m.group(1).upper().split())
+            p_norm = prov_map.get(p_key, prov_m.group(1).title())
+            add_field("province", "Canadian Province", p_norm, p_norm, 1, 0.96)
+
+    # 13E. Sponsor Invitation & Financial Undertaking Letter
+    if any(
+        kw in upper_full
+        for kw in (
+            "LETTER OF INVITATION",
+            "INVITATION LETTER",
+            "SPONSORSHIP UNDERTAKING",
+            "INVITATION AND UNDERTAKING",
+            "FORM 1149",
+            "STATUTORY DECLARATIONS ACT 1959",
+        )
+    ):
+        host_m = re.search(
+            r"(?:Host\s*(?:/\s*Sponsor)?\s*Name|Sponsor(?:'s)?\s*Name|Inviter\s*Name|I,\s+)([A-Z][A-Za-z\s'-]{3,45}?)(?=,\s*(?:residing|a\s+Canadian|a\s+British|an\s+Australian|born|holder)|\r|\n|$)",
+            full_text,
+        )
+        if host_m and "inviting_sponsor_name" not in added_keys:
+            h_nm = host_m.group(1).strip()
+            add_field("inviting_sponsor_name", "Host / Sponsor Name", h_nm, h_nm.title(), 1, 0.96)
+            if "full_name" not in added_keys:
+                add_field("full_name", "Sponsor Full Name", h_nm, h_nm.title(), 1, 0.94)
+
+        inv_m = re.search(
+            r"(?:Invitee(?:\s*/\s*Parent)?\s*Names?|Inviting|invite\s+my\s+(?:parents?|mother|father|brother|sister))\s*[:\-]?\s*([A-Z][A-Za-z\s,&'-]{3,80}?)(?=\s+to\s+visit|\s+residing|\r|\n|$)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if inv_m and "invitee_names" not in added_keys:
+            inv_val = inv_m.group(1).strip(" ,.-")
+            add_field("invitee_names", "Invitee / Visiting Family Names", inv_val, inv_val.title(), 1, 0.94)
+
+        rel_m = re.search(
+            r"(?:Relationship(?:\s+to\s+(?:Applicant|Invitee))?\s*[:\-]\s*([A-Za-z\s/-]{3,35})|\bmy\s+(parents|father|mother|brother|sister|spouse|son|daughter)\b)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if rel_m and "sponsor_relationship" not in added_keys:
+            r_val = (rel_m.group(1) or rel_m.group(2)).splitlines()[0].strip()
+            add_field("sponsor_relationship", "Sponsor Relationship", r_val, r_val.title(), 1, 0.94)
+
+        und_m = re.search(
+            r"((?:I\s+(?:hereby\s+)?(?:undertake|promise)|Undertaking(?:\s*Promise)?\s*:)[^\r\n\.]{10,180})",
+            full_text,
+            re.IGNORECASE,
+        )
+        if und_m and "undertaking_promise" not in added_keys:
+            u_val = und_m.group(1).strip()
+            add_field("undertaking_promise", "Financial & Accommodation Undertaking", u_val, u_val, 1, 0.95)
+
+    # 13F. UK Sponsor: eVisa Share Code, BRP/ILR/Settled Status, HMRC P60/SA302, UK Council Tax & Land Registry
+    sc_m = re.search(
+        r"(?:Share\s*code\s*[:#\-]?\s*)([A-Z0-9]{3}[-\s]?[A-Z0-9]{3}[-\s]?[A-Z0-9]{3})\b",
+        full_text,
+        re.IGNORECASE,
+    )
+    if sc_m and "uk_share_code" not in added_keys:
+        sc_alnum = re.sub(r"[^A-Za-z0-9]", "", sc_m.group(1)).upper()
+        sc_norm = f"{sc_alnum[:3]}-{sc_alnum[3:6]}-{sc_alnum[6:]}" if len(sc_alnum) == 9 else sc_m.group(1).upper()
+        add_field("uk_share_code", "UK Home Office eVisa Share Code", sc_m.group(1).strip(), sc_norm, 1, 0.99)
+
+    uk_status_m = re.search(
+        r"\b(Indefinite\s+Leave\s+to\s+Remain|Indefinite\s+Leave\s+to\s+Enter|Settled\s+Status|Pre-?Settled\s+Status|Skilled\s+Worker|British\s+Citizen)\b",
+        full_text,
+        re.IGNORECASE,
+    )
+    if uk_status_m and ("HOME OFFICE" in upper_full or "UK" in upper_full or "SHARE CODE" in upper_full or "IMMIGRATION STATUS" in upper_full or "BIOMETRIC RESIDENCE PERMIT" in upper_full):
+        uk_st = " ".join(uk_status_m.group(1).split()).title()
+        uk_st = uk_st.replace("To", "to")
+        if "uk_immigration_status" not in added_keys:
+            add_field("uk_immigration_status", "UK Immigration Status", uk_st, uk_st, 1, 0.98)
+        if "immigration_status" not in added_keys:
+            add_field("immigration_status", "Immigration Status", uk_st, uk_st, 1, 0.98)
+
+    valid_until_m = re.search(
+        r"(?:Valid\s+until|Share\s+code\s+expires(?:\s+on)?)\s*[:\-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+20[0-9]{2}|20[0-9]{2}[-/][0-9]{2}[-/][0-9]{2}|[0-9]{2}[/-][0-9]{2}[/-]20[0-9]{2})",
+        full_text,
+        re.IGNORECASE,
+    )
+    if valid_until_m and "expiry_date" not in added_keys:
+        raw_vu = valid_until_m.group(1).strip()
+        add_field("expiry_date", "Valid Until / Expiry Date", raw_vu, normalize_date(raw_vu) or raw_vu, 1, 0.96)
+
+    if any(kw in upper_full for kw in ("P60", "SA302", "HM REVENUE", "HMRC", "NATIONAL INSURANCE")):
+        uk_ty_m = re.search(
+            r"(?:Tax\s*year(?:\s*to\s*5\s*April)?\s*[:\-]?\s*(20[0-9]{2}(?:[-/][0-9]{2,4})?)|year\s+ended\s+5\s+April\s+(20[0-9]{2}))",
+            full_text,
+            re.IGNORECASE,
+        )
+        if uk_ty_m and "tax_year" not in added_keys:
+            uk_ty = (uk_ty_m.group(1) or uk_ty_m.group(2)).strip()
+            add_field("tax_year", "UK Tax Year", uk_ty, uk_ty, 1, 0.98)
+
+        uk_inc_m = re.search(
+            r"(?:Total\s+for\s+year|Total\s+pay(?:\s+in\s+this\s+employment)?|Total\s+income(?:\s+received)?|Gross\s+pay)\s*[:£\s]*£?\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if uk_inc_m and "uk_gross_annual_income" not in added_keys:
+            raw_uki = uk_inc_m.group(1).strip()
+            add_field(
+                "uk_gross_annual_income",
+                "UK Gross Annual Income (GBP)",
+                f"£{raw_uki}",
+                f"{float(raw_uki.replace(',', '')):.2f}",
+                1,
+                0.98,
+            )
+
+        ni_m = re.search(
+            r"(?:National\s*Insurance\s*(?:number|No\.?)|NI\s*(?:Number|No\.?))\s*[:#\-]?\s*(?:[Xx\*]{2}[-\s]?[Xx\*]{2}[-\s]?[Xx\*]{2}[-\s]?[Xx\*]{2}[-\s]?([A-D])|([A-Z]{2})[-\s]?[0-9]{2}[-\s]?[0-9]{2}[-\s]?[0-9]{2}[-\s]?([A-D]))\b",
+            full_text,
+            re.IGNORECASE,
+        )
+        if ni_m and "uk_ni_number_masked" not in added_keys:
+            ni_suffix = (ni_m.group(1) or ni_m.group(3) or "A").upper()
+            masked_ni = f"XX-XX-XX-XX-{ni_suffix}"
+            add_field("uk_ni_number_masked", "UK National Insurance Number (Masked)", masked_ni, masked_ni, 1, 0.99, method="statutory_identity_resolver")
+
+        if "employer_name" not in added_keys:
+            uk_emp_m = re.search(
+                r"Employer(?:'s)?\s*name(?:\s*and\s*address)?\s*[\r\n:]+\s*([A-Z0-9][A-Za-z0-9\s,\.&'-]{2,60}?)(?=\r|\n|Employer\s*PAYE|PAYE)",
+                full_text,
+                re.IGNORECASE,
+            )
+            if uk_emp_m:
+                raw_uke = uk_emp_m.group(1).strip()
+                add_field("employer_name", "UK Employer Name", raw_uke, raw_uke.title(), 1, 0.96)
+
+    council_m = re.search(
+        r"\b((?:London|Royal)\s+Borough\s+of\s+[A-Za-z][A-Za-z\s&]{2,30}?|[A-Za-z][A-Za-z\s&]{2,30}?\s+(?:Borough|City|District|County)\s+Council)(?=\s*[-–:\r\n]|\s+Council\s+Tax|$)",
+        full_text,
+        re.IGNORECASE,
+    )
+    if council_m and "uk_council_authority" not in added_keys:
+        c_val = " ".join(council_m.group(1).split()).strip()
+        add_field("uk_council_authority", "UK Local Council / Borough", c_val, c_val.title(), 1, 0.97)
+
+    uk_addr_m = re.search(
+        r"([0-9]{1,5}[A-Za-z]?\s+[A-Za-z0-9\s,\.'-]{5,80}?\b([A-Z]{1,2}[0-9][A-Z0-9]?\s*[0-9][A-Z]{2}))\b",
+        full_text,
+    )
+    if uk_addr_m and (
+        "COUNCIL TAX" in upper_full
+        or "HM LAND REGISTRY" in upper_full
+        or "ASSURED SHORTHOLD TENANCY" in upper_full
+        or "uk_council_authority" in added_keys
+        or "UNITED KINGDOM" in upper_full
+    ):
+        if "uk_residential_address" not in added_keys:
+            raw_uka = " ".join(uk_addr_m.group(1).split())
+            add_field("uk_residential_address", "UK Residential Address", raw_uka, raw_uka, 1, 0.96)
+
+    # 13G. Australia Sponsor: VEVO Check, ATO NOA / PAYG Income Statement, Council Rates & Form 1149
+    if any(kw in upper_full for kw in ("VEVO", "VISA ENTITLEMENT VERIFICATION ONLINE", "VISA GRANT NUMBER", "MUST NOT ARRIVE AFTER")):
+        sub_m = re.search(
+            r"(?:Visa\s*class\s*/?\s*subclass\s*[:\-]?\s*([^\r\n]{2,40})|\bsubclass\s*([0-9]{3})\b)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if sub_m and "vevo_visa_subclass" not in added_keys:
+            raw_sub = (sub_m.group(1) or sub_m.group(2)).strip()
+            num_only = re.search(r"\b([0-9]{3})\b", raw_sub)
+            norm_sub = num_only.group(1) if num_only else raw_sub
+            add_field("vevo_visa_subclass", "Australian Visa Subclass (VEVO)", raw_sub, norm_sub, 1, 0.99)
+
+        vgn_m = re.search(
+            r"Visa\s*grant\s*number\s*[:#\-]?\s*([0-9]{11,15})\b",
+            full_text,
+            re.IGNORECASE,
+        )
+        if vgn_m and "vevo_grant_number" not in added_keys:
+            add_field("vevo_grant_number", "VEVO Visa Grant Number", vgn_m.group(1), vgn_m.group(1), 1, 0.99)
+
+        mna_m = re.search(
+            r"Must\s*not\s*arrive\s*after\s*[:\-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+20[0-9]{2}|20[0-9]{2}[-/][0-9]{2}[-/][0-9]{2}|[0-9]{2}[/-][0-9]{2}[/-]20[0-9]{2})",
+            full_text,
+            re.IGNORECASE,
+        )
+        if mna_m and "vevo_must_not_arrive_after" not in added_keys:
+            raw_mna = mna_m.group(1).strip()
+            add_field("vevo_must_not_arrive_after", "Must Not Arrive After", raw_mna, normalize_date(raw_mna) or raw_mna, 1, 0.97)
+
+        ent_m = re.search(
+            r"(?:Work\s*entitlements|Stay\s*(?:period|entitlements)|Visa\s*status)\s*[:\-]?\s*(Unlimited[^\r\n]{0,40}|Indefinite[^\r\n]{0,40}|Permanent\s*Resident[^\r\n]{0,30})",
+            full_text,
+            re.IGNORECASE,
+        )
+        if ent_m and "vevo_entitlements" not in added_keys:
+            e_val = ent_m.group(1).strip()
+            add_field("vevo_entitlements", "VEVO Work / Stay Entitlements", e_val, e_val, 1, 0.97)
+
+    if any(kw in upper_full for kw in ("AUSTRALIAN TAXATION OFFICE", "YOUR TAXABLE INCOME IS", "PAYG PAYMENT SUMMARY", "TAX FILE NUMBER")):
+        ato_ty_m = re.search(
+            r"(?:year\s+ended\s+30\s+June\s+(20[0-9]{2})|Assessment\s+year\s*[:\-]?\s*(20[0-9]{2}(?:[-/][0-9]{2,4})?)|Financial\s+year\s*[:\-]?\s*(20[0-9]{2}(?:[-/][0-9]{2,4})?))",
+            full_text,
+            re.IGNORECASE,
+        )
+        if ato_ty_m and "tax_year" not in added_keys:
+            ato_ty = next(g for g in ato_ty_m.groups() if g)
+            add_field("tax_year", "ATO Assessment Year", ato_ty, ato_ty, 1, 0.98)
+
+        ato_inc_m = re.search(
+            r"(?:Your\s+taxable\s+income\s+is|Taxable\s+income|Gross\s+payments)\s*[:\$\s]*(?:AUD\s*)?\$?\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if ato_inc_m and "ato_taxable_income" not in added_keys:
+            raw_atoi = ato_inc_m.group(1).strip()
+            add_field(
+                "ato_taxable_income",
+                "ATO Taxable Income (AUD)",
+                f"AUD ${raw_atoi}",
+                f"{float(raw_atoi.replace(',', '')):.2f}",
+                1,
+                0.99,
+            )
+
+        tfn_m = re.search(
+            r"(?:Tax\s*file\s*number(?:\s*\(\s*TFN\s*\))?|TFN)\s*[:#\-]?\s*(?:[Xx\*0-9]{2,3}[\s-]?[Xx\*0-9]{3}[\s-]?([0-9]{3}))\b",
+            full_text,
+            re.IGNORECASE,
+        )
+        if tfn_m and "ato_tfn_masked" not in added_keys:
+            masked_tfn = f"XXX-XXX-{tfn_m.group(1)}"
+            add_field("ato_tfn_masked", "Australian Tax File Number (Masked)", masked_tfn, masked_tfn, 1, 0.99, method="statutory_identity_resolver")
+
+    au_addr_m = re.search(
+        r"([0-9]{1,5}[A-Za-z0-9/\-]*\s+[A-Za-z0-9\s,\.'-]{4,65}?\b(?:NSW|VIC|QLD|WA|SA|TAS|ACT|NT)\s+[0-9]{4})\b",
+        full_text,
+    )
+    if au_addr_m and "au_residential_address" not in added_keys:
+        raw_aua = " ".join(au_addr_m.group(1).split())
+        add_field("au_residential_address", "Australian Residential Address", raw_aua, raw_aua, 1, 0.96)
+
     return extracted_fields
 
 
@@ -2774,3 +3294,290 @@ def suggest_applicant_association(
         return top_candidates[0], round(max_score, 2)
 
     return None, 0.0
+
+
+def _resolve_sponsor_document_subtype(
+    text: str,
+    category: str,
+    subtype: str = "",
+    fields: dict | None = None,
+) -> str:
+    """Resolve canonical CA / UK / AU sponsor or core document subtype when not already specific."""
+    raw_sub = (subtype or "").strip().replace(" ", "_")
+    alias_map = {
+        "Canada_PR_Card": "Canadian_PR_Card",
+        "T4_Statement_of_Remuneration": "CRA_T4_Remuneration",
+        "Confirmation_of_Permanent_Residence_COPR": "IRCC_eCoPR",
+        "Letter_of_Invitation": "Sponsor_Invitation_Undertaking_Letter",
+    }
+    if raw_sub in alias_map:
+        return alias_map[raw_sub]
+    if raw_sub and raw_sub not in {"Supporting_Document", "Government_Form", "Financial_Document", "Identity_Document"}:
+        return raw_sub
+
+    up = (text or "").upper()
+    fdict = fields or {}
+
+    # Canada taxonomy
+    if "OPTION C PRINTOUT" in up or "PROOF OF INCOME STATEMENT" in up:
+        return "CRA_Option_C_Printout"
+    if "CANADA REVENUE AGENCY" in up or "LINE 15000" in up or ("NOTICE OF ASSESSMENT" in up and "AUSTRALIAN TAXATION" not in up):
+        return "CRA_Notice_of_Assessment"
+    if "STATEMENT OF REMUNERATION PAID" in up or "t4_employment_income" in fdict:
+        return "CRA_T4_Remuneration"
+    if "PERMANENT RESIDENT CARD" in up or "CARTE DE RESIDENT PERMANENT" in up or "CACAN" in up:
+        return "Canadian_PR_Card"
+    if "CERTIFICATE OF CANADIAN CITIZENSHIP" in up or "CANADIAN CITIZENSHIP CERTIFICATE" in up:
+        return "Canadian_Citizenship_Certificate"
+    if "CANADIAN PASSPORT" in up or "PASSEPORT CANADA" in up or "P<CAN" in up:
+        return "Canadian_Passport"
+    if "CONFIRMATION OF PERMANENT RESIDENCE" in up or "ECOPR" in up:
+        return "IRCC_eCoPR"
+    if "WORK PERMIT / PERMIS DE TRAVAIL" in up or "STUDY PERMIT / PERMIS" in up or "THIS DOES NOT AUTHORIZE RE-ENTRY" in up:
+        return "IRCC_Work_Study_Permit"
+    if "SUPER VISA" in up and ("INSURANCE" in up or "COVERAGE" in up or "POLICY" in up):
+        return "Super_Visa_Medical_Insurance"
+    if any(
+        kw in up
+        for kw in (
+            "HYDRO ONE",
+            "BC HYDRO",
+            "TORONTO HYDRO",
+            "HYDRO-QUEBEC",
+            "ENBRIDGE",
+            "FORTISBC",
+            "BELL CANADA",
+            "ROGERS COMMUNICATIONS",
+            "ONTARIO STANDARD LEASE",
+            "MUNICIPAL PROPERTY TAX",
+        )
+    ) or "canadian_residential_address" in fdict:
+        return "Canadian_Residency_Proof"
+
+    # UK taxonomy
+    if "SHARE CODE" in up or "VIEW AND PROVE YOUR IMMIGRATION STATUS" in up or "uk_share_code" in fdict:
+        return "UK_eVisa_Share_Code"
+    if any(kw in up for kw in ("BIOMETRIC RESIDENCE PERMIT", "INDEFINITE LEAVE TO REMAIN", "SETTLED STATUS", "EU SETTLEMENT SCHEME")):
+        return "UK_BRP_ILR_Settled_Status"
+    if "P60" in up:
+        return "HMRC_P60_Certificate"
+    if "SA302" in up or ("HM REVENUE" in up and "TAX CALCULATION" in up):
+        return "HMRC_SA302_Tax_Calculation"
+    if "COUNCIL TAX" in up or "uk_council_authority" in fdict:
+        return "UK_Council_Tax_Bill"
+    if "HM LAND REGISTRY" in up or "ASSURED SHORTHOLD TENANCY" in up:
+        return "UK_Tenancy_Land_Registry"
+
+    # Australia taxonomy
+    if "VEVO" in up or "VISA ENTITLEMENT VERIFICATION ONLINE" in up or "VISA GRANT NUMBER" in up or "vevo_grant_number" in fdict:
+        return "Australia_VEVO_Check"
+    if "PAYG PAYMENT SUMMARY" in up or "ATO INCOME STATEMENT" in up:
+        return "ATO_PAYG_Income_Statement"
+    if "AUSTRALIAN TAXATION OFFICE" in up or "YOUR TAXABLE INCOME IS" in up or "ato_taxable_income" in fdict:
+        return "ATO_Notice_of_Assessment"
+    if "FORM 1149" in up or "STATUTORY DECLARATIONS ACT 1959" in up:
+        return "AU_Form_1149_Statutory_Declaration"
+    if any(kw in up for kw in ("COUNCIL RATES", "RATES NOTICE", "ORIGIN ENERGY", "AGL ENERGY", "SYDNEY WATER")) or "au_residential_address" in fdict:
+        return "AU_Council_Rates_Utility_Lease"
+
+    if any(kw in up for kw in ("LETTER OF INVITATION", "INVITATION LETTER", "SPONSORSHIP UNDERTAKING", "INVITATION AND UNDERTAKING")):
+        return "Sponsor_Invitation_Undertaking_Letter"
+
+    return raw_sub or category or "Supporting_Document"
+
+
+def infer_document_person_role(
+    text: str,
+    category: str,
+    subtype: str = "",
+    extracted_fields: dict | None = None,
+) -> dict:
+    """
+    Deterministically infers the immigration case role and overseas sponsor jurisdiction
+    for a document based on its text, taxonomy category, subtype, and extracted fields.
+
+    Returns:
+        {
+            "person_role": str,  # principal_applicant | spouse_partner | dependant_child | overseas_sponsor_host | canadian_crs_sibling
+            "sponsor_jurisdiction": Optional[str],  # "Canada" | "United Kingdom" | "Australia" | None
+            "document_subtype": str,
+            "role_confidence": float,
+            "role_indicators": list[str],
+        }
+    """
+    if isinstance(category, dict):
+        # Support callers passing (text, fields_dict, category_str, filename_or_subtype)
+        fields = category
+        category = subtype if isinstance(subtype, str) else ""
+        subtype = extracted_fields if isinstance(extracted_fields, str) else ""
+    else:
+        fields = extracted_fields if isinstance(extracted_fields, dict) else {}
+    resolved_subtype = _resolve_sponsor_document_subtype(text, category or "", subtype or "", fields)
+    up = (text or "").upper()
+    indicators: list[str] = []
+
+    ca_sponsor_subtypes = {
+        "CRA_Notice_of_Assessment",
+        "CRA_Option_C_Printout",
+        "CRA_T4_Remuneration",
+        "Canadian_PR_Card",
+        "Canadian_Citizenship_Certificate",
+        "Canadian_Passport",
+        "IRCC_eCoPR",
+        "IRCC_Work_Study_Permit",
+        "Super_Visa_Medical_Insurance",
+        "Canadian_Residency_Proof",
+    }
+    uk_sponsor_subtypes = {
+        "UK_eVisa_Share_Code",
+        "UK_BRP_ILR_Settled_Status",
+        "HMRC_P60_Certificate",
+        "HMRC_SA302_Tax_Calculation",
+        "UK_Council_Tax_Bill",
+        "UK_Tenancy_Land_Registry",
+    }
+    au_sponsor_subtypes = {
+        "Australia_VEVO_Check",
+        "ATO_Notice_of_Assessment",
+        "ATO_PAYG_Income_Statement",
+        "AU_Council_Rates_Utility_Lease",
+        "AU_Form_1149_Statutory_Declaration",
+    }
+
+    # 1. Check Canadian CRS Sibling indicators
+    has_sibling_cue = bool(
+        re.search(
+            r"(?:SECTION\s*C\s*[-–:]?\s*BROTHERS\s*AND\s*SISTERS|"
+            r"\bCRS\s*SIBLING\b|"
+            r"\bEXPRESS\s*ENTRY\s*SIBLING\b|"
+            r"\b(?:BROTHER|SISTER)\s+(?:IN\s+CANADA|RESIDING\s+IN\s+CANADA|IS\s+A\s+CANADIAN)\b|"
+            r"\bCANADIAN\s+(?:CITIZEN|PERMANENT\s+RESIDENT)\s+(?:BROTHER|SISTER|SIBLING)\b|"
+            r"\bSIBLING(?:'S)?\s+(?:PR\s+CARD|CITIZENSHIP|PROOF\s+OF\s+RESIDENCY|BIRTH\s+CERTIFICATE)\b|"
+            r"RELATIONSHIP(?:\s+TO\s+APPLICANT)?\s*[:\-]\s*(?:BROTHER|SISTER|BLOOD\s+SIBLING)\b)",
+            up,
+        )
+    )
+    has_canada_cue = (
+        resolved_subtype in ca_sponsor_subtypes
+        or "CANADA" in up
+        or "CANADIAN" in up
+        or "ONTARIO" in up
+        or "BRITISH COLUMBIA" in up
+        or "ALBERTA" in up
+        or "canadian_residential_address" in fields
+        or "ircc_uci" in fields
+    )
+    if has_sibling_cue and has_canada_cue:
+        indicators.append("canadian_sibling_relationship_indicator")
+        if resolved_subtype:
+            indicators.append(f"subtype:{resolved_subtype}")
+        return {
+            "person_role": "canadian_crs_sibling",
+            "sponsor_jurisdiction": "Canada",
+            "document_subtype": resolved_subtype,
+            "role_confidence": 0.95,
+            "role_indicators": indicators,
+        }
+
+    # 2. Overseas Sponsor / Host — Canada
+    if resolved_subtype in ca_sponsor_subtypes:
+        indicators.append(f"canada_sponsor_subtype:{resolved_subtype}")
+        if "cra_line_15000_income" in fields:
+            indicators.append("cra_line_15000_income_present")
+        if "ircc_uci" in fields or "uci_number" in fields:
+            indicators.append("ircc_uci_present")
+        return {
+            "person_role": "overseas_sponsor_host",
+            "sponsor_jurisdiction": "Canada",
+            "document_subtype": resolved_subtype,
+            "role_confidence": 0.96,
+            "role_indicators": indicators,
+        }
+
+    # 3. Overseas Sponsor / Host — United Kingdom
+    if resolved_subtype in uk_sponsor_subtypes:
+        indicators.append(f"uk_sponsor_subtype:{resolved_subtype}")
+        if "uk_share_code" in fields:
+            indicators.append("uk_share_code_present")
+        if "uk_gross_annual_income" in fields:
+            indicators.append("uk_hmrc_income_present")
+        return {
+            "person_role": "overseas_sponsor_host",
+            "sponsor_jurisdiction": "United Kingdom",
+            "document_subtype": resolved_subtype,
+            "role_confidence": 0.96,
+            "role_indicators": indicators,
+        }
+
+    # 4. Overseas Sponsor / Host — Australia
+    if resolved_subtype in au_sponsor_subtypes:
+        indicators.append(f"australia_sponsor_subtype:{resolved_subtype}")
+        if "vevo_grant_number" in fields or "vevo_visa_subclass" in fields:
+            indicators.append("australia_vevo_present")
+        if "ato_taxable_income" in fields:
+            indicators.append("ato_taxable_income_present")
+        return {
+            "person_role": "overseas_sponsor_host",
+            "sponsor_jurisdiction": "Australia",
+            "document_subtype": resolved_subtype,
+            "role_confidence": 0.96,
+            "role_indicators": indicators,
+        }
+
+    # 5. Sponsor Invitation / Undertaking Letter (detect host jurisdiction from text/fields)
+    if resolved_subtype == "Sponsor_Invitation_Undertaking_Letter":
+        indicators.append("sponsor_invitation_undertaking_letter")
+        jurisdiction: Optional[str] = None
+        if any(k in up for k in ("AUSTRALIA", "SUBCLASS 600", "HOME AFFAIRS", "SYDNEY", "MELBOURNE", "NSW", "VIC", "QLD")) or "au_residential_address" in fields:
+            jurisdiction = "Australia"
+        elif any(k in up for k in ("UNITED KINGDOM", "HOME OFFICE", "UKVI", "LONDON", "BRITISH CITIZEN", "SETTLED STATUS")) or "uk_residential_address" in fields:
+            jurisdiction = "United Kingdom"
+        elif has_canada_cue or "SUPER VISA" in up or "IRCC" in up:
+            jurisdiction = "Canada"
+        if jurisdiction:
+            indicators.append(f"host_jurisdiction:{jurisdiction}")
+        return {
+            "person_role": "overseas_sponsor_host",
+            "sponsor_jurisdiction": jurisdiction or "Canada",
+            "document_subtype": resolved_subtype,
+            "role_confidence": 0.93,
+            "role_indicators": indicators,
+        }
+
+    # 6. Spouse / Partner indicators
+    if re.search(
+        r"\b(?:ACCOMPANYING\s+SPOUSE|SPOUSE(?:'S)?\s+PASSPORT|RELATIONSHIP\s+TO\s+(?:PRINCIPAL\s+)?APPLICANT\s*[:\-]\s*(?:SPOUSE|WIFE|HUSBAND|COMMON-LAW\s+PARTNER)|DEPENDANT\s+TYPE\s*[:\-]\s*SPOUSE)\b",
+        up,
+    ):
+        indicators.append("spouse_partner_relationship_cue")
+        return {
+            "person_role": "spouse_partner",
+            "sponsor_jurisdiction": None,
+            "document_subtype": resolved_subtype,
+            "role_confidence": 0.91,
+            "role_indicators": indicators,
+        }
+
+    # 7. Dependant Child indicators
+    if re.search(
+        r"\b(?:DEPENDANT\s+CHILD|MINOR\s+CHILD|RELATIONSHIP\s+TO\s+(?:PRINCIPAL\s+)?APPLICANT\s*[:\-]\s*(?:SON|DAUGHTER|CHILD))\b",
+        up,
+    ):
+        indicators.append("dependant_child_relationship_cue")
+        return {
+            "person_role": "dependant_child",
+            "sponsor_jurisdiction": None,
+            "document_subtype": resolved_subtype,
+            "role_confidence": 0.90,
+            "role_indicators": indicators,
+        }
+
+    # 8. Default: Principal Applicant
+    indicators.append("default_principal_applicant")
+    return {
+        "person_role": "principal_applicant",
+        "sponsor_jurisdiction": None,
+        "document_subtype": resolved_subtype,
+        "role_confidence": 0.85,
+        "role_indicators": indicators,
+    }

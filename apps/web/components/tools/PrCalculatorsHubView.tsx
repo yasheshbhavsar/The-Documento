@@ -993,7 +993,7 @@ export function PrCalculatorsHubView({ initialAgencySlug }: { initialAgencySlug?
                     required
                     value={leadName}
                     onChange={(e) => setLeadName(e.target.value)}
-                    placeholder="e.g. Rohan Deshmukh"
+                    placeholder="Full Name"
                     style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px", background: "#FFFFFF" }}
                   />
                 </div>
@@ -1008,7 +1008,7 @@ export function PrCalculatorsHubView({ initialAgencySlug }: { initialAgencySlug?
                     required
                     value={leadEmail}
                     onChange={(e) => setLeadEmail(e.target.value)}
-                    placeholder="rohan@example.com"
+                    placeholder="name@domain.com"
                     style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px", background: "#FFFFFF" }}
                   />
                 </div>

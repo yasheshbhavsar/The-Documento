@@ -4,7 +4,7 @@
   "private": true,
   "description": "AI Immigration Case Intelligence & Management Platform",
   "scripts": {
-    "dev": "npm --prefix apps/web run dev",
+    "dev": "node ./dev-launcher.mjs",
     "dev:frontend": "npm --prefix apps/web run dev",
     "dev:backend": "powershell -ExecutionPolicy Bypass -File ./run_backend.ps1",
     "dev:all": "npx -y concurrently -k -n \"BACKEND,FRONTEND\" -c \"cyan,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\"",

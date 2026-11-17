@@ -34,26 +34,26 @@ class ReleaseThresholds:
 # Synthetic Multilingual Ground Truth Data for Repeatable Testing
 SYNTHETIC_EVALUATION_DATASET = {
     "ocr_samples": [
-        {"doc_type": "passport", "lang": "en", "ground_truth": "PASSPORT UNITED STATES OF AMERICA SURNAME DOE GIVEN NAMES JANE", "recognized": "PASSPORT UNITED STATES OF AMERICA SURNAME DOE GIVEN NAMES JANE"},
-        {"doc_type": "passport", "lang": "es", "ground_truth": "PASAPORTE REPUBLICA DE COLOMBIA APELLIDOS RODRIGUEZ NOMBRES CARLOS", "recognized": "PASAPORTE REPUBLICA DE COLOMBIA APELLIDOS RODRIGUEZ NOMBRES CARLOS"},
+        {"doc_type": "passport", "lang": "en", "ground_truth": "PASSPORT UNITED STATES OF AMERICA SURNAME SAMPLEONE GIVEN NAMES APPLICANT", "recognized": "PASSPORT UNITED STATES OF AMERICA SURNAME SAMPLEONE GIVEN NAMES APPLICANT"},
+        {"doc_type": "passport", "lang": "es", "ground_truth": "PASAPORTE REPUBLICA DE COLOMBIA APELLIDOS SAMPLETWO NOMBRES CITIZEN", "recognized": "PASAPORTE REPUBLICA DE COLOMBIA APELLIDOS SAMPLETWO NOMBRES CITIZEN"},
         {"doc_type": "degree", "lang": "fr", "ground_truth": "UNIVERSITE DE PARIS DIPLOME DE DOCTORAT EN SCIENCES MENTION TRES HONORABLE", "recognized": "UNIVERSITE DE PARIS DIPLOME DE DOCTORAT EN SCIENCES MENTION TRES HONORABLE"},
         {"doc_type": "employment_letter", "lang": "de", "ground_truth": "BESTAETIGUNG DER BESCHAEFTIGUNG SENIOR SOFTWARE ENGINEER JAEHRLICHES GEHALT", "recognized": "BESTAETIGUNG DER BESCHAEFTIGUNG SENIOR SOFTWARE ENGINEER JAEHRLICHES GEHALT"},
         {"doc_type": "tax_record", "lang": "zh", "ground_truth": "个人所得税纳税记录 纳税人识别号 税额", "recognized": "个人所得税纳税记录 纳税人识别号 税额"},
     ],
     "classification_samples": [
-        {"title": "us_passport_scan.pdf", "text": "PASSPORT UNITED STATES OF AMERICA P<USA DOE<<JANE", "expected": "identity_passport"},
-        {"title": "phd_diploma_stanford.pdf", "text": "THE TRUSTEES OF LELAND STANFORD JUNIOR UNIVERSITY DOCTOR OF PHILOSOPHY", "expected": "educational_record"},
-        {"title": "google_employment_verification.pdf", "text": "EMPLOYMENT VERIFICATION LETTER THIS IS TO CERTIFY THAT JANE DOE IS EMPLOYED AS PRINCIPAL RESEARCHER", "expected": "employment_record"},
+        {"title": "us_passport_scan.pdf", "text": "PASSPORT UNITED STATES OF AMERICA P<USA SAMPLEONE<<APPLICANT", "expected": "identity_passport"},
+        {"title": "phd_diploma_university.pdf", "text": "THE TRUSTEES OF GRADUATE RESEARCH UNIVERSITY DOCTOR OF PHILOSOPHY", "expected": "educational_record"},
+        {"title": "employer_verification.pdf", "text": "EMPLOYMENT VERIFICATION LETTER THIS IS TO CERTIFY THAT APPLICANT SAMPLEONE IS EMPLOYED AS PRINCIPAL RESEARCHER", "expected": "employment_record"},
         {"title": "w2_wage_tax_statement_2025.pdf", "text": "FORM W-2 WAGE AND TAX STATEMENT COPY B TO BE FILED WITH EMPLOYEE", "expected": "financial_record"},
         {"title": "marriage_certificate_ny.pdf", "text": "CERTIFICATE OF MARRIAGE CITY OF NEW YORK STATE OF NEW YORK", "expected": "civil_status"},
     ],
     "field_extraction_samples": [
         {
             "category": "identity_passport",
-            "text": "SURNAME: DOE GIVEN NAMES: JANE NATIONALITY: USA DOB: 1988-04-12 EXPIRY: 2032-08-15 PASSPORT NO: C01234567",
+            "text": "SURNAME: SAMPLEONE GIVEN NAMES: APPLICANT NATIONALITY: USA DOB: 1988-04-12 EXPIRY: 2032-08-15 PASSPORT NO: C01234567",
             "expected_fields": {
-                "first_name": "JANE",
-                "last_name": "DOE",
+                "first_name": "APPLICANT",
+                "last_name": "SAMPLEONE",
                 "nationality": "USA",
                 "date_of_birth": "1988-04-12",
                 "expiration_date": "2032-08-15",
@@ -74,8 +74,8 @@ SYNTHETIC_EVALUATION_DATASET = {
         # True Positive Discrepancies
         {
             "type": "name_spelling_mismatch",
-            "doc_a": {"field": "full_name", "value": "Jane Catherine Doe"},
-            "doc_b": {"field": "full_name", "value": "Janet Kathryn Doe"},
+            "doc_a": {"field": "full_name", "value": "Applicant Middle Sampleone"},
+            "doc_b": {"field": "full_name", "value": "Aplicant Midle Sampletwo"},
             "is_discrepant": True,
         },
         {
@@ -93,8 +93,8 @@ SYNTHETIC_EVALUATION_DATASET = {
         # True Negative Controls (Matching or equivalent)
         {
             "type": "name_matching_control",
-            "doc_a": {"field": "full_name", "value": "Jane C. Doe"},
-            "doc_b": {"field": "full_name", "value": "Jane C. Doe"},
+            "doc_a": {"field": "full_name", "value": "Applicant M. Sampleone"},
+            "doc_b": {"field": "full_name", "value": "Applicant M. Sampleone"},
             "is_discrepant": False,
         },
         {

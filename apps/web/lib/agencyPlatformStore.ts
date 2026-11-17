@@ -283,6 +283,77 @@ export interface AgencyTenantRecord {
   createdAt: string;
 }
 
+export type AgencyTeamRole =
+  | "company_admin"
+  | "case_manager"
+  | "paralegal"
+  | "intake_finance";
+
+export interface TeamRoleSpec {
+  code: AgencyTeamRole;
+  label: string;
+  shortBadge: string;
+  workspaceSummary: string;
+  defaultCapacity: number;
+}
+
+export const TEAM_ROLE_SPECS: Record<AgencyTeamRole, TeamRoleSpec> = {
+  company_admin: {
+    code: "company_admin",
+    label: "Co-Partner / Branch Admin",
+    shortBadge: "Co-Partner / Admin",
+    workspaceSummary: "Full Firm & Operations Hub access, caseload oversight, and team governance.",
+    defaultCapacity: 25,
+  },
+  case_manager: {
+    code: "case_manager",
+    label: "Case Manager / Licensed Counsel",
+    shortBadge: "Case Manager / Counsel",
+    workspaceSummary: "Full Staff Workspace, statutory signoff, client credentialing & case reviews.",
+    defaultCapacity: 20,
+  },
+  paralegal: {
+    code: "paralegal",
+    label: "Case Processor / Paralegal",
+    shortBadge: "Case Processor / Paralegal",
+    workspaceSummary: "Split-Screen Case Studio, AI Lab OCR/Sort, Forms & Client Chat (no client deletion or firm settings).",
+    defaultCapacity: 20,
+  },
+  intake_finance: {
+    code: "intake_finance",
+    label: "Intake / Finance Coordinator",
+    shortBadge: "Intake & Finance",
+    workspaceSummary: "Lead intake, client onboarding, document collection, retainers & invoice tracking.",
+    defaultCapacity: 15,
+  },
+};
+
+export function formatStaffRoleLabel(rawRole: string): string {
+  const key = (rawRole || "").trim().toLowerCase();
+  switch (key) {
+    case "master_admin":
+      return "Founding Partner";
+    case "company_admin":
+    case "organization_admin":
+      return "Co-Partner / Admin";
+    case "senior_reviewer":
+      return "Senior Legal Reviewer";
+    case "case_manager":
+      return "Case Manager / Counsel";
+    case "paralegal":
+    case "case_worker":
+      return "Case Processor / Paralegal";
+    case "intake_finance":
+    case "finance_staff":
+    case "document_reviewer":
+      return "Intake & Finance";
+    default:
+      return rawRole
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+}
+
 export interface AgencyTeamInviteRecord {
   id: string;
   organizationId: string;
@@ -290,9 +361,12 @@ export interface AgencyTeamInviteRecord {
   agencyLegalName: string;
   fullName: string;
   email: string;
-  role: "case_manager" | "paralegal";
+  role: AgencyTeamRole;
   branchOffice: string;
   passcode: string;
+  nominalCapacity?: number;
+  loginEnabled?: boolean;
+  lastPasswordUpdatedAt?: string;
   invitedAt: string;
 }
 
@@ -434,8 +508,8 @@ export function purgeLegacyDemoStorageOnce(): void {
         if (
           parsed?.organization_id === "ten-vanguard" ||
           (typeof parsed?.id === "string" && parsed.id.startsWith("usr-0")) ||
-          parsed?.email === "dr.thorne@cambridge.edu" ||
-          parsed?.email === "rohan.verma@example.com"
+          (typeof parsed?.email === "string" &&
+            (parsed.email.endsWith("@cambridge.edu") || parsed.email.endsWith("@example.com")))
         ) {
           window.localStorage.removeItem("documento_user");
         }
@@ -911,6 +985,7 @@ export function adjudicateAgencyKybApplication(
         decision: "approve",
         reviewer_notes: reviewerNotes,
         override_plan_tier: planTier,
+        owner_password: tempPassword,
       }),
     }).catch(() => {});
   }
@@ -1072,7 +1147,7 @@ export function getAgencyForOrganization(organizationId: string): AgencyTenantRe
   if (exactTenant) return exactTenant;
 
   // If this is a newly signed-up agency in 14-day trial / pending KYB sandbox (`sandbox-<slug>` or `ten-<slug>`),
-  // build their own authentic workspace record from their KYB application instead of falling back to Vanguard Legal!
+  // build their own authentic workspace record from their KYB application instead of falling back to sample data.
   const cleanSlug = organizationId.replace(/^(sandbox-|ten-)/, "");
   const apps = getAgencyApplications();
   const pendingApp = apps.find(
@@ -1225,7 +1300,7 @@ export function toggleBreakGlassSupportGrant(
   organizationId: string,
   enable: boolean,
   reason: string = "Requested technical workflow diagnostics from Documento HQ",
-  ownerEmail: string = "firm.owner@partner.com"
+  ownerEmail: string = ""
 ): AgencyTenantRecord | null {
   const tenants = getAgencyTenants();
   const target = tenants.find((t) => t.organizationId === organizationId);
@@ -1629,6 +1704,7 @@ export interface SalesLedProvisionInput {
   slug?: string;
   ownerFullName: string;
   ownerEmail: string;
+  ownerPassword?: string;
   hqCountry: string;
   hqCity: string;
   kybTrack: KybTrack;
@@ -1653,6 +1729,9 @@ export function provisionSalesLedAgency(input: SalesLedProvisionInput): AgencyTe
   if (!input.licenseNumber.trim()) {
     throw new Error("Enter the practitioner license or company registration number.");
   }
+  if (input.ownerPassword && input.ownerPassword.trim().length > 0 && input.ownerPassword.trim().length < 8) {
+    throw new Error("Initial owner password must be at least 8 characters.");
+  }
 
   const tenants = getAgencyTenants();
   let slug = normalizeAgencySlug(input.slug || input.tradingName);
@@ -1669,7 +1748,8 @@ export function provisionSalesLedAgency(input: SalesLedProvisionInput): AgencyTe
         : spec.mrrUsd;
   const seatLimit =
     input.customSeatLimit && input.customSeatLimit >= 1 ? input.customSeatLimit : spec.seatLimit;
-  const tempPassword = `DocInvite!${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const tempPassword =
+    input.ownerPassword?.trim() || `DocInvite!${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   const nowIso = new Date().toISOString();
   const orgId = `ten-${slug}`;
 
@@ -1766,6 +1846,7 @@ export function provisionSalesLedAgency(input: SalesLedProvisionInput): AgencyTe
         slug: createdTenant.slug,
         owner_full_name: createdTenant.ownerFullName,
         owner_email: createdTenant.ownerEmail,
+        owner_password: tempPassword,
         hq_country: createdTenant.hqCountry,
         hq_city: createdTenant.hqCity,
         kyb_track: createdTenant.kybTrack,
@@ -1789,43 +1870,230 @@ export function getAgencyTeamInvites(organizationId?: string): AgencyTeamInviteR
   return all.filter((i) => i.organizationId === organizationId);
 }
 
+export interface AgencyResolvedCredentials {
+  organizationId: string;
+  slug: string;
+  tradingName: string;
+  ownerFullName: string;
+  ownerEmail: string;
+  ownerPassword?: string;
+  teamSeats: AgencyTeamInviteRecord[];
+}
+
+export function resolveAgencyTenantCredentials(
+  organizationId: string
+): AgencyResolvedCredentials | null {
+  const tenants = getAgencyTenants();
+  const tenant = tenants.find((t) => t.organizationId === organizationId);
+  if (!tenant) return null;
+
+  let resolvedOwnerPassword = tenant.temporaryPassword;
+  if (!resolvedOwnerPassword) {
+    const apps = getAgencyApplications();
+    const matchedApp = apps.find(
+      (a) =>
+        a.provisionedOrganizationId === tenant.organizationId ||
+        a.requestedSlug === tenant.slug ||
+        a.contactWorkEmail.toLowerCase() === tenant.ownerEmail.toLowerCase()
+    );
+    resolvedOwnerPassword = matchedApp?.temporaryOwnerPassword || matchedApp?.ownerPassword;
+  }
+
+  return {
+    organizationId: tenant.organizationId,
+    slug: tenant.slug,
+    tradingName: tenant.tradingName,
+    ownerFullName: tenant.ownerFullName,
+    ownerEmail: tenant.ownerEmail,
+    ownerPassword: resolvedOwnerPassword,
+    teamSeats: getAgencyTeamInvites(tenant.organizationId),
+  };
+}
+
+export function resetAgencyOwnerPassword(
+  organizationId: string,
+  customPassword?: string,
+  actorEmail: string = "hq.admin@documento.ai",
+  reason?: string
+): AgencyTenantRecord {
+  const tenants = getAgencyTenants();
+  const target = tenants.find((t) => t.organizationId === organizationId);
+  if (!target) {
+    throw new Error("Agency tenant not found.");
+  }
+
+  const trimmed = customPassword?.trim();
+  if (trimmed && trimmed.length < 8) {
+    throw new Error("Password must be at least 8 characters.");
+  }
+
+  const nextPassword =
+    trimmed || `DocInvite!${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+  const updatedTenant: AgencyTenantRecord = {
+    ...target,
+    temporaryPassword: nextPassword,
+  };
+
+  writeJsonStorage(
+    STORAGE_KEYS.tenants,
+    tenants.map((t) => (t.organizationId === organizationId ? updatedTenant : t))
+  );
+
+  // Keep any linked KYB application credential record in sync as well
+  const apps = getAgencyApplications();
+  const hasLinkedApp = apps.some(
+    (a) =>
+      a.provisionedOrganizationId === organizationId ||
+      a.contactWorkEmail.toLowerCase() === target.ownerEmail.toLowerCase()
+  );
+  if (hasLinkedApp) {
+    writeJsonStorage(
+      STORAGE_KEYS.applications,
+      apps.map((a) =>
+        a.provisionedOrganizationId === organizationId ||
+        a.contactWorkEmail.toLowerCase() === target.ownerEmail.toLowerCase()
+          ? {
+              ...a,
+              ownerPassword: nextPassword,
+              temporaryOwnerPassword: nextPassword,
+            }
+          : a
+      )
+    );
+  }
+
+  appendGovernanceLog({
+    actorEmail,
+    agencyName: target.tradingName,
+    actionCode: "platform.owner_password_reset",
+    detail:
+      reason?.trim() ||
+      `Updated Managing Partner login password for ${target.ownerEmail} from Documento HQ Control Plane.`,
+  });
+
+  if (typeof window !== "undefined") {
+    fetch("/api/backend/agency-platform/super-admin/agencies/reset-owner-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Role": "platform_super_admin",
+      },
+      body: JSON.stringify({
+        slug: target.slug,
+        owner_email: target.ownerEmail,
+        new_password: nextPassword,
+        reason: reason?.trim() || undefined,
+      }),
+    }).catch(() => {});
+  }
+
+  return updatedTenant;
+}
+
+export function resetAgencyStaffPasscode(
+  inviteId: string,
+  customPasscode?: string,
+  actorEmail: string = "hq.admin@documento.ai"
+): AgencyTeamInviteRecord {
+  const allInvites = getAgencyTeamInvites();
+  const target = allInvites.find((i) => i.id === inviteId);
+  if (!target) {
+    throw new Error("Staff seat invite not found.");
+  }
+
+  const trimmed = customPasscode?.trim();
+  if (trimmed && trimmed.length < 8) {
+    throw new Error("Staff passcode must be at least 8 characters.");
+  }
+
+  const nextPasscode =
+    trimmed || `DocTeam!${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
+  const updatedInvite: AgencyTeamInviteRecord = {
+    ...target,
+    passcode: nextPasscode,
+  };
+
+  writeJsonStorage(
+    STORAGE_KEYS.teamInvites,
+    allInvites.map((i) => (i.id === inviteId ? updatedInvite : i))
+  );
+
+  appendGovernanceLog({
+    actorEmail,
+    agencyName: target.agencyLegalName,
+    actionCode: "platform.staff_passcode_reset",
+    detail: `Rotated staff login passcode for ${target.email} (${target.role}).`,
+  });
+
+  return updatedInvite;
+}
+
 export function inviteAgencyTeamMember(input: {
   organizationId: string;
   fullName: string;
   email: string;
-  role: "case_manager" | "paralegal";
+  role: AgencyTeamRole;
   branchOffice?: string;
+  customPasscode?: string;
+  nominalCapacity?: number;
+  loginEnabled?: boolean;
+  fallbackOrganizationName?: string;
+  actorEmail?: string;
 }): AgencyTeamInviteRecord {
   const agency = getAgencyForOrganization(input.organizationId);
-  if (!agency) {
+  if (!agency && !input.fallbackOrganizationName) {
     throw new Error("Agency workspace not found.");
   }
   if (!input.fullName.trim() || !input.email.includes("@")) {
     throw new Error("Enter staff member's full name and work email.");
   }
-  if (agency.seatsUsed >= agency.seatLimit) {
+  if (agency && agency.seatsUsed >= agency.seatLimit) {
     throw new Error(
       `Seat cap reached (${agency.seatsUsed}/${agency.seatLimit} seats). Request a seat expansion from Documento HQ.`
     );
   }
 
-  const allInvites = getAgencyTeamInvites();
-  const normalizedEmail = input.email.trim().toLowerCase();
-  if (allInvites.some((i) => i.email.toLowerCase() === normalizedEmail)) {
-    throw new Error(`${normalizedEmail} has already been invited to an agency workspace.`);
+  const trimmedPasscode = input.customPasscode?.trim();
+  if (trimmedPasscode && trimmedPasscode.length < 8) {
+    throw new Error("Staff login password must be at least 8 characters.");
   }
 
+  const allInvites = getAgencyTeamInvites();
+  const normalizedEmail = input.email.trim().toLowerCase();
+  if (
+    allInvites.some((i) => i.email.toLowerCase() === normalizedEmail) ||
+    (agency && agency.ownerEmail.toLowerCase() === normalizedEmail)
+  ) {
+    throw new Error(`${normalizedEmail} already has an active login in an agency workspace.`);
+  }
+
+  const roleSpec = TEAM_ROLE_SPECS[input.role] || TEAM_ROLE_SPECS.case_manager;
+  const resolvedCapacity =
+    typeof input.nominalCapacity === "number" && input.nominalCapacity >= 1
+      ? Math.round(input.nominalCapacity)
+      : roleSpec.defaultCapacity;
+  const nowIso = new Date().toISOString();
+
   const invite: AgencyTeamInviteRecord = {
-    id: `inv-staff-${Date.now()}`,
-    organizationId: agency.organizationId,
-    agencySlug: agency.slug,
-    agencyLegalName: agency.legalEntityName,
+    id: `inv-staff-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    organizationId: agency?.organizationId || input.organizationId,
+    agencySlug:
+      agency?.slug ||
+      normalizeAgencySlug(input.fallbackOrganizationName || input.organizationId || "firm"),
+    agencyLegalName:
+      agency?.legalEntityName || input.fallbackOrganizationName || "Partner Immigration Practice",
     fullName: input.fullName.trim(),
     email: normalizedEmail,
     role: input.role,
-    branchOffice: input.branchOffice?.trim() || agency.hqCity,
-    passcode: `DocTeam!${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-    invitedAt: new Date().toISOString(),
+    branchOffice: input.branchOffice?.trim() || agency?.hqCity || "Primary Office",
+    passcode:
+      trimmedPasscode || `DocTeam!${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+    nominalCapacity: resolvedCapacity,
+    loginEnabled: input.loginEnabled !== false,
+    lastPasswordUpdatedAt: nowIso,
+    invitedAt: nowIso,
   };
 
   writeJsonStorage(STORAGE_KEYS.teamInvites, [invite, ...allInvites]);
@@ -1842,7 +2110,111 @@ export function inviteAgencyTeamMember(input: {
     );
   }
 
+  appendGovernanceLog({
+    actorEmail: input.actorEmail || agency?.ownerEmail || "",
+    agencyName: invite.agencyLegalName,
+    actionCode: "platform.staff_provisioned",
+    detail: `Provisioned separate staff login for ${invite.fullName} (${invite.email}) as ${roleSpec.shortBadge}.`,
+  });
+
   return invite;
+}
+
+export function updateAgencyTeamMember(
+  inviteId: string,
+  patch: {
+    fullName?: string;
+    role?: AgencyTeamRole;
+    branchOffice?: string;
+    nominalCapacity?: number;
+    loginEnabled?: boolean;
+    passcode?: string;
+  },
+  actorEmail: string = "system"
+): AgencyTeamInviteRecord {
+  const allInvites = getAgencyTeamInvites();
+  const target = allInvites.find((i) => i.id === inviteId);
+  if (!target) {
+    throw new Error("Team member account not found.");
+  }
+
+  const nextPass = patch.passcode?.trim();
+  if (nextPass !== undefined && nextPass.length > 0 && nextPass.length < 8) {
+    throw new Error("Staff login password must be at least 8 characters.");
+  }
+
+  const updated: AgencyTeamInviteRecord = {
+    ...target,
+    ...(patch.fullName !== undefined && patch.fullName.trim()
+      ? { fullName: patch.fullName.trim() }
+      : {}),
+    ...(patch.role !== undefined ? { role: patch.role } : {}),
+    ...(patch.branchOffice !== undefined && patch.branchOffice.trim()
+      ? { branchOffice: patch.branchOffice.trim() }
+      : {}),
+    ...(patch.nominalCapacity !== undefined && patch.nominalCapacity >= 1
+      ? { nominalCapacity: Math.round(patch.nominalCapacity) }
+      : {}),
+    ...(patch.loginEnabled !== undefined ? { loginEnabled: patch.loginEnabled } : {}),
+    ...(nextPass && nextPass.length >= 8
+      ? { passcode: nextPass, lastPasswordUpdatedAt: new Date().toISOString() }
+      : {}),
+  };
+
+  writeJsonStorage(
+    STORAGE_KEYS.teamInvites,
+    allInvites.map((i) => (i.id === inviteId ? updated : i))
+  );
+
+  appendGovernanceLog({
+    actorEmail,
+    agencyName: updated.agencyLegalName,
+    actionCode: "platform.staff_updated",
+    detail: `Updated staff seat ${updated.email} (Role: ${formatStaffRoleLabel(updated.role)}, Login: ${
+      updated.loginEnabled !== false ? "Enabled" : "Suspended"
+    }).`,
+  });
+
+  return updated;
+}
+
+export function removeAgencyTeamMember(
+  inviteId: string,
+  actorEmail: string = "system"
+): AgencyTeamInviteRecord {
+  const allInvites = getAgencyTeamInvites();
+  const target = allInvites.find((i) => i.id === inviteId);
+  if (!target) {
+    throw new Error("Team member account not found.");
+  }
+
+  writeJsonStorage(
+    STORAGE_KEYS.teamInvites,
+    allInvites.filter((i) => i.id !== inviteId)
+  );
+
+  // Reclaim 1 seat on parent tenant (minimum 1 for primary owner)
+  const tenants = getAgencyTenants();
+  const matchedTenant = tenants.find((t) => t.organizationId === target.organizationId);
+  if (matchedTenant) {
+    writeJsonStorage(
+      STORAGE_KEYS.tenants,
+      tenants.map((t) =>
+        t.organizationId === target.organizationId
+          ? { ...t, seatsUsed: Math.max(1, (t.seatsUsed || 1) - 1) }
+          : t
+      )
+    );
+  }
+
+  appendGovernanceLog({
+    actorEmail,
+    agencyName: target.agencyLegalName,
+    actionCode: "platform.staff_removed",
+    detail: `Removed team member ${target.fullName} (${target.email}), revoked login credentials, and reclaimed 1 agency seat.`,
+  });
+
+  return target;
 }
 
 export function getPlatformBillingInvoices(): AgencyBillingInvoice[] {

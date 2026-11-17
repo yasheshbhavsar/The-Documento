@@ -34,17 +34,20 @@ export const JURISDICTION_PATHWAYS: Record<string, { label: string; value: strin
     { label: "Canada Visitor Visa (TRV & Super Visa)", value: "Canada Visitor Visa (TRV)" },
     { label: "Canada Spousal Open Work Permit (SOWP)", value: "Canada Spousal Open Work Permit (SOWP)" },
     { label: "Canada Express Entry PNP", value: "Express Entry PNP" },
+    { label: "Canada Super Visa (Parents & Grandparents)", value: "Canada Super Visa (Parents & Grandparents)" },
   ],
   "United Kingdom (Home Office)": [
     { label: "UK Standard Visitor Visa (Tourism & Family)", value: "UK Standard Visitor Visa" },
     { label: "UK Student Visa (CAS & Graduate Route)", value: "UK Student Visa" },
     { label: "UK Skilled Worker Visa", value: "UK Skilled Worker Visa" },
     { label: "UK Global Talent Visa", value: "Global Talent Tech Nation" },
+    { label: "UK Standard Visitor (Family Sponsored)", value: "UK Standard Visitor (Family Sponsored)" },
   ],
   "Australia (Home Affairs)": [
     { label: "Australia Visitor Visa (Subclass 600)", value: "Australia Visitor Visa (Subclass 600)" },
     { label: "Australia Student Visa (Subclass 500)", value: "Australia Student Visa (Subclass 500)" },
     { label: "Australia Global Talent Independent", value: "Australia Global Talent" },
+    { label: "Australia Visitor Visa (Subclass 600 Sponsored)", value: "Australia Visitor Visa (Subclass 600 Sponsored)" },
   ],
   "Germany (BAMF)": [
     { label: "Germany Opportunity Card (Chancenkarte)", value: "Germany Opportunity Card (Chancenkarte)" },

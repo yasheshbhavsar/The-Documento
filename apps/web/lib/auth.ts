@@ -88,15 +88,13 @@ export interface LoginResult {
   error?: string;
 }
 
-/**
- * Determines if the current authenticated user has authority to delete client records.
- * Permitted: Owner (Managing Partner / master_admin / company_admin) and Managers (case_manager / senior_reviewer).
- * Explicitly Forbidden: Retained Clients and Paralegals (case_worker, document_reviewer, or paralegal title/experience).
- */
-export function canDeleteClient(user?: UserContext | null): boolean {
+function canDeletePracticeEntity(
+  user: UserContext | null | undefined,
+  requiredPermission: "client:delete" | "case:delete"
+): boolean {
   if (!user) return false;
 
-  // 1. Retained clients can NEVER delete client profiles
+  // 1. Retained clients can NEVER delete client or case records
   if (
     user.role === "retained_client" ||
     user.role === "applicant" ||
@@ -105,7 +103,7 @@ export function canDeleteClient(user?: UserContext | null): boolean {
     return false;
   }
 
-  // 2. Paralegals can NEVER delete client profiles
+  // 2. Paralegals and finance/support staff can NEVER delete client or case records
   const isParalegalTitle =
     user.experience === "paralegal" ||
     (user.full_name || user.name || "").toLowerCase().includes("paralegal") ||
@@ -113,6 +111,7 @@ export function canDeleteClient(user?: UserContext | null): boolean {
   if (
     user.role === "case_worker" ||
     user.role === "document_reviewer" ||
+    user.role === "finance_staff" ||
     isParalegalTitle
   ) {
     return false;
@@ -128,12 +127,31 @@ export function canDeleteClient(user?: UserContext | null): boolean {
     user.experience === "master_admin" ||
     (user.permissions &&
       (user.permissions.includes("*") ||
+        user.permissions.includes(requiredPermission) ||
         user.permissions.includes("client:delete")))
   ) {
     return true;
   }
 
   return false;
+}
+
+/**
+ * Determines if the current authenticated user has authority to delete client records.
+ * Permitted: Owner (Managing Partner / master_admin / company_admin) and Managers (case_manager / senior_reviewer).
+ * Explicitly Forbidden: Retained Clients, Finance Staff, and Paralegals (case_worker, document_reviewer, or paralegal title/experience).
+ */
+export function canDeleteClient(user?: UserContext | null): boolean {
+  return canDeletePracticeEntity(user, "client:delete");
+}
+
+/**
+ * Determines if the current authenticated user has authority to delete individual case records.
+ * Permitted: Owner (Managing Partner / master_admin / company_admin) and Managers (case_manager / senior_reviewer).
+ * Explicitly Forbidden: Retained Clients, Finance Staff, and Paralegals (case_worker, document_reviewer, or paralegal title/experience).
+ */
+export function canDeleteCase(user?: UserContext | null): boolean {
+  return canDeletePracticeEntity(user, "case:delete");
 }
 
 export function authenticateUser(
@@ -272,7 +290,7 @@ export function authenticateUser(
     };
   }
 
-  // 3. Invited Agency Team Staff (Case Managers & Paralegals — strict passcode check)
+  // 3. Invited Agency Team Staff (4 Immigration Practice Roles — strict passcode + loginEnabled check)
   const teamInvites = getAgencyTeamInvites();
   const matchedInvite = teamInvites.find((i) => i.email.toLowerCase() === normalizedEmail);
   if (matchedInvite) {
@@ -284,12 +302,60 @@ export function authenticateUser(
           "Workspace Frozen: This agency tenant has been suspended by Documento Platform Governance. Active sessions are revoked.",
       };
     }
+    if (matchedInvite.loginEnabled === false) {
+      return {
+        success: false,
+        error:
+          "Access Suspended: Your staff login has been disabled by your Managing Partner. Contact your firm administrator to restore access.",
+      };
+    }
     if (!password || password !== matchedInvite.passcode) {
       return {
         success: false,
         error: "Invalid staff passcode. Please enter the team invite passcode issued by your Managing Partner.",
       };
     }
+
+    if (matchedInvite.role === "company_admin") {
+      return {
+        success: true,
+        user: {
+          id: matchedInvite.id,
+          email: normalizedEmail,
+          full_name: matchedInvite.fullName,
+          role: "company_admin",
+          organization_id: matchedInvite.organizationId,
+          organization_name: matchedInvite.agencyLegalName,
+          experience: "master_admin",
+          permissions: ["*"],
+          agency_slug: matchedInvite.agencySlug,
+        },
+      };
+    }
+
+    if (matchedInvite.role === "intake_finance") {
+      return {
+        success: true,
+        user: {
+          id: matchedInvite.id,
+          email: normalizedEmail,
+          full_name: matchedInvite.fullName,
+          role: "finance_staff",
+          organization_id: matchedInvite.organizationId,
+          organization_name: matchedInvite.agencyLegalName,
+          experience: "case_manager",
+          permissions: [
+            "cases:read",
+            "clients:create",
+            "documents:upload",
+            "billing:read",
+            "billing:write",
+          ],
+          agency_slug: matchedInvite.agencySlug,
+        },
+      };
+    }
+
     const isParalegal = matchedInvite.role === "paralegal";
     return {
       success: true,
@@ -307,7 +373,7 @@ export function authenticateUser(
           "documents:review",
           "ai_findings:adjudicate",
           "tasks:manage",
-          ...(!isParalegal ? ["client:delete"] : []),
+          ...(!isParalegal ? ["client:delete", "case:delete", "credentials:issue"] : []),
         ],
         agency_slug: matchedInvite.agencySlug,
       },

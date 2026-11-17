@@ -271,8 +271,10 @@ describe("Stage 9: Release / Pilot Governance & Operational Reliability (§8, §
     expect(screen.getByText("Provision New Pilot Cohort")).toBeDefined();
 
     // Fill form
-    const nameInput = screen.getByPlaceholderText("e.g. Apex Q4 Pilot Cohort");
+    const nameInput = screen.getByPlaceholderText("e.g. Q4 Specialty Pilot Cohort");
     fireEvent.change(nameInput, { target: { value: "Canada Express Entry Specialty Cohort" } });
+    const emailInput = screen.getByPlaceholderText("e.g. lead@practice-domain.com");
+    fireEvent.change(emailInput, { target: { value: "lead.attorney@pilotfirm.com" } });
 
     const submitBtn = screen.getByText("Provision Cohort");
     fireEvent.click(submitBtn);

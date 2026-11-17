@@ -34,84 +34,36 @@ export const FALLBACK_SERVICES: ServiceCatalogItem[] = [
   },
 ];
 
-export const FALLBACK_ENGAGEMENTS: ClientEngagementItem[] = [
-  {
-    id: "eng-01",
-    engagement_number: "ENG-2026-0001",
-    client_id: "client-01",
-    status: "active",
-    retainer_amount: 3000.0,
-    agreed_fee: 6500.0,
-    billing_terms: "fixed_split",
-    created_at: "2026-08-10T10:00:00Z",
-  },
-];
+export const FALLBACK_ENGAGEMENTS: ClientEngagementItem[] = [];
 
-export const FALLBACK_INVOICES: InvoiceDetailItem[] = [
-  {
-    id: "inv-01",
-    invoice_number: "INV-2026-0001",
-    client_id: "client-01",
-    issue_date: "2026-08-15T00:00:00Z",
-    due_date: "2026-09-15T00:00:00Z",
-    subtotal: 6500.0,
-    tax_amount: 0.0,
-    discount_amount: 0.0,
-    total_amount: 6500.0,
-    paid_amount: 3000.0,
-    balance_due: 3500.0,
-    currency: "USD",
-    status: "partially_paid",
-    payment_provider: "stripe_verified",
-    line_items: [
-      {
-        id: "li-01",
-        description: "Initial Retainer & Evidence Cataloging",
-        quantity: 1,
-        unit_price: 3000.0,
-        total: 3000.0,
-        line_type: "service_fee",
-      },
-      {
-        id: "li-02",
-        description: "Petition Drafting & Case Briefing",
-        quantity: 1,
-        unit_price: 3500.0,
-        total: 3500.0,
-        line_type: "service_fee",
-      },
-    ],
-  },
-];
+export const FALLBACK_INVOICES: InvoiceDetailItem[] = [];
 
 export const FALLBACK_FINANCIAL_REPORTS: FinancialReportsData = {
   period: {
-    start_date: "2026-08-01T00:00:00Z",
-    end_date: "2026-10-11T23:59:59Z",
+    start_date: "",
+    end_date: "",
   },
   summary: {
-    total_invoiced: 9215.0,
-    total_collected: 4250.0,
-    total_outstanding: 4965.0,
+    total_invoiced: 0.0,
+    total_collected: 0.0,
+    total_outstanding: 0.0,
     total_refunded: 0.0,
-    net_collections: 4250.0,
+    net_collections: 0.0,
     currency: "USD",
   },
   accounts_receivable_aging: {
-    current_not_due: 4965.0,
+    current_not_due: 0.0,
     overdue_1_to_30_days: 0.0,
     overdue_31_to_60_days: 0.0,
     overdue_61_to_90_days: 0.0,
     overdue_greater_90_days: 0.0,
     total_overdue: 0.0,
   },
-  collections_by_pathway: {
-    "EB-1A": 4250.0,
-  },
+  collections_by_pathway: {},
   invoice_counts: {
-    total: 2,
-    paid: 1,
-    issued: 1,
+    total: 0,
+    paid: 0,
+    issued: 0,
     partially_paid: 0,
     overdue: 0,
   },

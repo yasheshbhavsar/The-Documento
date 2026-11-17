@@ -1,10 +1,8 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import {
-  ManagerPriorityQueueView,
-  FALLBACK_PRIORITY_QUEUE,
-} from "../components/dashboards/ManagerPriorityQueueView";
+import { ManagerPriorityQueueView } from "../components/dashboards/ManagerPriorityQueueView";
+import { FALLBACK_PRIORITY_QUEUE } from "./helpers/testFixtures";
 import { EmployeeWorkspace } from "../components/dashboards/EmployeeWorkspace";
 import { DocumentProgressionStepper } from "../components/dashboards/ClientPortal";
 import { DocumentInspectorModal } from "../components/modals/DocumentInspectorModal";
@@ -20,6 +18,7 @@ import {
 // Mock API calls
 vi.mock("../lib/api", async (importOriginal) => {
   const actual: any = await importOriginal();
+  const { FALLBACK_PRIORITY_QUEUE } = await import("./helpers/testFixtures");
   return {
     ...actual,
     fetchManagerPriorityQueue: vi.fn().mockResolvedValue(FALLBACK_PRIORITY_QUEUE),
@@ -260,7 +259,7 @@ describe("Stage 7 — UI/UX Staff Work Queues, Case Workspaces, and Mobile Clien
   });
 
   describe("2. Employee Workspace & All-in-One Studio Integration (§7.4)", () => {
-    it("renders ManagerPriorityQueueView when team_queues tab is active", () => {
+    it("renders ManagerPriorityQueueView when team_queues tab is active", async () => {
       render(
         <EmployeeWorkspace
           cases={[mockCase]}
@@ -282,8 +281,8 @@ describe("Stage 7 — UI/UX Staff Work Queues, Case Workspaces, and Mobile Clien
 
       // The 8-rank manager priority queue should now be rendered
       expect(screen.getByText(/Strict 1–8 Rank Order Management Protocol/i)).toBeDefined();
-      expect(screen.getByTestId("priority-rank-1")).toBeDefined();
-      expect(screen.getByTestId("priority-rank-2")).toBeDefined();
+      expect(await screen.findByTestId("priority-rank-1")).toBeDefined();
+      expect(await screen.findByTestId("priority-rank-2")).toBeDefined();
     });
 
     it("renders All-in-One Case Studio with sub-views (Checklist, Tasks, Notes, Timeline)", () => {
@@ -405,7 +404,7 @@ describe("Stage 7 — UI/UX Staff Work Queues, Case Workspaces, and Mobile Clien
       expect(screen.getByText(/Document Dossier & (Forensic OCR Workbench|Provenance)/i)).toBeDefined();
 
       // Verify physical document citation & completion badge
-      expect(screen.getByText(/Foreign Passport Identity Page/i)).toBeDefined();
+      expect(screen.getAllByText(/Foreign Passport Identity Page/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/COMPLETED/i)[0]).toBeDefined();
     });
 

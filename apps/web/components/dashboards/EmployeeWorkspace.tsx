@@ -3,6 +3,7 @@ import { DataTable, Column } from "../common/DataTable";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
+import { WorkspaceIcon, WorkspaceIconName } from "../common/WorkspaceIcons";
 import {
   ImmigrationCase,
   ClientProfile,
@@ -18,7 +19,7 @@ import {
   RouteFindingPayload,
   UserContext,
 } from "../../lib/types";
-import { canDeleteClient } from "../../lib/auth";
+import { canDeleteClient, canDeleteCase } from "../../lib/auth";
 import {
   api,
   fetchManagerPriorityQueue,
@@ -51,6 +52,7 @@ import { PackageBuilderView } from "../packages/PackageBuilderView";
 import { PackageApprovalWorkflowModal } from "../packages/PackageApprovalWorkflowModal";
 import { CaseDiscrepancyAlertCenter } from "../cases/CaseDiscrepancyAlertCenter";
 import { ApprovalGatesCard } from "../cases/ApprovalGatesCard";
+import { SplitScreenCaseStudio } from "../cases/SplitScreenCaseStudio";
 import { ProvisionCredentialsModal } from "../modals/ProvisionCredentialsModal";
 import { VisaAppointmentDesk } from "../cases/VisaAppointmentDesk";
 import { GovernedAIAssistantDesk } from "../ai/GovernedAIAssistantDesk";
@@ -58,6 +60,10 @@ import { PilotReleaseGovernanceDesk } from "../operations/PilotReleaseGovernance
 import { PathwayExpansionDesk } from "../pathways/PathwayExpansionDesk";
 import { DocumentExtractorLab } from "../tools/DocumentExtractorLab";
 import { getCaseKickoffProgress } from "../../lib/caseKickoffStore";
+import {
+  getPendingRawPacketsForCase,
+  RAW_PACKETS_UPDATED_EVENT,
+} from "../../lib/rawClientPacketStore";
 import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 import { DashboardErrorBoundary } from "../common/DashboardErrorBoundary";
 
@@ -93,24 +99,24 @@ export const TAB_TO_VIEW_MAP: Record<LegacyTabKey, CaseworkerView> = {
   tasks: "casework",
   clients: "casework",
   team_queues: "casework",
-
-  exception_queue: "triage",
-  ai_findings: "triage",
-  rules_requirements: "triage",
-  rules_admin: "triage",
-  release_governance: "triage",
-  pathway_expansion: "triage",
+  exception_queue: "casework",
+  ai_findings: "casework",
+  rules_requirements: "casework",
 
   all_in_one_workspace: "studio",
   documents: "studio",
   form_prep: "studio",
   package_review: "studio",
-  ai_assistant: "studio",
-  extractor_lab: "studio",
 
   messages: "communications",
   client_requests: "communications",
   visa_appointments: "communications",
+
+  rules_admin: "triage",
+  ai_assistant: "triage",
+  release_governance: "triage",
+  pathway_expansion: "triage",
+  extractor_lab: "triage",
 };
 
 export function getCaseworkerViewForTab(tab: EmployeeTabKey): CaseworkerView {
@@ -147,20 +153,28 @@ export interface EmployeeWorkspaceProps {
   onTriggerAnalysis?: (caseId: string) => Promise<void>;
   onClientUpdated?: (c: ClientProfile) => void;
   onDeleteClient?: (clientId: string) => Promise<void> | void;
+  onDeleteCase?: (caseId: string) => Promise<void> | void;
   currentUser?: UserContext;
   onOpenCaseKickoff?: (c: ImmigrationCase) => void;
   kickoffVersion?: number;
 }
 
+const EMPTY_CASES: ImmigrationCase[] = [];
+const EMPTY_CLIENTS: ClientProfile[] = [];
+const EMPTY_DOCUMENTS: DocumentItem[] = [];
+const EMPTY_TASKS: CaseTask[] = [];
+const EMPTY_AI_FINDINGS: AIFinding[] = [];
+const EMPTY_MESSAGES: MessageItem[] = [];
+
 export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
   const ws = useWorkspaceSafe();
 
-  const cases = props.cases ?? ws?.cases ?? [];
-  const clients = props.clients ?? ws?.clients ?? [];
-  const documents = props.documents ?? ws?.documents ?? [];
-  const tasks = props.tasks ?? ws?.tasks ?? [];
-  const aiFindings = props.aiFindings ?? ws?.aiFindings ?? [];
-  const messages = props.messages ?? ws?.messages ?? [];
+  const cases = props.cases ?? ws?.cases ?? EMPTY_CASES;
+  const clients = props.clients ?? ws?.clients ?? EMPTY_CLIENTS;
+  const documents = props.documents ?? ws?.documents ?? EMPTY_DOCUMENTS;
+  const tasks = props.tasks ?? ws?.tasks ?? EMPTY_TASKS;
+  const aiFindings = props.aiFindings ?? ws?.aiFindings ?? EMPTY_AI_FINDINGS;
+  const messages = props.messages ?? ws?.messages ?? EMPTY_MESSAGES;
   const currentUser = props.currentUser ?? ws?.currentUser ?? undefined;
   const onToggleTask = props.onToggleTask ?? ws?.handleToggleTask ?? ((_id: string) => {});
   const onSendMessage = props.onSendMessage ?? ws?.handleSendMessage ?? ((_msg: string) => {});
@@ -174,6 +188,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
   const onTriggerAnalysis = props.onTriggerAnalysis;
   const onClientUpdated = props.onClientUpdated ?? ws?.handleClientUpdated;
   const onDeleteClient = props.onDeleteClient ?? ws?.handleDeleteClient;
+  const onDeleteCase = props.onDeleteCase ?? ws?.handleDeleteCase;
   const onOpenCaseKickoff =
     props.onOpenCaseKickoff ??
     ((c: ImmigrationCase) => {
@@ -235,8 +250,29 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
     };
   }, [currentUser, cases.length, documents.length, tasks.length]);
 
+  const [rawPacketsVersion, setRawPacketsVersion] = useState<number>(0);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onRawPacketsUpdated = () => setRawPacketsVersion((v) => v + 1);
+    window.addEventListener(RAW_PACKETS_UPDATED_EVENT, onRawPacketsUpdated);
+    return () => window.removeEventListener(RAW_PACKETS_UPDATED_EVENT, onRawPacketsUpdated);
+  }, []);
+
   // Authorization check: Owner/Manager only; Paralegals and Retained Clients cannot delete
   const canDelete = canDeleteClient(currentUser);
+  const canDeleteCases = canDeleteCase(currentUser);
+
+  const handleDeleteCaseClick = async (caseItem: ImmigrationCase) => {
+    const confirmMsg = `Are you sure you want to permanently delete case "${caseItem.case_number}" (${caseItem.title})?\n\nThis will permanently remove the case along with its linked documents, tasks, findings, and intake sheets. Retained client profile (${caseItem.client_name || "Unlinked"}) will remain preserved. This action cannot be undone.`;
+    if (window.confirm(confirmMsg)) {
+      if (onDeleteCase) {
+        await onDeleteCase(caseItem.id);
+      } else {
+        await api.deleteCase(caseItem.id, currentUser?.role || "case_manager");
+      }
+    }
+  };
 
   const handleDeleteClientClick = async (client: ClientProfile) => {
     const clientCases = cases.filter(
@@ -269,7 +305,12 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
   const [selectedCaseForWorkspace, setSelectedCaseForWorkspace] = useState<ImmigrationCase | null>(cases[0] || null);
 
   useEffect(() => {
-    if (!selectedCaseForWorkspace && cases.length > 0) {
+    if (selectedCaseForWorkspace) {
+      const updated = cases.find((c) => c.id === selectedCaseForWorkspace.id);
+      if (!updated) {
+        setSelectedCaseForWorkspace(cases[0] || null);
+      }
+    } else if (cases.length > 0) {
       setSelectedCaseForWorkspace(cases[0]);
     }
   }, [cases, selectedCaseForWorkspace]);
@@ -379,12 +420,6 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
   };
 
   useEffect(() => {
-    if (!selectedCaseForWorkspace && cases.length > 0) {
-      setSelectedCaseForWorkspace(cases[0]);
-    }
-  }, [cases, selectedCaseForWorkspace]);
-
-  useEffect(() => {
     setLocalFindingsState(aiFindings);
   }, [aiFindings]);
 
@@ -432,7 +467,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               {
                 timestamp: new Date().toISOString(),
                 action: "resolve",
-                reviewer_email: currentUser?.email || "counsel@firm.local",
+                reviewer_email: currentUser?.email || "counsel@practice-domain.com",
                 note,
               },
             ],
@@ -464,7 +499,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 timestamp: new Date().toISOString(),
                 action: "dismiss",
                 reason,
-                reviewer_email: currentUser?.email || "counsel@firm.local",
+                reviewer_email: currentUser?.email || "counsel@practice-domain.com",
                 note,
               },
             ],
@@ -493,7 +528,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               {
                 timestamp: new Date().toISOString(),
                 action: "escalate",
-                reviewer_email: "attorney@lexai.com",
+                reviewer_email: currentUser?.email || "counsel@practice-domain.com",
                 note,
               },
             ],
@@ -519,7 +554,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               {
                 timestamp: new Date().toISOString(),
                 action: "routed",
-                reviewer_email: "attorney@lexai.com",
+                reviewer_email: currentUser?.email || "counsel@practice-domain.com",
                 note: `Routed to ${payload.owner_user_id}: ${payload.note}`,
               },
             ],
@@ -577,7 +612,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
     {
       key: "readiness_score",
       header: "Readiness",
-      render: (c) => <span>{c.readiness_score}%</span>,
+      render: (c) => <span>{c.readiness_score ?? 0}%</span>,
       sortable: true,
     },
     {
@@ -586,7 +621,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
       render: (c) => {
         const kp = getCaseKickoffProgress(c.id);
         return (
-          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
             {kp && !kp.isComplete && (
               <Button variant="primary" size="sm" onClick={() => onOpenCaseKickoff(c)}>
                 Kickoff ({kp.completedCount}/4)
@@ -600,11 +635,41 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               size="sm"
               onClick={() => {
                 setSelectedCaseForWorkspace(c);
+                setActiveTab("all_in_one_workspace");
+              }}
+            >
+              Open in Split-Screen Studio
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setSelectedCaseForWorkspace(c);
                 setActiveTab("form_prep");
               }}
             >
               Review Forms
             </Button>
+            {canDeleteCases && (
+              <Button
+                variant="danger"
+                size="sm"
+                data-testid={`emp-delete-case-${c.id}`}
+                aria-label={`Delete case ${c.case_number}`}
+                onClick={() => handleDeleteCaseClick(c)}
+                style={{
+                  background: "#FFF0F0",
+                  color: "#D32F2F",
+                  borderColor: "#FFCDD2",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                <WorkspaceIcon name="trash" size={13} /> Delete
+              </Button>
+            )}
           </div>
         );
       },
@@ -631,14 +696,15 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
   interface CaseworkerNavItem {
     key: LegacyTabKey;
     label: string;
-    icon: string;
+    icon: WorkspaceIconName;
     count?: number | null;
   }
 
   interface CaseworkerViewConfig {
     id: CaseworkerView;
     label: string;
-    icon: string;
+    ariaLabel: string;
+    icon: WorkspaceIconName;
     description: string;
     defaultTab: LegacyTabKey;
     tabs: CaseworkerNavItem[];
@@ -647,58 +713,62 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
   const CASEWORK_VIEWS_CONFIG: CaseworkerViewConfig[] = [
     {
       id: "casework",
-      label: "My Casework",
-      icon: "💼",
-      description: "Daily active matters, assigned tasks, client directory, and team queues",
+      label: "1. Cases & Queue",
+      ariaLabel: "My Casework Views",
+      icon: "clipboard",
+      description: "Daily active matters, assigned tasks, exception triage, client directory, and team queues",
       defaultTab: "my_work",
       tabs: [
-        { key: "my_work", label: "My Work", icon: "💼", count: null },
-        { key: "assigned_cases", label: "Assigned Cases", icon: "📁", count: visibleCases.length },
-        { key: "tasks", label: "Tasks", icon: "✓", count: tasks.filter((t) => !t.is_completed).length },
-        { key: "clients", label: "Client Directory", icon: "👤", count: clients.length },
-        { key: "team_queues", label: "Team Queues", icon: "⏳", count: null },
-      ],
-    },
-    {
-      id: "triage",
-      label: "Priority Triage & Exceptions",
-      icon: "🚨",
-      description: "Exception-first triage, discrepancy alerts, statutory requirements, and compliance audits",
-      defaultTab: "exception_queue",
-      tabs: [
-        { key: "exception_queue", label: "Exception-First Queue", icon: "🚨", count: liveExceptionCount },
-        { key: "ai_findings", label: "AI Findings", icon: "🤖", count: aiFindings.length },
-        { key: "rules_requirements", label: "Case Requirements", icon: "⚖️", count: null },
-        { key: "rules_admin", label: "Rule Registry & Pilot", icon: "📜", count: null },
-        { key: "release_governance", label: "Release & Pilot Desk", icon: "🚀", count: null },
-        { key: "pathway_expansion", label: "Pathway Expansion", icon: "🌐", count: null },
+        { key: "my_work", label: "My Work", icon: "clipboard", count: null },
+        { key: "assigned_cases", label: "Assigned Cases", icon: "folder", count: visibleCases.length },
+        { key: "exception_queue", label: "Exception-First Queue", icon: "alert-triangle", count: liveExceptionCount },
+        { key: "tasks", label: "Tasks", icon: "check", count: tasks.filter((t) => !t.is_completed).length },
+        { key: "clients", label: "Client Directory", icon: "user", count: clients.length },
+        { key: "team_queues", label: "Team Queues", icon: "clock", count: null },
+        { key: "ai_findings", label: "AI Findings", icon: "bot", count: aiFindings.length },
+        { key: "rules_requirements", label: "Case Requirements", icon: "scale", count: null },
       ],
     },
     {
       id: "studio",
-      label: "Casework Studio",
-      icon: "⚡",
-      description: "Comprehensive case drafting, document inspection, form preparation, and package readiness",
+      label: "2. Case Studio",
+      ariaLabel: "Casework Studio Views",
+      icon: "zap",
+      description: "Split-screen document canvas, role graph, statutory calculators, form preparation, and package review",
       defaultTab: "all_in_one_workspace",
       tabs: [
-        { key: "all_in_one_workspace", label: "All-in-One Studio", icon: "⚡", count: null },
-        { key: "documents", label: "Requirements & Evidence", icon: "📄", count: documents.length },
-        { key: "form_prep", label: "Form Preparation", icon: "📝", count: null },
-        { key: "package_review", label: "Package Review", icon: "📦", count: null },
-        { key: "ai_assistant", label: "Governed AI Desk", icon: "✨", count: null },
-        { key: "extractor_lab", label: "Extractor Lab", icon: "🔬", count: null },
+        { key: "all_in_one_workspace", label: "All-in-One Studio", icon: "zap", count: null },
+        { key: "documents", label: "Requirements & Evidence", icon: "file-text", count: documents.length },
+        { key: "form_prep", label: "Form Preparation", icon: "edit", count: null },
+        { key: "package_review", label: "Package Review", icon: "package", count: null },
       ],
     },
     {
       id: "communications",
-      label: "Communications Hub",
-      icon: "💬",
+      label: "3. Messages & Requests",
+      ariaLabel: "Communications Hub Views",
+      icon: "message-square",
       description: "Direct client messaging, evidentiary requests, and consular appointments",
       defaultTab: "messages",
       tabs: [
-        { key: "messages", label: "Client Messages", icon: "💬", count: messages.length },
-        { key: "client_requests", label: "Document Requests", icon: "📥", count: null },
-        { key: "visa_appointments", label: "Visa Appointments", icon: "🏛️", count: null },
+        { key: "messages", label: "Client Messages", icon: "message-square", count: messages.length },
+        { key: "client_requests", label: "Document Requests", icon: "inbox", count: null },
+        { key: "visa_appointments", label: "Visa Appointments", icon: "landmark", count: null },
+      ],
+    },
+    {
+      id: "triage",
+      label: "4. Advanced & Governance",
+      ariaLabel: "Advanced & Governance Views",
+      icon: "landmark",
+      description: "Rule registry, governed AI assistance, practice compliance governance, and pathway expansion",
+      defaultTab: "rules_admin",
+      tabs: [
+        { key: "rules_admin", label: "Rule Registry & Pilot", icon: "clipboard", count: null },
+        { key: "ai_assistant", label: "Governed AI Desk", icon: "bot", count: null },
+        { key: "release_governance", label: "Release & Pilot Desk", icon: "rocket", count: null },
+        { key: "pathway_expansion", label: "Pathway Expansion", icon: "globe", count: null },
+        { key: "extractor_lab", label: "Extractor Lab", icon: "microscope", count: null },
       ],
     },
   ];
@@ -821,62 +891,75 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
         }}
         className="documento-firm-sidebar"
       >
-        {/* Active Casework Summary Card */}
-        <div
-          style={{
-            padding: "20px 18px 16px 18px",
-            borderBottom: "1px solid #DCE5E1",
-          }}
-        >
+        {/* Active Casework Status Summary (flush hairline block) */}
+        {selectedCaseForWorkspace && (
           <div
             style={{
-              background: "#F8F7F2",
-              border: "1px solid #B9DED4",
-              borderRadius: "10px",
-              padding: "12px 14px",
+              padding: "16px 18px",
+              borderBottom: "1px solid #DCE5E1",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "6px" }}>
               <span
                 style={{
-                  fontSize: "11px",
+                  fontSize: "10.5px",
                   fontWeight: 700,
-                  color: "#063C3D",
-                  fontFamily: "monospace",
-                  letterSpacing: "0.02em",
+                  color: "#6E7F7C",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
                 }}
               >
-                {selectedCaseForWorkspace ? `Case #${selectedCaseForWorkspace.case_number}` : "Day 0 Initial Setup"}
+                Active Matter
               </span>
               <span
                 style={{
-                  background: selectedCaseForWorkspace ? "#EAF6F0" : "#F1F5F9",
-                  color: selectedCaseForWorkspace ? "#176B50" : "#475569",
-                  fontSize: "10px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  fontSize: "11px",
                   fontWeight: 650,
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                  border: selectedCaseForWorkspace ? "1px solid #B9DED4" : "1px solid #CBD5E1",
+                  color: "#176B50",
                 }}
               >
-                {selectedCaseForWorkspace ? "Active" : "Practice Ready"}
+                <span
+                  style={{
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: "#176B50",
+                  }}
+                  aria-hidden="true"
+                />
+                Active
               </span>
             </div>
-            <div style={{ fontSize: "12px", fontWeight: 650, color: "#172322", lineHeight: 1.3 }}>
-              {selectedCaseForWorkspace ? selectedCaseForWorkspace.visa_category : "Zero Petitions Assigned"}
+            <div
+              style={{
+                fontSize: "13px",
+                fontWeight: 700,
+                color: "#063C3D",
+                lineHeight: 1.25,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {`Case #${selectedCaseForWorkspace.case_number}`}
             </div>
-            <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>
-              Stage: {selectedCaseForWorkspace?.status ? selectedCaseForWorkspace.status.toUpperCase() : "Awaiting New Matters"}
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "#172322", lineHeight: 1.3, marginTop: "2px" }}>
+              {selectedCaseForWorkspace.visa_category}
+            </div>
+            <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px" }}>
+              <span>Stage: {selectedCaseForWorkspace.status ? selectedCaseForWorkspace.status.toUpperCase() : "Awaiting New Matters"}</span>
+              <span style={{ fontSize: "10.5px", fontWeight: 600, color: "#0D6866", whiteSpace: "nowrap" }}>My Casework</span>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Navigation Items List Grouped by 4 Caseworker Views */}
         <nav
           aria-label="Casework Navigation"
           style={{
             flex: 1,
-            padding: "16px 12px",
+            padding: "14px 12px",
             display: "flex",
             flexDirection: "column",
             gap: "12px",
@@ -911,7 +994,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>{section.icon}</span>
+                    <WorkspaceIcon name={section.icon} size={12} />
                     <span>{section.label}</span>
                   </span>
                 </button>
@@ -935,8 +1018,8 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                           alignItems: "center",
                           justifyContent: "space-between",
                           width: "100%",
-                          padding: "8px 12px 8px 14px",
-                          borderRadius: "8px",
+                          padding: "7px 12px 7px 14px",
+                          borderRadius: "7px",
                           border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
                           background: isActive ? "#EAF6F0" : "transparent",
                           color: isActive ? "#0D6866" : "#445451",
@@ -974,20 +1057,21 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                             aria-hidden="true"
                           />
                         )}
-                        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span>{item.icon}</span>
-                          <span>{item.label}</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                          <WorkspaceIcon name={item.icon} size={15} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
                         </span>
                         {item.count !== null && item.count !== undefined && item.count > 0 && (
                           <span
                             style={{
                               fontSize: "10px",
                               fontWeight: 700,
-                              padding: "2px 6px",
+                              padding: "1px 6px",
                               borderRadius: "10px",
                               background: isActive ? "#0D6866" : "#F1F6F4",
                               color: isActive ? "#FFFFFF" : "#445451",
                               border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
+                              fontVariantNumeric: "tabular-nums",
                             }}
                           >
                             {item.count}
@@ -1061,15 +1145,16 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
       </aside>
 
       {/* =========================================================================
-          2. MAIN CONTENT AREA (Clean SaaS Grid Layout)
+          2. MAIN CONTENT AREA (Fluid SaaS Workspace Grid Layout)
           ========================================================================= */}
       <main
+        className="documento-main-content"
         style={{
           flex: 1,
+          minWidth: 0,
           padding: "24px 32px 64px 32px",
-          maxWidth: "1320px",
-          margin: "0 auto",
           width: "100%",
+          maxWidth: "100%",
           boxSizing: "border-box",
           display: "flex",
           flexDirection: "column",
@@ -1099,6 +1184,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
             aria-controls="employee-mobile-sections-menu"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
               padding: "6px 12px",
               background: "#EAF6F0",
               color: "#0D6866",
@@ -1109,7 +1197,8 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               cursor: "pointer",
             }}
           >
-            ☰ Switch Section
+            <WorkspaceIcon name="layers" size={14} />
+            Switch Section
           </button>
         </div>
 
@@ -1121,7 +1210,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
             style={{
               marginBottom: "16px",
               background: "#FFFFFF",
-              border: "1px solid #B9DED4",
+              border: "1px solid #DCE5E1",
               borderRadius: "10px",
               padding: "8px",
               display: "flex",
@@ -1158,7 +1247,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span>{item.icon}</span>
+                    <WorkspaceIcon name={item.icon} size={15} />
                     <span>{item.label}</span>
                   </span>
                   {item.count !== null && item.count !== undefined && item.count > 0 && (
@@ -1181,7 +1270,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
           </div>
         )}
 
-        {/* Header Action Bar */}
+        {/* Sleek Borderless Header Action Bar */}
         <div
           style={{
             display: "flex",
@@ -1189,11 +1278,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
             alignItems: "flex-start",
             flexWrap: "wrap",
             gap: "16px",
-            background: "#FFFFFF",
-            border: "1px solid #DCE5E1",
-            borderRadius: "12px",
-            padding: "20px 24px",
-            boxShadow: "0 1px 3px rgba(6, 60, 61, 0.04)",
+            padding: "4px 0 16px 0",
+            borderBottom: "1px solid var(--border, #E2E8F0)",
+            marginBottom: "4px",
           }}
         >
           <div>
@@ -1288,60 +1375,55 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
           </div>
         </div>
 
-        {/* Horizontal Sub-Navigation Pill Bar for Active Casework View */}
+        {/* Flush Hairline Sub-Navigation Tabstrip for Active Casework View */}
         {(() => {
           const currentSection = CASEWORK_VIEWS_CONFIG.find((v) => v.id === activeView);
           if (!currentSection || currentSection.tabs.length <= 1) return null;
           return (
             <div
+              className="documento-tabstrip"
               role="tablist"
-              aria-label={`${currentSection.label} Views`}
-              style={{
-                display: "flex",
-                gap: "8px",
-                padding: "6px",
-                background: "#FFFFFF",
-                border: "1px solid #DCE5E1",
-                borderRadius: "10px",
-                overflowX: "auto",
-                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.04)",
-              }}
+              aria-label={currentSection.ariaLabel}
+              style={{ overflowX: "auto", marginBottom: 0 }}
             >
               {currentSection.tabs.map((subItem) => {
                 const isSubActive = effectiveTab === subItem.key;
                 return (
                   <button
                     key={`subnav-${subItem.key}`}
+                    type="button"
                     role="tab"
                     aria-selected={isSubActive}
                     onClick={() => setActiveTab(subItem.key)}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: "6px",
-                      padding: "8px 14px",
-                      borderRadius: "7px",
-                      fontSize: "13px",
+                      gap: "7px",
+                      padding: "10px 14px",
+                      marginBottom: "-1px",
+                      background: "transparent",
+                      border: "none",
+                      borderBottom: isSubActive ? "2px solid #063C3D" : "2px solid transparent",
+                      fontSize: "12.5px",
                       fontWeight: isSubActive ? 650 : 500,
-                      color: isSubActive ? "#063C3D" : "#445451",
-                      background: isSubActive ? "#EAF6F0" : "transparent",
-                      border: isSubActive ? "1px solid #B9DED4" : "1px solid transparent",
+                      color: isSubActive ? "#063C3D" : "#526663",
                       cursor: "pointer",
                       whiteSpace: "nowrap",
-                      transition: "all 0.15s ease",
+                      transition: "color 0.15s ease, border-color 0.15s ease",
                     }}
                   >
-                    <span>{subItem.icon}</span>
+                    <WorkspaceIcon name={subItem.icon} size={14} />
                     <span>{subItem.label}</span>
                     {subItem.count !== null && subItem.count !== undefined && subItem.count > 0 && (
                       <span
                         style={{
-                          fontSize: "10px",
+                          fontSize: "10.5px",
                           fontWeight: 700,
-                          padding: "2px 6px",
+                          padding: "1px 6px",
                           borderRadius: "10px",
-                          background: isSubActive ? "#0D6866" : "#F1F6F4",
+                          background: isSubActive ? "#063C3D" : "#EAF0ED",
                           color: isSubActive ? "#FFFFFF" : "#445451",
+                          fontVariantNumeric: "tabular-nums",
                         }}
                       >
                         {subItem.count}
@@ -1389,40 +1471,66 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               );
             })()}
 
-            {/* Quick stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
-              <Card>
-                <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 600 }}>Active Cases Assigned</span>
-                <strong style={{ fontSize: "28px", display: "block", color: "var(--text)", margin: "4px 0" }}>{cases.length}</strong>
-                <small style={{ color: "var(--quiet)" }}>Primary lead attorney / reviewer</small>
-              </Card>
-              <Card>
-                <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 600 }}>Documents Pending Verification</span>
-                <strong style={{ fontSize: "28px", display: "block", color: "var(--accent)", margin: "4px 0" }}>
+            {/* High-Density Connected Hairline KPI Ribbon */}
+            <div className="documento-kpi-ribbon">
+              <div style={{ padding: "16px 18px" }}>
+                <span style={{ fontSize: "12px", color: "#526663", fontWeight: 600, display: "block" }}>
+                  Active Cases Assigned
+                </span>
+                <strong style={{ fontSize: "24px", display: "block", color: "#063C3D", margin: "4px 0", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                  {cases.length}
+                </strong>
+                <small style={{ color: "#6E7F7C", fontSize: "11.5px" }}>
+                  Primary lead attorney / reviewer
+                </small>
+              </div>
+              <div style={{ padding: "16px 18px" }}>
+                <span style={{ fontSize: "12px", color: "#526663", fontWeight: 600, display: "block" }}>
+                  Documents Pending Verification
+                </span>
+                <strong style={{ fontSize: "24px", display: "block", color: "#0284C7", margin: "4px 0", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
                   {documents.filter((d) => d.status === "under_review").length}
                 </strong>
-                <small style={{ color: "var(--quiet)" }}>Ready for evidentiary assessment</small>
-              </Card>
-              <Card>
-                <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 600 }}>Action Items / Tasks</span>
-                <strong style={{ fontSize: "28px", display: "block", color: "var(--warning)", margin: "4px 0" }}>
+                <small style={{ color: "#6E7F7C", fontSize: "11.5px" }}>
+                  Ready for evidentiary assessment
+                </small>
+              </div>
+              <div style={{ padding: "16px 18px" }}>
+                <span style={{ fontSize: "12px", color: "#526663", fontWeight: 600, display: "block" }}>
+                  Action Items / Tasks
+                </span>
+                <strong style={{ fontSize: "24px", display: "block", color: "#B45309", margin: "4px 0", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
                   {tasks.filter((t) => !t.is_completed).length}
                 </strong>
-                <small style={{ color: "var(--quiet)" }}>Pending caseworker completion</small>
-              </Card>
-              <Card>
-                <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 600 }}>AI Evidentiary Alerts</span>
-                <strong style={{ fontSize: "28px", display: "block", color: "var(--critical)", margin: "4px 0" }}>
+                <small style={{ color: "#6E7F7C", fontSize: "11.5px" }}>
+                  Pending caseworker completion
+                </small>
+              </div>
+              <div style={{ padding: "16px 18px" }}>
+                <span style={{ fontSize: "12px", color: "#526663", fontWeight: 600, display: "block" }}>
+                  AI Evidentiary Alerts
+                </span>
+                <strong style={{ fontSize: "24px", display: "block", color: "#DC2626", margin: "4px 0", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
                   {aiFindings.filter((f) => f.status === "open").length}
                 </strong>
-                <small style={{ color: "var(--quiet)" }}>Requires human attorney signoff</small>
-              </Card>
+                <small style={{ color: "#6E7F7C", fontSize: "11.5px" }}>
+                  Requires human attorney signoff
+                </small>
+              </div>
             </div>
 
-            {/* Quick Tasks & Priority Caseload side by side */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: "20px" }}>
-              <Card title="Immediate Tasks & Filing Deadlines" subtitle="Check off completed evidentiary reviews.">
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {/* Quick Tasks & AI Findings Split Pane */}
+            <div className="documento-split-pane">
+              <div style={{ padding: "18px 20px" }}>
+                <div style={{ marginBottom: "12px" }}>
+                  <h3 style={{ margin: 0, fontSize: "14.5px", fontWeight: 700, color: "#063C3D" }}>
+                    Immediate Tasks &amp; Filing Deadlines
+                  </h3>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#6E7F7C" }}>
+                    Check off completed evidentiary reviews.
+                  </p>
+                </div>
+                <div style={{ borderTop: "1px solid #EDF2EF" }}>
                   {tasks.map((task) => (
                     <div
                       key={task.id}
@@ -1430,32 +1538,31 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        padding: "10px 12px",
-                        background: "var(--surface-subtle, #f8fafc)",
-                        border: "1px solid var(--border, #e2e8f0)",
-                        borderRadius: "6px",
+                        padding: "10px 0",
+                        borderBottom: "1px solid #EDF2EF",
                         gap: "12px",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
                         <input
                           type="checkbox"
                           checked={task.is_completed}
                           onChange={() => onToggleTask(task.id)}
                           aria-label={`Mark ${task.title} complete`}
-                          style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                          style={{ cursor: "pointer", width: "16px", height: "16px", flexShrink: 0 }}
                         />
-                        <div>
+                        <div style={{ minWidth: 0 }}>
                           <strong
                             style={{
                               fontSize: "13px",
                               textDecoration: task.is_completed ? "line-through" : "none",
-                              color: task.is_completed ? "var(--quiet)" : "var(--text)",
+                              color: task.is_completed ? "#6E7F7C" : "#172322",
+                              display: "block",
                             }}
                           >
                             {task.title}
                           </strong>
-                          <small style={{ display: "block", color: "var(--muted)" }}>
+                          <small style={{ display: "block", color: "#6E7F7C", fontSize: "11.5px" }}>
                             {task.case_number} • Due {task.due_date}
                           </small>
                         </div>
@@ -1466,60 +1573,68 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                     </div>
                   ))}
                 </div>
-              </Card>
+              </div>
 
-              <Card title="AI Findings & Grounded Evidentiary Checks" subtitle="Derived analytical findings (Human attorney disposition required).">
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div style={{ padding: "18px 20px" }}>
+                <div style={{ marginBottom: "12px" }}>
+                  <h3 style={{ margin: 0, fontSize: "14.5px", fontWeight: 700, color: "#063C3D" }}>
+                    AI Findings &amp; Grounded Evidentiary Checks
+                  </h3>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#6E7F7C" }}>
+                    Derived analytical findings (Human attorney disposition required).
+                  </p>
+                </div>
+                <div style={{ borderTop: "1px solid #EDF2EF" }}>
                   {aiFindings.map((finding) => (
                     <div
                       key={finding.id}
                       style={{
-                        padding: "12px",
-                        borderRadius: "6px",
-                        border: `1px solid ${finding.severity === "warning" ? "#fde68a" : "#bae6fd"}`,
-                        background: finding.severity === "warning" ? "var(--warning-soft)" : "var(--info-soft)",
+                        padding: "11px 0 11px 12px",
+                        borderBottom: "1px solid #EDF2EF",
+                        borderLeft: `3px solid ${finding.severity === "warning" ? "#D97706" : "#0284C7"}`,
+                        marginTop: "6px",
                       }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                        <strong style={{ fontSize: "13px", color: "var(--text)" }}>{finding.title}</strong>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "3px" }}>
+                        <strong style={{ fontSize: "13px", color: "#172322" }}>{finding.title}</strong>
                         <Badge variant={finding.severity === "warning" ? "warning" : "info"} size="sm">
                           {finding.severity.toUpperCase()}
                         </Badge>
                       </div>
-                      <p style={{ margin: "4px 0", fontSize: "12px", color: "var(--muted)" }}>{finding.description}</p>
-                      <small style={{ color: "var(--quiet)", fontStyle: "italic", display: "block", marginTop: "4px" }}>
+                      <p style={{ margin: "2px 0", fontSize: "12px", color: "#526663", lineHeight: 1.4 }}>{finding.description}</p>
+                      <small style={{ color: "#6E7F7C", fontStyle: "italic", display: "block", marginTop: "3px", fontSize: "11px" }}>
                         Authority: {finding.citation}
                       </small>
                     </div>
                   ))}
                 </div>
-              </Card>
+              </div>
             </div>
           </div>
         )}
 
         {/* 2. EXCEPTION-FIRST QUEUE */}
         {effectiveTab === "exception_queue" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {/* Category Filter Pills */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            {/* Category Filter Strip */}
             <div
               style={{
                 display: "flex",
                 gap: "8px",
                 flexWrap: "wrap",
                 background: "#FFFFFF",
-                padding: "12px 16px",
+                padding: "10px 14px",
                 borderRadius: "10px",
                 border: "1px solid #DCE5E1",
               }}
             >
               {[
-                { key: "all", label: "All Exceptions", count: 10, icon: "🚨" },
-                { key: "blockers", label: "Hard Blockers", count: 2, icon: "⛔" },
-                { key: "documents", label: "Document Issues", count: 2, icon: "📄" },
-                { key: "client_actions", label: "Client Actions", count: 2, icon: "👤" },
-                { key: "deadlines", label: "Filing Deadlines", count: 2, icon: "⏳" },
-                { key: "reviews", label: "Pending Reviews", count: 2, icon: "⚖️" },
+                { key: "all", label: "All Exceptions", count: 10, icon: "alert-triangle" as WorkspaceIconName },
+                { key: "blockers", label: "Hard Blockers", count: 2, icon: "shield" as WorkspaceIconName },
+                { key: "documents", label: "Document Issues", count: 2, icon: "file-text" as WorkspaceIconName },
+                { key: "client_actions", label: "Client Actions", count: 2, icon: "user" as WorkspaceIconName },
+                { key: "deadlines", label: "Filing Deadlines", count: 2, icon: "clock" as WorkspaceIconName },
+                { key: "reviews", label: "Pending Reviews", count: 2, icon: "scale" as WorkspaceIconName },
               ].map((cat) => {
                 const active = exceptionCategoryFilter === cat.key;
                 return (
@@ -1531,27 +1646,28 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "6px",
-                      padding: "7px 12px",
-                      borderRadius: "20px",
+                      padding: "6px 11px",
+                      borderRadius: "6px",
                       fontSize: "12px",
-                      fontWeight: active ? 700 : 550,
-                      background: active ? "#063C3D" : "#F4F6F5",
+                      fontWeight: active ? 650 : 500,
+                      background: active ? "#063C3D" : "#FFFFFF",
                       color: active ? "#FFFFFF" : "#445451",
                       border: active ? "1px solid #063C3D" : "1px solid #DCE5E1",
                       cursor: "pointer",
                       transition: "all 0.15s ease",
                     }}
                   >
-                    <span>{cat.icon}</span>
+                    <WorkspaceIcon name={cat.icon} size={13} />
                     <span>{cat.label}</span>
                     <span
                       style={{
-                        background: active ? "rgba(255,255,255,0.25)" : "#E2E8F0",
-                        color: active ? "#FFFFFF" : "#4A5568",
+                        background: active ? "rgba(255,255,255,0.22)" : "#EDF2EF",
+                        color: active ? "#FFFFFF" : "#445451",
                         borderRadius: "10px",
-                        padding: "1px 7px",
+                        padding: "1px 6px",
                         fontSize: "11px",
                         fontWeight: 700,
+                        fontVariantNumeric: "tabular-nums",
                       }}
                     >
                       {cat.count}
@@ -1570,10 +1686,24 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                     textAlign: "center",
                     background: "#FFFFFF",
                     borderRadius: "10px",
-                    border: "1px dashed #CBD5E1",
+                    border: "1px dashed #B9DED4",
                   }}
                 >
-                  <div style={{ fontSize: "32px", marginBottom: "8px" }}>✅</div>
+                  <div
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "50%",
+                      background: "#EAF6F0",
+                      color: "#176B50",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <WorkspaceIcon name="check" size={20} />
+                  </div>
                   <div style={{ fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
                     Zero Exceptions Pending • Day 0 Initial State
                   </div>
@@ -1763,6 +1893,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                         </div>
                         <span
                           style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
                             fontSize: "11px",
                             fontWeight: 700,
                             padding: "4px 8px",
@@ -1771,7 +1904,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                             color: isCrit ? "#991B1B" : "#92400E",
                           }}
                         >
-                          ⚡ {item.dueBadge}
+                          <WorkspaceIcon name="zap" size={11} /> {item.dueBadge}
                         </span>
                       </div>
 
@@ -1842,17 +1975,61 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
         {/* 3. ALL-IN-ONE WORKSPACE */}
         {effectiveTab === "all_in_one_workspace" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {/* Unified Split-Screen Case Studio (Document BBox Canvas + Role Graph + Live Statutory Calculators) */}
+            <SplitScreenCaseStudio
+              caseItem={selectedCaseForWorkspace}
+              documents={documents}
+              client={
+                selectedCaseForWorkspace
+                  ? clients.find(
+                      (cl) =>
+                        cl.id === selectedCaseForWorkspace.client_id ||
+                        (selectedCaseForWorkspace.client_name &&
+                          `${cl.first_name} ${cl.last_name}`.trim().toLowerCase() ===
+                            selectedCaseForWorkspace.client_name.trim().toLowerCase())
+                    ) || null
+                  : null
+              }
+              onDocumentUploaded={(doc) => {
+                ws?.handleDocumentUploaded(doc);
+              }}
+              onDocumentUpdated={(doc) => {
+                onDocumentUpdated?.(doc);
+              }}
+              onPushToForms={(confirmed) => {
+                void handleUpdateFormAnswers(
+                  confirmed,
+                  "Confirmed & pushed to canonical forms via Split-Screen Case Studio"
+                );
+              }}
+              onClientProfileAutoFilled={(profilePatch) => {
+                if (!selectedCaseForWorkspace || !onClientUpdated) return;
+                const targetClient = clients.find(
+                  (cl) =>
+                    cl.id === selectedCaseForWorkspace.client_id ||
+                    (selectedCaseForWorkspace.client_name &&
+                      `${cl.first_name} ${cl.last_name}`.trim().toLowerCase() ===
+                        selectedCaseForWorkspace.client_name.trim().toLowerCase())
+                );
+                if (targetClient) {
+                  onClientUpdated({
+                    ...targetClient,
+                    ...profilePatch,
+                  });
+                }
+              }}
+            />
+
             {/* Top Bar: Case Selector and Meta Chips */}
             <div
               style={{
                 background: "#FFFFFF",
                 border: "1px solid #DCE5E1",
-                borderRadius: "12px",
-                padding: "16px 20px",
+                borderRadius: "10px",
+                padding: "14px 18px 0 18px",
                 display: "flex",
                 flexDirection: "column",
-                gap: "14px",
-                boxShadow: "0 1px 4px rgba(6, 60, 61, 0.04)",
+                gap: "12px",
               }}
             >
               <div
@@ -1864,7 +2041,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                   gap: "12px",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", minWidth: 0 }}>
                   <label style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>
                     Active Case:
                   </label>
@@ -1875,14 +2052,15 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                       if (c) setSelectedCaseForWorkspace(c);
                     }}
                     style={{
-                      padding: "8px 14px",
-                      borderRadius: "8px",
-                      border: "1px solid #B9DED4",
-                      background: "#F8FAF9",
+                      padding: "7px 12px",
+                      borderRadius: "7px",
+                      border: "1px solid #DCE5E1",
+                      background: "#FAFAF7",
                       fontSize: "13px",
-                      fontWeight: 650,
+                      fontWeight: 600,
                       color: "#063C3D",
                       cursor: "pointer",
+                      maxWidth: "100%",
                     }}
                   >
                     {visibleCases.map((c) => (
@@ -1895,9 +2073,37 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                   <Badge variant={(selectedCaseForWorkspace?.readiness_score ?? 0) >= 80 ? "success" : "review"}>
                     Readiness: {selectedCaseForWorkspace?.readiness_score ?? 0}%
                   </Badge>
+                  {(() => {
+                    void rawPacketsVersion;
+                    const pendingCount = selectedCaseForWorkspace
+                      ? getPendingRawPacketsForCase(selectedCaseForWorkspace.id).length
+                      : 0;
+                    if (pendingCount <= 0) return null;
+                    return (
+                      <span
+                        data-testid="workspace-pending-raw-packets-badge"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          background: "#FEF7EA",
+                          color: "#8A5A10",
+                          border: "1px solid #F3D9A4",
+                          borderRadius: "999px",
+                          padding: "3px 10px",
+                          fontSize: "11.5px",
+                          fontWeight: 700,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        <WorkspaceIcon name="inbox" size={12} />
+                        {pendingCount} Raw Client Upload{pendingCount === 1 ? "" : "s"} Pending AI Lab
+                      </span>
+                    );
+                  })()}
                 </div>
 
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                   <Button variant="secondary" size="sm" onClick={() => setActiveTab("form_prep")}>
                     Review Forms
                   </Button>
@@ -1907,8 +2113,8 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 </div>
               </div>
 
-              {/* Sub-view navigation filter */}
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", borderTop: "1px solid #F1F5F9", paddingTop: "12px" }}>
+              {/* Flush Underline Sub-view Navigation */}
+              <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", borderTop: "1px solid #EDF2EF", paddingTop: "4px", overflowX: "auto" }}>
                 {[
                   { key: "all", label: "Unified Studio (All 5 Panels)" },
                   { key: "checklist", label: "Per-Applicant Checklist" },
@@ -1924,14 +2130,15 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                       type="button"
                       onClick={() => setAllInOneSubView(sub.key as typeof allInOneSubView)}
                       style={{
-                        padding: "6px 12px",
-                        borderRadius: "6px",
+                        padding: "8px 12px",
+                        background: "transparent",
+                        border: "none",
+                        borderBottom: active ? "2px solid #063C3D" : "2px solid transparent",
                         fontSize: "12px",
-                        fontWeight: active ? 700 : 550,
-                        background: active ? "#EAF6F0" : "#F8FAF9",
-                        color: active ? "#0D6866" : "#64748B",
-                        border: active ? "1px solid #B9DED4" : "1px solid #E2E8F0",
+                        fontWeight: active ? 650 : 500,
+                        color: active ? "#063C3D" : "#526663",
                         cursor: "pointer",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {sub.label}
@@ -1953,14 +2160,15 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
             )}
 
             {/* 5 Unified Panels Grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 480px), 1fr))", gap: "20px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: "16px" }}>
               {/* Panel 1: Per-Applicant Evidentiary Checklist */}
               {(allInOneSubView === "all" || allInOneSubView === "checklist") && (
                 <Card
+                  variant="flat"
                   title="Per-Applicant Evidentiary Checklist"
                   subtitle="Requirements grouped per applicant with status and structured rejection reasons."
                 >
-                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                     {!selectedCaseForWorkspace ? (
                       <div style={{ padding: "32px 16px", textAlign: "center", color: "#6E7F7C" }}>
                         <p style={{ margin: "0 0 4px 0", fontWeight: 650, color: "#063C3D" }}>No Case Selected</p>
@@ -1988,22 +2196,14 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                       ];
 
                       return groups.map((group) => (
-                        <div
-                          key={group.applicant}
-                          style={{
-                            border: "1px solid #E2E8F0",
-                            borderRadius: "8px",
-                            padding: "12px",
-                            background: "#FAFAFA",
-                          }}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <div key={group.applicant}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "8px", borderBottom: "1px solid #DCE5E1" }}>
                             <strong style={{ fontSize: "13px", color: "#063C3D" }}>{group.applicant}</strong>
                             <Badge variant="neutral" size="sm">
                               {group.role}
                             </Badge>
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          <div>
                             {group.items.map((it) => (
                               <div
                                 key={it.name}
@@ -2011,17 +2211,15 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                                   display: "flex",
                                   justifyContent: "space-between",
                                   alignItems: "center",
-                                  background: "#FFFFFF",
-                                  padding: "8px 10px",
-                                  borderRadius: "6px",
-                                  border: "1px solid #EDEDED",
+                                  padding: "10px 0",
+                                  borderBottom: "1px solid #EDF2EF",
                                   fontSize: "12px",
                                   flexWrap: "wrap",
                                   gap: "8px",
                                 }}
                               >
-                                <div>
-                                  <strong style={{ color: "#1E293B" }}>{it.name}</strong>
+                                <div style={{ minWidth: 0 }}>
+                                  <strong style={{ color: "#172322" }}>{it.name}</strong>
                                   {it.reasonCode && (
                                     <span
                                       style={{
@@ -2036,12 +2234,12 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                                     </span>
                                   )}
                                   {it.note && !it.reasonCode && (
-                                    <span style={{ display: "block", fontSize: "11px", color: "#64748B" }}>
+                                    <span style={{ display: "block", fontSize: "11px", color: "#6E7F7C" }}>
                                       {it.note}
                                     </span>
                                   )}
                                 </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                                   <Badge
                                     variant={
                                       it.status === "accepted"
@@ -2086,10 +2284,11 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               {/* Panel 2: Immediate Tasks & Action Items */}
               {(allInOneSubView === "all" || allInOneSubView === "tasks") && (
                 <Card
+                  variant="flat"
                   title="Immediate Tasks & Milestones"
                   subtitle="Caseworker action items with priority tags and completion audit."
                 >
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ borderTop: "1px solid #EDF2EF" }}>
                     {tasks.map((task) => (
                       <div
                         key={task.id}
@@ -2097,32 +2296,30 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "space-between",
-                          padding: "10px 12px",
-                          background: "#FFFFFF",
-                          border: "1px solid #E2E8F0",
-                          borderRadius: "8px",
+                          padding: "10px 0",
+                          borderBottom: "1px solid #EDF2EF",
                           gap: "10px",
                         }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
                           <input
                             type="checkbox"
                             checked={task.is_completed}
                             onChange={() => onToggleTask(task.id)}
                             aria-label={`Mark task ${task.title} complete`}
-                            style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                            style={{ cursor: "pointer", width: "16px", height: "16px", flexShrink: 0 }}
                           />
-                          <div>
+                          <div style={{ minWidth: 0 }}>
                             <strong
                               style={{
                                 fontSize: "13px",
                                 textDecoration: task.is_completed ? "line-through" : "none",
-                                color: task.is_completed ? "#94A3B8" : "#0F172A",
+                                color: task.is_completed ? "#6E7F7C" : "#172322",
                               }}
                             >
                               {task.title}
                             </strong>
-                            <small style={{ display: "block", color: "#64748B" }}>
+                            <small style={{ display: "block", color: "#6E7F7C" }}>
                               {task.case_number} • Due {task.due_date}
                             </small>
                           </div>
@@ -2139,44 +2336,57 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               {/* Panel 3: Client Chat & Quarantined Internal Notes */}
               {(allInOneSubView === "all" || allInOneSubView === "chat") && (
                 <Card
+                  variant="flat"
                   title="Client Messaging & Quarantined Notes"
                   subtitle="Dual-channel communication: client portal messenger vs quarantined internal counsel work product."
                 >
-                  {/* Channel Switcher */}
-                  <div style={{ display: "flex", gap: "6px", marginBottom: "14px" }}>
+                  {/* Hairline Channel Switcher */}
+                  <div style={{ display: "flex", gap: "4px", marginBottom: "14px", borderBottom: "1px solid #DCE5E1" }}>
                     <button
                       type="button"
                       onClick={() => setAllInOneChatMode("client")}
                       style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
                         flex: 1,
-                        padding: "8px",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                        fontWeight: allInOneChatMode === "client" ? 700 : 550,
-                        background: allInOneChatMode === "client" ? "#063C3D" : "#F1F5F9",
-                        color: allInOneChatMode === "client" ? "#FFFFFF" : "#475569",
+                        padding: "8px 10px",
+                        marginBottom: "-1px",
+                        background: "transparent",
                         border: "none",
+                        borderBottom: allInOneChatMode === "client" ? "2px solid #063C3D" : "2px solid transparent",
+                        fontSize: "12px",
+                        fontWeight: allInOneChatMode === "client" ? 650 : 500,
+                        color: allInOneChatMode === "client" ? "#063C3D" : "#526663",
                         cursor: "pointer",
                       }}
                     >
-                      💬 Client Portal Chat ({messages.length})
+                      <WorkspaceIcon name="message-square" size={13} />
+                      <span>Client Portal Chat ({messages.length})</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setAllInOneChatMode("internal_notes")}
                       style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
                         flex: 1,
-                        padding: "8px",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                        fontWeight: allInOneChatMode === "internal_notes" ? 700 : 550,
-                        background: allInOneChatMode === "internal_notes" ? "#DC2626" : "#FEE2E2",
-                        color: allInOneChatMode === "internal_notes" ? "#FFFFFF" : "#991B1B",
+                        padding: "8px 10px",
+                        marginBottom: "-1px",
+                        background: "transparent",
                         border: "none",
+                        borderBottom: allInOneChatMode === "internal_notes" ? "2px solid #DC2626" : "2px solid transparent",
+                        fontSize: "12px",
+                        fontWeight: allInOneChatMode === "internal_notes" ? 650 : 500,
+                        color: allInOneChatMode === "internal_notes" ? "#991B1B" : "#526663",
                         cursor: "pointer",
                       }}
                     >
-                      🔒 Internal Notes ({internalNotes.length})
+                      <WorkspaceIcon name="lock" size={13} />
+                      <span>Internal Notes ({internalNotes.length})</span>
                     </button>
                   </div>
 
@@ -2190,8 +2400,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                           flexDirection: "column",
                           gap: "8px",
                           padding: "8px",
-                          background: "#F8FAF9",
+                          background: "#FAFAF7",
                           borderRadius: "8px",
+                          border: "1px solid #EDF2EF",
                         }}
                       >
                         {messages.map((m) => (
@@ -2226,7 +2437,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                             flex: 1,
                             padding: "8px 12px",
                             borderRadius: "6px",
-                            border: "1px solid #CBD5E1",
+                            border: "1px solid #DCE5E1",
                             fontSize: "13px",
                           }}
                         />
@@ -2250,7 +2461,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                           gap: "6px",
                         }}
                       >
-                        <span>🔒</span>
+                        <WorkspaceIcon name="lock" size={13} />
                         <span>
                           <strong>Quarantined Caseworker Workspace:</strong> These notes are internal work product and never exposed to the client portal.
                         </span>
@@ -2260,24 +2471,18 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                         style={{
                           maxHeight: "220px",
                           overflowY: "auto",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "8px",
-                          padding: "8px",
-                          background: "#FFF",
-                          borderRadius: "8px",
-                          border: "1px solid #E2E8F0",
+                          borderTop: "1px solid #EDF2EF",
                         }}
                       >
                         {internalNotes.map((n) => (
-                          <div key={n.id} style={{ padding: "8px", background: "#F8FAFC", borderRadius: "6px", border: "1px solid #E2E8F0" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "4px" }}>
+                          <div key={n.id} style={{ padding: "8px 0", borderBottom: "1px solid #EDF2EF" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
                               <strong style={{ color: "#063C3D" }}>{n.author} ({n.role})</strong>
-                              <span style={{ color: "#64748B" }}>
+                              <span style={{ color: "#6E7F7C" }}>
                                 {new Date(n.timestamp).toLocaleDateString()}
                               </span>
                             </div>
-                            <p style={{ margin: "0", fontSize: "12px", color: "#334155" }}>{n.content}</p>
+                            <p style={{ margin: "0", fontSize: "12px", color: "#172322" }}>{n.content}</p>
                           </div>
                         ))}
                       </div>
@@ -2292,7 +2497,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                             flex: 1,
                             padding: "8px 12px",
                             borderRadius: "6px",
-                            border: "1px solid #CBD5E1",
+                            border: "1px solid #DCE5E1",
                             fontSize: "13px",
                           }}
                         />
@@ -2329,26 +2534,28 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               {/* Panel 4: Package Preview & Cryptographic Manifest */}
               {(allInOneSubView === "all" || allInOneSubView === "package") && (
                 <Card
+                  variant="flat"
                   title="Filing Package Manifest & Provenance"
                   subtitle="Live assembly index with Merkle tree validation."
                 >
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                     <div
                       style={{
-                        background: "#F0FDF4",
-                        border: "1px solid #BBF7D0",
+                        background: "#F4FAF7",
+                        border: "1px solid #B9DED4",
                         borderRadius: "8px",
                         padding: "10px 14px",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
+                        gap: "8px",
                       }}
                     >
-                      <div>
-                        <span style={{ fontSize: "11px", color: "#166534", fontWeight: 700, display: "block" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ fontSize: "10.5px", color: "#176B50", fontWeight: 700, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                           MERKLE ROOT HASH SEAL
                         </span>
-                        <code style={{ fontSize: "12px", color: "#14532D" }}>
+                        <code style={{ fontSize: "12px", color: "#063C3D" }}>
                           sha256:7f9b8c2d4e1a0b3c...
                         </code>
                       </div>
@@ -2357,7 +2564,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                       </Badge>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ borderTop: "1px solid #EDF2EF" }}>
                       {[
                         { index: "1", doc: "Form G-28 (Notice of Entry of Appearance)", status: "Validated" },
                         { index: "2", doc: "Form I-140 Immigrant Petition for Alien Worker", status: "Validated" },
@@ -2370,24 +2577,24 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                           style={{
                             display: "flex",
                             justifyContent: "space-between",
-                            padding: "6px 10px",
-                            background: "#F8FAFC",
-                            borderRadius: "6px",
-                            border: "1px solid #E2E8F0",
+                            alignItems: "center",
+                            gap: "8px",
+                            padding: "8px 0",
+                            borderBottom: "1px solid #EDF2EF",
                             fontSize: "12px",
                           }}
                         >
-                          <span>
-                            <strong>#{ex.index}</strong> {ex.doc}
+                          <span style={{ color: "#172322" }}>
+                            <strong style={{ color: "#063C3D", fontVariantNumeric: "tabular-nums" }}>#{ex.index}</strong> {ex.doc}
                           </span>
-                          <span style={{ fontWeight: 600, color: ex.status === "Validated" ? "#166534" : "#D97706" }}>
+                          <span style={{ fontWeight: 650, color: ex.status === "Validated" ? "#176B50" : "#B45309", whiteSpace: "nowrap" }}>
                             {ex.status}
                           </span>
                         </div>
                       ))}
                     </div>
 
-                    <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                    <div style={{ display: "flex", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
                       <Button variant="primary" size="sm" onClick={() => setActiveTab("package_review")}>
                         Open Package Studio
                       </Button>
@@ -2402,6 +2609,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               {/* Panel 5: Case Timeline & Immutable Audit Trail */}
               {(allInOneSubView === "all" || allInOneSubView === "timeline") && (
                 <Card
+                  variant="flat"
                   title="Immutable Case Timeline"
                   subtitle="Cryptographically logged audit history across client and staff actions."
                 >
@@ -2412,12 +2620,13 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                         .slice(0, 5)
                         .map((d) => {
                           const isFlagged = d.status === "action_needed" || d.verification_status === "rejected";
+                          const iconName: WorkspaceIconName = d.status === "verified" ? "check" : isFlagged ? "alert-triangle" : "file-text";
                           return {
                             actor: d.uploaded_by || staffDisplayName,
                             action: `${d.status === "verified" ? "Verified Evidence" : isFlagged ? "Flagged Document" : "Uploaded Evidence"}: ${d.title || d.filename}`,
                             time: d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString() : "Recent",
-                            icon: d.status === "verified" ? "✓" : isFlagged ? "✕" : "📄",
-                            color: d.status === "verified" ? "#166534" : isFlagged ? "#DC2626" : "#0284C7",
+                            iconName,
+                            color: d.status === "verified" ? "#176B50" : isFlagged ? "#DC2626" : "#0284C7",
                           };
                         }),
                       ...(selectedCaseForWorkspace
@@ -2428,7 +2637,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                               time: selectedCaseForWorkspace.created_at
                                 ? new Date(selectedCaseForWorkspace.created_at).toLocaleDateString()
                                 : "Active",
-                              icon: "📁",
+                              iconName: "folder" as WorkspaceIconName,
                               color: "#063C3D",
                             },
                           ]
@@ -2442,7 +2651,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                           gap: "10px",
                           fontSize: "12px",
                           padding: "6px 0",
-                          borderBottom: idx < 4 ? "1px solid #F1F5F9" : "none",
+                          borderBottom: idx < 4 ? "1px solid #EDF2EF" : "none",
                         }}
                       >
                         <div
@@ -2455,16 +2664,14 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            fontSize: "11px",
                             flexShrink: 0,
-                            fontWeight: 700,
                           }}
                         >
-                          {evt.icon}
+                          <WorkspaceIcon name={evt.iconName} size={11} />
                         </div>
                         <div>
-                          <strong style={{ color: "#0F172A", display: "block" }}>{evt.action}</strong>
-                          <small style={{ color: "#64748B" }}>
+                          <strong style={{ color: "#172322", display: "block" }}>{evt.action}</strong>
+                          <small style={{ color: "#6E7F7C" }}>
                             {evt.actor} • {evt.time}
                           </small>
                         </div>
@@ -2495,17 +2702,23 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               />
             )}
 
-            <Card
-              title="My Assigned Immigration Petitions"
-              subtitle={`Caseworker queue with object-level authorization applied (${visibleCases.length} petitions shown).`}
-            >
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#063C3D" }}>
+                  My Assigned Immigration Petitions
+                </h2>
+                <p style={{ margin: "2px 0 0 0", fontSize: "12.5px", color: "#6E7F7C" }}>
+                  Caseworker queue with object-level authorization applied ({visibleCases.length} petitions shown).
+                </p>
+              </div>
               <DataTable
+                variant="boxed"
                 columns={caseColumns}
                 data={visibleCases}
                 keyExtractor={(c) => c.id}
                 searchPlaceholder="Search assigned cases..."
               />
-            </Card>
+            </div>
           </div>
         )}
 
@@ -2531,29 +2744,57 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
 
         {/* 4. CLIENT DIRECTORY */}
         {effectiveTab === "clients" && (
-          <Card
-            title="Retained Applicant Directory & Credentials"
-            subtitle="All registered clients under organization tenancy. Credentials must be provided by Lead Paralegal or Owner for client portal sign-in."
-            actions={
-              onOpenCreateClient ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-end",
+                gap: "16px",
+                flexWrap: "wrap",
+                paddingBottom: "12px",
+                borderBottom: "1px solid #E2E8F0",
+              }}
+            >
+              <div>
+                <h2 style={{ margin: 0, fontSize: "17px", fontWeight: 700, color: "#063C3D", letterSpacing: "-0.015em" }}>
+                  Retained Applicant Directory &amp; Credentials
+                </h2>
+                <p style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#64748B" }}>
+                  All registered clients under organization tenancy. Credentials must be provided by Lead Paralegal or Owner for client portal sign-in.
+                </p>
+              </div>
+              {onOpenCreateClient && (
                 <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
                   + Onboard Client &amp; Case
                 </Button>
-              ) : undefined
-            }
-          >
+              )}
+            </div>
             {clients.length === 0 ? (
               <div
                 style={{
                   textAlign: "center",
-                  padding: "48px 24px",
-                  background: "#F8F7F2",
-                  border: "2px dashed #B9DED4",
-                  borderRadius: "12px",
-                  margin: "12px 0",
+                  padding: "44px 24px",
+                  background: "#FAFBF9",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "10px",
                 }}
               >
-                <div style={{ fontSize: "36px", marginBottom: "12px" }}>👤</div>
+                <div
+                  style={{
+                    width: "44px",
+                    height: "44px",
+                    borderRadius: "10px",
+                    background: "#F1F5F9",
+                    color: "#0D6866",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <WorkspaceIcon name="user" size={22} />
+                </div>
                 <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#063C3D", marginBottom: "6px" }}>
                   No Retained Clients in Firm Directory (Clean Slate)
                 </h3>
@@ -2613,8 +2854,10 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                             setSelectedClientForCredentials(c);
                             setIsProvisionModalOpen(true);
                           }}
+                          style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                         >
-                          🔑 {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
+                          <WorkspaceIcon name="key" size={13} />
+                          {c.portal_credentials_provided ? "Manage Credentials" : "Issue Credentials"}
                         </Button>
                         {canDelete && (
                           <Button
@@ -2633,43 +2876,58 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                               gap: "4px",
                             }}
                           >
-                            🗑️ Delete Client
+                            <WorkspaceIcon name="trash" size={13} /> Delete Client
                           </Button>
                         )}
                       </div>
                     ),
                   },
                 ]}
+                variant="boxed"
                 data={clients}
                 keyExtractor={(c) => c.id}
               />
             )}
-          </Card>
+          </div>
         )}
 
         {/* 5. REQUIREMENTS & DOCUMENTS */}
         {effectiveTab === "documents" && (
-          <Card
-            title="Evidence & Document Verification Matrix"
-            subtitle="Cryptographically verified evidence items stored in private immutable storage with full extraction provenance."
-            actions={
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-end",
+                gap: "16px",
+                flexWrap: "wrap",
+                paddingBottom: "12px",
+                borderBottom: "1px solid #E2E8F0",
+              }}
+            >
+              <div>
+                <h2 style={{ margin: 0, fontSize: "17px", fontWeight: 700, color: "#063C3D", letterSpacing: "-0.015em" }}>
+                  Evidence &amp; Document Verification Matrix
+                </h2>
+                <p style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#64748B" }}>
+                  Cryptographically verified evidence items stored in private immutable storage with full extraction provenance.
+                </p>
+              </div>
               <Button variant="primary" size="sm" onClick={() => onOpenUploadModal(selectedCaseForWorkspace?.id || "")}>
                 + Upload Evidence File
               </Button>
-            }
-          >
+            </div>
             {/* Document Filters & Search Toolbar */}
             <div
               style={{
                 display: "flex",
-                gap: "12px",
-                marginBottom: "16px",
+                gap: "10px",
                 flexWrap: "wrap",
                 alignItems: "center",
-                background: "#F8F7F2",
-                padding: "12px 14px",
-                borderRadius: "10px",
-                border: "1px solid #DCE5E1",
+                background: "#FAFBF9",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                border: "1px solid #E2E8F0",
               }}
             >
               <div style={{ position: "relative", flex: "1 1 260px" }}>
@@ -2796,21 +3054,20 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
                       <div
                         style={{
-                          width: "32px",
-                          height: "32px",
-                          borderRadius: "8px",
-                          background: "#F1F6F4",
-                          border: "1px solid #DCE5E1",
+                          width: "30px",
+                          height: "30px",
+                          borderRadius: "6px",
+                          background: "#F1F5F9",
+                          border: "1px solid #E2E8F0",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           color: "#0D6866",
-                          fontSize: "15px",
                           flexShrink: 0,
                           marginTop: "1px",
                         }}
                       >
-                        📄
+                        <WorkspaceIcon name="file-text" size={14} />
                       </div>
                       <div>
                         <strong
@@ -2945,7 +3202,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                         gap: "4px",
                       }}
                     >
-                      <span style={{ color: "#0D6866" }}>⚡</span>
+                      <WorkspaceIcon name="zap" size={12} style={{ color: "#0D6866" }} />
                       <span>{d.extracted_fields?.length || 0} fields</span>
                     </span>
                   ),
@@ -3000,7 +3257,10 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                         e.currentTarget.style.background = "#0D6866";
                       }}
                     >
-                      <span>⚡ Review AI Dossier</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                        <WorkspaceIcon name="zap" size={12} />
+                        Review AI Dossier
+                      </span>
                     </button>
                   ),
                 },
@@ -3017,14 +3277,16 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 }
                 return true;
               })}
+              variant="boxed"
               keyExtractor={(d) => d.id}
             />
-          </Card>
+          </div>
         )}
 
         {/* 6. AI FINDINGS */}
         {effectiveTab === "ai_findings" && (
           <Card
+            variant="flat"
             title="AI Document Findings & Evidentiary Gap Analysis"
             subtitle="AI document analysis and discrepancy detection with statutory checklist auditing. Non-binding advisory intelligence for authorized practitioners."
           >
@@ -3122,14 +3384,18 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                     variant="primary"
                     onClick={handleTriggerAnalysisAction}
                     disabled={isAnalyzing}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    {isAnalyzing ? "Analyzing Dossier..." : "⚡ Run Case AI Consistency Analysis"}
+                    {!isAnalyzing && <WorkspaceIcon name="zap" size={14} />}
+                    {isAnalyzing ? "Analyzing Dossier..." : "Run Case AI Consistency Analysis"}
                   </Button>
                   <Button
                     variant="outline"
                     onClick={() => setIsSummaryModalOpen(true)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    📄 View Evidence-Backed Brief
+                    <WorkspaceIcon name="file-text" size={14} />
+                    View Evidence-Backed Brief
                   </Button>
                 </div>
 
@@ -3225,6 +3491,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                               {finding.is_confirmed_contradiction ? (
                                 <span
                                   style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
                                     fontSize: "11px",
                                     fontWeight: 700,
                                     padding: "2px 6px",
@@ -3233,11 +3502,14 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                                     color: "#b91c1c",
                                   }}
                                 >
-                                  ⚠️ CONFIRMED CONTRADICTION
+                                  <WorkspaceIcon name="alert-triangle" size={11} /> CONFIRMED CONTRADICTION
                                 </span>
                               ) : (
                                 <span
                                   style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
                                     fontSize: "11px",
                                     fontWeight: 600,
                                     padding: "2px 6px",
@@ -3246,7 +3518,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                                     color: "#1d4ed8",
                                   }}
                                 >
-                                  ℹ️ POTENTIAL DISCREPANCY
+                                  <WorkspaceIcon name="info" size={11} /> POTENTIAL DISCREPANCY
                                 </span>
                               )}
                               <Badge variant={isResolvedOrDismissed ? "success" : "review"}>
@@ -3262,8 +3534,16 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                             variant={isResolvedOrDismissed ? "outline" : "primary"}
                             size="sm"
                             onClick={() => setSelectedFindingForInspection(finding)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
                           >
-                            {isResolvedOrDismissed ? "View Audit Details" : "Inspect & Resolve ⚖️"}
+                            {isResolvedOrDismissed ? (
+                              "View Audit Details"
+                            ) : (
+                              <>
+                                <WorkspaceIcon name="scale" size={13} />
+                                Inspect &amp; Resolve
+                              </>
+                            )}
                           </Button>
                         </div>
 
@@ -3320,7 +3600,15 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
 
         {/* 7. TASKS & DEADLINES */}
         {effectiveTab === "tasks" && (
-          <Card title="Caseworker Action Items & Deadlines" subtitle="Track tasks across client evidence collection and petition assembly.">
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={{ paddingBottom: "12px", borderBottom: "1px solid #E2E8F0" }}>
+              <h2 style={{ margin: 0, fontSize: "17px", fontWeight: 700, color: "#063C3D", letterSpacing: "-0.015em" }}>
+                Caseworker Action Items &amp; Deadlines
+              </h2>
+              <p style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#64748B" }}>
+                Track tasks across client evidence collection and petition assembly.
+              </p>
+            </div>
             <DataTable
               columns={[
                 {
@@ -3338,10 +3626,11 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 { key: "priority", header: "Priority", render: (t) => <Badge variant={t.priority === "critical" ? "action" : "warning"}>{t.priority.toUpperCase()}</Badge> },
                 { key: "assigned_to", header: "Assignee", render: (t) => <span>{t.assigned_to}</span> },
               ]}
+              variant="boxed"
               data={tasks}
               keyExtractor={(t) => t.id}
             />
-          </Card>
+          </div>
         )}
 
         {/* 8. MESSAGES (STAFF MODE WITH INTERNAL NOTES & DELIVERY INDICATORS) */}
@@ -3370,16 +3659,30 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
             <div
               data-testid="form-prep-empty-state"
               style={{
-                background: "#FFFFFF",
-                border: "1px dashed #CBD5E1",
-                borderRadius: "16px",
-                padding: "48px 32px",
+                background: "#FAFBF9",
+                border: "1px solid #E2E8F0",
+                borderRadius: "10px",
+                padding: "44px 32px",
                 textAlign: "center",
                 maxWidth: "680px",
-                margin: "32px auto",
+                margin: "24px auto",
               }}
             >
-              <div style={{ fontSize: "38px", marginBottom: "12px" }}>📋</div>
+              <div
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "10px",
+                  background: "#F1F5F9",
+                  color: "#0D6866",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: "12px",
+                }}
+              >
+                <WorkspaceIcon name="clipboard" size={22} />
+              </div>
               <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                 No Active Petition Selected for Form Preparation
               </h3>
@@ -3400,10 +3703,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                   flexWrap: "wrap",
                   gap: "12px",
                   background: "#FFFFFF",
-                  padding: "14px 20px",
-                  borderRadius: "12px",
-                  border: "1px solid #DCE5E1",
-                  boxShadow: "0 2px 8px rgba(6, 60, 61, 0.04)",
+                  padding: "12px 16px",
+                  borderRadius: "8px",
+                  border: "1px solid #E2E8F0",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -3423,7 +3725,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                       gap: "5px",
                     }}
                   >
-                    <span>📁</span> Active Case
+                    <WorkspaceIcon name="folder" size={12} /> Active Case
                   </span>
                   <span style={{ fontSize: "12px", color: "#6E7F7C", fontWeight: 500 }}>
                     Active Immigration Petition Case:
@@ -3441,14 +3743,13 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                   style={{
                     fontSize: "12px",
                     fontWeight: 600,
-                    padding: "8px 14px",
-                    borderRadius: "8px",
-                    border: "1.5px solid #DCE5E1",
-                    background: "#FAFAF8",
+                    padding: "7px 12px",
+                    borderRadius: "7px",
+                    border: "1px solid #CBD5E1",
+                    background: "#FAFBF9",
                     color: "#172322",
                     outline: "none",
                     cursor: "pointer",
-                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
                   }}
                 >
                   {cases.map((c) => (
@@ -3476,16 +3777,30 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
             <div
               data-testid="package-review-empty-state"
               style={{
-                background: "#FFFFFF",
-                border: "1px dashed #CBD5E1",
-                borderRadius: "16px",
-                padding: "48px 32px",
+                background: "#FAFBF9",
+                border: "1px solid #E2E8F0",
+                borderRadius: "10px",
+                padding: "44px 32px",
                 textAlign: "center",
                 maxWidth: "680px",
-                margin: "32px auto",
+                margin: "24px auto",
               }}
             >
-              <div style={{ fontSize: "38px", marginBottom: "12px" }}>📦</div>
+              <div
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "10px",
+                  background: "#F1F5F9",
+                  color: "#0D6866",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: "12px",
+                }}
+              >
+                <WorkspaceIcon name="package" size={22} />
+              </div>
               <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                 No Filing Packages Ready for Assembly
               </h3>
@@ -3536,16 +3851,30 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
             <div
               data-testid="rules-requirements-empty-state"
               style={{
-                background: "#FFFFFF",
-                border: "1px dashed #CBD5E1",
-                borderRadius: "16px",
-                padding: "48px 32px",
+                background: "#FAFBF9",
+                border: "1px solid #E2E8F0",
+                borderRadius: "10px",
+                padding: "44px 32px",
                 textAlign: "center",
                 maxWidth: "680px",
-                margin: "32px auto",
+                margin: "24px auto",
               }}
             >
-              <div style={{ fontSize: "38px", marginBottom: "12px" }}>⚖️</div>
+              <div
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "10px",
+                  background: "#F1F5F9",
+                  color: "#0D6866",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: "12px",
+                }}
+              >
+                <WorkspaceIcon name="scale" size={22} />
+              </div>
               <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                 No Case Selected for Requirement Evaluation
               </h3>
@@ -3586,16 +3915,30 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
             <div
               data-testid="ai-assistant-empty-state"
               style={{
-                background: "#FFFFFF",
-                border: "1px dashed #CBD5E1",
-                borderRadius: "16px",
-                padding: "48px 32px",
+                background: "#FAFBF9",
+                border: "1px solid #E2E8F0",
+                borderRadius: "10px",
+                padding: "44px 32px",
                 textAlign: "center",
                 maxWidth: "680px",
-                margin: "32px auto",
+                margin: "24px auto",
               }}
             >
-              <div style={{ fontSize: "38px", marginBottom: "12px" }}>🤖</div>
+              <div
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "10px",
+                  background: "#F1F5F9",
+                  color: "#0D6866",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: "12px",
+                }}
+              >
+                <WorkspaceIcon name="bot" size={22} />
+              </div>
               <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                 Open a Case File to Launch Citation-Grounded AI Assistance
               </h3>

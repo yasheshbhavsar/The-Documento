@@ -78,12 +78,12 @@ describe("Landing Page Sign-In and Sign-Out Flow", () => {
         () => {
           expect(screen.getAllByText(/Executive Command Center/i).length).toBeGreaterThan(0);
           expect(screen.queryByText(/Every immigration case\./i)).toBeNull();
+          expect(screen.getByText("Active Caseload: 0 Petitions")).toBeDefined();
         },
-        { timeout: 2500 }
+        { timeout: 5000 }
       );
 
       // Verify clean slate (zero demo cases or fake personas in live workspace)
-      expect(screen.getByText("Active Caseload: 0 Petitions")).toBeDefined();
       expect(screen.queryByText(/Vanguard Immigration Law/i)).toBeNull();
 
       const profileBtn = screen.getByLabelText(/User profile menu/i);

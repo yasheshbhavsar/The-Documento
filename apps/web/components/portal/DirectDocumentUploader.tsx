@@ -2,8 +2,7 @@ import React, { useState, useRef } from "react";
 import { calculateSHA256, formatBytes } from "../../lib/crypto";
 import { DocumentItem, DocumentCategory } from "../../lib/types";
 import { ClientLanguage, CLIENT_TRANSLATIONS } from "../../lib/clientLocalization";
-import { analyzeDocumentStandalone } from "../../lib/api/extractor";
-import { mapAnalysisToInitialInfoSheet, persistAndBroadcastAutoFill } from "../../lib/documentAutoFillEngine";
+import { enqueueRawClientPacket, extractSafeRawTextPreview } from "../../lib/rawClientPacketStore";
 
 interface DirectDocumentUploaderProps {
   caseId?: string;
@@ -124,124 +123,51 @@ export function DirectDocumentUploader({
     setError(null);
 
     try {
-      // Analyze document and extract intelligence
-      let extractedList: any[] = [];
-      let analysisResult: any = null;
-      try {
-        analysisResult = await analyzeDocumentStandalone({
-          file: selectedFile,
-          filename: selectedFile.name,
-          declaredCategory: category,
-        });
-        if (analysisResult?.extracted_fields?.length) {
-          extractedList = analysisResult.extracted_fields.map((f: any, idx: number) => ({
-            id: `field-${Date.now()}-${idx + 4}`,
-            field_name: f.field_name,
-            field_label: f.field_label || f.field_name,
-            original_value: f.original_value,
-            normalized_value: f.normalized_value || f.original_value,
-            field_value: f.normalized_value || f.original_value,
-            source_page: f.source_page || 1,
-            extraction_method: f.extraction_method || "client_portal_direct_uploader",
-            ocr_confidence: f.ocr_confidence || 0.96,
-            extraction_confidence: f.extraction_confidence || 0.95,
-            confidence: f.calibrated_confidence || 0.95,
-            validation_status: "unvalidated",
-            is_manually_corrected: false,
-          }));
-        }
-      } catch {
-        // Fallback gracefully to default extraction list
-      }
-
-      // Simulate rapid server transmission and immediate local reactivity
-      await new Promise((res) => setTimeout(res, 600));
+      const vaultDocId = `doc-client-${Date.now()}`;
+      const rawTextPreview = await extractSafeRawTextPreview(selectedFile);
+      const rawPacket = enqueueRawClientPacket({
+        file: selectedFile,
+        vaultDocId,
+        caseId: caseId || "default_client",
+        title: title || selectedFile.name,
+        sha256: computedHash,
+        uploaderRole: "applicant",
+        declaredCategory: category,
+        officerNote: officerNote || undefined,
+        rawTextPreview,
+      });
 
       const newDoc: DocumentItem = {
-        id: `doc-client-${Date.now()}`,
+        id: vaultDocId,
         case_id: caseId,
         title: title || selectedFile.name,
+        filename: selectedFile.name,
         category,
         file_size: fileSizeStr || "2.1 MB",
+        byte_size: selectedFile.size,
+        mime_type: selectedFile.type || "application/pdf",
         sha256_hash: computedHash,
         version: 1,
         is_current_version: true,
-        processing_status: "completed",
+        processing_status: "pending",
         verification_status: "unverified",
-        status: "verified",
+        status: "under_review",
         uploaded_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
-        extracted_fields: [
-          {
-            id: `field-${Date.now()}-1`,
-            field_name: "document_title",
-            field_label: "Document Title",
-            original_value: title || selectedFile.name,
-            normalized_value: title || selectedFile.name,
-            field_value: title || selectedFile.name,
-            source_page: 1,
-            extraction_method: "client_portal_direct_uploader",
-            ocr_confidence: 0.99,
-            extraction_confidence: 0.99,
-            confidence: 0.99,
-            validation_status: "unvalidated",
-            is_manually_corrected: false,
-          },
-          {
-            id: `field-${Date.now()}-2`,
-            field_name: "evidentiary_category",
-            field_label: "Evidentiary Category",
-            original_value: category,
-            normalized_value: category,
-            field_value: category,
-            source_page: 1,
-            extraction_method: "client_portal_direct_uploader",
-            ocr_confidence: 0.98,
-            extraction_confidence: 0.98,
-            confidence: 0.98,
-            validation_status: "unvalidated",
-            is_manually_corrected: false,
-          },
-          {
-            id: `field-${Date.now()}-3`,
-            field_name: "applicant_note",
-            field_label: "Applicant Note",
-            original_value: officerNote || "Uploaded via Client Portal",
-            normalized_value: officerNote || "Uploaded via Client Portal",
-            field_value: officerNote || "Uploaded via Client Portal",
-            source_page: 1,
-            extraction_method: "client_portal_direct_uploader",
-            ocr_confidence: 1.0,
-            extraction_confidence: 1.0,
-            confidence: 1.0,
-            validation_status: "unvalidated",
-            is_manually_corrected: false,
-          },
-          ...extractedList,
-        ],
+        ocr_applied: false,
+        extracted_fields: [],
+        is_raw_packet: true,
+        raw_packet_id: rawPacket.id,
+        ai_lab_status: "pending",
+        uploader_role: "applicant",
       };
-
-      // Broadcast auto-fill intelligence to intake sheets and forms
-      if (analysisResult) {
-        try {
-          const sheetRes = mapAnalysisToInitialInfoSheet(analysisResult);
-          persistAndBroadcastAutoFill(caseId || "default_client", {
-            formData: sheetRes.updatedData,
-            provenance: sheetRes.provenance,
-            sourceDocId: newDoc.id,
-            sourceFilename: selectedFile.name,
-          });
-        } catch {
-          // ignore
-        }
-      }
 
       onDocumentUploaded(newDoc);
       const officerText = assignedOfficer && !assignedOfficer.toLowerCase().includes("unassigned")
-        ? `Assigned to ${assignedOfficer} for statutory review.`
-        : "Queued for statutory review upon officer assignment.";
+        ? `Sent directly to ${assignedOfficer}'s AI Lab for local OCR, page-sorting & auto-fill.`
+        : "Queued for assigned Paralegal's local AI Lab (OCR, Sort & Auto-Fill).";
       setSuccessBanner(
-        `✅ Document "${newDoc.title}" submitted successfully! ${officerText}`
+        `✅ Untouched file "${newDoc.title}" uploaded directly! ${officerText}`
       );
 
       // Reset form

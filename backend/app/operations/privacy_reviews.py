@@ -19,7 +19,7 @@ SEED_PRIVACY_REVIEWS = [
         "market_name": "India",
         "statutory_framework": "Digital Personal Data Protection Act, 2023 (DPDP Act) & UIDAI Aadhaar Regulations",
         "review_status": "approved",
-        "legal_counsel_signoff_by": "Adv. Rajeshwar Sharma, Senior Data Protection Counsel (New Delhi)",
+        "legal_counsel_signoff_by": "Senior Data Protection Counsel (New Delhi)",
         "signoff_date": "2026-08-15T00:00:00Z",
         "valid_until": "2027-08-15T00:00:00Z",
         "mandatory_safeguards_json": {
@@ -35,7 +35,7 @@ SEED_PRIVACY_REVIEWS = [
         "market_name": "Canada",
         "statutory_framework": "Personal Information Protection and Electronic Documents Act (PIPEDA) & Quebec Law 25",
         "review_status": "approved",
-        "legal_counsel_signoff_by": "Me. Catherine Tremblay, Barreau du Québec & Privacy Law Specialist (Montreal)",
+        "legal_counsel_signoff_by": "Privacy Law Specialist, Barreau du Québec (Montreal)",
         "signoff_date": "2026-09-01T00:00:00Z",
         "valid_until": "2027-09-01T00:00:00Z",
         "mandatory_safeguards_json": {
@@ -51,7 +51,7 @@ SEED_PRIVACY_REVIEWS = [
         "market_name": "United States",
         "statutory_framework": "Privacy Act of 1974, E-Government Act of 2002, USCIS Electronic Filing Guidelines & ABA Model Rule 1.6",
         "review_status": "approved",
-        "legal_counsel_signoff_by": "Jonathan Vance, Esq., Partner, Immigration Regulatory Practice (Washington, D.C.)",
+        "legal_counsel_signoff_by": "Managing Partner, Immigration Regulatory Practice (Washington, D.C.)",
         "signoff_date": "2026-07-20T00:00:00Z",
         "valid_until": "2027-07-20T00:00:00Z",
         "mandatory_safeguards_json": {
@@ -66,7 +66,7 @@ SEED_PRIVACY_REVIEWS = [
         "market_name": "United Kingdom & European Union",
         "statutory_framework": "UK Data Protection Act 2018 (UK GDPR) & EU General Data Protection Regulation (Regulation 2016/679)",
         "review_status": "approved",
-        "legal_counsel_signoff_by": "Eleanor Sterling, Solicitor, Data Protection & Regulatory Compliance (London)",
+        "legal_counsel_signoff_by": "Senior Solicitor, Data Protection & Regulatory Compliance (London)",
         "signoff_date": "2026-10-01T00:00:00Z",
         "valid_until": "2027-10-01T00:00:00Z",
         "mandatory_safeguards_json": {

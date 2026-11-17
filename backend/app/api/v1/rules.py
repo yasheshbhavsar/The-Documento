@@ -1346,7 +1346,7 @@ def migrate_case_version_endpoint(
             target_version_id=body.to_version_id,
             migration_reason=body.migration_reason,
             authorized_user_id=auth.user_id,
-            authorized_user_email=getattr(auth, "email", "counsel@lawfirm.com") or "counsel@lawfirm.com",
+            authorized_user_email=getattr(auth, "email", "") or "system",
         )
         return result
     except ValueError as e:

@@ -84,12 +84,14 @@ export interface WorkspaceContextType {
   handleCaseCreated: (
     newCase: ImmigrationCase,
     linkedClient?: ClientProfile,
-    isNewClientOnboarding?: boolean
+    isNewClientOnboarding?: boolean,
+    options?: { skipKickoffModal?: boolean; uploadedDocs?: DocumentItem[] }
   ) => void;
   handleCaseUpdated: (updatedCase: ImmigrationCase) => void;
   handleClientCreated: (newClient: ClientProfile) => void;
   handleClientUpdated: (updatedClient: ClientProfile) => void;
   handleDeleteClient: (clientId: string) => Promise<void>;
+  handleDeleteCase: (caseId: string) => Promise<void>;
   handleDocumentUploaded: (newDoc: DocumentItem) => void;
   handleDocumentUpdated: (updatedDoc: DocumentItem) => void;
   handleToggleTask: (taskId: string) => void;
@@ -307,7 +309,8 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
     (
       newCase: ImmigrationCase,
       linkedClient?: ClientProfile,
-      isNewClientOnboarding?: boolean
+      isNewClientOnboarding?: boolean,
+      options?: { skipKickoffModal?: boolean; uploadedDocs?: DocumentItem[] }
     ) => {
       initCaseKickoffRecord({
         caseId: newCase.id,
@@ -316,8 +319,13 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
         assignedOfficer: newCase.assigned_manager || currentUser?.full_name,
       });
       setCases((prev) => [newCase, ...prev]);
+      if (options?.uploadedDocs?.length) {
+        setDocuments((prev) => [...options.uploadedDocs!, ...prev]);
+      }
       setKickoffVersion((v) => v + 1);
-      setSelectedCaseForKickoff(newCase);
+      if (!options?.skipKickoffModal) {
+        setSelectedCaseForKickoff(newCase);
+      }
       setBannerAlert({
         type: "success",
         message: linkedClient
@@ -378,8 +386,9 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
 
         setClients((prev) => prev.filter((c) => c.id !== clientId));
         setCases((prev) => prev.filter((c) => !linkedCaseIds.includes(c.id) && c.client_id !== clientId));
-        setDocuments((prev) => prev.filter((d) => !linkedCaseIds.includes(d.case_id)));
+        setDocuments((prev) => prev.filter((d) => !(d.case_id && linkedCaseIds.includes(d.case_id))));
         setTasks((prev) => prev.filter((t) => !linkedCaseIds.includes(t.case_id)));
+        setAiFindings((prev) => prev.filter((f) => !linkedCaseIds.includes(f.case_id)));
 
         setSelectedCaseForKickoff((prev) => {
           if (prev && (prev.client_id === clientId || linkedCaseIds.includes(prev.id))) {
@@ -415,6 +424,38 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
       }
     },
     [currentRoleCode, clients, cases]
+  );
+
+  const handleDeleteCase = useCallback(
+    async (caseId: string) => {
+      try {
+        const targetCase = cases.find((c) => c.id === caseId);
+        await api.deleteCase(caseId, currentRoleCode);
+
+        setCases((prev) => prev.filter((c) => c.id !== caseId));
+        setDocuments((prev) => prev.filter((d) => d.case_id !== caseId));
+        setTasks((prev) => prev.filter((t) => t.case_id !== caseId));
+        setAiFindings((prev) => prev.filter((f) => f.case_id !== caseId));
+        setSelectedCaseForKickoff((prev) => (prev?.id === caseId ? null : prev));
+
+        setBannerAlert({
+          type: "success",
+          message: targetCase
+            ? `Case ${targetCase.case_number} deleted successfully. Retained client profile remains preserved.`
+            : "Case record deleted successfully.",
+        });
+        try {
+          const auditRes = await api.getAuditEvents(currentRoleCode);
+          setAuditEvents(auditRes.data);
+        } catch {}
+      } catch (err: any) {
+        setBannerAlert({
+          type: "critical",
+          message: err?.message || "Failed to delete case record.",
+        });
+      }
+    },
+    [currentRoleCode, cases]
   );
 
   const handleDocumentUploaded = useCallback((newDoc: DocumentItem) => {
@@ -521,7 +562,7 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
         action: "workspace.initialized",
         object_type: "workspace",
         object_id: currentUser?.organization_id || "workspace",
-        actor_email: currentUser?.email || "operator@workspace.local",
+        actor_email: currentUser?.email || "system",
         created_at: new Date().toISOString(),
         metadata: {
           note: "Firm workspace started from scratch (Day 0). Zero mock cases and zero mock documents.",
@@ -617,6 +658,7 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
       handleClientCreated,
       handleClientUpdated,
       handleDeleteClient,
+      handleDeleteCase,
       handleDocumentUploaded,
       handleDocumentUpdated,
       handleToggleTask,
@@ -660,6 +702,7 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
       handleClientCreated,
       handleClientUpdated,
       handleDeleteClient,
+      handleDeleteCase,
       handleDocumentUploaded,
       handleDocumentUpdated,
       handleToggleTask,
