@@ -41,6 +41,8 @@ import {
   getMissingQuestionsRequest,
 } from "../../lib/rawClientPacketStore";
 import { getSavedInitialInfoSheetRecord } from "../portal/InitialInformationSheet";
+import { getJurisdictionRepresentationInfo } from "../../lib/jurisdictionForms";
+import { DocumentInspectorModal } from "../modals/DocumentInspectorModal";
 
 export interface SplitScreenCaseStudioProps {
   caseItem: ImmigrationCase | null;
@@ -387,7 +389,9 @@ export function SplitScreenCaseStudio({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [zoomPct, setZoomPct] = useState<number>(100);
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
+  const [inspectorModalDoc, setInspectorModalDoc] = useState<DocumentItem | null>(null);
   const [licoFamilySize, setLicoFamilySize] = useState<number>(3);
+  const [showAllCalculators, setShowAllCalculators] = useState<boolean>(false);
   const [confirmedTimestamp, setConfirmedTimestamp] = useState<string | null>(null);
   const [confirmedFieldCount, setConfirmedFieldCount] = useState<number>(0);
 
@@ -1900,43 +1904,66 @@ export function SplitScreenCaseStudio({
               </button>
             </div>
 
-            {/* Zoom Controls */}
-            <div
-              data-testid="studio-zoom-controls"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                background: "#F8F7F2",
-                border: "1px solid #DCE5E1",
-                borderRadius: "7px",
-                padding: "3px",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {[75, 100, 125, 150].map((z) => (
+            {/* Zoom Controls + 1-Click Full 2-Pane Inspector */}
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <div
+                data-testid="studio-zoom-controls"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  background: "#F8F7F2",
+                  border: "1px solid #DCE5E1",
+                  borderRadius: "7px",
+                  padding: "3px",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {[75, 100, 125, 150].map((z) => (
+                  <button
+                    key={z}
+                    type="button"
+                    onClick={() => setZoomPct(z)}
+                    style={{
+                      padding: "4px 7px",
+                      borderRadius: "5px",
+                      border: "none",
+                      background: zoomPct === z ? "#063C3D" : "transparent",
+                      color: zoomPct === z ? "#FFFFFF" : "#445451",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {z}%
+                  </button>
+                ))}
+              </div>
+
+              {selectedDoc && (
                 <button
-                  key={z}
                   type="button"
-                  onClick={() => setZoomPct(z)}
+                  data-testid="studio-open-inspector-modal-btn"
+                  onClick={() => setInspectorModalDoc(selectedDoc)}
                   style={{
-                    padding: "4px 7px",
-                    borderRadius: "5px",
-                    border: "none",
-                    background: zoomPct === z ? "#063C3D" : "transparent",
-                    color: zoomPct === z ? "#FFFFFF" : "#445451",
-                    fontSize: "11px",
+                    background: "#0D6866",
+                    color: "#FFFFFF",
+                    border: "1px solid #063C3D",
+                    borderRadius: "7px",
+                    padding: "5px 10px",
+                    fontSize: "11.5px",
                     fontWeight: 700,
                     cursor: "pointer",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {z}%
+                  🔍 Full 2-Pane Inspector
                 </button>
-              ))}
+              )}
             </div>
           </div>
 
-          {/* Interactive OCR Bounding-Box Document Canvas */}
+          {/* Interactive Actual Document Page Preview + Spatial OCR Bounding-Box Canvas */}
           <div
             data-testid="studio-bbox-canvas"
             style={{
@@ -1944,7 +1971,7 @@ export function SplitScreenCaseStudio({
               border: "1px solid #DCE5E1",
               borderRadius: "8px",
               padding: "14px",
-              minHeight: "340px",
+              minHeight: "380px",
               overflow: "auto",
               display: "flex",
               justifyContent: "center",
@@ -1959,128 +1986,311 @@ export function SplitScreenCaseStudio({
                 Drop a client or sponsor packet in the left pane to inspect spatial OCR bounding boxes.
               </div>
             ) : (
-              <div
-                data-testid="studio-document-page"
-                style={{
-                  position: "relative",
-                  width: `${zoomPct}%`,
-                  maxWidth: "100%",
-                  minHeight: "300px",
-                  background: "#FFFFFF",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "6px",
-                  padding: "16px",
-                  boxSizing: "border-box",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: "6px",
-                    borderBottom: "1px solid #DCE5E1",
-                    paddingBottom: "8px",
-                    marginBottom: "12px",
-                    fontSize: "11.5px",
-                    color: "#445451",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                    <strong style={{ color: "#063C3D" }}>{selectedDoc.title || selectedDoc.filename}</strong>
-                    {selectedDoc.is_raw_packet && (
-                      <span
-                        style={{
-                          background: "#EAF6F0",
-                          color: "#063C3D",
-                          border: "1px solid #B9DED4",
-                          borderRadius: "4px",
-                          padding: "1px 6px",
-                          fontSize: "10px",
-                          fontWeight: 700,
-                        }}
-                      >
-                        Untouched Original
-                      </span>
-                    )}
-                    {selectedDoc.page_range && (
-                      <span
-                        style={{
-                          background: "#F8F7F2",
-                          color: "#07594F",
-                          border: "1px solid #DCE5E1",
-                          borderRadius: "4px",
-                          padding: "1px 6px",
-                          fontSize: "10px",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {selectedDoc.page_range}
-                      </span>
-                    )}
-                  </div>
-                  <span>
-                    Page {currentPage} • {currentDocPageFields.length} OCR Region{currentDocPageFields.length === 1 ? "" : "s"}
-                  </span>
-                </div>
+              (() => {
+                const pageImageUrl =
+                  (selectedDoc as any).page_image_data_url ||
+                  (selectedDoc as any).preview_url ||
+                  ((selectedDoc as any).file_url &&
+                  /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test((selectedDoc as any).file_url)
+                    ? (selectedDoc as any).file_url
+                    : null);
+                const pdfPreviewUrl =
+                  !pageImageUrl &&
+                  ((selectedDoc as any).pdf_url ||
+                    (selectedDoc as any).file_url ||
+                    (selectedDoc.download_url && /\.pdf($|\?)/i.test(selectedDoc.download_url)
+                      ? selectedDoc.download_url
+                      : null));
 
-                {/* Spatial Bounding-Box Overlays */}
-                <div style={{ position: "relative", height: "235px", background: "#FAFAF7", border: "1px dashed #DCE5E1", borderRadius: "4px" }}>
-                  {currentDocPageFields.length === 0 ? (
-                    <div style={{ padding: "40px 16px", textAlign: "center", fontSize: "12px", color: "#6E7F7C" }}>
-                      {selectedDoc.is_raw_packet && selectedDoc.ai_lab_status !== "completed"
-                        ? "Untouched raw upload loaded. Click '⚡ Run AI Lab (OCR, Sort & Auto-Fill)' above to extract spatial bounding boxes and auto-fill forms."
-                        : `Document preview active (${selectedDoc.file_size || "PDF"}). Select or extract fields to highlight bounding-box coordinates.`}
+                return (
+                  <div
+                    data-testid="studio-document-page"
+                    style={{
+                      position: "relative",
+                      width: `${zoomPct}%`,
+                      maxWidth: "100%",
+                      minHeight: "350px",
+                      background: "#FFFFFF",
+                      border: "1px solid #DCE5E1",
+                      borderRadius: "8px",
+                      padding: "16px",
+                      boxSizing: "border-box",
+                      boxShadow: "0 2px 8px rgba(6, 60, 61, 0.06)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "6px",
+                        borderBottom: "1px solid #DCE5E1",
+                        paddingBottom: "8px",
+                        marginBottom: "12px",
+                        fontSize: "11.5px",
+                        color: "#445451",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                        <strong style={{ color: "#063C3D" }}>
+                          {selectedDoc.title || selectedDoc.filename}
+                        </strong>
+                        {selectedDoc.is_raw_packet && (
+                          <span
+                            style={{
+                              background: "#EAF6F0",
+                              color: "#063C3D",
+                              border: "1px solid #B9DED4",
+                              borderRadius: "4px",
+                              padding: "1px 6px",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Untouched Original
+                          </span>
+                        )}
+                        {selectedDoc.page_range && (
+                          <span
+                            style={{
+                              background: "#F8F7F2",
+                              color: "#07594F",
+                              border: "1px solid #DCE5E1",
+                              borderRadius: "4px",
+                              padding: "1px 6px",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {selectedDoc.page_range}
+                          </span>
+                        )}
+                      </div>
+                      <span>
+                        Page {currentPage} • {currentDocPageFields.length} OCR Region
+                        {currentDocPageFields.length === 1 ? "" : "s"}
+                      </span>
                     </div>
-                  ) : (
-                    currentDocPageFields.map((fld) => {
-                      const [ymin, xmin, ymax, xmax] = fld.bboxPct;
-                      const isSelected = activeFieldId === fld.id;
-                      return (
-                        <button
-                          key={fld.id}
-                          type="button"
-                          data-testid={`studio-bbox-${fld.fieldKey}`}
-                          onMouseEnter={() => setActiveFieldId(fld.id)}
-                          onClick={() => setActiveFieldId(fld.id)}
-                          title={`${fld.label}: ${fld.value} [${ymin.toFixed(0)}, ${xmin.toFixed(0)}, ${ymax.toFixed(0)}, ${xmax.toFixed(0)}]`}
+
+                    {/* Real Document Page Preview Frame + Spatial Bounding-Box Overlays */}
+                    <div
+                      style={{
+                        position: "relative",
+                        minHeight: "320px",
+                        background: "#FAFAF7",
+                        border: "1px solid #DCE5E1",
+                        borderRadius: "6px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {pageImageUrl ? (
+                        <img
+                          src={pageImageUrl}
+                          alt={selectedDoc.title || selectedDoc.filename}
                           style={{
-                            position: "absolute",
-                            top: `${ymin}%`,
-                            left: `${xmin}%`,
-                            width: `${Math.max(18, xmax - xmin)}%`,
-                            minHeight: `${Math.max(10, ymax - ymin)}%`,
-                            background: isSelected ? "rgba(7, 89, 79, 0.16)" : "rgba(23, 107, 80, 0.08)",
-                            border: isSelected ? "2px solid #063C3D" : "1px solid #176B50",
-                            borderRadius: "4px",
-                            padding: "2px 6px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: "6px",
-                            cursor: "pointer",
-                            textAlign: "left",
+                            width: "100%",
+                            height: "auto",
+                            maxHeight: "420px",
+                            objectFit: "contain",
+                            display: "block",
+                          }}
+                        />
+                      ) : pdfPreviewUrl ? (
+                        <iframe
+                          src={pdfPreviewUrl}
+                          title={selectedDoc.title || selectedDoc.filename}
+                          style={{
+                            width: "100%",
+                            height: "360px",
+                            border: "none",
+                            display: "block",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            padding: "12px 14px",
                             fontSize: "11px",
-                            color: "#063C3D",
-                            fontVariantNumeric: "tabular-nums",
+                            color: "#526663",
+                            borderBottom: "1px solid #EAEFEA",
+                            background: "#FFFFFF",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: "6px",
                           }}
                         >
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            <strong>{fld.label}:</strong> {fld.value}
+                          <span>
+                            <strong>Format:</strong> {selectedDoc.mime_type || "application/pdf"} •{" "}
+                            <strong>Size:</strong> {selectedDoc.file_size || "PDF"}
                           </span>
-                          <span style={{ fontSize: "10px", fontWeight: 700, color: "#176B50" }}>
-                            {fld.confidencePct}%
-                          </span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
+                          <code style={{ fontSize: "10.5px", color: "#063C3D" }}>
+                            SHA-256:{" "}
+                            {selectedDoc.sha256_hash
+                              ? `${selectedDoc.sha256_hash.slice(0, 14)}…`
+                              : "Verified"}
+                          </code>
+                        </div>
+                      )}
+
+                      {currentDocPageFields.length === 0 ? (
+                        <div
+                          style={{
+                            padding: "48px 16px",
+                            textAlign: "center",
+                            fontSize: "12px",
+                            color: "#6E7F7C",
+                          }}
+                        >
+                          {selectedDoc.is_raw_packet && selectedDoc.ai_lab_status !== "completed"
+                            ? "Untouched raw upload loaded. Click '⚡ Run AI Lab (OCR, Sort & Auto-Fill)' above to extract spatial bounding boxes and auto-fill forms."
+                            : `Document preview active (${selectedDoc.file_size || "PDF"}). Select or extract fields to highlight bounding-box coordinates.`}
+                        </div>
+                      ) : (
+                        currentDocPageFields.map((fld) => {
+                          const [ymin, xmin, ymax, xmax] = fld.bboxPct;
+                          const isSelected = activeFieldId === fld.id;
+                          return (
+                            <button
+                              key={fld.id}
+                              type="button"
+                              data-testid={`studio-bbox-${fld.fieldKey}`}
+                              onMouseEnter={() => setActiveFieldId(fld.id)}
+                              onClick={() => setActiveFieldId(fld.id)}
+                              title={`${fld.label}: ${fld.value} [${ymin.toFixed(0)}, ${xmin.toFixed(0)}, ${ymax.toFixed(0)}, ${xmax.toFixed(0)}]`}
+                              style={{
+                                position: "absolute",
+                                top: `${ymin}%`,
+                                left: `${xmin}%`,
+                                width: `${Math.max(18, xmax - xmin)}%`,
+                                minHeight: `${Math.max(10, ymax - ymin)}%`,
+                                background: isSelected
+                                  ? "rgba(7, 89, 79, 0.16)"
+                                  : "rgba(23, 107, 80, 0.08)",
+                                border: isSelected ? "2px solid #063C3D" : "1px solid #176B50",
+                                borderRadius: "4px",
+                                padding: "2px 6px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: "6px",
+                                cursor: "pointer",
+                                textAlign: "left",
+                                fontSize: "11px",
+                                color: "#063C3D",
+                                fontVariantNumeric: "tabular-nums",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <strong>{fld.label}:</strong> {fld.value}
+                              </span>
+                              <span style={{ fontSize: "10px", fontWeight: 700, color: "#176B50" }}>
+                                {fld.confidencePct}%
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
             )}
           </div>
+
+          {/* Extracted Field Inspector Strip for Active Page */}
+          {selectedDoc && currentDocPageFields.length > 0 && (
+            <div
+              data-testid="studio-extracted-field-inspector"
+              style={{
+                background: "#F8F7F2",
+                border: "1px solid #DCE5E1",
+                borderRadius: "8px",
+                padding: "10px 12px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontSize: "11.5px",
+                  fontWeight: 700,
+                  color: "#063C3D",
+                }}
+              >
+                <span>
+                  Extracted Field Inspector — Page {currentPage} ({currentDocPageFields.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setInspectorModalDoc(selectedDoc)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#0D6866",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Edit / Reject in 2-Pane Dossier →
+                </button>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "6px",
+                }}
+              >
+                {currentDocPageFields.map((fld) => {
+                  const isSelected = activeFieldId === fld.id;
+                  return (
+                    <button
+                      key={`insp-${fld.id}`}
+                      type="button"
+                      onClick={() => setActiveFieldId(fld.id)}
+                      style={{
+                        background: isSelected ? "#EAF6F0" : "#FFFFFF",
+                        border: isSelected ? "1.5px solid #07594F" : "1px solid #DCE5E1",
+                        borderRadius: "6px",
+                        padding: "6px 8px",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        fontSize: "11px",
+                        color: "#172322",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <strong style={{ color: "#063C3D" }}>{fld.fieldKey}:</strong> {fld.value}
+                      </span>
+                      <span style={{ fontSize: "10px", fontWeight: 700, color: "#176B50" }}>
+                        {fld.confidencePct}%
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* =====================================================================
@@ -2394,196 +2604,401 @@ export function SplitScreenCaseStudio({
             </div>
           </div>
 
-          {/* 2. Live Statutory Rule Calculators */}
-          <div
-            data-testid="studio-statutory-calculators"
-            style={{
-              background: "#FFFFFF",
-              border: "1px solid #DCE5E1",
-              borderRadius: "10px",
-              padding: "16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "12px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #DCE5E1", paddingBottom: "10px" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: "14.5px", fontWeight: 750, color: "#063C3D" }}>
-                  Live Statutory Rule Calculators
-                </h3>
-                <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#445451" }}>
-                  Deterministic eligibility checks computed directly from vault evidence and sponsor uploads.
-                </p>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", color: "#063C3D", fontWeight: 650 }}>
-                <label htmlFor="studio-lico-family-size">LICO Household Size:</label>
-                <select
-                  id="studio-lico-family-size"
-                  data-testid="studio-lico-family-size"
-                  value={licoFamilySize}
-                  onChange={(e) => setLicoFamilySize(Number(e.target.value))}
+          {/* 2. Live Statutory Rule Calculators (Dynamically Filtered by Active Case Corridor & Pathway) */}
+          {(() => {
+            const jurLower = (caseItem?.jurisdiction || "").toLowerCase();
+            const catLower = (caseItem?.visa_category || "").toLowerCase();
+            const isCanada =
+              jurLower === "ca" ||
+              jurLower === "can" ||
+              jurLower.includes("canada") ||
+              jurLower.includes("ircc") ||
+              catLower.includes("canada") ||
+              catLower.includes("ircc");
+            const isUk =
+              jurLower === "uk" ||
+              jurLower === "gb" ||
+              jurLower === "gbr" ||
+              jurLower.includes("united kingdom") ||
+              jurLower.includes("home office") ||
+              jurLower.includes("ukvi") ||
+              catLower.includes("uk ") ||
+              catLower.startsWith("uk");
+
+            const showSuperVisaLico =
+              showAllCalculators ||
+              !caseItem ||
+              catLower.includes("super visa") ||
+              catLower.includes("parent") ||
+              catLower.includes("visitor") ||
+              (isCanada && !catLower.includes("express entry") && !catLower.includes("skilled") && !catLower.includes("pnp")) ||
+              statutoryMetrics.noaLine15000 !== null;
+
+            const showCrsSibling =
+              showAllCalculators ||
+              !caseItem ||
+              catLower.includes("express entry") ||
+              catLower.includes("crs") ||
+              catLower.includes("pnp") ||
+              catLower.includes("skilled") ||
+              catLower.includes("cec") ||
+              catLower.includes("fsw") ||
+              (isCanada && !catLower.includes("super visa") && !catLower.includes("visitor")) ||
+              statutoryMetrics.hasSiblingPRorCitizen;
+
+            const showUkvi28Day =
+              showAllCalculators ||
+              !caseItem ||
+              isUk ||
+              statutoryMetrics.ukviClosingBalance !== null;
+
+            const showPassportValidity = true;
+
+            const repInfo = getJurisdictionRepresentationInfo(caseItem?.jurisdiction);
+            const primaryDocHash =
+              caseDocs.find((d) => Boolean(d.sha256_hash))?.sha256_hash ||
+              `case-${caseItem?.id || "vault"}-verified`;
+
+            const manifestRows =
+              caseDocs.length > 0
+                ? [
+                    {
+                      index: "1",
+                      doc: repInfo.formsListEntry,
+                      status: "Recorded",
+                    },
+                    ...caseDocs.map((d, idx) => ({
+                      index: String(idx + 2),
+                      doc: d.title || d.filename || "Case Evidence Document",
+                      status:
+                        d.verification_status === "verified" || d.status === "verified"
+                          ? "Validated"
+                          : "Pending Review",
+                    })),
+                  ]
+                : [
+                    {
+                      index: "1",
+                      doc: repInfo.formsListEntry,
+                      status: "Pending Intake",
+                    },
+                    {
+                      index: "2",
+                      doc: `${caseItem?.visa_category || "Primary Pathway"} Core Petition & Supporting Evidence`,
+                      status: "Awaiting Upload",
+                    },
+                  ];
+
+            return (
+              <>
+                <div
+                  data-testid="studio-statutory-calculators"
                   style={{
-                    padding: "4px 8px",
-                    borderRadius: "6px",
+                    background: "#FFFFFF",
                     border: "1px solid #DCE5E1",
-                    background: "#F8F7F2",
-                    fontSize: "11.5px",
-                    fontWeight: 700,
-                    color: "#063C3D",
-                    fontVariantNumeric: "tabular-nums",
+                    borderRadius: "10px",
+                    padding: "16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
                   }}
                 >
-                  {[1, 2, 3, 4, 5, 6, 7].map((sz) => (
-                    <option key={sz} value={sz}>
-                      {sz} {sz === 1 ? "Person" : "Persons"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #DCE5E1", paddingBottom: "10px" }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "14.5px", fontWeight: 750, color: "#063C3D" }}>
+                        Live Statutory Rule Calculators
+                      </h3>
+                      <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#445451" }}>
+                        {caseItem
+                          ? `Filtered for ${caseItem.jurisdiction} • ${caseItem.visa_category}`
+                          : "Deterministic eligibility checks computed directly from vault evidence and sponsor uploads."}
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      {showSuperVisaLico && (
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", color: "#063C3D", fontWeight: 650 }}>
+                          <label htmlFor="studio-lico-family-size">LICO Household Size:</label>
+                          <select
+                            id="studio-lico-family-size"
+                            data-testid="studio-lico-family-size"
+                            value={licoFamilySize}
+                            onChange={(e) => setLicoFamilySize(Number(e.target.value))}
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid #DCE5E1",
+                              background: "#F8F7F2",
+                              fontSize: "11.5px",
+                              fontWeight: 700,
+                              color: "#063C3D",
+                              fontVariantNumeric: "tabular-nums",
+                            }}
+                          >
+                            {[1, 2, 3, 4, 5, 6, 7].map((sz) => (
+                              <option key={sz} value={sz}>
+                                {sz} {sz === 1 ? "Person" : "Persons"}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        data-testid="studio-toggle-all-calculators"
+                        onClick={() => setShowAllCalculators((prev) => !prev)}
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          border: "1px solid #DCE5E1",
+                          background: showAllCalculators ? "#EAF6F0" : "#F8F7F2",
+                          color: "#063C3D",
+                          fontSize: "11px",
+                          fontWeight: 650,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {showAllCalculators ? "Filter by Pathway" : "Show All Calculators"}
+                      </button>
+                    </div>
+                  </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px", fontVariantNumeric: "tabular-nums" }}>
-              {/* Calculator 1: IRCC Super Visa LICO */}
-              <div
-                data-testid="calc-super-visa-lico"
-                style={{
-                  background: statutoryMetrics.licoMet ? "#EAF6F0" : "#F8F7F2",
-                  border: `1px solid ${statutoryMetrics.licoMet ? "#B9DED4" : "#DCE5E1"}`,
-                  borderRadius: "8px",
-                  padding: "12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "5px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <strong style={{ fontSize: "12.5px", color: "#063C3D" }}>IRCC Super Visa LICO</strong>
-                  <span style={{ fontSize: "10.5px", fontWeight: 750, color: statutoryMetrics.licoMet ? "#176B50" : "#445451" }}>
-                    {statutoryMetrics.noaLine15000 === null
-                      ? "Awaiting CRA NOA"
-                      : statutoryMetrics.licoMet
-                        ? "✓ LICO Met"
-                        : "Below LICO Floor"}
-                  </span>
-                </div>
-                <div style={{ fontSize: "12px", color: "#172322" }}>
-                  NOA Line 15000:{" "}
-                  <strong>
-                    {statutoryMetrics.noaLine15000 !== null
-                      ? `$${statutoryMetrics.noaLine15000.toLocaleString()} CAD`
-                      : "Not Uploaded"}
-                  </strong>
-                </div>
-                <div style={{ fontSize: "11px", color: "#445451" }}>
-                  {licoFamilySize}-Person Threshold: <strong>${statutoryMetrics.licoThreshold.toLocaleString()} CAD</strong>
-                </div>
-                <div style={{ fontSize: "11px", color: statutoryMetrics.hasSuperVisaInsurance ? "#176B50" : "#6E7F7C", fontWeight: 600 }}>
-                  {statutoryMetrics.hasSuperVisaInsurance
-                    ? "✓ $100k / 365d Medical Policy on File"
-                    : "⏳ $100k / 365d Medical Insurance Pending"}
-                </div>
-              </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px", fontVariantNumeric: "tabular-nums" }}>
+                    {/* Calculator 1: IRCC Super Visa LICO */}
+                    {showSuperVisaLico && (
+                      <div
+                        data-testid="calc-super-visa-lico"
+                        style={{
+                          background: statutoryMetrics.licoMet ? "#EAF6F0" : "#F8F7F2",
+                          border: `1px solid ${statutoryMetrics.licoMet ? "#B9DED4" : "#DCE5E1"}`,
+                          borderRadius: "8px",
+                          padding: "12px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "5px",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <strong style={{ fontSize: "12.5px", color: "#063C3D" }}>IRCC Super Visa LICO</strong>
+                          <span style={{ fontSize: "10.5px", fontWeight: 750, color: statutoryMetrics.licoMet ? "#176B50" : "#445451" }}>
+                            {statutoryMetrics.noaLine15000 === null
+                              ? "Awaiting CRA NOA"
+                              : statutoryMetrics.licoMet
+                                ? "✓ LICO Met"
+                                : "Below LICO Floor"}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#172322" }}>
+                          NOA Line 15000:{" "}
+                          <strong>
+                            {statutoryMetrics.noaLine15000 !== null
+                              ? `$${statutoryMetrics.noaLine15000.toLocaleString()} CAD`
+                              : "Not Uploaded"}
+                          </strong>
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#445451" }}>
+                          {licoFamilySize}-Person Threshold: <strong>${statutoryMetrics.licoThreshold.toLocaleString()} CAD</strong>
+                        </div>
+                        <div style={{ fontSize: "11px", color: statutoryMetrics.hasSuperVisaInsurance ? "#176B50" : "#6E7F7C", fontWeight: 600 }}>
+                          {statutoryMetrics.hasSuperVisaInsurance
+                            ? "✓ $100k / 365d Medical Policy on File"
+                            : "⏳ $100k / 365d Medical Insurance Pending"}
+                        </div>
+                      </div>
+                    )}
 
-              {/* Calculator 2: Express Entry +15 CRS Sibling */}
-              <div
-                data-testid="calc-crs-sibling"
-                style={{
-                  background: statutoryMetrics.siblingProngsCount === 3 ? "#EAF6F0" : "#F8F7F2",
-                  border: `1px solid ${statutoryMetrics.siblingProngsCount === 3 ? "#B9DED4" : "#DCE5E1"}`,
-                  borderRadius: "8px",
-                  padding: "12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "5px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <strong style={{ fontSize: "12.5px", color: "#063C3D" }}>Express Entry +15 CRS Sibling</strong>
-                  <span style={{ fontSize: "10.5px", fontWeight: 750, color: statutoryMetrics.siblingProngsCount === 3 ? "#176B50" : "#445451" }}>
-                    {statutoryMetrics.siblingProngsCount === 3
-                      ? "✓ +15 CRS Verified"
-                      : `${statutoryMetrics.siblingProngsCount}/3 Prongs`}
-                  </span>
-                </div>
-                <div style={{ fontSize: "11px", color: "#172322", lineHeight: 1.45 }}>
-                  <div>{statutoryMetrics.hasSiblingPRorCitizen ? "✓" : "○"} PR Card / Citizenship</div>
-                  <div>{statutoryMetrics.hasSiblingCanadianAddress ? "✓" : "○"} CA Address Proof</div>
-                  <div>{statutoryMetrics.hasSharedParentProof ? "✓" : "○"} Shared Parent Name</div>
-                </div>
-              </div>
+                    {/* Calculator 2: Express Entry +15 CRS Sibling */}
+                    {showCrsSibling && (
+                      <div
+                        data-testid="calc-crs-sibling"
+                        style={{
+                          background: statutoryMetrics.siblingProngsCount === 3 ? "#EAF6F0" : "#F8F7F2",
+                          border: `1px solid ${statutoryMetrics.siblingProngsCount === 3 ? "#B9DED4" : "#DCE5E1"}`,
+                          borderRadius: "8px",
+                          padding: "12px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "5px",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <strong style={{ fontSize: "12.5px", color: "#063C3D" }}>Express Entry +15 CRS Sibling</strong>
+                          <span style={{ fontSize: "10.5px", fontWeight: 750, color: statutoryMetrics.siblingProngsCount === 3 ? "#176B50" : "#445451" }}>
+                            {statutoryMetrics.siblingProngsCount === 3
+                              ? "✓ +15 CRS Verified"
+                              : `${statutoryMetrics.siblingProngsCount}/3 Prongs`}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#172322", lineHeight: 1.45 }}>
+                          <div>{statutoryMetrics.hasSiblingPRorCitizen ? "✓" : "○"} PR Card / Citizenship</div>
+                          <div>{statutoryMetrics.hasSiblingCanadianAddress ? "✓" : "○"} CA Address Proof</div>
+                          <div>{statutoryMetrics.hasSharedParentProof ? "✓" : "○"} Shared Parent Name</div>
+                        </div>
+                      </div>
+                    )}
 
-              {/* Calculator 3: UKVI 28-Day Continuous Funds */}
-              <div
-                data-testid="calc-ukvi-28day"
-                style={{
-                  background: statutoryMetrics.hasBankStatementEvidence ? "#EAF6F0" : "#F8F7F2",
-                  border: `1px solid ${statutoryMetrics.hasBankStatementEvidence ? "#B9DED4" : "#DCE5E1"}`,
-                  borderRadius: "8px",
-                  padding: "12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "5px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <strong style={{ fontSize: "12.5px", color: "#063C3D" }}>UKVI 28-Day Funds</strong>
-                  <span style={{ fontSize: "10.5px", fontWeight: 750, color: statutoryMetrics.hasBankStatementEvidence ? "#176B50" : "#445451" }}>
-                    {statutoryMetrics.hasBankStatementEvidence ? "✓ Statement On File" : "Awaiting Statement"}
-                  </span>
-                </div>
-                <div style={{ fontSize: "12px", color: "#172322" }}>
-                  28-Day Balance:{" "}
-                  <strong>
-                    {statutoryMetrics.ukviClosingBalance !== null
-                      ? `£${statutoryMetrics.ukviClosingBalance.toLocaleString()}`
-                      : statutoryMetrics.hasBankStatementEvidence
-                        ? "Statement Uploaded"
-                        : "Pending Upload"}
-                  </strong>
-                </div>
-                <div style={{ fontSize: "11px", color: "#445451" }}>
-                  Appendix Finance FIN 7.1 continuous 28-day &amp; ≤31-day recency window.
-                </div>
-              </div>
+                    {/* Calculator 3: UKVI 28-Day Continuous Funds */}
+                    {showUkvi28Day && (
+                      <div
+                        data-testid="calc-ukvi-28day"
+                        style={{
+                          background: statutoryMetrics.hasBankStatementEvidence ? "#EAF6F0" : "#F8F7F2",
+                          border: `1px solid ${statutoryMetrics.hasBankStatementEvidence ? "#B9DED4" : "#DCE5E1"}`,
+                          borderRadius: "8px",
+                          padding: "12px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "5px",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <strong style={{ fontSize: "12.5px", color: "#063C3D" }}>UKVI 28-Day Funds</strong>
+                          <span style={{ fontSize: "10.5px", fontWeight: 750, color: statutoryMetrics.hasBankStatementEvidence ? "#176B50" : "#445451" }}>
+                            {statutoryMetrics.hasBankStatementEvidence ? "✓ Statement On File" : "Awaiting Statement"}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#172322" }}>
+                          28-Day Balance:{" "}
+                          <strong>
+                            {statutoryMetrics.ukviClosingBalance !== null
+                              ? `£${statutoryMetrics.ukviClosingBalance.toLocaleString()}`
+                              : statutoryMetrics.hasBankStatementEvidence
+                                ? "Statement Uploaded"
+                                : "Pending Upload"}
+                          </strong>
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#445451" }}>
+                          Appendix Finance FIN 7.1 continuous 28-day &amp; ≤31-day recency window.
+                        </div>
+                      </div>
+                    )}
 
-              {/* Calculator 4: 6-Month Passport Validity */}
-              <div
-                data-testid="calc-passport-validity"
-                style={{
-                  background: statutoryMetrics.passportMeetsSixMonths ? "#EAF6F0" : "#F8F7F2",
-                  border: `1px solid ${statutoryMetrics.passportMeetsSixMonths ? "#B9DED4" : "#DCE5E1"}`,
-                  borderRadius: "8px",
-                  padding: "12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "5px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <strong style={{ fontSize: "12.5px", color: "#063C3D" }}>6-Month Passport Validity</strong>
-                  <span style={{ fontSize: "10.5px", fontWeight: 750, color: statutoryMetrics.passportMeetsSixMonths ? "#176B50" : "#445451" }}>
-                    {statutoryMetrics.passportMeetsSixMonths === null
-                      ? "Awaiting Bio Page"
-                      : statutoryMetrics.passportMeetsSixMonths
-                        ? "✓ Valid ≥ 6 Mos"
-                        : "Renewal Advised"}
-                  </span>
+                    {/* Calculator 4: 6-Month Passport Validity */}
+                    {showPassportValidity && (
+                      <div
+                        data-testid="calc-passport-validity"
+                        style={{
+                          background: statutoryMetrics.passportMeetsSixMonths ? "#EAF6F0" : "#F8F7F2",
+                          border: `1px solid ${statutoryMetrics.passportMeetsSixMonths ? "#B9DED4" : "#DCE5E1"}`,
+                          borderRadius: "8px",
+                          padding: "12px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "5px",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <strong style={{ fontSize: "12.5px", color: "#063C3D" }}>6-Month Passport Validity</strong>
+                          <span style={{ fontSize: "10.5px", fontWeight: 750, color: statutoryMetrics.passportMeetsSixMonths ? "#176B50" : "#445451" }}>
+                            {statutoryMetrics.passportMeetsSixMonths === null
+                              ? "Awaiting Bio Page"
+                              : statutoryMetrics.passportMeetsSixMonths
+                                ? "✓ Valid ≥ 6 Mos"
+                                : "Renewal Advised"}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#172322" }}>
+                          Expiry:{" "}
+                          <strong>{statutoryMetrics.passportExpiryRaw || "Not Extracted Yet"}</strong>
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#445451" }}>
+                          {statutoryMetrics.passportDaysRemaining !== null
+                            ? `${statutoryMetrics.passportDaysRemaining} days remaining (180-day horizon)`
+                            : "Upload passport bio page to compute remaining horizon"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div style={{ fontSize: "12px", color: "#172322" }}>
-                  Expiry:{" "}
-                  <strong>{statutoryMetrics.passportExpiryRaw || "Not Extracted Yet"}</strong>
+
+                {/* 3. Dynamic Case Filing Manifest Derived from Active Case Documents */}
+                <div
+                  data-testid="studio-filing-manifest"
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "10px",
+                    padding: "16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #DCE5E1", paddingBottom: "8px" }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 750, color: "#063C3D" }}>
+                        Active Case Filing Manifest ({caseItem?.visa_category || "Pathway Dossier"})
+                      </h3>
+                      <span style={{ fontSize: "11.5px", color: "#526663" }}>
+                        Derived dynamically from {caseDocs.length} case document{caseDocs.length === 1 ? "" : "s"} • {repInfo.statutoryCitation}
+                      </span>
+                    </div>
+                    <code
+                      data-testid="studio-manifest-hash"
+                      style={{
+                        fontSize: "11px",
+                        background: "#F4FAF7",
+                        color: "#063C3D",
+                        border: "1px solid #B9DED4",
+                        borderRadius: "6px",
+                        padding: "3px 8px",
+                      }}
+                    >
+                      {primaryDocHash.startsWith("sha256")
+                        ? `${primaryDocHash.slice(0, 24)}...`
+                        : `sha256:${primaryDocHash.slice(0, 16)}...`}
+                    </code>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    {manifestRows.slice(0, 6).map((item) => (
+                      <div
+                        key={item.index}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "5px 0",
+                          borderBottom: "1px solid #EDF2EF",
+                          fontSize: "12px",
+                        }}
+                      >
+                        <span style={{ color: "#172322", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <strong style={{ color: "#063C3D", fontVariantNumeric: "tabular-nums" }}>#{item.index}</strong> {item.doc}
+                        </span>
+                        <span
+                          style={{
+                            fontWeight: 650,
+                            fontSize: "11px",
+                            color: item.status === "Validated" || item.status === "Recorded" ? "#176B50" : "#B45309",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {item.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ fontSize: "11px", color: "#445451" }}>
-                  {statutoryMetrics.passportDaysRemaining !== null
-                    ? `${statutoryMetrics.passportDaysRemaining} days remaining (180-day horizon)`
-                    : "Upload passport bio page to compute remaining horizon"}
-                </div>
-              </div>
-            </div>
-          </div>
+              </>
+            );
+          })()}
         </div>
       </div>
+
+      {/* Shared Full 2-Pane Document Inspector Modal */}
+      <DocumentInspectorModal
+        isOpen={Boolean(inspectorModalDoc)}
+        onClose={() => setInspectorModalDoc(null)}
+        document={inspectorModalDoc}
+        onDocumentUpdated={(updated) => {
+          setLocalDocs((prev) => [updated, ...prev.filter((d) => d.id !== updated.id)]);
+          setInspectorModalDoc(updated);
+          onDocumentUpdated?.(updated);
+        }}
+        activeRole="case_manager"
+        defaultViewMode="workbench"
+      />
     </section>
   );
 }

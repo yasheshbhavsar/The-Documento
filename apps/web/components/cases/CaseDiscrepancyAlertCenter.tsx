@@ -43,6 +43,7 @@ export function CaseDiscrepancyAlertCenter({
   const [draftInstructions, setDraftInstructions] = useState<string>("");
   const [draftDueDate, setDraftDueDate] = useState<string>("");
   const [draftSuccessNotice, setDraftSuccessNotice] = useState<string | null>(null);
+  const [draftErrorNotice, setDraftErrorNotice] = useState<string | null>(null);
   const [isDrafting, setIsDrafting] = useState<boolean>(false);
   const [approvedTemplates, setApprovedTemplates] = useState<ApprovedRequestTemplate[]>([]);
 
@@ -222,6 +223,7 @@ export function CaseDiscrepancyAlertCenter({
     dueDate.setDate(dueDate.getDate() + (tmpl?.suggested_days_to_due || 7));
     setDraftDueDate(dueDate.toISOString().split("T")[0]);
     setDraftSuccessNotice(null);
+    setDraftErrorNotice(null);
   };
 
   const handleTemplateChange = (code: string) => {
@@ -237,6 +239,7 @@ export function CaseDiscrepancyAlertCenter({
 
   const handleConfirmDraftRequest = async (findingId: string) => {
     setIsDrafting(true);
+    setDraftErrorNotice(null);
     try {
       const created = await draftClientRequest({
         case_id: caseId,
@@ -251,7 +254,7 @@ export function CaseDiscrepancyAlertCenter({
         setDraftSuccessNotice(null);
       }, 3500);
     } catch (err: any) {
-      alert(err.message || "Failed to create draft request");
+      setDraftErrorNotice(err?.message || "Failed to create draft request");
     } finally {
       setIsDrafting(false);
     }
@@ -1337,6 +1340,7 @@ export function CaseDiscrepancyAlertCenter({
 
                   {draftSuccessNotice && (
                     <div
+                      role="status"
                       style={{
                         padding: "8px 12px",
                         borderRadius: "6px",
@@ -1348,6 +1352,23 @@ export function CaseDiscrepancyAlertCenter({
                       }}
                     >
                       ✓ {draftSuccessNotice}
+                    </div>
+                  )}
+
+                  {draftErrorNotice && (
+                    <div
+                      role="alert"
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        background: "#FEF2F2",
+                        border: "1px solid #FECACA",
+                        color: "#991B1B",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      ⚠️ {draftErrorNotice}
                     </div>
                   )}
 

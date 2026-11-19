@@ -36,8 +36,8 @@ describe("Phase 4 — Document Management, OCR & Structured Extraction Workflows
     const select = screen.getByRole("combobox") as HTMLSelectElement;
     expect(select.options.length).toBe(12);
 
-    expect(screen.getByText(/Magic-byte verification ensures zero executable disguises/i)).toBeDefined();
-    expect(screen.getByText(/Automated PyMuPDF & OCR extraction records full data provenance/i)).toBeDefined();
+    expect(screen.getByText(/Automatic format verification ensures only valid PDF and image documents are accepted/i)).toBeDefined();
+    expect(screen.getByText(/Uploaded documents are securely stored in your private case file/i)).toBeDefined();
   });
 
   it("renders DocumentInspectorModal with extracted fields, original vs normalized values, and OCR confidence", () => {

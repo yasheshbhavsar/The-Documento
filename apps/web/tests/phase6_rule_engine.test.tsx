@@ -104,17 +104,17 @@ describe("Phase 6 — Immigration Rules, Official Sources & Requirement Engine",
         expect(screen.getByText(/identity.passport/i)).toBeDefined();
       });
 
-      // Open Phase 6 Rule JSON modal
-      const viewJsonBtns = screen.getAllByRole("button", { name: /View Phase 6 JSON/i });
+      // Open Rule JSON modal
+      const viewJsonBtns = screen.getAllByRole("button", { name: /View Rule Definition/i });
       expect(viewJsonBtns.length).toBeGreaterThan(0);
       fireEvent.click(viewJsonBtns[0]);
 
-      // Verify Modal displays canonical Phase 6 JSON schema
+      // Verify Modal displays canonical Rule JSON schema
       await waitFor(() => {
-        expect(screen.getByText(/Official Statutory Rule Provenance \(Phase 6 Compliant\)/i)).toBeDefined();
-        expect(screen.getByText(/Phase 6 Canonical JSON Schema/i)).toBeDefined();
+        expect(screen.getByText(/Official Statutory Rule Provenance/i)).toBeDefined();
+        expect(screen.getByText(/Canonical Rule Schema/i)).toBeDefined();
       });
-      expect(screen.getByRole("button", { name: /Copy Phase 6 JSON/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /Copy Rule JSON/i })).toBeDefined();
     });
 
     it("manages rule set versions and lifecycle state machine", async () => {
@@ -139,9 +139,8 @@ describe("Phase 6 — Immigration Rules, Official Sources & Requirement Engine",
       // Switch to Requirement Builder tab
       fireEvent.click(screen.getByText(/Declarative Requirements/i));
 
-      // AST Safety Callout
-      expect(screen.getByText(/Purely declarative rules evaluated by constrained AST engine/i)).toBeDefined();
-      expect(screen.getByText(/No arbitrary database code execution/i)).toBeDefined();
+      // Rule Engine Safety Callout
+      expect(screen.getByText(/Declarative statutory requirements and evidentiary criteria evaluated against applicant case facts/i)).toBeDefined();
 
       // Requirements listed
       expect(screen.getAllByText(/EB1A-MAND-ID/i).length).toBeGreaterThan(0);

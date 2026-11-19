@@ -11,6 +11,8 @@ import {
   FieldExtractionProvenance,
   ThreeTierEntity,
   DocumentSplitSection,
+  StructuredRejectionReasonCode,
+  STRUCTURED_REJECTION_REASONS,
 } from "../../lib/types";
 import { api, splitDocumentSections } from "../../lib/api";
 
@@ -75,6 +77,8 @@ export function DocumentDossierWorkbench({
   const [isSubmittingAssociation, setIsSubmittingAssociation] = useState(false);
 
   // Canvas viewport controls
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const totalPages = Math.max(doc.page_count || 1, 1);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [showBoundingBoxes, setShowBoundingBoxes] = useState<boolean>(true);
   const [showOcrOverlay, setShowOcrOverlay] = useState<boolean>(false);
@@ -86,12 +90,16 @@ export function DocumentDossierWorkbench({
   const [isSubmittingCorrection, setIsSubmittingCorrection] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
 
-  // Certification states
+  // Certification & Structured Rejection states
   const [verifyStatus, setVerifyStatus] = useState<"verified" | "rejected" | "under_review">(
     (doc.verification_status as any) || "verified"
   );
   const [verificationNotes, setVerificationNotes] = useState(doc.verification_notes || "");
   const [isSubmittingVerify, setIsSubmittingVerify] = useState(false);
+  const [rejectionReasonCode, setRejectionReasonCode] = useState<StructuredRejectionReasonCode>("BLURRY_IMAGE");
+  const [clientExplanation, setClientExplanation] = useState("");
+  const [internalNotes, setInternalNotes] = useState("");
+  const [rejectionValidationError, setRejectionValidationError] = useState<string | null>(null);
 
   // Versions & reprocessing
   const [versions, setVersions] = useState<DocumentVersionItem[]>([]);
@@ -496,6 +504,39 @@ export function DocumentDossierWorkbench({
   };
 
   const handleVerifySubmit = async () => {
+    if (verifyStatus === "rejected") {
+      if (!clientExplanation.trim() || clientExplanation.trim().length < 5) {
+        setRejectionValidationError("Customizable client-facing explanation is required (minimum 5 characters).");
+        return;
+      }
+      setRejectionValidationError(null);
+      setIsSubmittingVerify(true);
+      try {
+        const res = await api.rejectDocument(
+          doc.id,
+          {
+            structured_reason_code: rejectionReasonCode,
+            client_explanation: clientExplanation.trim(),
+            internal_notes: internalNotes.trim() || undefined,
+          },
+          activeRole
+        );
+        onDocumentUpdated(res.data);
+        setFeedbackToast({
+          message: `Document rejected with reason [${rejectionReasonCode}]. Client notification recorded.`,
+          type: "success",
+        });
+      } catch (err: any) {
+        setFeedbackToast({
+          message: `Rejection failed: ${err?.message || "Unknown error"}`,
+          type: "error",
+        });
+      } finally {
+        setIsSubmittingVerify(false);
+      }
+      return;
+    }
+
     setIsSubmittingVerify(true);
     try {
       const res = await api.verifyDocument(doc.id, verifyStatus, verificationNotes, activeRole);
@@ -550,11 +591,27 @@ export function DocumentDossierWorkbench({
     );
   });
 
-  const avgConfidence = fields.length
-    ? Math.round(
-        (fields.reduce((acc, f) => acc + (f.ocr_confidence || 0.95), 0) / fields.length) * 100
-      )
-    : 98;
+  const rawDocOcrConf = (doc as any).ocr_confidence;
+  const avgConfidence =
+    typeof rawDocOcrConf === "number"
+      ? Math.round(rawDocOcrConf <= 1 ? rawDocOcrConf * 100 : rawDocOcrConf)
+      : fields.length
+      ? Math.round(
+          (fields.reduce((acc, f) => acc + (f.ocr_confidence || 0.95), 0) / fields.length) * 100
+        )
+      : 0;
+
+  const pageImageUrl =
+    (doc as any).page_image_data_url ||
+    (doc as any).preview_url ||
+    ((doc as any).file_url && /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test((doc as any).file_url)
+      ? (doc as any).file_url
+      : null);
+  const pdfPreviewUrl =
+    !pageImageUrl &&
+    ((doc as any).pdf_url ||
+      (doc as any).file_url ||
+      (doc.download_url && /\.pdf($|\?)/i.test(doc.download_url) ? doc.download_url : null));
 
   const verifiedCount = fields.filter((f) => f.validation_status === "verified").length;
   const correctedCount = fields.filter((f) => f.is_manually_corrected).length;
@@ -854,7 +911,25 @@ export function DocumentDossierWorkbench({
 
             {/* Page Navigation & Download */}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-400 font-mono">Page 1 of {doc.page_count || 1}</span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="px-2 py-0.5 text-[11px] rounded bg-[#051413] text-slate-300 border border-[#1b3a36] hover:bg-[#133c38] disabled:opacity-40"
+              >
+                ‹ Prev Page
+              </button>
+              <span className="text-[11px] text-slate-300 font-mono">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                className="px-2 py-0.5 text-[11px] rounded bg-[#051413] text-slate-300 border border-[#1b3a36] hover:bg-[#133c38] disabled:opacity-40"
+              >
+                Next Page ›
+              </button>
               {doc.download_url && (
                 <a
                   href={doc.download_url}
@@ -879,8 +954,24 @@ export function DocumentDossierWorkbench({
               className="relative shadow-2xl rounded-lg overflow-hidden bg-white text-slate-900 border border-slate-300"
             >
               {/* REAL DOCUMENT EXTRACTION & RECORD PREVIEW CANVAS */}
-              {(
-                /* OFFICIAL LEGAL RECORD CANVAS (600x420) */
+              {pageImageUrl ? (
+                <div className="w-[600px] h-[420px] bg-white relative flex items-center justify-center overflow-hidden">
+                  <img
+                    src={pageImageUrl}
+                    alt={doc.title}
+                    className="max-w-full max-h-full object-contain block"
+                  />
+                </div>
+              ) : pdfPreviewUrl ? (
+                <div className="w-[600px] h-[420px] bg-white relative overflow-hidden">
+                  <iframe
+                    src={pdfPreviewUrl}
+                    title={doc.title}
+                    className="w-full h-full border-0"
+                  />
+                </div>
+              ) : (
+                /* HONEST DOCUMENT SUMMARY SHEET WHEN ONLY METADATA IS PRESENT (600x420) */
                 <div className="w-[600px] h-[420px] bg-[#fbfbf9] relative p-6 font-sans text-slate-900 border-2 border-slate-300 select-none flex flex-col justify-between">
                   <div>
                     <div className="border-b-2 border-teal-900 pb-3 mb-4 flex items-center justify-between">
@@ -898,7 +989,7 @@ export function DocumentDossierWorkbench({
                         )}
                       </div>
                       <div className="text-right text-[10px] font-mono text-slate-500">
-                        <div>PAGE 1 OF {doc.page_count || 1}</div>
+                        <div>PAGE {currentPage} OF {totalPages}</div>
                         <div className="text-teal-800 font-semibold mt-0.5">
                           {doc.verification_status ? doc.verification_status.toUpperCase() : "UPLOADED"}
                         </div>
@@ -910,16 +1001,19 @@ export function DocumentDossierWorkbench({
                       </div>
                       {fields.length > 0 ? (
                         <div className="grid grid-cols-2 gap-2 pt-1 max-h-[185px] overflow-hidden">
-                          {fields.slice(0, 6).map((f) => (
-                            <div key={f.id} className="bg-white p-2 rounded border border-slate-200">
-                              <div className="text-[9px] text-slate-500 uppercase font-sans font-semibold">
-                                {f.field_label || f.field_name}
+                          {fields
+                            .filter((f) => !f.source_page || f.source_page === currentPage || totalPages === 1)
+                            .slice(0, 6)
+                            .map((f) => (
+                              <div key={f.id} className="bg-white p-2 rounded border border-slate-200">
+                                <div className="text-[9px] text-slate-500 uppercase font-sans font-semibold">
+                                  {f.field_label || f.field_name}
+                                </div>
+                                <div className="text-[11px] font-bold text-slate-900 truncate">
+                                  {f.is_manually_corrected ? f.corrected_value : f.normalized_value || f.original_value}
+                                </div>
                               </div>
-                              <div className="text-[11px] font-bold text-slate-900 truncate">
-                                {f.is_manually_corrected ? f.corrected_value : f.normalized_value || f.original_value}
-                              </div>
-                            </div>
-                          ))}
+                            ))}
                         </div>
                       ) : (
                         <div className="text-slate-800 leading-relaxed max-h-[185px] overflow-hidden whitespace-pre-line">
@@ -1496,7 +1590,10 @@ export function DocumentDossierWorkbench({
                         name="verifyStatus"
                         value="verified"
                         checked={verifyStatus === "verified"}
-                        onChange={() => setVerifyStatus("verified")}
+                        onChange={() => {
+                          setVerifyStatus("verified");
+                          setRejectionValidationError(null);
+                        }}
                         className="text-teal-600 focus:ring-teal-500"
                       />
                       <span>✓ Certify as Verified Legal Evidence</span>
@@ -1507,44 +1604,137 @@ export function DocumentDossierWorkbench({
                         name="verifyStatus"
                         value="under_review"
                         checked={verifyStatus === "under_review"}
-                        onChange={() => setVerifyStatus("under_review")}
+                        onChange={() => {
+                          setVerifyStatus("under_review");
+                          setRejectionValidationError(null);
+                        }}
                         className="text-teal-600 focus:ring-teal-500"
                       />
                       <span>Flag for Supplementary Review</span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer text-slate-200">
+                    <label className="flex items-center gap-2 cursor-pointer text-rose-300 font-semibold">
                       <input
                         type="radio"
                         name="verifyStatus"
                         value="rejected"
                         checked={verifyStatus === "rejected"}
-                        onChange={() => setVerifyStatus("rejected")}
-                        className="text-teal-600 focus:ring-teal-500"
+                        onChange={() => {
+                          setVerifyStatus("rejected");
+                          setRejectionValidationError(null);
+                        }}
+                        className="text-rose-500 focus:ring-rose-500"
                       />
-                      <span>Reject / Mark Defective Scan</span>
+                      <span>Reject Document (Requires Reason)</span>
                     </label>
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-slate-300 block mb-1 font-semibold">Caseworker Notes</label>
-                  <textarea
-                    rows={3}
-                    value={verificationNotes}
-                    onChange={(e) => setVerificationNotes(e.target.value)}
-                    placeholder="e.g., Physical biometric passport matched against state records"
-                    className="w-full bg-[#051413] border border-[#1b3a36] rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
-                  />
-                </div>
+                {verifyStatus === "rejected" ? (
+                  <div className="p-3.5 bg-rose-950/40 border border-rose-800/80 rounded-xl space-y-3">
+                    <div className="flex items-center gap-2 text-rose-200 font-bold text-xs">
+                      <span>⚠️</span>
+                      <span>Structured Document Rejection Form</span>
+                    </div>
 
-                {isStaff && (
-                  <button
-                    onClick={handleVerifySubmit}
-                    disabled={isSubmittingVerify}
-                    className="w-full py-2 px-3 rounded-lg bg-[#0D6866] hover:bg-[#063C3D] text-white font-semibold text-xs transition-colors shadow-md disabled:opacity-50"
-                  >
-                    {isSubmittingVerify ? "Saving Verification Decision..." : "Save Verification Decision"}
-                  </button>
+                    <div>
+                      <label className="block text-slate-200 font-semibold mb-1">
+                        Structured Rejection Reason Code *
+                      </label>
+                      <select
+                        value={rejectionReasonCode}
+                        onChange={(e) => setRejectionReasonCode(e.target.value as StructuredRejectionReasonCode)}
+                        className="w-full bg-[#051413] border border-[#1b3a36] rounded-lg p-2 text-slate-100 text-xs focus:outline-none focus:border-rose-500"
+                      >
+                        {STRUCTURED_REJECTION_REASONS.map((r) => (
+                          <option key={r.code} value={r.code}>
+                            [{r.code}] {r.label} — {r.description}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-slate-200 font-semibold">
+                          Customizable Client-Facing Explanation * (Min 5 chars)
+                        </label>
+                        <span className={`text-[10px] font-mono font-bold ${clientExplanation.trim().length >= 5 ? "text-emerald-400" : "text-amber-400"}`}>
+                          {clientExplanation.trim().length} chars
+                        </span>
+                      </div>
+                      <textarea
+                        rows={3}
+                        value={clientExplanation}
+                        onChange={(e) => {
+                          setClientExplanation(e.target.value);
+                          if (e.target.value.trim().length >= 5) {
+                            setRejectionValidationError(null);
+                          }
+                        }}
+                        placeholder="e.g., The scan of page 2 has excessive glare over the passport issue date. Please upload a flat, high-resolution color scan without flash reflections."
+                        className="w-full bg-[#051413] border border-rose-800 rounded-lg p-2.5 text-slate-100 text-xs focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <label className="block text-slate-200 font-semibold">
+                          Internal Legal Notes (Optional)
+                        </label>
+                        <span className="text-[9px] px-2 py-0.5 rounded bg-[#051413] text-slate-400 font-mono border border-[#1b3a36]">
+                          🔒 Quarantined from Client View
+                        </span>
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={internalNotes}
+                        onChange={(e) => setInternalNotes(e.target.value)}
+                        placeholder="e.g., Flagged for supervising attorney: passport expires in 4 months, consider asking client for renewed credential before filing."
+                        className="w-full bg-[#051413] border border-[#1b3a36] rounded-lg p-2 text-slate-100 text-xs focus:outline-none focus:border-teal-500"
+                      />
+                    </div>
+
+                    {rejectionValidationError && (
+                      <div className="p-2 bg-rose-950 border border-rose-700 text-rose-200 text-xs rounded-lg flex items-center gap-2 font-medium">
+                        <span>⚠️</span>
+                        <span>{rejectionValidationError}</span>
+                      </div>
+                    )}
+
+                    {isStaff && (
+                      <button
+                        type="button"
+                        onClick={handleVerifySubmit}
+                        disabled={isSubmittingVerify}
+                        className="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition-colors shadow-md disabled:opacity-50"
+                      >
+                        {isSubmittingVerify ? "Submitting Rejection..." : "Reject Document & Notify Client"}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-slate-300 block mb-1 font-semibold">Caseworker Notes</label>
+                      <textarea
+                        rows={3}
+                        value={verificationNotes}
+                        onChange={(e) => setVerificationNotes(e.target.value)}
+                        placeholder="e.g., Physical biometric passport matched against state records"
+                        className="w-full bg-[#051413] border border-[#1b3a36] rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                      />
+                    </div>
+
+                    {isStaff && (
+                      <button
+                        onClick={handleVerifySubmit}
+                        disabled={isSubmittingVerify}
+                        className="w-full py-2 px-3 rounded-lg bg-[#0D6866] hover:bg-[#063C3D] text-white font-semibold text-xs transition-colors shadow-md disabled:opacity-50"
+                      >
+                        {isSubmittingVerify ? "Saving Verification Decision..." : "Save Verification Decision"}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

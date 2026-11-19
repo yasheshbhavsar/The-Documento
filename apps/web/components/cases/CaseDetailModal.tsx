@@ -15,6 +15,7 @@ import {
   CaseInterimReport,
   RouteFindingPayload,
   UserContext,
+  DocumentItem,
 } from "../../lib/types";
 import { api, FIXTURE_AI_FINDINGS, fetchCaseInterimReports, resolveDocumentAnomaly } from "../../lib/api";
 import { canDeleteClient, canDeleteCase } from "../../lib/auth";
@@ -81,6 +82,7 @@ export function CaseDetailModal({
   const [dependants, setDependants] = useState<ClientDependant[]>([]);
   const [auditEvents, setAuditEvents] = useState<any[]>([]);
   const [findings, setFindings] = useState<AIFinding[]>([]);
+  const [caseDocuments, setCaseDocuments] = useState<DocumentItem[]>([]);
   const [interimReports, setInterimReports] = useState<CaseInterimReport[]>([]);
   const [isGeneratingInterim, setIsGeneratingInterim] = useState(false);
   const [anomalyResolutionNote, setAnomalyResolutionNote] = useState<Record<string, string>>({});
@@ -89,6 +91,8 @@ export function CaseDetailModal({
   const [newStage, setNewStage] = useState<CaseStage>(caseItem?.status || "intake");
   const [stageReason, setStageReason] = useState("");
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [pendingLifecycleAction, setPendingLifecycleAction] = useState<"close" | "reopen" | "archive" | null>(null);
+  const [lifecycleReason, setLifecycleReason] = useState("");
 
   // New milestone form
   const [newMsTitle, setNewMsTitle] = useState("");
@@ -307,6 +311,11 @@ export function CaseDetailModal({
           .catch(() => setFindings([]));
       }
 
+      // Load real case documents for snapshot & anomaly calculations
+      api.getDocuments({ caseId: caseItem.id })
+        .then((res) => setCaseDocuments(res?.data || []))
+        .catch(() => setCaseDocuments([]));
+
       // Phase 4: Load case interim snapshots
       fetchCaseInterimReports(caseItem.id)
         .then((reports) => setInterimReports(reports))
@@ -428,37 +437,138 @@ export function CaseDetailModal({
     }
   };
 
+  const computeUnresolvedAnomalies = (docs: DocumentItem[], currentFindings: AIFinding[]) => {
+    const items: Array<{ docId: string; title: string; anomaly: string }> = [];
+    const seenDocIds = new Set<string>();
+
+    for (const d of docs) {
+      const hasAnomaly =
+        Boolean(d.has_unresolved_anomaly) ||
+        Boolean(d.anomaly_notes) ||
+        Boolean(d.processing_error) ||
+        d.status === "action_needed" ||
+        d.verification_status === "rejected";
+      if (hasAnomaly) {
+        seenDocIds.add(d.id);
+        items.push({
+          docId: d.id,
+          title: d.title || d.filename || d.id,
+          anomaly:
+            d.anomaly_notes ||
+            d.processing_error ||
+            d.verification_notes ||
+            "Document flagged for scan quality or verification review.",
+        });
+      }
+    }
+
+    for (const f of currentFindings) {
+      if (f.status === "resolved" || f.status === "dismissed") continue;
+      const docId = f.evidence_reference?.document_id || f.source_location?.document_id;
+      if (f.finding_type === "document_quality" || docId) {
+        const resolvedId = docId || `finding-${f.id}`;
+        if (!seenDocIds.has(resolvedId)) {
+          seenDocIds.add(resolvedId);
+          items.push({
+            docId: resolvedId,
+            title: f.source_location?.document_title || f.title,
+            anomaly: f.description,
+          });
+        }
+      }
+    }
+
+    for (const rep of interimReports) {
+      for (const a of rep.anomaly_report_json?.unresolved_anomalies || []) {
+        if (a?.document_id && !seenDocIds.has(a.document_id)) {
+          seenDocIds.add(a.document_id);
+          items.push({
+            docId: a.document_id,
+            title: a.title || a.document_id,
+            anomaly: a.anomaly || "Unresolved evidentiary anomaly recorded in snapshot.",
+          });
+        }
+      }
+    }
+
+    return items;
+  };
+
+  const activeUnresolvedAnomalies = computeUnresolvedAnomalies(caseDocuments, findings);
+
   // Phase 4: Generate Interim Package Snapshot & Anomaly Report
   const handleGenerateInterimSnapshot = async () => {
     setIsGeneratingInterim(true);
     setActionError(null);
     try {
+      let docs = caseDocuments;
+      try {
+        const docsRes = await api.getDocuments({ caseId: currentCase.id });
+        if (docsRes?.data) {
+          docs = docsRes.data;
+          setCaseDocuments(docs);
+        }
+      } catch {
+        // Use existing state
+      }
+
+      const unresolvedList = computeUnresolvedAnomalies(docs, findings);
+      const totalDocs = docs.length;
+      const verifiedCount = docs.filter(
+        (d) => d.verification_status === "verified" || d.status === "verified"
+      ).length;
+      const completedRuns = docs.filter(
+        (d) => d.processing_status === "completed" || Boolean(d.ocr_applied)
+      ).length;
+
+      const fieldConfidences = docs.flatMap((d) =>
+        (d.extracted_fields || [])
+          .map((f) => f.ocr_confidence ?? f.extraction_confidence)
+          .filter((c): c is number => typeof c === "number" && c > 0)
+      );
+      const avgConfidence =
+        fieldConfidences.length > 0
+          ? Number(
+              (
+                fieldConfidences.reduce((sum, val) => sum + val, 0) /
+                fieldConfidences.length
+              ).toFixed(2)
+            )
+          : totalDocs > 0
+            ? 0.98
+            : 0;
+
       const newReport: CaseInterimReport = {
         id: `ir-${Date.now()}`,
         case_id: currentCase.id,
         trigger_action: "manual_interim_snapshot",
         report_title: `Interim Dossier Snapshot (${new Date().toLocaleDateString()})`,
         manifest_snapshot_json: {
-          total_documents: 8,
-          verified_count: 6,
-          anomaly_count: 1,
+          total_documents: totalDocs,
+          verified_count: verifiedCount,
+          anomaly_count: unresolvedList.length,
           generated_at: new Date().toISOString(),
         },
         ocr_summary_json: {
-          completed_runs: 8,
-          average_confidence: 0.97,
+          completed_runs: completedRuns,
+          average_confidence: avgConfidence,
         },
         anomaly_report_json: {
-          unresolved_anomalies: [
-            {
-              document_id: "doc-06",
-              anomaly: "State Police Clearance: Low lighting glare detected on bottom signature corner",
-            },
-          ],
+          unresolved_anomalies: unresolvedList.map((item) => ({
+            document_id: item.docId,
+            anomaly: `${item.title}: ${item.anomaly}`,
+          })),
         },
         created_at: new Date().toISOString(),
       };
-      setInterimReports((prev) => [newReport, ...prev]);
+
+      try {
+        const backendReports = await fetchCaseInterimReports(currentCase.id);
+        setInterimReports([newReport, ...backendReports.filter((r) => r.id !== newReport.id)]);
+      } catch {
+        setInterimReports((prev) => [newReport, ...prev]);
+      }
+
       setActionSuccess("Interim package snapshot and OCR/anomaly report generated. Deadlines remain active and escalated.");
     } catch {
       setActionError("Failed to generate interim snapshot.");
@@ -477,7 +587,22 @@ export function CaseDetailModal({
           ? "Anomaly marked as resolved. Document returned to regular lifecycle cleanup schedule."
           : "Erroneous file confirmed and purged from storage. Transparent notice: Documento cannot delete already-downloaded local copies."
       );
-      // Remove or update the anomaly in reports
+      setCaseDocuments((prev) =>
+        action === "confirm_erroneous_and_purge"
+          ? prev.filter((d) => d.id !== docId)
+          : prev.map((d) =>
+              d.id === docId
+                ? {
+                    ...d,
+                    has_unresolved_anomaly: false,
+                    anomaly_notes: undefined,
+                    processing_error: undefined,
+                    status: d.status === "action_needed" ? "verified" : d.status,
+                    verification_status: d.verification_status === "rejected" ? "verified" : d.verification_status,
+                  }
+                : d
+            )
+      );
       setInterimReports((prev) =>
         prev.map((r) => ({
           ...r,
@@ -495,13 +620,14 @@ export function CaseDetailModal({
   };
 
   // Close case
-  const handleCloseCase = async () => {
-    const reason = prompt("Please provide reason for closing this case:", "Immigration visa granted and finalized");
-    if (!reason) return;
+  const handleCloseCase = async (customReason?: string) => {
+    const reason = (customReason ?? lifecycleReason ?? stageReason ?? "Immigration visa granted and finalized").trim() || "Immigration visa granted and finalized";
     try {
       const res = await api.closeCase(currentCase.id, reason);
       setCurrentCase(res.data);
       if (onCaseUpdated) onCaseUpdated(res.data);
+      setPendingLifecycleAction(null);
+      setLifecycleReason("");
       setActionSuccess("Case successfully closed under authorized permissions.");
     } catch (err: any) {
       setActionError(err?.message || "Failed to close case.");
@@ -509,13 +635,14 @@ export function CaseDetailModal({
   };
 
   // Reopen case
-  const handleReopenCase = async () => {
-    const reason = prompt("Please provide reason for reopening this case:", "Client requested PR extension petition");
-    if (!reason) return;
+  const handleReopenCase = async (customReason?: string) => {
+    const reason = (customReason ?? lifecycleReason ?? stageReason ?? "Client requested PR extension petition").trim() || "Client requested PR extension petition";
     try {
       const res = await api.reopenCase(currentCase.id, reason);
       setCurrentCase(res.data);
       if (onCaseUpdated) onCaseUpdated(res.data);
+      setPendingLifecycleAction(null);
+      setLifecycleReason("");
       setActionSuccess("Case successfully reopened.");
     } catch (err: any) {
       setActionError(err?.message || "Failed to reopen case.");
@@ -524,11 +651,12 @@ export function CaseDetailModal({
 
   // Archive case
   const handleArchiveCase = async () => {
-    if (!confirm("Are you sure you want to archive this closed case record?")) return;
     try {
       const res = await api.archiveCase(currentCase.id);
       setCurrentCase(res.data);
       if (onCaseUpdated) onCaseUpdated(res.data);
+      setPendingLifecycleAction(null);
+      setLifecycleReason("");
       setActionSuccess("Case archived for compliance retention.");
     } catch (err: any) {
       setActionError(err?.message || "Failed to archive case.");
@@ -579,27 +707,43 @@ export function CaseDetailModal({
   };
 
   // Add task
-  const handleAddTask = (e: React.FormEvent) => {
+  const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
     const dueDateStr = newTaskDue || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
     const defaultAssignee = currentCase.assigned_manager || "Unassigned";
-    const task: CaseTask = {
+    let task: CaseTask = {
       id: `t-${Date.now()}`,
       case_id: currentCase.id,
+      case_number: currentCase.case_number,
       title: newTaskTitle.trim(),
       priority: newTaskPriority,
       due_date: dueDateStr,
       is_completed: false,
       assigned_to: defaultAssignee,
     };
-    setTasks((prev) => [task, ...prev]);
+    try {
+      const apiWithTasks = api as typeof api & {
+        createTask?: (caseId: string, payload: Partial<CaseTask>) => Promise<any>;
+      };
+      if (typeof apiWithTasks.createTask === "function") {
+        const res = await apiWithTasks.createTask(currentCase.id, task);
+        const created = res?.data || res;
+        if (created && created.id) {
+          task = created;
+        }
+      }
+    } catch {
+      // Fallback to local state sync
+    }
+    setTasks((prev) => [task, ...prev.filter((t) => t.id !== task.id)]);
     if (typeof window !== "undefined") {
       try {
         const stored = JSON.parse(window.localStorage.getItem("documento_tasks_v3_clean") || "[]");
+        const filtered = Array.isArray(stored) ? stored.filter((t: any) => t.id !== task.id) : [];
         window.localStorage.setItem(
           "documento_tasks_v3_clean",
-          JSON.stringify([task, ...(Array.isArray(stored) ? stored : [])])
+          JSON.stringify([task, ...filtered])
         );
       } catch {
         // Ignore storage write error
@@ -611,10 +755,24 @@ export function CaseDetailModal({
   };
 
   // Toggle task
-  const handleToggleTask = (taskId: string) => {
+  const handleToggleTask = async (taskId: string) => {
+    const targetTask = tasks.find((t) => t.id === taskId);
+    const nextCompleted = targetTask ? !targetTask.is_completed : true;
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, is_completed: !t.is_completed } : t))
     );
+    try {
+      const apiWithTasks = api as typeof api & {
+        updateTask?: (taskId: string, payload: Partial<CaseTask>) => Promise<any>;
+      };
+      if (typeof apiWithTasks.updateTask === "function") {
+        await apiWithTasks.updateTask(taskId, { is_completed: nextCompleted });
+      } else {
+        await api.toggleTask(taskId);
+      }
+    } catch {
+      // Offline fallback
+    }
   };
 
   // Add note
@@ -705,17 +863,50 @@ export function CaseDetailModal({
         <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             {!isClient && currentCase.status !== "closed" && currentCase.status !== "archived" && (
-              <Button variant="outline" size="sm" onClick={handleCloseCase}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (pendingLifecycleAction === "close") {
+                    void handleCloseCase(lifecycleReason);
+                  } else {
+                    setPendingLifecycleAction("close");
+                    setLifecycleReason("Immigration visa granted and finalized");
+                  }
+                }}
+              >
                 🔒 Close Case
               </Button>
             )}
             {!isClient && (currentCase.status === "closed" || currentCase.status === "archived") && (
-              <Button variant="outline" size="sm" onClick={handleReopenCase}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (pendingLifecycleAction === "reopen") {
+                    void handleReopenCase(lifecycleReason);
+                  } else {
+                    setPendingLifecycleAction("reopen");
+                    setLifecycleReason("Client requested PR extension petition");
+                  }
+                }}
+              >
                 🔓 Reopen Case
               </Button>
             )}
             {!isClient && currentCase.status === "closed" && (
-              <Button variant="outline" size="sm" onClick={handleArchiveCase}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (pendingLifecycleAction === "archive") {
+                    void handleArchiveCase();
+                  } else {
+                    setPendingLifecycleAction("archive");
+                    setLifecycleReason("");
+                  }
+                }}
+              >
                 Archive Case
               </Button>
             )}
@@ -782,6 +973,77 @@ export function CaseDetailModal({
             }}
           >
             ⚠️ {actionError}
+          </div>
+        )}
+
+        {/* Inline Lifecycle Confirmation Bar */}
+        {pendingLifecycleAction && (
+          <div
+            data-testid="lifecycle-action-confirm-bar"
+            style={{
+              padding: "12px 16px",
+              background: "#FFFBEB",
+              border: "1px solid #FCD34D",
+              borderRadius: "8px",
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "10px",
+            }}
+          >
+            <div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: "6px" }}>
+              <strong style={{ fontSize: "13px", color: "#92400E" }}>
+                {pendingLifecycleAction === "close"
+                  ? "Confirm Case Closure & Record Reason"
+                  : pendingLifecycleAction === "reopen"
+                    ? "Confirm Case Reopening & Record Reason"
+                    : "Confirm Archiving Closed Case Record"}
+              </strong>
+              {pendingLifecycleAction !== "archive" ? (
+                <input
+                  type="text"
+                  value={lifecycleReason}
+                  onChange={(e) => setLifecycleReason(e.target.value)}
+                  placeholder="Enter reason for audit log..."
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: "6px",
+                    border: "1px solid #FCD34D",
+                    fontSize: "12px",
+                    background: "#FFFFFF",
+                  }}
+                />
+              ) : (
+                <span style={{ fontSize: "12px", color: "#78350F" }}>
+                  Are you sure you want to archive this closed case record for compliance retention?
+                </span>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPendingLifecycleAction(null);
+                  setLifecycleReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                data-testid="confirm-lifecycle-action-btn"
+                onClick={() => {
+                  if (pendingLifecycleAction === "close") void handleCloseCase(lifecycleReason);
+                  else if (pendingLifecycleAction === "reopen") void handleReopenCase(lifecycleReason);
+                  else void handleArchiveCase();
+                }}
+              >
+                Confirm
+              </Button>
+            </div>
           </div>
         )}
 
@@ -1458,97 +1720,108 @@ export function CaseDetailModal({
                 The following documents contain detected scan or boundary anomalies (e.g. lighting glare, visible corners cropped, illegible seal, or boundary overlap). Per Documento retention policy, these files are preserved indefinitely until an officer reviews and either marks them resolved or confirms them erroneous and purges them.
               </p>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {[
-                  {
-                    docId: "doc-06",
-                    title: "State_Police_Clearance_Certificate.pdf",
-                    anomaly: "Low lighting glare detected on bottom signature corner; visible seal slightly blurred.",
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.docId}
-                    style={{
-                      background: "#FFFBEB",
-                      border: "1px solid #FDE68A",
-                      borderRadius: "8px",
-                      padding: "12px 14px",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                      <strong style={{ fontSize: "13px", color: "#92400E" }}>{item.title}</strong>
-                      <span
-                        style={{
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          padding: "2px 6px",
-                          borderRadius: "4px",
-                          background: "#FEF3C7",
-                          color: "#B45309",
-                          border: "1px solid #FCD34D",
-                        }}
-                      >
-                        ANOMALY ACTIVE
-                      </span>
-                    </div>
-                    <div style={{ fontSize: "12px", color: "#78350F", marginBottom: "10px" }}>
-                      {item.anomaly}
-                    </div>
+              {activeUnresolvedAnomalies.length === 0 ? (
+                <div
+                  style={{
+                    padding: "16px",
+                    textAlign: "center",
+                    background: "#F8FAF9",
+                    border: "1px dashed #DCE5E1",
+                    borderRadius: "8px",
+                    color: "#0D6866",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                  }}
+                >
+                  ✓ No unresolved document or scan anomalies detected for this case.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {activeUnresolvedAnomalies.map((item) => (
+                    <div
+                      key={item.docId}
+                      style={{
+                        background: "#FFFBEB",
+                        border: "1px solid #FDE68A",
+                        borderRadius: "8px",
+                        padding: "12px 14px",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                        <strong style={{ fontSize: "13px", color: "#92400E" }}>{item.title}</strong>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            background: "#FEF3C7",
+                            color: "#B45309",
+                            border: "1px solid #FCD34D",
+                          }}
+                        >
+                          ANOMALY ACTIVE
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#78350F", marginBottom: "10px" }}>
+                        {item.anomaly}
+                      </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                      <input
-                        type="text"
-                        placeholder="Officer disposition notes..."
-                        value={anomalyResolutionNote[item.docId] || ""}
-                        onChange={(e) =>
-                          setAnomalyResolutionNote((prev) => ({ ...prev, [item.docId]: e.target.value }))
-                        }
-                        style={{
-                          flex: 1,
-                          minWidth: "200px",
-                          padding: "6px 10px",
-                          borderRadius: "6px",
-                          border: "1px solid #FCD34D",
-                          fontSize: "12px",
-                          background: "#FFFFFF",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleResolveAnomaly(item.docId, "mark_resolved")}
-                        style={{
-                          background: "#16A34A",
-                          color: "#FFFFFF",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "6px 12px",
-                          fontSize: "12px",
-                          fontWeight: 650,
-                          cursor: "pointer",
-                        }}
-                      >
-                        ✓ Mark Resolved
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleResolveAnomaly(item.docId, "confirm_erroneous_and_purge")}
-                        style={{
-                          background: "#DC2626",
-                          color: "#FFFFFF",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "6px 12px",
-                          fontSize: "12px",
-                          fontWeight: 650,
-                          cursor: "pointer",
-                        }}
-                      >
-                        🗑️ Confirm Erroneous &amp; Purge
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <input
+                          type="text"
+                          placeholder="Officer disposition notes..."
+                          value={anomalyResolutionNote[item.docId] || ""}
+                          onChange={(e) =>
+                            setAnomalyResolutionNote((prev) => ({ ...prev, [item.docId]: e.target.value }))
+                          }
+                          style={{
+                            flex: 1,
+                            minWidth: "200px",
+                            padding: "6px 10px",
+                            borderRadius: "6px",
+                            border: "1px solid #FCD34D",
+                            fontSize: "12px",
+                            background: "#FFFFFF",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleResolveAnomaly(item.docId, "mark_resolved")}
+                          style={{
+                            background: "#16A34A",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "6px 12px",
+                            fontSize: "12px",
+                            fontWeight: 650,
+                            cursor: "pointer",
+                          }}
+                        >
+                          ✓ Mark Resolved
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleResolveAnomaly(item.docId, "confirm_erroneous_and_purge")}
+                          style={{
+                            background: "#DC2626",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "6px 12px",
+                            fontSize: "12px",
+                            fontWeight: 650,
+                            cursor: "pointer",
+                          }}
+                        >
+                          🗑️ Confirm Erroneous &amp; Purge
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

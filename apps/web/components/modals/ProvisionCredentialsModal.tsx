@@ -51,7 +51,8 @@ export function ProvisionCredentialsModal({
   };
 
   const handleCopyCredentials = () => {
-    const textToCopy = `Documento Portal Credentials\nClient: ${client.first_name} ${client.last_name}\nEmail: ${client.email}\nPortal Password: ${password}\nPortal URL: http://localhost:3000/login\nIssued by: ${issuerTitle}`;
+    const portalOrigin = typeof window !== "undefined" ? window.location.origin : "";
+    const textToCopy = `Documento Portal Credentials\nClient: ${client.first_name} ${client.last_name}\nEmail: ${client.email}\nPortal Password: ${password}\nPortal URL: ${portalOrigin}/login\nIssued by: ${issuerTitle}`;
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(textToCopy)
         .then(() => {

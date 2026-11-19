@@ -90,7 +90,7 @@ export interface LoginResult {
 
 function canDeletePracticeEntity(
   user: UserContext | null | undefined,
-  requiredPermission: "client:delete" | "case:delete"
+  requiredPermission: "client:delete" | "case:delete" | "assignment:manage"
 ): boolean {
   if (!user) return false;
 
@@ -152,6 +152,16 @@ export function canDeleteClient(user?: UserContext | null): boolean {
  */
 export function canDeleteCase(user?: UserContext | null): boolean {
   return canDeletePracticeEntity(user, "case:delete");
+}
+
+/**
+ * Determines if the current authenticated user has authority to assign or reassign caseworkers
+ * to retained clients and immigration cases.
+ * Permitted: Owner (Managing Partner / master_admin / company_admin) and Managers (case_manager / senior_reviewer).
+ * Explicitly Forbidden: Retained Clients, Finance Staff, and Paralegals.
+ */
+export function canAssignCaseworker(user?: UserContext | null): boolean {
+  return canDeletePracticeEntity(user, "assignment:manage");
 }
 
 export function authenticateUser(

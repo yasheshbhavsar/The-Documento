@@ -12,11 +12,25 @@ export interface SponsorContributionUpload {
   category: string;
   uploadedAt: string;
   verified: boolean;
+  received?: boolean;
+  status?: "received_pending_review" | "verified";
+  statusLabel?: string;
   sha256: string;
   filename?: string;
   statutoryBadge?: string; // e.g., "CRA NOA Line 15000: $88,400 CAD (LICO Met)" or "Canadian PR Card Verified"
   extractedSummary?: Record<string, string>;
   isPrivateToFirm: boolean;
+}
+
+export interface SponsorChecklistItem {
+  id: string;
+  label: string;
+  hint: string;
+  satisfied: boolean;
+  uploaded?: boolean;
+  received?: boolean;
+  verified?: boolean;
+  status?: "pending" | "received_pending_review" | "verified";
 }
 
 export interface SponsorInviteRecord {
@@ -34,7 +48,7 @@ export interface SponsorInviteRecord {
     | "spouse_cosigner";
   jurisdiction: "CA" | "UK" | "AU";
   privacyShield: boolean;
-  requestedItems: Array<{ id: string; label: string; hint: string; satisfied: boolean }>;
+  requestedItems: SponsorChecklistItem[];
   createdAt: string;
   uploadedItems: SponsorContributionUpload[];
 }
@@ -307,7 +321,7 @@ function doesUploadSatisfyItem(
 }
 
 function fireBackgroundBackendSync(endpointPath: string, payload: Record<string, unknown>): void {
-  if (typeof window === "undefined" || process.env.NODE_ENV === "test" || typeof fetch !== "function") {
+  if (typeof window === "undefined" || typeof fetch !== "function") {
     return;
   }
   const candidates = [`/api/v1${endpointPath}`, `/api/backend${endpointPath}`];
@@ -319,12 +333,235 @@ function fireBackgroundBackendSync(endpointPath: string, payload: Record<string,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        if (res.ok) break;
+        if (res && res.ok) break;
       } catch {
         // Offline or proxy unreachable — local store already persisted synchronously
       }
     }
   })();
+}
+
+function fireBackgroundMultipartUploadSync(token: string, entry: SponsorContributionUpload): void {
+  if (typeof window === "undefined" || typeof fetch !== "function" || typeof FormData === "undefined") {
+    return;
+  }
+  const encodedToken = encodeURIComponent(token);
+  const candidates = [
+    `/api/v1/portal/contribute/${encodedToken}/upload`,
+    `/api/backend/portal/contribute/${encodedToken}/upload`,
+  ];
+  void (async () => {
+    for (const url of candidates) {
+      try {
+        const fd = new FormData();
+        const syntheticText = [
+          entry.subtypeLabel,
+          entry.filename || "sponsor_evidence.pdf",
+          entry.statutoryBadge || "",
+          Object.entries(entry.extractedSummary || {})
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("\n"),
+        ].join("\n");
+        const blob = new Blob([syntheticText], { type: "application/pdf" });
+        fd.append("file", blob, entry.filename || "sponsor_evidence.pdf");
+        fd.append("privacy_shield", String(entry.isPrivateToFirm));
+        const res = await fetch(url, {
+          method: "POST",
+          body: fd,
+        });
+        if (res && res.ok) return;
+      } catch {
+        // Fallback to JSON metadata sync or local store
+      }
+    }
+    fireBackgroundBackendSync(`/portal/contribute/${encodedToken}`, {
+      id: entry.id,
+      subtype_label: entry.subtypeLabel,
+      category: entry.category,
+      verified: entry.verified,
+      status: entry.status || (entry.verified ? "received_verified" : "received_pending_review"),
+      sha256: entry.sha256,
+      filename: entry.filename,
+      statutory_badge: entry.statutoryBadge,
+      extracted_summary: entry.extractedSummary,
+      is_private_to_firm: entry.isPrivateToFirm,
+    });
+  })();
+}
+
+function normalizeRelationship(raw: unknown): SponsorInviteRecord["relationship"] {
+  const s = String(raw || "").toLowerCase();
+  if (s.includes("sibling")) return "canadian_sibling";
+  if (s.includes("uk")) return "uk_sponsor";
+  if (s.includes("au")) return "au_sponsor";
+  if (s.includes("cosigner") || s.includes("spouse")) return "spouse_cosigner";
+  return "child_grandchild";
+}
+
+function normalizeJurisdiction(raw: unknown): "CA" | "UK" | "AU" {
+  const s = String(raw || "").toUpperCase();
+  if (s === "UK" || s.includes("UNITED KINGDOM")) return "UK";
+  if (s === "AU" || s.includes("AUSTRALIA")) return "AU";
+  return "CA";
+}
+
+export async function fetchSponsorInviteByTokenFromBackend(
+  token: string
+): Promise<SponsorInviteRecord | null> {
+  if (!token) return null;
+  if (typeof fetch !== "function") {
+    return getSponsorInviteByToken(token);
+  }
+
+  const encoded = encodeURIComponent(token);
+  const candidates = [
+    `/api/v1/portal/contribute/${encoded}`,
+    `/api/backend/portal/contribute/${encoded}`,
+  ];
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { method: "GET" });
+      if (!res || !res.ok) continue;
+      const data = await res.json();
+      if (!data || typeof data !== "object") continue;
+
+      const all = readAllInvites();
+      const existing = all[token];
+      const jurisdiction = normalizeJurisdiction(data.jurisdiction ?? existing?.jurisdiction);
+      const relationship = normalizeRelationship(data.relationship ?? existing?.relationship);
+      const defaultItems = buildDefaultRequestedItems(relationship, jurisdiction);
+
+      const requestedItems: SponsorChecklistItem[] = Array.isArray(data.requested_items)
+        ? data.requested_items.map((item: any, idx: number) => {
+            const rawStatus = String(item.status || "pending");
+            const isVerified = rawStatus === "verified" || Boolean(item.verified);
+            const isReceived =
+              isVerified ||
+              rawStatus === "received_verified" ||
+              rawStatus === "received_pending_review" ||
+              Boolean(item.satisfied || item.received || item.uploaded);
+            const fallbackHint =
+              defaultItems[idx]?.hint ||
+              "Official statutory sponsor evidence required for this application.";
+            return {
+              id: String(item.item_id || item.id || `sponsor_item_${idx + 1}`),
+              label: String(item.label || item.title || "Required Sponsor Evidence"),
+              hint: String(item.hint || fallbackHint),
+              satisfied: isReceived,
+              uploaded: isReceived,
+              received: isReceived,
+              verified: isVerified,
+              status: isVerified ? "verified" : isReceived ? "received_pending_review" : "pending",
+            };
+          })
+        : existing?.requestedItems || defaultItems;
+
+      const uploadedItems: SponsorContributionUpload[] = Array.isArray(data.uploaded_summaries)
+        ? data.uploaded_summaries.map((sum: any, idx: number) => {
+            const isVerified = Boolean(sum.verified);
+            return {
+              id: String(sum.contribution_id || sum.id || `spn-doc-${idx + 1}`),
+              subtypeLabel: String(sum.subtype_label || sum.subtypeLabel || "Sponsor Evidence"),
+              category: String(sum.category || "financial_evidence"),
+              uploadedAt: String(sum.uploaded_at || sum.uploadedAt || new Date().toISOString()),
+              verified: isVerified,
+              received: true,
+              status: isVerified ? "verified" : "received_pending_review",
+              statusLabel: isVerified ? "✓ Verified" : "Received (Pending Review)",
+              sha256: String(sum.sha256 || ""),
+              filename: sum.filename ? String(sum.filename) : undefined,
+              statutoryBadge:
+                sum.statutory_pass_badge || sum.statutoryBadge
+                  ? String(sum.statutory_pass_badge || sum.statutoryBadge)
+                  : undefined,
+              isPrivateToFirm:
+                sum.privacy_shield !== undefined
+                  ? Boolean(sum.privacy_shield)
+                  : Boolean(data.privacy_shield ?? true),
+            };
+          })
+        : existing?.uploadedItems || [];
+
+      const mergedRecord: SponsorInviteRecord = {
+        token,
+        caseId: existing?.caseId || String(data.case_id || "CASE-SPONSOR"),
+        caseNumber: existing?.caseNumber || String(data.case_number || "CASE-SPONSOR"),
+        applicantName:
+          String(data.applicant_first_name || existing?.applicantName || "Applicant"),
+        pathway: String(
+          data.pathway ||
+            existing?.pathway ||
+            (jurisdiction === "CA"
+              ? "Canada Super Visa (Parents & Grandparents)"
+              : jurisdiction === "UK"
+                ? "UK Standard Visitor (Family Sponsored)"
+                : "Australia Visitor Visa (Subclass 600 Sponsored)")
+        ),
+        sponsorName: String(data.sponsor_name || existing?.sponsorName || "Family Sponsor"),
+        relationship,
+        jurisdiction,
+        privacyShield:
+          data.privacy_shield !== undefined
+            ? Boolean(data.privacy_shield)
+            : existing?.privacyShield ?? true,
+        requestedItems,
+        createdAt: existing?.createdAt || new Date().toISOString(),
+        uploadedItems:
+          uploadedItems.length > 0 ? uploadedItems : existing?.uploadedItems || [],
+      };
+
+      all[token] = mergedRecord;
+      writeAllInvites(all, { token, caseId: mergedRecord.caseId, action: "backend_synced" });
+      return mergedRecord;
+    } catch {
+      // Offline or unreachable — continue to fallback
+    }
+  }
+
+  return getSponsorInviteByToken(token);
+}
+
+export async function fetchCaseSponsorContributionsFromBackend(
+  caseId: string
+): Promise<SponsorContributionUpload[]> {
+  if (!caseId) return [];
+  if (typeof fetch === "function") {
+    const encoded = encodeURIComponent(caseId);
+    const candidates = [
+      `/api/v1/portal/cases/${encoded}/sponsor-contributions`,
+      `/api/backend/portal/cases/${encoded}/sponsor-contributions`,
+    ];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { method: "GET" });
+        if (!res || !res.ok) continue;
+        const data = await res.json();
+        if (data && Array.isArray(data.contributions)) {
+          return data.contributions.map((c: any, idx: number) => {
+            const isVerified = Boolean(c.verified);
+            return {
+              id: String(c.contribution_id || `spn-contrib-${idx + 1}`),
+              subtypeLabel: String(c.subtype_label || "Sponsor Evidence"),
+              category: String(c.category || "financial_evidence"),
+              uploadedAt: String(c.uploaded_at || new Date().toISOString()),
+              verified: isVerified,
+              received: true,
+              status: isVerified ? "verified" : "received_pending_review",
+              statusLabel: isVerified ? "✓ Verified" : "Received (Pending Review)",
+              sha256: String(c.sha256 || ""),
+              filename: c.filename ? String(c.filename) : undefined,
+              statutoryBadge: c.statutory_pass_badge ? String(c.statutory_pass_badge) : undefined,
+              isPrivateToFirm: Boolean(c.privacy_shield ?? true),
+            };
+          });
+        }
+      } catch {
+        // Offline fallback
+      }
+    }
+  }
+  return getSponsorInvitesForCase(caseId).flatMap((inv) => inv.uploadedItems);
 }
 
 export function createSponsorInviteLink(params: {
@@ -359,7 +596,15 @@ export function createSponsorInviteLink(params: {
     relationship: params.relationship,
     jurisdiction: params.jurisdiction,
     privacyShield: params.privacyShield !== undefined ? params.privacyShield : true,
-    requestedItems: buildDefaultRequestedItems(params.relationship, params.jurisdiction),
+    requestedItems: buildDefaultRequestedItems(params.relationship, params.jurisdiction).map(
+      (item) => ({
+        ...item,
+        uploaded: false,
+        received: false,
+        verified: false,
+        status: "pending",
+      })
+    ),
     createdAt: new Date().toISOString(),
     uploadedItems: [],
   };
@@ -372,6 +617,7 @@ export function createSponsorInviteLink(params: {
     case_id: record.caseId,
     case_number: record.caseNumber,
     applicant_name: record.applicantName,
+    applicant_first_name: record.applicantName.trim().split(/\s+/)[0] || "Applicant",
     pathway: record.pathway,
     sponsor_name: record.sponsorName,
     relationship: record.relationship,
@@ -424,29 +670,57 @@ export function recordSponsorContributionUpload(
   const existing = all[token];
   if (!existing) return null;
 
+  const isVerified = Boolean(upload.verified);
   const entry: SponsorContributionUpload = {
     ...upload,
+    verified: isVerified,
+    received: true,
+    status: isVerified ? "verified" : "received_pending_review",
+    statusLabel: isVerified ? "✓ Verified" : "Received (Pending Review)",
     id: `spn-doc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     uploadedAt: new Date().toISOString(),
   };
 
   let matchedAnyChecklist = false;
-  const nextRequestedItems = existing.requestedItems.map((item) => {
-    if (item.satisfied) return item;
+  const nextRequestedItems: SponsorChecklistItem[] = existing.requestedItems.map((item) => {
+    if (item.satisfied) {
+      if (isVerified && !item.verified && doesUploadSatisfyItem(item, upload)) {
+        return {
+          ...item,
+          verified: true,
+          status: "verified",
+        };
+      }
+      return item;
+    }
     if (doesUploadSatisfyItem(item, upload)) {
       matchedAnyChecklist = true;
-      return { ...item, satisfied: true };
+      return {
+        ...item,
+        satisfied: true,
+        uploaded: true,
+        received: true,
+        verified: isVerified,
+        status: isVerified ? "verified" : "received_pending_review",
+      };
     }
     return item;
   });
 
-  // If upload is verified and didn't match a specific keyword, satisfy first open supporting item if appropriate
-  if (!matchedAnyChecklist && upload.verified) {
+  // If upload didn't match a specific keyword, mark first open supporting item as received
+  if (!matchedAnyChecklist) {
     const firstUnsatisfiedIdx = nextRequestedItems.findIndex((i) => !i.satisfied);
-    if (firstUnsatisfiedIdx !== -1 && upload.category === "supporting_evidence") {
+    if (
+      firstUnsatisfiedIdx !== -1 &&
+      (upload.category === "supporting_evidence" || upload.received || isVerified)
+    ) {
       nextRequestedItems[firstUnsatisfiedIdx] = {
         ...nextRequestedItems[firstUnsatisfiedIdx],
         satisfied: true,
+        uploaded: true,
+        received: true,
+        verified: isVerified,
+        status: isVerified ? "verified" : "received_pending_review",
       };
     }
   }
@@ -460,17 +734,7 @@ export function recordSponsorContributionUpload(
   all[token] = updated;
   writeAllInvites(all, { token, caseId: updated.caseId, action: "upload_recorded" });
 
-  fireBackgroundBackendSync(`/portal/contribute/${encodeURIComponent(token)}`, {
-    id: entry.id,
-    subtype_label: entry.subtypeLabel,
-    category: entry.category,
-    verified: entry.verified,
-    sha256: entry.sha256,
-    filename: entry.filename,
-    statutory_badge: entry.statutoryBadge,
-    extracted_summary: entry.extractedSummary,
-    is_private_to_firm: entry.isPrivateToFirm,
-  });
+  fireBackgroundMultipartUploadSync(token, entry);
 
   return updated;
 }
@@ -516,6 +780,10 @@ export function enrichSponsorUploadFromAiLab(
       updatedCaseId = rec.caseId;
       return {
         ...up,
+        verified: true,
+        received: true,
+        status: "verified" as const,
+        statusLabel: "✓ Verified",
         subtypeLabel: enrichment.subtypeLabel || up.subtypeLabel,
         category: enrichment.category || up.category,
         statutoryBadge: enrichment.statutoryBadge || up.statutoryBadge,
@@ -527,10 +795,22 @@ export function enrichSponsorUploadFromAiLab(
     });
 
     if (changed) {
-      const nextRequested = rec.requestedItems.map((item) => {
-        if (item.satisfied) return item;
-        const satisfiedNow = nextUploads.some((u) => doesUploadSatisfyItem(item, u));
-        return satisfiedNow ? { ...item, satisfied: true } : item;
+      const nextRequested: SponsorChecklistItem[] = rec.requestedItems.map((item) => {
+        const satisfiedByVerified = nextUploads.some(
+          (u) => u.verified && doesUploadSatisfyItem(item, u)
+        );
+        const satisfiedNow =
+          item.satisfied || nextUploads.some((u) => doesUploadSatisfyItem(item, u));
+        if (!satisfiedNow) return item;
+        return {
+          ...item,
+          satisfied: true,
+          uploaded: true,
+          received: true,
+          verified: satisfiedByVerified || Boolean(item.verified),
+          status:
+            satisfiedByVerified || item.verified ? "verified" : "received_pending_review",
+        };
       });
       all[token] = {
         ...rec,

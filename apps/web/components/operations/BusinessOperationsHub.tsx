@@ -145,6 +145,8 @@ export function BusinessOperationsHub({
 
   // 5. Work Reassignment Modal State
   const [isReassignModalOpen, setIsReassignModalOpen] = useState<boolean>(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [reassignForm, setReassignForm] = useState({
     from_user_id: "",
     to_user_id: "",
@@ -472,12 +474,13 @@ export function BusinessOperationsHub({
   };
 
   const handleReassignWork = async () => {
+    setReassignError(null);
     if (!reassignForm.from_user_id || !reassignForm.to_user_id) {
-      alert("Please select both a source and target staff member.");
+      setReassignError("Please select both a source and target staff member.");
       return;
     }
     if (reassignForm.from_user_id === reassignForm.to_user_id) {
-      alert("Source and target staff member cannot be the same.");
+      setReassignError("Source and target staff member cannot be the same.");
       return;
     }
     try {
@@ -492,11 +495,12 @@ export function BusinessOperationsHub({
       await loadData();
       onTeamChanged?.();
     } catch {
-      alert("Failed to execute reassignment.");
+      setReassignError("Failed to execute reassignment.");
     }
   };
 
   const handleSaveSettings = async () => {
+    setErrorNotice(null);
     try {
       await Promise.all(
         Object.entries(settingsForm).map(([k, v]) => updateOrganizationSetting(k, v))
@@ -504,7 +508,7 @@ export function BusinessOperationsHub({
       setSettings(settingsForm);
       showNotification("✓ Organization settings successfully updated and logged.");
     } catch {
-      alert("Failed to save organization settings.");
+      setErrorNotice("Failed to save organization settings.");
     }
   };
 
@@ -762,6 +766,24 @@ export function BusinessOperationsHub({
           }}
         >
           {notification}
+        </div>
+      )}
+
+      {errorNotice && (
+        <div
+          id="operations-error-toast"
+          role="alert"
+          style={{
+            padding: "10px 14px",
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: "8px",
+            color: "#991B1B",
+            fontSize: "12.5px",
+            fontWeight: 650,
+          }}
+        >
+          {errorNotice}
         </div>
       )}
 
@@ -1299,6 +1321,8 @@ export function BusinessOperationsHub({
                   <option value="GBP">GBP (£)</option>
                   <option value="CAD">CAD ($)</option>
                   <option value="EUR">EUR (€)</option>
+                  <option value="AUD">AUD (A$)</option>
+                  <option value="INR">INR (₹)</option>
                 </select>
               </div>
 
@@ -1330,6 +1354,9 @@ export function BusinessOperationsHub({
                   <option value="US">United States (USCIS)</option>
                   <option value="UK">United Kingdom (Home Office)</option>
                   <option value="CA">Canada (IRCC)</option>
+                  <option value="AU">Australia (Home Affairs)</option>
+                  <option value="NZ">New Zealand (INZ)</option>
+                  <option value="DE">Germany (BAMF)</option>
                 </select>
               </div>
 
@@ -2104,11 +2131,30 @@ export function BusinessOperationsHub({
           ===================================================================== */}
       <Modal
         isOpen={isReassignModalOpen}
-        onClose={() => setIsReassignModalOpen(false)}
+        onClose={() => {
+          setIsReassignModalOpen(false);
+          setReassignError(null);
+        }}
         title="Reassign Casework & Tasks"
         subtitle="Transfer active petitions or pending tasks with mandatory audit logging and reason documentation."
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {reassignError && (
+            <div
+              role="alert"
+              style={{
+                padding: "9px 12px",
+                borderRadius: "6px",
+                background: "#FEF2F2",
+                border: "1px solid #FCA5A5",
+                color: "#991B1B",
+                fontSize: "12.5px",
+                fontWeight: 600,
+              }}
+            >
+              {reassignError}
+            </div>
+          )}
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
               Source Team Member (From)

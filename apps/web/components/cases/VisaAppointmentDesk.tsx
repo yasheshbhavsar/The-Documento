@@ -13,6 +13,212 @@ interface VisaAppointmentDeskProps {
   onClose?: () => void;
 }
 
+interface JurisdictionAppointmentConfig {
+  code: "US" | "CA" | "UK" | "AU" | "DE" | "NZ" | "INTL";
+  defaultVacCenter: string;
+  defaultConsularPost: string;
+  quickVacCenters: string[];
+  courierServiceName: string;
+  courierColumnHeader: string;
+  courierKpiHeader: string;
+  awbLabel: string;
+  awbPlaceholder: string;
+  refusalTermShort: string;
+  refusalSlipBadge: string;
+  refusalKpiHeader: string;
+  refusalFlagLabel: string;
+  refusalUpdateLabel: string;
+  refusalModalTitle: string;
+  refusalSaveLabel: string;
+  refusalStatutoryNote: string;
+  biometricsSlotLabel: string;
+  interviewSlotLabel: string;
+}
+
+function getJurisdictionAppointmentConfig(jurisdiction?: string): JurisdictionAppointmentConfig {
+  const j = (jurisdiction || "").toLowerCase();
+
+  if (j.includes("canada") || j.includes("ircc") || j === "ca") {
+    return {
+      code: "CA",
+      defaultVacCenter: "IRCC Biometrics Collection Center (VFS Global)",
+      defaultConsularPost: "High Commission of Canada / IRCC Visa Office",
+      quickVacCenters: [
+        "IRCC Biometrics Center (VFS Global)",
+        "Service Canada Biometrics Office",
+        "VFS Global Toronto / Vancouver",
+        "High Commission of Canada",
+      ],
+      courierServiceName: "VFS Two-Way Courier / Canada Post",
+      courierColumnHeader: "Courier Tracking (VFS / Canada Post)",
+      courierKpiHeader: "Passports in Transit (VFS / Courier)",
+      awbLabel: "VFS Two-Way Courier / Canada Post Tracking #",
+      awbPlaceholder: "e.g. VFS-CA-88991122",
+      refusalTermShort: "ADR / PFL Hold",
+      refusalSlipBadge: "⚠️ IRCC ADR / PFL Slip",
+      refusalKpiHeader: "IRCC Procedural Fairness / ADR Holds",
+      refusalFlagLabel: "+ Flag ADR / PFL",
+      refusalUpdateLabel: "Update ADR / PFL",
+      refusalModalTitle: "⚠️ IRCC Procedural Fairness / Additional Document Request Desk",
+      refusalSaveLabel: "Save ADR / PFL Hold",
+      refusalStatutoryNote:
+        "IRPA / IRPR Statutory Note: Respond to Additional Document Requests (ADR) or Procedural Fairness Letters (PFL) within the timeframe specified in the IRCC notice.",
+      biometricsSlotLabel: "IRCC Biometrics Slot",
+      interviewSlotLabel: "IRCC Officer Interview Slot",
+    };
+  }
+
+  if (j.includes("united kingdom") || j.includes("home office") || j.includes("ukvi") || j === "uk" || j === "gb") {
+    return {
+      code: "UK",
+      defaultVacCenter: "UKVCAS / TLScontact Biometrics Center",
+      defaultConsularPost: "UK Visas and Immigration (UKVI) Decision Center",
+      quickVacCenters: [
+        "UKVCAS Service Point (London)",
+        "TLScontact UK Visa Center",
+        "VFS Global UK Biometrics Center",
+        "British High Commission Consular Section",
+      ],
+      courierServiceName: "TLScontact / VFS Courier",
+      courierColumnHeader: "Courier Tracking (TLScontact / VFS)",
+      courierKpiHeader: "Passports in Transit (TLScontact / VFS)",
+      awbLabel: "TLScontact / VFS Courier AWB Tracking #",
+      awbPlaceholder: "e.g. UKVI-DHL-88991122",
+      refusalTermShort: "UKVI Deferral",
+      refusalSlipBadge: "⚠️ UKVI Deferral Notice",
+      refusalKpiHeader: "UKVI Complex Application Holds",
+      refusalFlagLabel: "+ Flag UKVI Hold",
+      refusalUpdateLabel: "Update UKVI Hold",
+      refusalModalTitle: "⚠️ UKVI Administrative Review & Complex Deferral Desk",
+      refusalSaveLabel: "Save UKVI Hold",
+      refusalStatutoryNote:
+        "UK Immigration Rules Note: Additional evidentiary submissions requested by UKVI caseworkers must be uploaded within the specified Home Office window.",
+      biometricsSlotLabel: "UKVI Biometrics Slot",
+      interviewSlotLabel: "UKVI Credibility Interview Slot",
+    };
+  }
+
+  if (j.includes("australia") || j.includes("home affairs") || j.includes("doha") || j === "au") {
+    return {
+      code: "AU",
+      defaultVacCenter: "Australian Biometrics Collection Centre (ABCC)",
+      defaultConsularPost: "Department of Home Affairs (DoHA) Processing Office",
+      quickVacCenters: [
+        "ABCC Biometrics Centre",
+        "VFS Global Australia VAC",
+        "Australian High Commission Consular Post",
+        "Bupa Medical Visa Services",
+      ],
+      courierServiceName: "VFS / AusPost Courier",
+      courierColumnHeader: "Courier Tracking (VFS / AusPost)",
+      courierKpiHeader: "Passports / Notices in Transit",
+      awbLabel: "Courier / ImmiAccount Dispatch Reference #",
+      awbPlaceholder: "e.g. AU-VFS-88991122",
+      refusalTermShort: "s56 Request",
+      refusalSlipBadge: "⚠️ s56 RFI Notice",
+      refusalKpiHeader: "Home Affairs s56 / s57 Holds",
+      refusalFlagLabel: "+ Flag s56 Hold",
+      refusalUpdateLabel: "Update s56 Hold",
+      refusalModalTitle: "⚠️ Home Affairs s56 Request for More Information Desk",
+      refusalSaveLabel: "Save s56 Hold",
+      refusalStatutoryNote:
+        "Migration Act 1958 (s56/s57) Note: Requested documentation must be lodged via ImmiAccount within the statutory period (typically 28 calendar days).",
+      biometricsSlotLabel: "ABCC Biometrics Slot",
+      interviewSlotLabel: "Home Affairs Interview Slot",
+    };
+  }
+
+  if (j.includes("germany") || j.includes("bamf") || j === "de") {
+    return {
+      code: "DE",
+      defaultVacCenter: "VFS Global / TLScontact Schengen Biometrics Center",
+      defaultConsularPost: "German Embassy / Consulate General (Auswärtiges Amt)",
+      quickVacCenters: [
+        "German Embassy Consular Section",
+        "VFS Global Schengen VAC",
+        "TLScontact Schengen Center",
+        "Ausländerbehörde Biometrics Desk",
+      ],
+      courierServiceName: "DHL / UPS Express",
+      courierColumnHeader: "Courier Tracking (DHL / UPS)",
+      courierKpiHeader: "Passports in Transit (DHL / UPS)",
+      awbLabel: "DHL / Courier AWB Tracking #",
+      awbPlaceholder: "e.g. DE-DHL-88991122",
+      refusalTermShort: "Nachforderung",
+      refusalSlipBadge: "⚠️ Nachforderung Hold",
+      refusalKpiHeader: "Consular Document Holds",
+      refusalFlagLabel: "+ Flag Document Hold",
+      refusalUpdateLabel: "Update Document Hold",
+      refusalModalTitle: "⚠️ Consular Nachforderung (Document Request) Desk",
+      refusalSaveLabel: "Save Document Hold",
+      refusalStatutoryNote:
+        "AufenthG Consular Note: Submit supplementary original or apostilled records requested by the German mission within the stipulated deadline.",
+      biometricsSlotLabel: "Schengen Biometrics Slot",
+      interviewSlotLabel: "Consular Interview Slot",
+    };
+  }
+
+  if (j.includes("new zealand") || j.includes("inz") || j === "nz") {
+    return {
+      code: "NZ",
+      defaultVacCenter: "Immigration New Zealand (INZ) / VFS Biometrics Centre",
+      defaultConsularPost: "Immigration New Zealand (INZ) Processing Branch",
+      quickVacCenters: [
+        "VFS Global New Zealand VAC",
+        "INZ Auckland Branch",
+        "INZ Wellington Office",
+      ],
+      courierServiceName: "NZ Post / VFS Courier",
+      courierColumnHeader: "Courier Tracking (NZ Post / VFS)",
+      courierKpiHeader: "Passports in Transit (NZ Post / VFS)",
+      awbLabel: "NZ Post / VFS Courier Tracking #",
+      awbPlaceholder: "e.g. NZ-VFS-88991122",
+      refusalTermShort: "PPI / RFI Hold",
+      refusalSlipBadge: "⚠️ INZ RFI / PPI Notice",
+      refusalKpiHeader: "INZ RFI / PPI Holds",
+      refusalFlagLabel: "+ Flag RFI / PPI",
+      refusalUpdateLabel: "Update RFI / PPI",
+      refusalModalTitle: "⚠️ Immigration New Zealand RFI / Potentially Prejudicial Information Desk",
+      refusalSaveLabel: "Save RFI / PPI Hold",
+      refusalStatutoryNote:
+        "Immigration Act 2009 Note: Responses to INZ Requests for Information (RFI) or PPI letters must be submitted before the specified due date.",
+      biometricsSlotLabel: "INZ Biometrics Slot",
+      interviewSlotLabel: "INZ Officer Interview Slot",
+    };
+  }
+
+  return {
+    code: "US",
+    defaultVacCenter: "U.S. Visa Application Center (VAC)",
+    defaultConsularPost: "U.S. Embassy / Consulate General",
+    quickVacCenters: [
+      "U.S. Application Support Center (ASC)",
+      "Mumbai VAC (BKC)",
+      "New Delhi VAC (Shivaji Stadium)",
+      "Chennai VAC",
+      "Hyderabad VAC",
+      "London U.S. Embassy VAC",
+      "Toronto U.S. Consulate",
+    ],
+    courierServiceName: "Consular Courier / Blue Dart / DHL",
+    courierColumnHeader: "Courier Tracking (AWB)",
+    courierKpiHeader: "Passports in Transit (Courier)",
+    awbLabel: "Courier / Blue Dart AWB Tracking #",
+    awbPlaceholder: "e.g. BD-8899112233IN",
+    refusalTermShort: "221(g)",
+    refusalSlipBadge: "⚠️ 221(g) Slip",
+    refusalKpiHeader: "221(g) Administrative Processing",
+    refusalFlagLabel: "+ Flag 221(g)",
+    refusalUpdateLabel: "Update 221(g)",
+    refusalModalTitle: "⚠️ 221(g) Administrative Processing Desk",
+    refusalSaveLabel: "Save 221(g) Hold",
+    refusalStatutoryNote:
+      "INA § 221(g) Statutory Note: The applicant has 12 months from the date of refusal to submit the required evidentiary documents without having to pay a new MRV fee.",
+    biometricsSlotLabel: "OFC Biometrics Slot",
+    interviewSlotLabel: "Consular Interview Slot",
+  };
+}
+
 export function VisaAppointmentDesk({
   cases,
   clients,
@@ -34,11 +240,15 @@ export function VisaAppointmentDesk({
   const [editingAppointment, setEditingAppointment] = useState<VisaAppointment | null>(null);
   const [is221gModalOpen, setIs221gModalOpen] = useState(false);
   const [selectedApptFor221g, setSelectedApptFor221g] = useState<VisaAppointment | null>(null);
+  const [confirmingCancelApptId, setConfirmingCancelApptId] = useState<string | null>(null);
+
+  const initialCaseObj = cases.find((c) => c.id === (initialCaseId || cases[0]?.id)) || cases[0];
+  const initialJurisdictionConfig = getJurisdictionAppointmentConfig(initialCaseObj?.jurisdiction);
 
   // Form State for Scheduling
   const [formCaseId, setFormCaseId] = useState<string>(initialCaseId || cases[0]?.id || "case-01");
-  const [formVacCenter, setFormVacCenter] = useState("Mumbai VAC (Bandra Kurla Complex)");
-  const [formConsularPost, setFormConsularPost] = useState("U.S. Consulate General Mumbai");
+  const [formVacCenter, setFormVacCenter] = useState(initialJurisdictionConfig.defaultVacCenter);
+  const [formConsularPost, setFormConsularPost] = useState(initialJurisdictionConfig.defaultConsularPost);
   const [formOfcSlot, setFormOfcSlot] = useState("");
   const [formConsularSlot, setFormConsularSlot] = useState("");
   const [formDropboxEligible, setFormDropboxEligible] = useState(false);
@@ -50,6 +260,33 @@ export function VisaAppointmentDesk({
   const [formNotes, setFormNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedbackNotice, setFeedbackNotice] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const activeCaseForView = useMemo(() => {
+    if (selectedCaseFilter !== "all") {
+      return cases.find((c) => c.id === selectedCaseFilter) || cases[0];
+    }
+    return cases[0];
+  }, [cases, selectedCaseFilter]);
+
+  const activeViewConfig = useMemo(
+    () => getJurisdictionAppointmentConfig(activeCaseForView?.jurisdiction),
+    [activeCaseForView?.jurisdiction]
+  );
+
+  const formSelectedCase = useMemo(
+    () => cases.find((c) => c.id === formCaseId) || activeCaseForView,
+    [cases, formCaseId, activeCaseForView]
+  );
+
+  const formJurisdictionConfig = useMemo(
+    () => getJurisdictionAppointmentConfig(formSelectedCase?.jurisdiction),
+    [formSelectedCase?.jurisdiction]
+  );
+
+  const modal221gConfig = useMemo(() => {
+    const c = cases.find((item) => item.id === selectedApptFor221g?.case_id) || activeCaseForView;
+    return getJurisdictionAppointmentConfig(c?.jurisdiction);
+  }, [cases, selectedApptFor221g?.case_id, activeCaseForView]);
 
   // Load Appointments on Mount
   useEffect(() => {
@@ -139,9 +376,12 @@ export function VisaAppointmentDesk({
   // Handlers
   function openCreateModal() {
     setEditingAppointment(null);
-    setFormCaseId(selectedCaseFilter !== "all" ? selectedCaseFilter : cases[0]?.id || "case-01");
-    setFormVacCenter("Mumbai VAC (Bandra Kurla Complex)");
-    setFormConsularPost("U.S. Consulate General Mumbai");
+    const defaultCaseId = selectedCaseFilter !== "all" ? selectedCaseFilter : cases[0]?.id || "case-01";
+    const targetCase = cases.find((c) => c.id === defaultCaseId) || cases[0];
+    const cfg = getJurisdictionAppointmentConfig(targetCase?.jurisdiction);
+    setFormCaseId(defaultCaseId);
+    setFormVacCenter(cfg.defaultVacCenter);
+    setFormConsularPost(cfg.defaultConsularPost);
     setFormOfcSlot("");
     setFormConsularSlot("");
     setFormDropboxEligible(false);
@@ -244,6 +484,7 @@ export function VisaAppointmentDesk({
     e.preventDefault();
     if (!selectedApptFor221g) return;
     setIsSubmitting(true);
+    setFeedbackNotice(null);
     try {
       const res = await api.updateVisaAppointment(selectedApptFor221g.id, {
         status_221g: formStatus221g,
@@ -254,24 +495,29 @@ export function VisaAppointmentDesk({
       setAppointments((prev) => prev.map((a) => (a.id === selectedApptFor221g.id ? res.data : a)));
       onAppointmentUpdated?.(res.data);
       setIs221gModalOpen(false);
-      setFeedbackNotice({ text: "221(g) Administrative Processing status updated.", type: "success" });
+      setFeedbackNotice({ text: `${modal221gConfig.refusalTermShort} Administrative Processing status updated.`, type: "success" });
     } catch (err: any) {
-      alert(`Error updating 221(g) status: ${err.message}`);
+      setFeedbackNotice({
+        text: `Error updating ${modal221gConfig.refusalTermShort} status: ${err?.message || "Unknown error"}`,
+        type: "error",
+      });
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function handleDeleteAppointment(appt: VisaAppointment) {
-    const confirmMsg = `Cancel and remove appointment at "${appt.vac_center}" for Case #${appt.case_number || appt.case_id}?`;
-    if (!window.confirm(confirmMsg)) return;
-
     try {
       await api.deleteVisaAppointment(appt.id, appt.case_id);
       setAppointments((prev) => prev.filter((a) => a.id !== appt.id));
+      setConfirmingCancelApptId(null);
       setFeedbackNotice({ text: "Appointment cancelled and removed.", type: "success" });
     } catch (err: any) {
-      alert(`Failed to cancel appointment: ${err.message}`);
+      setConfirmingCancelApptId(null);
+      setFeedbackNotice({
+        text: `Failed to cancel appointment: ${err?.message || "Unknown error"}`,
+        type: "error",
+      });
     }
   }
 
@@ -391,13 +637,13 @@ export function VisaAppointmentDesk({
           }}
         >
           <div style={{ fontSize: "11px", fontWeight: 700, color: stats.hold221g > 0 ? "#991B1B" : "#6E7F7C", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            221(g) Administrative Processing
+            {activeViewConfig.refusalKpiHeader}
           </div>
           <div style={{ fontSize: "24px", fontWeight: 750, color: stats.hold221g > 0 ? "#DC2626" : "#172322", marginTop: "6px" }}>
             {stats.hold221g}
           </div>
           <div style={{ fontSize: "11px", color: stats.hold221g > 0 ? "#991B1B" : "#6E7F7C", marginTop: "4px" }}>
-            Active consular slips under evidence response
+            Active administrative slips under evidence response
           </div>
         </div>
 
@@ -411,13 +657,13 @@ export function VisaAppointmentDesk({
           }}
         >
           <div style={{ fontSize: "11px", fontWeight: 700, color: "#6E7F7C", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Passports in Transit (Blue Dart)
+            {activeViewConfig.courierKpiHeader}
           </div>
           <div style={{ fontSize: "24px", fontWeight: 750, color: "#0369A1", marginTop: "6px" }}>
             {stats.inTransit}
           </div>
           <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "4px" }}>
-            Active AWB tracking with courier
+            Active AWB tracking with {activeViewConfig.courierServiceName}
           </div>
         </div>
       </div>
@@ -604,10 +850,10 @@ export function VisaAppointmentDesk({
                 <tr style={{ background: "#F8F7F2", borderBottom: "1px solid #DCE5E1", textAlign: "left" }}>
                   <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>Case & Applicant</th>
                   <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>VAC Center & Post</th>
-                  <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>OFC Biometrics Slot</th>
-                  <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>Consular Interview Slot</th>
-                  <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>Status & 221(g)</th>
-                  <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>Courier Tracking (Blue Dart)</th>
+                  <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>{activeViewConfig.biometricsSlotLabel}</th>
+                  <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>{activeViewConfig.interviewSlotLabel}</th>
+                  <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>Status & {activeViewConfig.refusalTermShort}</th>
+                  <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451" }}>{activeViewConfig.courierColumnHeader}</th>
                   <th style={{ padding: "12px 18px", fontWeight: 700, color: "#445451", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
@@ -615,6 +861,8 @@ export function VisaAppointmentDesk({
                 {filteredAppointments.map((appt) => {
                   const isScheduled = appt.appointment_status === "scheduled";
                   const is221g = appt.status_221g;
+                  const rowCase = cases.find((c) => c.id === appt.case_id);
+                  const rowConfig = getJurisdictionAppointmentConfig(rowCase?.jurisdiction);
                   return (
                     <tr
                       key={appt.id}
@@ -717,7 +965,7 @@ export function VisaAppointmentDesk({
                                 border: "1px solid #FCA5A5",
                               }}
                             >
-                              <span>⚠️ 221(g) Slip</span>
+                              <span>{rowConfig.refusalSlipBadge}</span>
                               {appt.status_221g_color && (
                                 <span
                                   style={{
@@ -826,7 +1074,7 @@ export function VisaAppointmentDesk({
                               fontWeight: 600,
                             }}
                           >
-                            {is221g ? "Update 221(g)" : "+ Flag 221(g)"}
+                            {is221g ? rowConfig.refusalUpdateLabel : rowConfig.refusalFlagLabel}
                           </button>
 
                           {isScheduled && (
@@ -848,21 +1096,57 @@ export function VisaAppointmentDesk({
                             </button>
                           )}
 
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteAppointment(appt)}
-                            style={{
-                              padding: "2px 6px",
-                              fontSize: "10px",
-                              background: "none",
-                              border: "none",
-                              color: "#DC2626",
-                              cursor: "pointer",
-                              textDecoration: "underline",
-                            }}
-                          >
-                            Cancel
-                          </button>
+                          {confirmingCancelApptId === appt.id ? (
+                            <div style={{ display: "inline-flex", gap: "4px", alignItems: "center" }}>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAppointment(appt)}
+                                style={{
+                                  padding: "2px 6px",
+                                  fontSize: "10px",
+                                  background: "#DC2626",
+                                  color: "#FFFFFF",
+                                  border: "none",
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Confirm Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmingCancelApptId(null)}
+                                style={{
+                                  padding: "2px 6px",
+                                  fontSize: "10px",
+                                  background: "#F3F4F6",
+                                  color: "#374151",
+                                  border: "none",
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Keep
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingCancelApptId(appt.id)}
+                              style={{
+                                padding: "2px 6px",
+                                fontSize: "10px",
+                                background: "none",
+                                border: "none",
+                                color: "#DC2626",
+                                cursor: "pointer",
+                                textDecoration: "underline",
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -950,7 +1234,16 @@ export function VisaAppointmentDesk({
                   </label>
                   <select
                     value={formCaseId}
-                    onChange={(e) => setFormCaseId(e.target.value)}
+                    onChange={(e) => {
+                      const nextCaseId = e.target.value;
+                      setFormCaseId(nextCaseId);
+                      if (!editingAppointment) {
+                        const nextCase = cases.find((c) => c.id === nextCaseId);
+                        const nextCfg = getJurisdictionAppointmentConfig(nextCase?.jurisdiction);
+                        setFormVacCenter(nextCfg.defaultVacCenter);
+                        setFormConsularPost(nextCfg.defaultConsularPost);
+                      }
+                    }}
                     required
                     style={{
                       width: "100%",
@@ -980,7 +1273,7 @@ export function VisaAppointmentDesk({
                     value={formVacCenter}
                     onChange={(e) => setFormVacCenter(e.target.value)}
                     required
-                    placeholder="e.g. Mumbai VAC (BKC)"
+                    placeholder={`e.g. ${formJurisdictionConfig.defaultVacCenter}`}
                     style={{
                       width: "100%",
                       padding: "8px 12px",
@@ -993,15 +1286,7 @@ export function VisaAppointmentDesk({
                     }}
                   />
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    {[
-                      "Mumbai VAC (BKC)",
-                      "New Delhi VAC (Shivaji Stadium)",
-                      "Chennai VAC",
-                      "Hyderabad VAC",
-                      "Kolkata VAC",
-                      "VFS Global Bangalore",
-                      "VFS Ahmedabad VAC",
-                    ].map((center) => (
+                    {formJurisdictionConfig.quickVacCenters.map((center) => (
                       <button
                         key={center}
                         type="button"
@@ -1032,7 +1317,7 @@ export function VisaAppointmentDesk({
                     value={formConsularPost}
                     onChange={(e) => setFormConsularPost(e.target.value)}
                     required
-                    placeholder="e.g. U.S. Consulate General Mumbai"
+                    placeholder={`e.g. ${formJurisdictionConfig.defaultConsularPost}`}
                     style={{
                       width: "100%",
                       padding: "8px 12px",
@@ -1105,17 +1390,17 @@ export function VisaAppointmentDesk({
                   </label>
                 </div>
 
-                {/* Courier / Blue Dart Tracking */}
+                {/* Courier / Tracking */}
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "12px" }}>
                   <div>
                     <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#172322", marginBottom: "4px" }}>
-                      Blue Dart / Courier AWB Tracking #
+                      {formJurisdictionConfig.awbLabel}
                     </label>
                     <input
                       type="text"
                       value={formBlueDartAwb}
                       onChange={(e) => setFormBlueDartAwb(e.target.value)}
-                      placeholder="e.g. BD-8899112233IN"
+                      placeholder={formJurisdictionConfig.awbPlaceholder}
                       style={{
                         width: "100%",
                         padding: "8px 12px",
@@ -1322,7 +1607,7 @@ export function VisaAppointmentDesk({
             >
               <div>
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 700 }}>
-                  ⚠️ 221(g) Administrative Processing Desk
+                  {modal221gConfig.refusalModalTitle}
                 </h3>
                 <span style={{ fontSize: "11px", color: "#7F1D1D" }}>
                   Case #{selectedApptFor221g.case_number} — {selectedApptFor221g.client_name}
@@ -1341,7 +1626,7 @@ export function VisaAppointmentDesk({
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#172322", marginBottom: "6px" }}>
-                    221(g) Slip Color Issued by Consular Officer *
+                    {modal221gConfig.refusalTermShort} Slip / Notice Category Issued by Officer *
                   </label>
                   <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                     {[
@@ -1401,7 +1686,7 @@ export function VisaAppointmentDesk({
                 </div>
 
                 <div style={{ padding: "10px 12px", background: "#FEF2F2", borderRadius: "8px", fontSize: "11px", color: "#991B1B", lineHeight: 1.35 }}>
-                  <strong>INA § 221(g) Statutory Note:</strong> The applicant has 12 months from the date of refusal to submit the required evidentiary documents without having to pay a new MRV fee.
+                  {modal221gConfig.refusalStatutoryNote}
                 </div>
               </div>
 
@@ -1436,7 +1721,7 @@ export function VisaAppointmentDesk({
                     cursor: "pointer",
                   }}
                 >
-                  {isSubmitting ? "Updating..." : "Save 221(g) Hold"}
+                  {isSubmitting ? "Updating..." : modal221gConfig.refusalSaveLabel}
                 </button>
               </div>
             </form>

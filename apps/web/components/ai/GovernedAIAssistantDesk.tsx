@@ -223,6 +223,7 @@ export const GovernedAIAssistantDesk: React.FC<GovernedAIAssistantDeskProps> = (
   // Quality Evaluation Report State
   const [evalReport, setEvalReport] = useState<AIEvaluationReport | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
+  const [isReportOffline, setIsReportOffline] = useState(false);
 
   // Token Budget State
   const [tokenMetrics, setTokenMetrics] = useState<TokenUsageMetrics | null>(null);
@@ -320,97 +321,72 @@ export const GovernedAIAssistantDesk: React.FC<GovernedAIAssistantDeskProps> = (
   // Fetch Evaluation Report
   const loadEvaluationReport = async () => {
     setIsLoadingReport(true);
+    setIsReportOffline(false);
     try {
       const res = await getAIEvaluationReport(userRole);
       setEvalReport(res);
     } catch (err) {
-      // Fallback deterministic report if network offline
+      // Do not fabricate a fake 10/10 PASSED report when the evaluation endpoint is unreachable.
+      // Instead, mark the suite as offline and compute diagnostic metrics from actual loaded case documents/findings.
+      setIsReportOffline(true);
+      let docsCount = 0;
+      let verifiedDocsCount = 0;
+      let findingsCount = 0;
+      let reviewedFindingsCount = 0;
+
+      try {
+        const [docsRes, findingsRes] = await Promise.all([
+          api.getDocuments({ caseId }, userRole).catch(() => ({ data: [] as any[] })),
+          api.getAIFindings(caseId).catch(() => ({ data: [] as any[] })),
+        ]);
+        const caseDocs = docsRes?.data || [];
+        const caseFindings = findingsRes?.data || [];
+        docsCount = caseDocs.length;
+        verifiedDocsCount = caseDocs.filter(
+          (d: any) => d.verification_status === 'verified' || d.review_status === 'HUMAN_VERIFIED'
+        ).length;
+        findingsCount = caseFindings.length;
+        reviewedFindingsCount = caseFindings.filter(
+          (f: any) => f.status && f.status !== 'needs_review'
+        ).length;
+      } catch {
+        // Ignore secondary fetch errors while offline
+      }
+
+      const docVerifyPct = docsCount > 0 ? Math.round((verifiedDocsCount / docsCount) * 1000) / 10 : 0;
+      const findingReviewPct =
+        findingsCount > 0 ? Math.round((reviewedFindingsCount / findingsCount) * 1000) / 10 : 0;
+
       setEvalReport({
         evaluated_at: new Date().toISOString(),
-        overall_status: 'PASSED',
-        gates_passed_count: 10,
+        overall_status: 'BLOCKED',
+        gates_passed_count: docsCount > 0 && verifiedDocsCount === docsCount ? 1 : 0,
         total_gates: 10,
-        readiness_percentage: 100.0,
+        readiness_percentage: docsCount > 0 ? Math.min(docVerifyPct, 100) : 0,
         gates: [
           {
-            gate_id: 'gate_1',
-            gate_name: 'Zero-Privilege LLM Boundary',
-            benchmark_target: '0 state mutations permitted',
-            achieved_metric: '0 DB mutations (100% blocked)',
-            status: 'PASSED',
-            description: 'AI cannot execute database state changes, approval overrides, or document purges.',
+            gate_id: 'gate_offline_docs',
+            gate_name: 'Case Document Verification Coverage (Local Case Telemetry)',
+            benchmark_target: '100.0% human-verified case documents',
+            achieved_metric:
+              docsCount > 0
+                ? `${verifiedDocsCount} / ${docsCount} verified (${docVerifyPct}%)`
+                : 'No case documents loaded (Backend evaluation suite offline)',
+            status: docsCount > 0 && verifiedDocsCount === docsCount ? 'PASSED' : 'FAILED',
+            description:
+              'Computed from loaded case documents while the backend AI evaluation endpoint (/api/v1/ai/evaluation/report) is unreachable.',
           },
           {
-            gate_id: 'gate_2',
-            gate_name: 'Cross-Tenant Retrieval Isolation',
-            benchmark_target: '0.0% leakage rate',
-            achieved_metric: '0.00% leakage across 1,000 synthetic cross-org queries',
-            status: 'PASSED',
-            description: 'Zero cross-tenant vector or relational leakage across multi-tenant boundaries.',
-          },
-          {
-            gate_id: 'gate_3',
-            gate_name: 'Grounded Citation Accuracy',
-            benchmark_target: '≥95.0% verified source citations',
-            achieved_metric: '97.4% citation precision',
-            status: 'PASSED',
-            description: 'Every statement links to verified statutes or uploaded case evidence with exact pages.',
-          },
-          {
-            gate_id: 'gate_4',
-            gate_name: 'Truthful Abstention Rate',
-            benchmark_target: '100.0% refusal on uncorroborated claims',
-            achieved_metric: '100.0% abstention rate',
-            status: 'PASSED',
-            description: 'Explicitly refuses to fabricate missing facts or infer legal eligibility without proof.',
-          },
-          {
-            gate_id: 'gate_5',
-            gate_name: 'Prompt Injection Defense Rate',
-            benchmark_target: '≥99.0% malicious directive defanging',
-            achieved_metric: '99.8% neutralisation rate',
-            status: 'PASSED',
-            description: 'PromptGuard actively blocks system overrides, jailbreaks, and instructions in uploaded PDFs.',
-          },
-          {
-            gate_id: 'gate_6',
-            gate_name: 'Pre-Flight PII Masking Rate',
-            benchmark_target: '100.0% redaction of Aadhaar/SSN/PAN/Credit Cards',
-            achieved_metric: '100.0% pre-flight masking',
-            status: 'PASSED',
-            description: 'All high-risk PII identifiers redacted before dispatching to external model inference.',
-          },
-          {
-            gate_id: 'gate_7',
-            gate_name: 'Multilingual MRZ/OCR Extraction F1',
-            benchmark_target: 'F1 ≥ 0.92 on identity & academic docs',
-            achieved_metric: 'F1 = 0.948 across 8 supported languages',
-            status: 'PASSED',
-            description: 'High-accuracy extraction from passports, diplomas, and official civil documents.',
-          },
-          {
-            gate_id: 'gate_8',
-            gate_name: 'Clarification Question Relevance',
-            benchmark_target: '≥90.0% caseworker approval',
-            achieved_metric: '95.2% casework acceptance rate',
-            status: 'PASSED',
-            description: 'Client questions formulated respectfully without legal conclusions or accusatory tones.',
-          },
-          {
-            gate_id: 'gate_9',
-            gate_name: 'Monthly Token Quota Enforcement',
-            benchmark_target: '100.0% enforcement of quota caps',
-            achieved_metric: '100.0% cap adherence with zero over-budget leak',
-            status: 'PASSED',
-            description: 'Halts cloud LLM calls when monthly token or USD budget is reached; fails safe to local simulation.',
-          },
-          {
-            gate_id: 'gate_10',
-            gate_name: 'Human Caseworker Verification Gate',
-            benchmark_target: '100.0% human sign-off on extracted facts',
-            achieved_metric: '100.0% decoupled human gate enforcement',
-            status: 'PASSED',
-            description: 'Automated OCR extraction remains unverified until certified by a credentialed caseworker.',
+            gate_id: 'gate_offline_findings',
+            gate_name: 'Case AI Findings Adjudication Coverage (Local Case Telemetry)',
+            benchmark_target: '100.0% AI findings reviewed by staff',
+            achieved_metric:
+              findingsCount > 0
+                ? `${reviewedFindingsCount} / ${findingsCount} reviewed (${findingReviewPct}%)`
+                : 'No AI findings loaded (Backend evaluation suite offline)',
+            status: findingsCount > 0 && reviewedFindingsCount === findingsCount ? 'PASSED' : 'FAILED',
+            description:
+              'Computed from loaded case AI findings. Connect to the live backend to run the 10-gate synthetic evaluation benchmark.',
           },
         ],
       });
@@ -945,6 +921,23 @@ export const GovernedAIAssistantDesk: React.FC<GovernedAIAssistantDeskProps> = (
               </div>
             )}
           </div>
+
+          {isReportOffline && (
+            <div
+              data-testid="eval-offline-notice"
+              className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-start gap-2.5"
+            >
+              <AlertTriangleIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold">AI Evaluation Benchmark Endpoint Offline</div>
+                <div className="mt-0.5 text-amber-800">
+                  Unable to reach <code className="font-mono">/api/v1/ai/evaluation/report</code>. Synthetic 10-gate
+                  pass metrics are never fabricated offline; showing only live telemetry derived from currently loaded
+                  case documents and AI findings.
+                </div>
+              </div>
+            </div>
+          )}
 
           {isLoadingReport ? (
             <div className="p-12 text-center text-sm text-slate-500 bg-white rounded-xl border border-slate-200">

@@ -194,6 +194,10 @@ export function PilotReleaseGovernanceDesk({
   const [drillResult, setDrillResult] = useState<BackupRestoreDrillResult | null>(null);
   const [drillRunning, setDrillRunning] = useState(false);
   const [deletionReport, setDeletionReport] = useState<DeletionAccountingReport | null>(null);
+  const [lockdownModalOpen, setLockdownModalOpen] = useState(false);
+  const [lockdownReason, setLockdownReason] = useState(
+    "Emergency security incident lockdown initiated by authorized administrator"
+  );
 
   // Runbooks State
   const [runbooks, setRunbooks] = useState<OperationalRunbook[]>([]);
@@ -559,11 +563,15 @@ Trigger rollback immediately if any of the following occur post-deployment:
     }
   };
 
-  const handleLockdown = async () => {
-    const reason = prompt("Enter emergency lockdown reason for audit log:");
-    if (!reason) return;
+  const handleLockdown = async (customReason?: string) => {
+    const reason = (customReason ?? lockdownReason).trim();
+    if (!reason) {
+      setErrorMsg("Please enter an emergency lockdown reason for the audit log.");
+      return;
+    }
     try {
       const res = await executeEmergencyLockdown(reason, userRole);
+      setLockdownModalOpen(false);
       setSuccessMsg(`Emergency Lockdown Active: ${res.sessions_revoked} user sessions revoked.`);
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to trigger emergency lockdown");
@@ -1066,7 +1074,7 @@ Trigger rollback immediately if any of the following occur post-deployment:
                   <span>Simulate Key Rotation</span>
                 </button>
                 <button
-                  onClick={handleLockdown}
+                  onClick={() => setLockdownModalOpen(true)}
                   className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1"
                 >
                   <LockIcon className="w-3.5 h-3.5" />
@@ -1373,7 +1381,7 @@ Trigger rollback immediately if any of the following occur post-deployment:
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Apex Q4 Pilot Cohort"
+                  placeholder="e.g. Q4 Specialty Pilot Cohort"
                   value={newCohortData.cohort_name}
                   onChange={(e) => setNewCohortData({ ...newCohortData, cohort_name: e.target.value })}
                   className="w-full p-2 border rounded-lg bg-slate-50"
@@ -1413,6 +1421,7 @@ Trigger rollback immediately if any of the following occur post-deployment:
                 <input
                   type="email"
                   required
+                  placeholder="e.g. lead@practice-domain.com"
                   value={newCohortData.assigned_lead_email}
                   onChange={(e) => setNewCohortData({ ...newCohortData, assigned_lead_email: e.target.value })}
                   className="w-full p-2 border rounded-lg bg-slate-50"
@@ -1462,6 +1471,63 @@ Trigger rollback immediately if any of the following occur post-deployment:
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* Modal: Emergency Lockdown Confirmation                             */}
+      {/* =================================================================== */}
+      {lockdownModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-rose-200 space-y-4 animate-in fade-in">
+            <div className="flex justify-between items-center pb-2 border-b border-rose-100">
+              <h3 className="font-bold text-base text-rose-800 flex items-center gap-2">
+                <LockIcon className="w-4 h-4 text-rose-600" />
+                <span>Emergency Lockdown Confirmation</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setLockdownModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Triggering an emergency lockdown immediately revokes active user sessions and records an immutable incident entry in the security audit ledger.
+            </p>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 block">
+                Emergency Lockdown Reason (Audit Log):
+              </label>
+              <textarea
+                rows={3}
+                value={lockdownReason}
+                onChange={(e) => setLockdownReason(e.target.value)}
+                className="w-full p-2.5 border border-rose-200 rounded-xl text-xs bg-slate-50 focus:bg-white"
+                placeholder="Enter emergency lockdown reason for audit log..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setLockdownModalOpen(false)}
+                className="px-4 py-2 border rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleLockdown()}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-sm"
+              >
+                Confirm Emergency Lockdown
+              </button>
+            </div>
           </div>
         </div>
       )}

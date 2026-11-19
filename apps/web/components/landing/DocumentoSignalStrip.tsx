@@ -17,23 +17,23 @@ const signals: ArchitectureSignal[] = [
     code: "SEC-256",
     tag: "SHA-256 Provenance",
     title: "Evidence stays traceable",
-    detail: "Source-linked exhibits anchored by cryptographic hashing and exact page coordinates.",
+    detail: "Source-linked IRCC exhibits anchored by cryptographic hashing and exact page coordinates.",
     stat: "100% Merkle Root Hashing",
-    standard: "Federal Evidentiary Rule 902",
+    standard: "IRPA / IRPR Evidentiary Standard",
   },
   {
     code: "RBAC-W1",
     tag: "Ethical Wall RBAC",
     title: "Every role has a boundary",
-    detail: "Isolated workspaces separating client portals from internal firm strategy.",
+    detail: "Isolated workspaces separating applicant & Canadian sponsor portals from internal firm strategy.",
     stat: "Quarantined Strategy Records",
-    standard: "ABA Model Rules 1.6 & 5.3",
+    standard: "CICC Code of Conduct",
   },
   {
     code: "HIL-REV",
-    tag: "Attorney-Led",
+    tag: "RCIC & Counsel-Led",
     title: "People stay accountable",
-    detail: "Licensed counsel retain non-delegable review over every finding and filing.",
+    detail: "Licensed RCICs and immigration counsel retain non-delegable review over every finding and IRCC filing.",
     stat: "Mandatory Adjudication Gate",
     standard: "Non-Delegable Legal Review",
   },
@@ -108,7 +108,7 @@ export function DocumentoSignalStrip() {
               maxWidth: "360px",
             }}
           >
-            Three non-negotiable architectural guarantees governing every evidentiary ingestion, role boundary, and legal authorization.
+            Three non-negotiable architectural guarantees governing every Canadian IRCC document upload, client-sponsor boundary, and representative authorization.
           </p>
         </div>
 

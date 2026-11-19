@@ -1,4 +1,9 @@
-import React from "react";
+import React, { useMemo } from "react";
+import { MessageThreadItem, ThreadMessageItem } from "../../lib/types";
+import { ClientLanguage } from "../../lib/clientLocalization";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
+
+export const CANONICAL_MESSAGING_SYNC_EVENT = "documento-canonical-messaging-updated";
 
 export interface ClientDirectChatWidgetProps {
   hasAssignedOfficer: boolean;
@@ -10,6 +15,181 @@ export interface ClientDirectChatWidgetProps {
   onOpenMessagesTab?: () => void;
   quickChatSentFeedback: boolean;
   setQuickChatSentFeedback: (val: boolean) => void;
+  caseId?: string;
+  caseNumber?: string;
+  jurisdiction?: string;
+  language?: ClientLanguage;
+  clientName?: string;
+}
+
+export function resolveQuickChatPrompts(
+  jurisdiction?: string | null,
+  language: ClientLanguage = "en"
+): string[] {
+  const jur = (jurisdiction || "").trim().toLowerCase();
+  const isCanada = !jur || jur.includes("canada") || jur.includes("ircc") || jur === "ca";
+  const isUS = jur.includes("united states") || jur.includes("uscis") || jur.includes("usa") || jur === "us";
+  const isUK = jur.includes("united kingdom") || jur.includes("ukvi") || jur.includes("home office") || jur === "uk";
+  const isAU = jur.includes("australia") || jur.includes("home affairs") || jur === "au";
+  const isDE = jur.includes("germany") || jur === "de";
+  const isNZ = jur.includes("new zealand") || jur.includes("inz") || jur === "nz";
+
+  const translationPrompt =
+    language === "gu"
+      ? "Do we need certified translations for Gujarati marriage card?"
+      : language === "hi"
+        ? "Do we need certified translations for Hindi civil documents?"
+        : "Do we need certified translations for non-English civil documents?";
+
+  if (isUS) {
+    return [
+      "How long will the USCIS Form I-797C Receipt Notice take after filing?",
+      "Should we request USCIS Premium Processing (Form I-907)?",
+      "When should I schedule the Form I-693 civil surgeon medical exam?",
+      translationPrompt,
+    ];
+  }
+
+  if (isUK) {
+    return [
+      "How long will UKVI biometric enrolment and decision take after submission?",
+      "Do my bank statements meet the 28-day UKVI financial evidence rule?",
+      "When should we generate the sponsor's UKVI right-to-reside share code?",
+      translationPrompt,
+    ];
+  }
+
+  if (isAU) {
+    return [
+      "How long will the ImmiAccount acknowledgement take after lodgement?",
+      "When will the HAP ID be generated for my Bupa medical examination?",
+      "Do we need Form 80 and AFP / overseas police clearances ready now?",
+      language === "en"
+        ? "Do we need NAATI-certified translations for non-English documents?"
+        : translationPrompt,
+    ];
+  }
+
+  if (isDE) {
+    return [
+      "How long will the German Embassy / Ausländerbehörde visa processing take?",
+      "Has my university degree been verified in the Anabin / ZAB database?",
+      "What is the required Sperrkonto (blocked account) or salary threshold?",
+      language === "en"
+        ? "Do we need sworn German translations for civil and academic records?"
+        : translationPrompt,
+    ];
+  }
+
+  if (isNZ) {
+    return [
+      "How long will Immigration New Zealand (INZ) take to allocate a case officer?",
+      "When should I complete my eMedical chest X-ray and general medical exam?",
+      "Do my employment reference letters meet INZ Skilled Migrant criteria?",
+      translationPrompt,
+    ];
+  }
+
+  // Default / Canada (IRCC)
+  return [
+    "How long will the IRCC AOR take after filing?",
+    "Does the spousal residential lease need both our signatures?",
+    "When should I complete the upfront medical examination?",
+    isCanada && language === "gu"
+      ? "Do we need certified translations for Gujarati marriage card?"
+      : translationPrompt,
+  ];
+}
+
+export function syncClientMessageToCanonicalThreadStore(params: {
+  content: string;
+  caseId?: string;
+  caseNumber?: string;
+  senderName?: string;
+  senderId?: string;
+  senderRole?: "client" | "lawyer";
+}): ThreadMessageItem | null {
+  if (typeof window === "undefined" || !params.content.trim()) return null;
+  const trimmed = params.content.trim();
+  const nowIso = new Date().toISOString();
+  const resolvedCaseId = params.caseId || "";
+  const resolvedCaseNumber = params.caseNumber || (resolvedCaseId ? resolvedCaseId.toUpperCase() : "ACTIVE-CASE");
+
+  try {
+    const rawThreads = window.localStorage.getItem("documento_msg_threads_v3_clean");
+    const parsedThreads: MessageThreadItem[] = rawThreads ? JSON.parse(rawThreads) : [];
+    const threadsList = Array.isArray(parsedThreads) ? parsedThreads : [];
+
+    const rawMsgs = window.localStorage.getItem("documento_thread_msgs_v3_clean");
+    const parsedMsgs: ThreadMessageItem[] = rawMsgs ? JSON.parse(rawMsgs) : [];
+    const msgsList = Array.isArray(parsedMsgs) ? parsedMsgs : [];
+
+    let targetThread = threadsList.find(
+      (t) =>
+        (resolvedCaseId && t.case_id === resolvedCaseId) ||
+        (params.caseNumber && t.case_number === params.caseNumber)
+    );
+
+    if (!targetThread) {
+      targetThread = {
+        id: `thread-${resolvedCaseId || "active-case"}`,
+        case_id: resolvedCaseId,
+        case_number: resolvedCaseNumber,
+        subject: `Case Correspondence — ${resolvedCaseNumber}`,
+        thread_type: "client_inquiry",
+        status: "open",
+        created_at: nowIso,
+        updated_at: nowIso,
+        messages_count: 1,
+        unread_count: 0,
+        last_message_preview: trimmed,
+      };
+      threadsList.unshift(targetThread);
+    } else {
+      targetThread.messages_count = (targetThread.messages_count || 0) + 1;
+      targetThread.last_message_preview = trimmed;
+      targetThread.updated_at = nowIso;
+    }
+
+    const duplicateExists = msgsList.some(
+      (m) =>
+        m.thread_id === targetThread!.id &&
+        m.content === trimmed &&
+        Math.abs(new Date(m.created_at).getTime() - Date.now()) < 2000
+    );
+
+    const newMsg: ThreadMessageItem = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      thread_id: targetThread.id,
+      sender_id: params.senderId || "client-applicant",
+      sender_name: params.senderName || "Primary Applicant",
+      sender_role: params.senderRole || "client",
+      content: trimmed,
+      is_internal: false,
+      attachment_document_ids: [],
+      delivery_status: "delivered",
+      created_at: nowIso,
+    };
+
+    if (!duplicateExists) {
+      msgsList.push(newMsg);
+      window.localStorage.setItem("documento_msg_threads_v3_clean", JSON.stringify(threadsList));
+      window.localStorage.setItem("documento_thread_msgs_v3_clean", JSON.stringify(msgsList));
+    }
+
+    window.dispatchEvent(
+      new CustomEvent(CANONICAL_MESSAGING_SYNC_EVENT, {
+        detail: {
+          caseId: resolvedCaseId,
+          threadId: targetThread.id,
+          message: newMsg,
+        },
+      })
+    );
+    return newMsg;
+  } catch {
+    return null;
+  }
 }
 
 export function ClientDirectChatWidget({
@@ -22,7 +202,27 @@ export function ClientDirectChatWidget({
   onOpenMessagesTab,
   quickChatSentFeedback,
   setQuickChatSentFeedback,
+  caseId,
+  caseNumber,
+  jurisdiction,
+  language = "en",
+  clientName = "Primary Applicant",
 }: ClientDirectChatWidgetProps) {
+  const ws = useWorkspaceSafe();
+  const activeCase = useMemo(
+    () =>
+      ws?.cases?.find((c) => (caseId ? c.id === caseId : true)) || null,
+    [ws?.cases, caseId]
+  );
+  const effectiveCaseId = caseId || activeCase?.id;
+  const effectiveCaseNumber = caseNumber || activeCase?.case_number;
+  const effectiveJurisdiction = jurisdiction || activeCase?.jurisdiction;
+
+  const quickPrompts = useMemo(
+    () => resolveQuickChatPrompts(effectiveJurisdiction, language),
+    [effectiveJurisdiction, language]
+  );
+
   const officerInitials = hasAssignedOfficer
     ? displayOfficerTitle
         .replace(/^(Officer|Counsel|Attorney)\s+/i, "")
@@ -35,8 +235,20 @@ export function ClientDirectChatWidget({
     : null;
 
   const handleSend = () => {
-    if (!quickChatMessage.trim()) return;
-    onSendMessage?.(quickChatMessage);
+    const sentText = quickChatMessage.trim();
+    if (!sentText) return;
+    onSendMessage?.(sentText);
+    if (ws?.handleSendMessage && onSendMessage !== ws.handleSendMessage) {
+      void ws.handleSendMessage(sentText);
+    }
+    syncClientMessageToCanonicalThreadStore({
+      content: sentText,
+      caseId: effectiveCaseId,
+      caseNumber: effectiveCaseNumber,
+      senderName: ws?.currentUser?.full_name || clientName,
+      senderId: ws?.currentUser?.id || "client-applicant",
+      senderRole: "client",
+    });
     setQuickChatSentFeedback(true);
     onQuickChatChange("");
     setTimeout(() => {
@@ -218,12 +430,7 @@ export function ClientDirectChatWidget({
             : "Quick Question Prompts (Click to ask the legal intake desk):"}
         </span>
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-          {[
-            "How long will the IRCC AOR take after filing?",
-            "Does the spousal residential lease need both our signatures?",
-            "When should I complete the upfront medical examination?",
-            "Do we need certified translations for Gujarati marriage card?",
-          ].map((prompt) => (
+          {quickPrompts.map((prompt) => (
             <button
               key={prompt}
               type="button"

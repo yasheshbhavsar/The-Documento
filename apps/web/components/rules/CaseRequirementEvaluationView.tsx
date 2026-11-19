@@ -8,7 +8,7 @@ import {
   RequirementEvaluationStatus,
   ImmigrationCase,
 } from "../../lib/types";
-import { api } from "../../lib/api";
+import { api, verifyRuleRequirement } from "../../lib/api";
 
 interface CaseRequirementEvaluationViewProps {
   caseId?: string;
@@ -78,6 +78,27 @@ export function CaseRequirementEvaluationView({
 
   useEffect(() => {
     if (selectedCaseId) {
+      if (typeof window !== "undefined") {
+        try {
+          const rawStored = window.localStorage.getItem(`documento_verified_reqs_${selectedCaseId}`);
+          if (rawStored) {
+            const parsed = JSON.parse(rawStored);
+            if (Array.isArray(parsed)) {
+              const map: Record<string, boolean> = {};
+              parsed.forEach((idOrCode: string) => {
+                if (idOrCode) map[idOrCode] = true;
+              });
+              setLocalSignoffs(map);
+            } else if (parsed && typeof parsed === "object") {
+              setLocalSignoffs(parsed);
+            }
+          } else {
+            setLocalSignoffs({});
+          }
+        } catch {
+          // Ignore storage read errors
+        }
+      }
       loadEvaluations(selectedCaseId);
     }
   }, [selectedCaseId]);
@@ -126,7 +147,32 @@ export function CaseRequirementEvaluationView({
   };
 
   const handleSignoffItem = (itemCode: string) => {
-    setLocalSignoffs((prev) => ({ ...prev, [itemCode]: true }));
+    const targetReq = evaluation?.results?.requirements?.find((r) => r.code === itemCode);
+    const requirementId = (targetReq as any)?.id || (targetReq as any)?.requirement_id || itemCode;
+
+    setLocalSignoffs((prev) => {
+      const next = { ...prev, [itemCode]: true, [requirementId]: true };
+      if (typeof window !== "undefined" && selectedCaseId) {
+        try {
+          const verifiedIds = Object.keys(next).filter((k) => next[k]);
+          window.localStorage.setItem(
+            `documento_verified_reqs_${selectedCaseId}`,
+            JSON.stringify(verifiedIds)
+          );
+        } catch {
+          // Ignore storage write errors
+        }
+      }
+      return next;
+    });
+
+    // Persist requirement verification through backend endpoint
+    void verifyRuleRequirement(requirementId, {
+      approved_by: "Legal Specialist",
+    }).catch(() => {
+      // Local sign-off remains persisted in localStorage when backend is offline or requirement ID is synthetic
+    });
+
     if (selectedItemForDetails && selectedItemForDetails.code === itemCode) {
       setSelectedItemForDetails({
         ...selectedItemForDetails,
@@ -185,6 +231,17 @@ export function CaseRequirementEvaluationView({
   };
 
   const currentCase = cases?.find((c) => c.id === selectedCaseId);
+  const isEb1aCase = Boolean(
+    (currentCase?.visa_category &&
+      /eb-?1a/i.test(currentCase.visa_category) &&
+      (!currentCase.jurisdiction || /us|united states/i.test(currentCase.jurisdiction))) ||
+      (!currentCase &&
+        (/eb-?1a/i.test(evaluation?.results?.rule_set_id || "") ||
+          (evaluation?.results?.requirements || []).some((r) => /eb1a/i.test(r.code))))
+  );
+  const meritsAssessmentLabel = isEb1aCase
+    ? "Kazarian Step 2"
+    : "Final Merits & Statutory Assessment";
   const summary = evaluation?.results?.summary;
   const rawRequirements = evaluation?.results?.requirements || [];
 
@@ -831,7 +888,7 @@ export function CaseRequirementEvaluationView({
                         <span>{isSignedOff ? "🛡️" : "👤"}</span>
                         <span style={{ color: isSignedOff ? "#065F46" : "#92400E", fontWeight: 600 }}>
                           {isSignedOff
-                            ? "Human Review Complete: Legal specialist verified evidentiary merit under Kazarian Step 2."
+                            ? `Human Review Complete: Legal specialist verified evidentiary merit under ${meritsAssessmentLabel}.`
                             : "Human Review Required: Official rules require specialist sign-off before completion."}
                         </span>
                       </div>
@@ -1038,7 +1095,7 @@ export function CaseRequirementEvaluationView({
                   Adjudication Notes / Rationale:
                 </span>
                 <textarea
-                  placeholder="Enter specialist review findings, Kazarian step 2 assessment, or reason for sign-off..."
+                  placeholder={`Enter specialist review findings, ${meritsAssessmentLabel} assessment, or reason for sign-off...`}
                   value={adjudicationNote}
                   onChange={(e) => setAdjudicationNote(e.target.value)}
                   style={{

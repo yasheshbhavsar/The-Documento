@@ -5,7 +5,7 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import { OwnerMasterDashboard } from "../../apps/web/components/dashboards/OwnerMasterDashboard";
 import { EmployeeWorkspace } from "../../apps/web/components/dashboards/EmployeeWorkspace";
 import { ClientPortal } from "../../apps/web/components/dashboards/ClientPortal";
-import { LoadingState, EmptyState } from "../../apps/web/components/common/StateViews";
+import { LoadingState, EmptyState } from "../../apps/web/components/common/EmptyStates";
 import {
   FIXTURE_CASES,
   FIXTURE_CLIENTS,
@@ -46,11 +46,11 @@ describe("E2E Web Flows — 4-Tier Opaque-Box Dashboard Suite", () => {
       expect(screen.getByText("Operational Health & Tenant Boundary")).toBeDefined();
       expect(screen.getByText("Active Caseload & Retained Clients")).toBeDefined();
 
-      // Navigation sections
-      expect(screen.getByRole("button", { name: /Company Overview/i })).toBeDefined();
-      expect(screen.getByRole("button", { name: /Partner Onboarding & Leads/i })).toBeDefined();
-      expect(screen.getByRole("button", { name: /Firm Governance & Configuration/i })).toBeDefined();
-      expect(screen.getByRole("button", { name: /Reliability, Privacy & Security/i })).toBeDefined();
+      // Navigation sections (7 canonical areas)
+      expect(screen.getByRole("button", { name: /Overview & Analytics/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /Clients & Leads/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /Firm Settings & Audit/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /Team & Operations/i })).toBeDefined();
     });
   });
 
@@ -83,7 +83,7 @@ describe("E2E Web Flows — 4-Tier Opaque-Box Dashboard Suite", () => {
       expect(screen.getByText("AI Evidentiary Alerts")).toBeDefined();
 
       // Switch to Documents tab
-      const docsTabBtn = screen.getByRole("button", { name: /Requirements & Evidence/i });
+      const docsTabBtn = screen.getByRole("button", { name: /Documents & Dossier/i });
       act(() => {
         fireEvent.click(docsTabBtn);
       });
@@ -113,8 +113,8 @@ describe("E2E Web Flows — 4-Tier Opaque-Box Dashboard Suite", () => {
 
       // Clean applicant portal structure
       expect(screen.getByText(/Welcome to Your Immigration Transparency Portal/i)).toBeDefined();
-      expect(screen.getByText("My Petition Details")).toBeDefined();
-      expect(screen.getByText(/Upload Documents/i)).toBeDefined();
+      expect(screen.getAllByText(/Home & Upload/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Upload Evidence/i).length).toBeGreaterThan(0);
     });
   });
 

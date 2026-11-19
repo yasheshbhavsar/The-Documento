@@ -4,19 +4,42 @@ import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
 import { MetricCard } from "../common/MetricCard";
 import { OperationsAnalyticsData, StaffWorkloadItem } from "../../lib/types";
-import { fetchOperationsAnalytics, exportAnalyticsReport, fetchStaffWorkload } from "../../lib/api";
+import { fetchOperationsAnalytics, exportAnalyticsReport, fetchStaffWorkload, fetchOrganizationSettings } from "../../lib/api";
+
+interface BranchOption {
+  id: string;
+  name: string;
+}
+
+const DEFAULT_BRANCH_OPTIONS: BranchOption[] = [
+  { id: "branch-ny", name: "New York Headquarters" },
+  { id: "branch-lon", name: "London Office" },
+  { id: "branch-tor", name: "Toronto Branch" },
+];
 
 interface AnalyticsExplorerProps {
   initialData?: OperationsAnalyticsData;
   isLiveBackend: boolean;
+  branches?: BranchOption[];
 }
 
 export function AnalyticsExplorer({
   initialData,
   isLiveBackend,
+  branches,
 }: AnalyticsExplorerProps) {
   const [data, setData] = useState<OperationsAnalyticsData | null>(initialData || null);
   const [staffOptions, setStaffOptions] = useState<StaffWorkloadItem[]>([]);
+  const [branchOptions, setBranchOptions] = useState<BranchOption[]>(() => {
+    if (!branches || branches.length === 0) return DEFAULT_BRANCH_OPTIONS;
+    const merged = [...DEFAULT_BRANCH_OPTIONS];
+    for (const b of branches) {
+      if (!merged.some((m) => m.id === b.id)) {
+        merged.push(b);
+      }
+    }
+    return merged;
+  });
   const [isLoading, setIsLoading] = useState<boolean>(!initialData);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
@@ -51,6 +74,31 @@ export function AnalyticsExplorer({
     fetchStaffWorkload()
       .then((res) => setStaffOptions(res || []))
       .catch(() => setStaffOptions([]));
+    if (typeof fetchOrganizationSettings === "function") {
+      fetchOrganizationSettings()
+        .then((settings: any) => {
+          const dynamicBranches: BranchOption[] = Array.isArray(settings?.branches)
+            ? settings.branches
+                .filter((b: any) => b && (b.id || b.branch_id || b.name))
+                .map((b: any) => ({
+                  id: String(b.id || b.branch_id || b.name),
+                  name: String(b.name || b.label || b.id),
+                }))
+            : [];
+          if (dynamicBranches.length > 0) {
+            setBranchOptions((prev) => {
+              const merged = [...prev];
+              for (const b of dynamicBranches) {
+                if (!merged.some((m) => m.id === b.id)) {
+                  merged.push(b);
+                }
+              }
+              return merged;
+            });
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   const handleFilterChange = (key: string, value: string) => {
@@ -83,8 +131,95 @@ export function AnalyticsExplorer({
     setExportNotice(null);
     try {
       const res = await exportAnalyticsReport(reportType);
+      const exportId = res?.export_id || "EXP-AUDIT";
+
+      const csvRows = [
+        ["Metric Category", "Metric Name", "Value", "Formula / Context"],
+        [
+          "Export Metadata",
+          "Export Reference",
+          exportId,
+          `Report Type: ${reportType}; Generated At: ${new Date().toISOString()}`,
+        ],
+        [
+          "Filter Scope",
+          "Applied Filters",
+          `Date=${filters.date_preset}; Jurisdiction=${filters.jurisdiction}; Pathway=${filters.pathway}; Stage=${filters.stage}; Branch=${filters.branch}; Service=${filters.service_type}`,
+          "Multi-dimensional operations filter state",
+        ],
+        [
+          "Turnaround Time",
+          "Average Completion Time (Days)",
+          String(data?.turnaround_time?.average_days ?? "Pending data"),
+          data?.turnaround_time?.calculation_formula || "",
+        ],
+        [
+          "Turnaround Time",
+          "Completed Cases Evaluated",
+          String(data?.turnaround_time?.completed_cases_evaluated ?? 0),
+          `Reopened Adjusted: ${data?.turnaround_time?.reopened_cases_adjusted_count ?? 0}; Incomplete Excluded: ${data?.turnaround_time?.incomplete_timestamp_cases_count ?? 0}`,
+        ],
+        [
+          "Overdue Work",
+          "Total Overdue Items",
+          String(data?.overdue_work?.total_overdue ?? 0),
+          data?.overdue_work?.calculation_formula || "",
+        ],
+        [
+          "Overdue Work",
+          "< 7 Days Overdue (Early Warning)",
+          String(data?.overdue_work?.overdue_less_than_7_days ?? 0),
+          "Minor schedule slippage",
+        ],
+        [
+          "Overdue Work",
+          "7 to 30 Days Overdue (Moderate Urgency)",
+          String(data?.overdue_work?.overdue_7_to_30_days ?? 0),
+          "Requires caseworker check-in",
+        ],
+        [
+          "Overdue Work",
+          "> 30 Days Overdue (Critical Escalation)",
+          String(data?.overdue_work?.overdue_greater_than_30_days ?? 0),
+          "Statutory risk or abandoned client petition",
+        ],
+        [
+          "Client Responsiveness",
+          "Average Client Response Lag (Hours)",
+          String(data?.client_response_time?.average_hours ?? "Pending data"),
+          data?.client_response_time?.calculation_formula || "",
+        ],
+        [
+          "Client Responsiveness",
+          "Completed Requests Evaluated",
+          String(data?.client_response_time?.requests_evaluated ?? 0),
+          `~${data?.client_response_time?.average_days ?? 0} calendar days`,
+        ],
+      ];
+
+      const csvContent = csvRows
+        .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+
+      if (typeof window !== "undefined" && typeof document !== "undefined") {
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const canCreateObjectUrl = typeof URL !== "undefined" && typeof URL.createObjectURL === "function";
+        const downloadUrl = canCreateObjectUrl
+          ? URL.createObjectURL(blob)
+          : `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+        const link = document.createElement("a");
+        link.setAttribute("href", downloadUrl);
+        link.setAttribute("download", `${reportType}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        if (canCreateObjectUrl && typeof URL.revokeObjectURL === "function") {
+          URL.revokeObjectURL(downloadUrl);
+        }
+      }
+
       setExportNotice(
-        `✓ Report '${reportType}' generated and audit-logged (Export Ref: ${res.export_id || "EXP-AUDIT"}).`
+        `✓ Report '${reportType}' generated and audit-logged — downloaded ${reportType}.csv (Export Ref: ${exportId}).`
       );
       setTimeout(() => setExportNotice(null), 6000);
     } catch (err) {
@@ -217,6 +352,7 @@ export function AnalyticsExplorer({
               <option value="CA">Canada (IRCC)</option>
               <option value="DE">Germany (BAMF)</option>
               <option value="AU">Australia (DoHA)</option>
+              <option value="NZ">New Zealand (INZ)</option>
             </select>
           </div>
 
@@ -245,6 +381,12 @@ export function AnalyticsExplorer({
               <option value="H-1B">H-1B Specialty Occupation</option>
               <option value="Skilled Worker">UK Skilled Worker</option>
               <option value="Express Entry">Canada Express Entry</option>
+              <option value="Australia Skilled Independent (Subclass 189/190)">Australia Skilled Independent (Subclass 189/190)</option>
+              <option value="Australia TSS / Skills in Demand (Subclass 482)">Australia TSS / Skills in Demand (Subclass 482)</option>
+              <option value="New Zealand Skilled Migrant">New Zealand Skilled Migrant Resident</option>
+              <option value="New Zealand AEWV">New Zealand Accredited Employer Work Visa</option>
+              <option value="Germany EU Blue Card">Germany EU Blue Card (§ 18g AufenthG)</option>
+              <option value="Germany Opportunity Card (Chancenkarte)">Germany Opportunity Card (Chancenkarte)</option>
             </select>
           </div>
 
@@ -322,9 +464,11 @@ export function AnalyticsExplorer({
               }}
             >
               <option value="all">All Branches</option>
-              <option value="branch-ny">New York Headquarters</option>
-              <option value="branch-lon">London Office</option>
-              <option value="branch-tor">Toronto Branch</option>
+              {branchOptions.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
             </select>
           </div>
 

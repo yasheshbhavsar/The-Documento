@@ -57,7 +57,7 @@ describe("Challenger 1 Empirical Stress & Adversarial Test Harness", () => {
       fireEvent.click(tab3);
 
       const task1 = screen.getByText(/Resolve employment start date discrepancy with Applicant/i);
-      const task2 = screen.getByText(/Finalize Kazarian Stage Two final merits memorandum/i);
+      const task2 = screen.getByText(/Finalize Express Entry e-APR submission letter/i);
 
       // Rapidly toggle tasks 10 times
       for (let i = 0; i < 10; i++) {
@@ -199,7 +199,7 @@ describe("Challenger 1 Empirical Stress & Adversarial Test Harness", () => {
       const { container: c4 } = render(<DocumentoCoverageExplorer />);
       expect(c4.querySelectorAll(".animate-on-scroll").length).toBeGreaterThanOrEqual(1);
 
-      const { container: c5 } = render(<DocumentoInteractiveTools onOpenLogin={() => {}} />);
+      const { container: c5 } = render(<DocumentoInteractiveTools onOpenLogin={() => { }} />);
       expect(c5.querySelectorAll(".animate-on-scroll").length).toBeGreaterThanOrEqual(1);
 
       const { container: c6 } = render(<DocumentoTrust />);
@@ -210,7 +210,7 @@ describe("Challenger 1 Empirical Stress & Adversarial Test Harness", () => {
     });
 
     it("verifies DocumentoNavbar contract: direct /calculators and /agency-onboarding links without dropdowns", () => {
-      render(<DocumentoNavbar onOpenLogin={() => {}} />);
+      render(<DocumentoNavbar onOpenLogin={() => { }} />);
 
       const calcLink = screen.getByTestId("nav-pr-calculators-link");
       expect(calcLink.getAttribute("href")).toBe("/calculators");

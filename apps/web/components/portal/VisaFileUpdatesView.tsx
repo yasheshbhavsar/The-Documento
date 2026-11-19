@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ImmigrationCase } from "../../lib/types";
 import { ClientLanguage, CLIENT_TRANSLATIONS } from "../../lib/clientLocalization";
+import { getCaseStageInfo } from "../../lib/caseLifecycle";
 
 export interface VisaFileUpdateItem {
   id: string;
@@ -127,8 +128,11 @@ export const DOCKET_ITEM_LOCALIZATIONS: Record<
 
 export const FALLBACK_VISA_FILE_UPDATES: VisaFileUpdateItem[] = [];
 
-interface VisaFileUpdatesViewProps {
-  myCase: ImmigrationCase | null;
+export interface VisaFileUpdatesViewProps {
+  myCase?: ImmigrationCase | null;
+  caseItem?: ImmigrationCase | null;
+  updates?: VisaFileUpdateItem[];
+  visaFileUpdates?: VisaFileUpdateItem[];
   onNavigateTab: (tab: "documents" | "messages" | "questionnaire") => void;
   onOpenUploadModal?: () => void;
   language?: ClientLanguage;
@@ -136,24 +140,30 @@ interface VisaFileUpdatesViewProps {
 
 export function VisaFileUpdatesView({
   myCase,
+  caseItem,
+  updates,
+  visaFileUpdates,
   onNavigateTab,
   onOpenUploadModal,
   language = "en",
 }: VisaFileUpdatesViewProps) {
+  const effectiveCase = caseItem ?? myCase ?? null;
   const t = CLIENT_TRANSLATIONS[language];
   const [selectedFilter, setSelectedFilter] = useState<
     "all" | "uscis_notice" | "officer_action" | "biometrics" | "evidence"
   >("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastRefreshedText, setLastRefreshedText] = useState("Just now (USCIS ELIS Gateway)");
+  const [lastRefreshedText, setLastRefreshedText] = useState("Synced with firm case record");
   const [copiedRef, setCopiedRef] = useState<string | null>(null);
 
   const handleRefreshGateway = () => {
     setIsRefreshing(true);
     setTimeout(() => {
       setIsRefreshing(false);
-      setLastRefreshedText(`Today at ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} (USCIS Live Gateway)`);
+      setLastRefreshedText(
+        `Today at ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} (Firm Case Record)`
+      );
     }, 900);
   };
 
@@ -163,7 +173,7 @@ export function VisaFileUpdatesView({
     setTimeout(() => setCopiedRef(null), 2000);
   };
 
-  if (!myCase) {
+  if (!effectiveCase) {
     return (
       <div
         data-testid="visa-updates-empty-state"
@@ -183,7 +193,7 @@ export function VisaFileUpdatesView({
           No Case Docket Registered Yet
         </h2>
         <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 20px 0" }}>
-          Your legal team (Owner or Lead Paralegal) has not yet activated a petition docket or filed submissions for your account. Once your case is entered into the system, all official USCIS receipt notices, milestone tracking, and officer actions will appear here in real time.
+          Your legal team (Owner or Lead Paralegal) has not yet activated a petition docket or filed submissions for your account. Once your case is entered into the system, all official authority receipt notices, milestone tracking, and officer actions will appear here in real time.
         </p>
         <div
           style={{
@@ -206,61 +216,81 @@ export function VisaFileUpdatesView({
     );
   }
 
-  const isTestEnv = typeof process !== "undefined" && Boolean(process.env.VITEST);
-  const hasStoredUser =
-    typeof window !== "undefined" && Boolean(window.localStorage.getItem("documento_user"));
-  const isDemoCase = isTestEnv && !hasStoredUser && myCase?.case_number === "CASE-US-8841";
-  const resolvedOfficerLabel = myCase?.assigned_manager || "Assigned Legal Counsel";
+  const caseReference = effectiveCase.case_number || "Pending Assignment";
+  const jurisdictionLabel = effectiveCase.jurisdiction || "Assigned Immigration Authority";
+  const pathwayLabel = effectiveCase.visa_category || "Pending Classification";
+  const stageInfo = getCaseStageInfo(effectiveCase.status);
+  const resolvedOfficerLabel = effectiveCase.assigned_manager || "Pending Allocation";
   const isCanada =
-    myCase?.jurisdiction?.toLowerCase().includes("canada") ||
-    (myCase?.visa_category || "").toLowerCase().includes("canada") ||
-    (myCase?.visa_category || "").toLowerCase().includes("study permit");
+    jurisdictionLabel.toLowerCase().includes("canada") ||
+    jurisdictionLabel.toLowerCase().includes("ircc") ||
+    pathwayLabel.toLowerCase().includes("canada") ||
+    pathwayLabel.toLowerCase().includes("study permit");
+  const isUS =
+    jurisdictionLabel.toLowerCase().includes("united states") ||
+    jurisdictionLabel.toLowerCase().includes("uscis") ||
+    pathwayLabel.toLowerCase().includes("eb-") ||
+    pathwayLabel.toLowerCase().includes("o-1") ||
+    pathwayLabel.toLowerCase().includes("l-1") ||
+    pathwayLabel.toLowerCase().includes("h-1b");
 
-  const activeUpdates: VisaFileUpdateItem[] = isDemoCase
-    ? FALLBACK_VISA_FILE_UPDATES
-    : isCanada
-      ? [
-        {
-          id: `update-${myCase.id}-01`,
-          timestamp: "Today • Just now",
-          relativeTime: "Just now",
-          category: "evidence",
-          title: `Representation Activated & IRCC File Opened (#${myCase.case_number})`,
-          officialReference: `IRCC Ref #${myCase.case_number}`,
-          statusBadge: {
-            label: "Active Matter",
-            bg: "#DCFCE7",
-            color: "#166534",
-            border: "#86EFAC",
-          },
-          officerName: resolvedOfficerLabel,
-          officerRole: "Supervising Case Manager",
-          summary: `Representation formally activated for ${myCase.client_name || "Client"} (${myCase.visa_category}). Designated file created in the Client Transparency Portal. DLI acceptance and PAL attestation intake initiated.`,
-          legalSignificance: `Formal legal representation established. Document intake and statutory verification active under IRPA / IRPR guidelines.`,
-          actionRequired: false,
+  const providedUpdates = updates ?? visaFileUpdates;
+  const derivedCaseUpdates: VisaFileUpdateItem[] = [];
+
+  if (Array.isArray(effectiveCase.notes)) {
+    for (const note of effectiveCase.notes.filter((n) => n.is_client_visible)) {
+      derivedCaseUpdates.push({
+        id: `note-${note.id}`,
+        timestamp: note.created_at,
+        relativeTime: "Logged Update",
+        category: "officer_action",
+        title: note.note_type === "status_update" ? "Case Status Update" : "Counsel Case Note",
+        officialReference: `Ref #${caseReference}`,
+        statusBadge: {
+          label: stageInfo.label,
+          bg: "#EAF6F0",
+          color: "#0D6866",
+          border: "#B9DED4",
         },
-      ]
-      : [
-        {
-          id: `update-${myCase.id}-01`,
-          timestamp: "Today • Just now",
-          relativeTime: "Just now",
-          category: "evidence",
-          title: `Representation Retainer Executed & Case Docket Opened (#${myCase.case_number})`,
-          officialReference: `Docket #${myCase.case_number}`,
-          statusBadge: {
-            label: "Active Matter",
-            bg: "#DCFCE7",
-            color: "#166534",
-            border: "#86EFAC",
-          },
-          officerName: resolvedOfficerLabel,
-          officerRole: "Supervising Case Manager",
-          summary: `Initial case file opened for ${myCase.visa_category}. Awaiting client intake questionnaire and evidentiary document uploads.`,
-          legalSignificance: `Establishes formal client representation and legal confidentiality under counsel supervision.`,
-          actionRequired: false,
+        officerName: note.author_name || resolvedOfficerLabel,
+        officerRole: "Assigned Legal Counsel",
+        summary: note.content,
+        legalSignificance: `Logged under ${jurisdictionLabel} (${pathwayLabel}) case docket.`,
+        actionRequired: false,
+      });
+    }
+  }
+
+  if (Array.isArray(effectiveCase.milestones)) {
+    for (const ms of effectiveCase.milestones.filter((m) => m.status === "completed")) {
+      derivedCaseUpdates.push({
+        id: `ms-${ms.id}`,
+        timestamp: ms.completed_at || ms.target_date || effectiveCase.created_at,
+        relativeTime: "Completed Milestone",
+        category: "filing_milestone",
+        title: ms.title,
+        officialReference: `Ref #${caseReference}`,
+        statusBadge: {
+          label: "Completed ✓",
+          bg: "#DCFCE7",
+          color: "#166534",
+          border: "#86EFAC",
         },
-      ];
+        officerName: resolvedOfficerLabel,
+        officerRole: "Supervising Case Manager",
+        summary: `Milestone "${ms.title}" completed for ${pathwayLabel}.`,
+        legalSignificance: `Case progression recorded for ${jurisdictionLabel}.`,
+        actionRequired: false,
+      });
+    }
+  }
+
+  const activeUpdates: VisaFileUpdateItem[] =
+    Array.isArray(providedUpdates) && providedUpdates.length > 0
+      ? providedUpdates
+      : derivedCaseUpdates;
+
+  const urgentUpdate = activeUpdates.find((u) => u.actionRequired);
 
   const filteredUpdates = activeUpdates.filter((item) => {
     const matchesFilter = selectedFilter === "all" || item.category === selectedFilter;
@@ -275,7 +305,7 @@ export function VisaFileUpdatesView({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
-      {/* 1. Official USCIS Dossier & Electronic Case Reference Card */}
+      {/* 1. Official Case Dossier & Electronic Case Reference Card */}
       <div
         style={{
           background: "linear-gradient(135deg, #063C3D 0%, #0D6866 100%)",
@@ -332,7 +362,7 @@ export function VisaFileUpdatesView({
                   letterSpacing: "0.03em",
                 }}
               >
-                ● LIVE {isCanada ? "IRCC" : "USCIS"} SYNC
+                ● {stageInfo.shortLabel.toUpperCase()}
               </span>
             </div>
 
@@ -348,7 +378,7 @@ export function VisaFileUpdatesView({
               {language === "en" ? "Visa Application File Updates" : t.docketHeaderTitle}
             </h1>
             <p style={{ margin: 0, fontSize: "13px", color: "#D1E7E0", lineHeight: 1.5, maxWidth: "680px" }}>
-              Authoritative, real-time procedural docket for your <strong>{myCase?.visa_category || (isDemoCase ? "EB-1A Extraordinary Ability" : "Immigration Matter")}</strong> petition, official {isCanada ? "IRCC" : "USCIS"} receipt notices, biometrics milestones, and case processing officer actions.
+              Procedural docket for your <strong>{pathwayLabel}</strong> matter under <strong>{jurisdictionLabel}</strong>, tracking authority receipt notices, milestones, and case processing officer updates.
             </p>
           </div>
 
@@ -376,7 +406,7 @@ export function VisaFileUpdatesView({
               <span style={{ display: "inline-block", transform: isRefreshing ? "rotate(360deg)" : "none", transition: "transform 0.8s linear" }}>
                 🔄
               </span>
-              <span>{isRefreshing ? `Checking ${isCanada ? "IRCC" : "USCIS"} Gateway...` : "Refresh Official Status"}</span>
+              <span>{isRefreshing ? "Refreshing Case Docket..." : "Refresh Official Status"}</span>
             </button>
             <span style={{ fontSize: "11px", color: "#B9DED4" }}>
               Last verified: {lastRefreshedText}
@@ -384,7 +414,7 @@ export function VisaFileUpdatesView({
           </div>
         </div>
 
-        {/* Core Case Dossier Metadata Strip */}
+        {/* Core Case Dossier Metadata Strip — Derived Dynamically from caseItem */}
         <div
           style={{
             marginTop: "20px",
@@ -397,16 +427,16 @@ export function VisaFileUpdatesView({
         >
           <div style={{ background: "rgba(0, 0, 0, 0.15)", padding: "10px 14px", borderRadius: "8px" }}>
             <span style={{ fontSize: "10px", color: "#B9DED4", textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>
-              USCIS RECEIPT NUMBER (I-140)
+              CASE REFERENCE NUMBER
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
               <strong style={{ fontSize: "13px", fontFamily: "monospace", color: "#FFFFFF" }}>
-                IOE-09-284-91823
+                {caseReference}
               </strong>
               <button
                 type="button"
-                onClick={() => handleCopy("IOE-09-284-91823")}
-                title="Copy receipt number"
+                onClick={() => handleCopy(caseReference)}
+                title="Copy case reference"
                 style={{
                   background: "transparent",
                   border: "none",
@@ -416,32 +446,32 @@ export function VisaFileUpdatesView({
                   padding: 0,
                 }}
               >
-                {copiedRef === "IOE-09-284-91823" ? "✓" : "📋"}
+                {copiedRef === caseReference ? "✓" : "📋"}
               </button>
             </div>
           </div>
 
           <div style={{ background: "rgba(0, 0, 0, 0.15)", padding: "10px 14px", borderRadius: "8px" }}>
             <span style={{ fontSize: "10px", color: "#B9DED4", textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>
-              PRIORITY DATE
+              AUTHORITY / JURISDICTION
             </span>
             <strong style={{ fontSize: "13px", color: "#FFFFFF", display: "block", marginTop: "2px" }}>
-              August 10, 2026 (Current)
+              {jurisdictionLabel}
             </strong>
           </div>
 
           <div style={{ background: "rgba(0, 0, 0, 0.15)", padding: "10px 14px", borderRadius: "8px" }}>
             <span style={{ fontSize: "10px", color: "#B9DED4", textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>
-              SERVICE CENTER
+              VISA PATHWAY
             </span>
             <strong style={{ fontSize: "13px", color: "#FFFFFF", display: "block", marginTop: "2px" }}>
-              Texas Service Center (TSC)
+              {pathwayLabel}
             </strong>
           </div>
 
           <div style={{ background: "rgba(0, 0, 0, 0.15)", padding: "10px 14px", borderRadius: "8px" }}>
             <span style={{ fontSize: "10px", color: "#B9DED4", textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>
-              ADJUDICATION STATUS
+              CURRENT STAGE
             </span>
             <span
               style={{
@@ -452,7 +482,7 @@ export function VisaFileUpdatesView({
                 marginTop: "2px",
               }}
             >
-              Form I-140 Approved ✓
+              {stageInfo.label}
             </span>
           </div>
 
@@ -467,97 +497,101 @@ export function VisaFileUpdatesView({
         </div>
       </div>
 
-      {/* 2. Action Alerts / Urgent Next Procedural Steps */}
-      <div
-        style={{
-          background: "#FEF7EA",
-          border: "1.5px solid #FCD34D",
-          borderRadius: "12px",
-          padding: "16px 20px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "14px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <div
-            style={{
-              width: "40px",
-              height: "40px",
-              borderRadius: "50%",
-              background: "#FDE68A",
-              color: "#92400E",
-              fontSize: "20px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            📅
-          </div>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <strong style={{ fontSize: "14px", color: "#92400E" }}>
-                Action Item: Biometrics Appointment Scheduled
-              </strong>
-              <span
-                style={{
-                  background: "#FEF3C7",
-                  border: "1px solid #FCD34D",
-                  color: "#B45309",
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  padding: "1px 6px",
-                  borderRadius: "4px",
-                }}
-              >
-                Date: Nov 04, 2026
-              </span>
+      {/* 2. Dynamic Action Alert (rendered only when an active update or case attention item requires client action) */}
+      {(urgentUpdate || (effectiveCase.attention_required && effectiveCase.attention_reason)) && (
+        <div
+          style={{
+            background: "#FEF7EA",
+            border: "1.5px solid #FCD34D",
+            borderRadius: "12px",
+            padding: "16px 20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "14px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "50%",
+                background: "#FDE68A",
+                color: "#92400E",
+                fontSize: "20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              📅
             </div>
-            <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#78350F", lineHeight: 1.4 }}>
-              USCIS has scheduled your biometrics capture at San Jose ASC. Please review appointment details or message your Case Processing Officer with questions.
-            </p>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <strong style={{ fontSize: "14px", color: "#92400E" }}>
+                  {urgentUpdate ? `Action Item: ${urgentUpdate.title}` : "Action Required on Your Case File"}
+                </strong>
+                {urgentUpdate?.officialReference && (
+                  <span
+                    style={{
+                      background: "#FEF3C7",
+                      border: "1px solid #FCD34D",
+                      color: "#B45309",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      padding: "1px 6px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {urgentUpdate.officialReference}
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#78350F", lineHeight: 1.4 }}>
+                {urgentUpdate ? urgentUpdate.summary : effectiveCase.attention_reason}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => onNavigateTab("messages")}
+              style={{
+                background: "#8A5A10",
+                color: "#FFFFFF",
+                border: "none",
+                borderRadius: "8px",
+                padding: "8px 14px",
+                fontSize: "12px",
+                fontWeight: 650,
+                cursor: "pointer",
+              }}
+            >
+              💬 Chat with Officer
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigateTab("documents")}
+              style={{
+                background: "#FFFFFF",
+                border: "1px solid #DCE5E1",
+                color: "#063C3D",
+                borderRadius: "8px",
+                padding: "8px 14px",
+                fontSize: "12px",
+                fontWeight: 650,
+                cursor: "pointer",
+              }}
+            >
+              📄 Upload Evidence File
+            </button>
           </div>
         </div>
-
-        <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={() => onNavigateTab("messages")}
-            style={{
-              background: "#8A5A10",
-              color: "#FFFFFF",
-              border: "none",
-              borderRadius: "8px",
-              padding: "8px 14px",
-              fontSize: "12px",
-              fontWeight: 650,
-              cursor: "pointer",
-            }}
-          >
-            💬 Chat with Officer
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigateTab("documents")}
-            style={{
-              background: "#FFFFFF",
-              border: "1px solid #DCE5E1",
-              color: "#063C3D",
-              borderRadius: "8px",
-              padding: "8px 14px",
-              fontSize: "12px",
-              fontWeight: 650,
-              cursor: "pointer",
-            }}
-          >
-            📄 Upload Evidence File
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* 3. Search and Category Filter Strip */}
       <div
@@ -577,10 +611,26 @@ export function VisaFileUpdatesView({
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
           {[
             { key: "all" as const, label: t.filterAll, count: activeUpdates.length },
-            { key: "uscis_notice" as const, label: isCanada ? "IRCC Notices" : t.filterUSCIS, count: isDemoCase ? 1 : activeUpdates.filter(u => u.category === "uscis_notice").length },
-            { key: "biometrics" as const, label: t.filterBiometrics, count: isDemoCase ? 1 : activeUpdates.filter(u => u.category === "biometrics").length },
-            { key: "officer_action" as const, label: t.filterOfficerActions, count: isDemoCase ? 1 : activeUpdates.filter(u => u.category === "officer_action").length },
-            { key: "evidence" as const, label: t.filterFilings, count: isDemoCase ? 1 : activeUpdates.filter(u => u.category === "evidence").length },
+            {
+              key: "uscis_notice" as const,
+              label: isCanada ? "IRCC Notices" : isUS ? t.filterUSCIS : "Authority Notices",
+              count: activeUpdates.filter((u) => u.category === "uscis_notice").length,
+            },
+            {
+              key: "biometrics" as const,
+              label: t.filterBiometrics,
+              count: activeUpdates.filter((u) => u.category === "biometrics").length,
+            },
+            {
+              key: "officer_action" as const,
+              label: t.filterOfficerActions,
+              count: activeUpdates.filter((u) => u.category === "officer_action").length,
+            },
+            {
+              key: "evidence" as const,
+              label: t.filterFilings,
+              count: activeUpdates.filter((u) => u.category === "evidence").length,
+            },
           ].map((cat) => {
             const active = selectedFilter === cat.key;
             return (
@@ -677,7 +727,64 @@ export function VisaFileUpdatesView({
 
       {/* 4. Chronological Visa File Updates Stream */}
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        {filteredUpdates.length === 0 ? (
+        {activeUpdates.length === 0 ? (
+          <div
+            data-testid="no-authority-updates-empty-state"
+            style={{
+              background: "#FFFFFF",
+              border: "1px dashed #CBD5E1",
+              borderRadius: "12px",
+              padding: "40px 24px",
+              textAlign: "center",
+              color: "#6E7F7C",
+            }}
+          >
+            <span style={{ fontSize: "32px", display: "block", marginBottom: "8px" }}>📋</span>
+            <strong style={{ fontSize: "15px", color: "#063C3D", display: "block" }}>
+              No Authority or Filing Updates Logged Yet
+            </strong>
+            <p style={{ margin: "6px auto 14px", fontSize: "13px", maxWidth: "560px", lineHeight: 1.5 }}>
+              Case <strong>#{caseReference}</strong> ({pathwayLabel}) is currently in{" "}
+              <strong>{stageInfo.label}</strong> under <strong>{jurisdictionLabel}</strong>. Official
+              authority receipt notices, biometrics schedules, and case officer actions will appear here
+              as soon as they are logged on your file.
+            </p>
+            <div style={{ display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => onNavigateTab("documents")}
+                style={{
+                  padding: "8px 14px",
+                  background: "#0D6866",
+                  color: "#FFFFFF",
+                  borderRadius: "6px",
+                  border: "none",
+                  fontSize: "12px",
+                  fontWeight: 650,
+                  cursor: "pointer",
+                }}
+              >
+                Upload Supporting Documents →
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigateTab("messages")}
+                style={{
+                  padding: "8px 14px",
+                  background: "#EAF6F0",
+                  color: "#0D6866",
+                  borderRadius: "6px",
+                  border: "1px solid #B9DED4",
+                  fontSize: "12px",
+                  fontWeight: 650,
+                  cursor: "pointer",
+                }}
+              >
+                Message Case Officer
+              </button>
+            </div>
+          </div>
+        ) : filteredUpdates.length === 0 ? (
           <div
             style={{
               background: "#FFFFFF",
@@ -716,7 +823,7 @@ export function VisaFileUpdatesView({
             </button>
           </div>
         ) : (
-          filteredUpdates.map((item, index) => {
+          filteredUpdates.map((item) => {
             const itemLoc =
               language !== "en" && (language === "gu" || language === "hi")
                 ? DOCKET_ITEM_LOCALIZATIONS[item.id]?.[language]
@@ -872,7 +979,13 @@ export function VisaFileUpdatesView({
                         justifyContent: "center",
                       }}
                     >
-                      SJ
+                      {(item.officerName || "LC")
+                        .split(" ")
+                        .filter(Boolean)
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join("")
+                        .toUpperCase() || "LC"}
                     </div>
                     <div>
                       <span style={{ fontSize: "11px", fontWeight: 650, color: "#063C3D", display: "block" }}>

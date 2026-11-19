@@ -37,18 +37,19 @@ export function DirectDocumentUploader({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const categories: { label: string; value: DocumentCategory; desc: string }[] = [
-    { label: "Educational Records (Degrees, Transcripts)", value: "educational_records", desc: "Form I-140 / 8 CFR § 204.5(k)(3)" },
+    { label: "Educational Records (Degrees, Transcripts)", value: "educational_records", desc: "Diplomas, degrees, transcripts, and credential assessments" },
     { label: "Scholarly Publications & Citations", value: "scholarly_publications" as any, desc: "Peer-reviewed articles, patents, citations" },
     { label: "Peer Review & Judging Evidence", value: "judging_peer_review" as any, desc: "Journal review verifications, editorial boards" },
     { label: "Major Recognized Awards & Honors", value: "awards_honors" as any, desc: "National/international prizes of excellence" },
     { label: "Independent Expert Testimonial Letters", value: "expert_testimonials" as any, desc: "Letters from recognized domain authorities" },
-    { label: "Passports & Travel Identity Documents", value: "identity_passport", desc: "Unexpired passport, Form I-94 travel history" },
+    { label: "Passports & Travel Identity Documents", value: "identity_passport", desc: "Unexpired passport, national ID, and travel history records" },
     { label: "Civil-Status & Family Records", value: "civil_status", desc: "Marriage certificate, birth certificates" },
-    { label: "Existing Visas & Approval Notices", value: "visas_residence_permits", desc: "Prior I-797 notices, F-1/H-1B/O-1 visa stamps" },
-    { label: "Employment & Remuneration Records", value: "employment_records", desc: "Experience letters, W-2s, high salary proof" },
-    { label: "Form I-693 Sealed Medical Examination", value: "police_medical", desc: "Designated civil surgeon medical report" },
-    { label: "Certified English Translations & Affidavits", value: "translations_certifications", desc: "ATA certified translator credentials" },
-    { label: "Other Supporting Evidence", value: "supporting_evidence", desc: "Exhibits, news media coverage, conference papers" },
+    { label: "Existing Visas & Approval Notices", value: "visas_residence_permits", desc: "Prior visa stamps, residence permits, and official approval notices" },
+    { label: "Employment & Remuneration Records", value: "employment_records", desc: "Experience letters, pay stubs, tax slips, and compensation records" },
+    { label: "Police Clearance & Medical Examination Records", value: "police_medical", desc: "Police clearance certificates and panel physician medical reports" },
+    { label: "Certified Translations & Affidavits", value: "translations_certifications", desc: "Certified translator declarations and notarized affidavits" },
+    { label: "Financial Evidence & Bank Statements", value: "financial_evidence", desc: "Bank statements, tax returns, and proof of funds" },
+    { label: "Other Supporting Evidence", value: "supporting_evidence", desc: "Exhibits, media coverage, and supplemental records" },
   ];
 
   const handleProcessFile = async (file: File) => {
@@ -71,7 +72,7 @@ export function DirectDocumentUploader({
       const isWebp = header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46;
 
       if (!isPdf && !isJpg && !isPng && !isTiff && !isWebp) {
-        setError("File signature rejected: Only PDF and standard image formats (JPEG, PNG, TIFF, WebP) are accepted for USCIS filings.");
+        setError("Unsupported file format: Only PDF and standard image formats (JPEG, PNG, TIFF, WebP) are accepted for immigration filings.");
         setSelectedFile(null);
         setComputedHash(null);
         setIsHashing(false);
@@ -81,7 +82,7 @@ export function DirectDocumentUploader({
       const hash = await calculateSHA256(buffer);
       setComputedHash(hash);
     } catch (err) {
-      setError("Failed to compute cryptographic hash for the selected file.");
+      setError("Failed to verify the selected file.");
       setComputedHash(null);
     } finally {
       setIsHashing(false);
@@ -164,10 +165,10 @@ export function DirectDocumentUploader({
 
       onDocumentUploaded(newDoc);
       const officerText = assignedOfficer && !assignedOfficer.toLowerCase().includes("unassigned")
-        ? `Sent directly to ${assignedOfficer}'s AI Lab for local OCR, page-sorting & auto-fill.`
-        : "Queued for assigned Paralegal's local AI Lab (OCR, Sort & Auto-Fill).";
+        ? `Sent to ${assignedOfficer} — Pending Legal Review.`
+        : "Queued for your assigned legal team — Pending Legal Review.";
       setSuccessBanner(
-        `✅ Untouched file "${newDoc.title}" uploaded directly! ${officerText}`
+        `📤 Document "${newDoc.title}" uploaded (Pending Review). ${officerText}`
       );
 
       // Reset form
@@ -220,7 +221,7 @@ export function DirectDocumentUploader({
               borderRadius: "6px",
             }}
           >
-            🔒 SHA-256 Tamper-Proof
+            🔒 Secure Upload
           </span>
           <span
             style={{
@@ -319,7 +320,7 @@ export function DirectDocumentUploader({
                 <span>{fileSizeStr}</span>
                 <span>•</span>
                 {isHashing ? (
-                  <span style={{ color: "#D97706", fontWeight: 600 }}>Calculating SHA-256 fingerprint...</span>
+                  <span style={{ color: "#D97706", fontWeight: 600 }}>Verifying file...</span>
                 ) : computedHash ? (
                   <span
                     style={{
@@ -332,7 +333,7 @@ export function DirectDocumentUploader({
                       border: "1px solid #B9DED4",
                     }}
                   >
-                    SHA-256: {computedHash.slice(0, 16)}...
+                    Verified ready for upload
                   </span>
                 ) : null}
               </div>

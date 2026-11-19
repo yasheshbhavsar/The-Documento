@@ -225,6 +225,70 @@ def sync_legacy_case_status(case: ImmigrationCase) -> None:
 
 class CaseLifecycleService:
     @staticmethod
+    def enforce_legacy_status_transition_guards(
+        case: ImmigrationCase,
+        target_status: str,
+        ctx: AuthContext,
+        is_pathway_override: bool = False,
+    ) -> None:
+        """
+        Enforces decoupled lifecycle guards (operational state holds, submission holds,
+        and non-retained engagement boundaries) when transitioning via legacy status endpoints.
+        """
+        if ctx.is_retained_client():
+            raise PermissionDeniedError("Retained clients and applicants cannot change case workflow stages")
+
+        tgt = str(target_status).lower().strip()
+        op_state = (getattr(case, "operational_state", None) or OperationalState.ACTIVE.value).upper().strip()
+
+        # 1. Operational state hold guard
+        if op_state == OperationalState.ON_HOLD.value and tgt != "reopened" and not is_pathway_override:
+            raise ValidationError(
+                f"Cannot transition case status to '{tgt}' while case is ON_HOLD. "
+                f"Hold reason: {getattr(case, 'hold_reason', None) or 'Operational hold active'}"
+            )
+        if op_state == OperationalState.WITHDRAWN.value and tgt not in ("closed", "archived", "reopened") and not is_pathway_override:
+            raise ValidationError(
+                f"Cannot transition case status to '{tgt}' while representation is WITHDRAWN."
+            )
+
+        # 2. Non-retained consultation / preliminary assessment guard for substantive stages
+        substantive_legacy_stages = {
+            "awaiting_documents",
+            "processing",
+            "internal_review",
+            "ready_for_approval",
+            "approved_for_submission",
+            "submitted",
+        }
+        if tgt in substantive_legacy_stages and not is_pathway_override:
+            is_retained = getattr(case, "is_retained", True)
+            engagement_type = (getattr(case, "client_engagement_type", "retained") or "retained").lower().strip()
+            if is_retained is False or engagement_type in ("consultation", "preliminary_assessment", "consultation_only"):
+                raise ValidationError(
+                    f"Cannot transition non-retained prospect in '{engagement_type}' to substantive stage '{tgt}'."
+                )
+
+        # 3. Submission hold guard for approved_for_submission / submitted
+        sub_auth_status = (getattr(case, "submission_authorization_status", None) or "UNAUTHORIZED").upper().strip()
+        active_submission_holds = {
+            SubmissionAuthorizationStatus.HELD_FOR_ACCOUNTS.value,
+            SubmissionAuthorizationStatus.HELD_FOR_COUNSELLOR.value,
+            SubmissionAuthorizationStatus.HELD_FOR_CLIENT_DECISION.value,
+        }
+        if tgt in ("approved_for_submission", "submitted") and sub_auth_status in active_submission_holds and not is_pathway_override:
+            raise ValidationError(
+                f"Transition to '{tgt}' blocked: case submission authorization is currently on hold ({sub_auth_status})."
+            )
+
+        # 4. Review changes requested guard before final submission
+        rev_status = (getattr(case, "review_status", None) or ReviewStatus.NOT_STARTED.value).upper().strip()
+        if tgt in ("approved_for_submission", "submitted") and rev_status == ReviewStatus.CHANGES_REQUESTED.value and not is_pathway_override:
+            raise ValidationError(
+                f"Transition to '{tgt}' blocked: case review status is '{rev_status}'. Resolve requested review changes first."
+            )
+
+    @staticmethod
     def transition_preparation_status(
         db: Session,
         case: ImmigrationCase,

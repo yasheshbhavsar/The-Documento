@@ -18,22 +18,22 @@ export function DocumentoPreview() {
     {
       id: "t-1",
       title: "Resolve employment start date discrepancy with Applicant",
-      assignee: "Senior Paralegal",
+      assignee: "Senior Case Manager",
       priority: "high",
       completed: false,
       dueDate: "In 2 days",
     },
     {
       id: "t-2",
-      title: "Finalize Kazarian Stage Two final merits memorandum",
-      assignee: "Managing Attorney",
+      title: "Finalize Express Entry e-APR submission letter & IMM 5669 Schedule A",
+      assignee: "Lead RCIC / Counsel",
       priority: "high",
       completed: false,
       dueDate: "In 5 days",
     },
     {
       id: "t-3",
-      title: "Extract scholarly citations across IEEE & Nature publications",
+      title: "Verify WES ECA equivalency & IELTS General CLB 9 validity window",
       assignee: "Documento Intelligence Engine",
       priority: "medium",
       completed: true,
@@ -41,7 +41,7 @@ export function DocumentoPreview() {
     },
     {
       id: "t-4",
-      title: "Validate passport expiration date exceeds USCIS 6-month requirement",
+      title: "Validate passport expiry & 60-day post-ITA e-APR submission clock",
       assignee: "Documento Vault Integrity Check",
       priority: "medium",
       completed: true,
@@ -55,14 +55,14 @@ export function DocumentoPreview() {
       id: "m-1",
       sender: "firm",
       senderName: "Assigned Senior Paralegal",
-      text: "Our automated intake check identified that Exhibit E-2 lists your employment start date differently from your CV. Could you confirm which date your HR department officially recorded?",
+      text: "Our automated IRCC intake check flagged that Exhibit E-2 (Employer NOC 21231 Reference Letter) lists a different employment start date than your IMM 5669 Personal History. Could you confirm which date your payroll records show?",
       time: "Yesterday, 3:15 PM",
     },
     {
       id: "m-2",
       sender: "client",
       senderName: "Principal Applicant",
-      text: "Confirmed: the earlier date reflects visiting fellowship commencement prior to full-time payroll onboarding. An HR confirmation letter has been uploaded.",
+      text: "Confirmed: September 1 was contract orientation prior to full-time payroll start on October 1. An HR confirmation addendum has been uploaded to prevent any IRCC mismatch.",
       time: "Today, 10:20 AM",
     },
   ]);
@@ -71,74 +71,74 @@ export function DocumentoPreview() {
   const sampleDocs = [
     {
       id: "doc-a1",
-      title: "Passport_Bio_Page_UK.pdf",
+      title: "Passport_Bio_Page_Applicant.pdf",
       category: "Identity",
       exhibitCode: "Exhibit A-1",
       batesCode: "BATES EX-A1-001",
       size: "2.4 MB",
       hash: "e3b0c442...a53b",
       status: "verified",
-      criterion: "Biographical & Identity Verification",
+      criterion: "Biographical & ICAO MRZ Identity Verification (IRCC)",
       pages: 2,
     },
     {
       id: "doc-b1",
-      title: "PhD_Diploma_Oxford_Physics.pdf",
-      category: "Academic",
+      title: "WES_ECA_Masters_Equivalency.pdf",
+      category: "Education",
       exhibitCode: "Exhibit B-1",
       batesCode: "BATES EX-B1-003",
       size: "4.1 MB",
       hash: "cb8825fc...21ad",
       status: "verified",
-      criterion: "Advanced Degree Threshold (8 CFR § 204.5(k))",
+      criterion: "Educational Credential Assessment (IRPR s. 75 / CRS Education)",
       pages: 1,
     },
     {
       id: "doc-c1",
-      title: "IEEE_Quantum_Algorithm_Paper.pdf",
-      category: "Publications",
+      title: "IELTS_General_CLB9_Scorecard.pdf",
+      category: "Language",
       exhibitCode: "Exhibit C-1",
       batesCode: "BATES EX-C1-004",
-      size: "8.7 MB",
+      size: "1.9 MB",
       hash: "8f4a2109...b76c",
       status: "verified",
-      criterion: "Criterion 1: Authorship of Scholarly Articles (1,420 Citations)",
-      pages: 14,
+      criterion: "Official Language Benchmark (CLB 9 — Valid 2-Year Window)",
+      pages: 2,
     },
     {
       id: "doc-d1",
-      title: "US_Patent_US11489201_Quantum.pdf",
-      category: "Patents",
+      title: "CRA_NOA_And_Settlement_Funds.pdf",
+      category: "Financial",
       exhibitCode: "Exhibit D-1",
       batesCode: "BATES EX-D1-018",
       size: "5.2 MB",
       hash: "19c3e982...98f4",
       status: "verified",
-      criterion: "Criterion 2: Original Scientific Contribution",
-      pages: 22,
+      criterion: "Proof of Settlement Funds & CRA Line 15000 Income Audit",
+      pages: 14,
     },
     {
       id: "doc-e2",
-      title: "Employer_Support_Letter_MIT.pdf",
-      category: "Support Letters",
+      title: "Employer_NOC21231_Reference_Letter.pdf",
+      category: "Employment",
       exhibitCode: "Exhibit E-2",
       batesCode: "BATES EX-E2-040",
       size: "1.8 MB",
       hash: "7f83b165...9f80",
       status: "flagged",
-      criterion: "Criterion 3: Critical Role in Distinguished Organization",
+      criterion: "Skilled Work Experience — NOC 2021 TEER 1 (21231) Lead Statement",
       pages: 4,
     },
     {
       id: "doc-f1",
-      title: "Form_I-140_Draft_Part1-Part8.pdf",
-      category: "Forms",
+      title: "IMM_5669_Schedule_A_And_IMM_5406.pdf",
+      category: "IRCC Forms",
       exhibitCode: "Form Draft",
-      batesCode: "FORM DRAFT I-140",
+      batesCode: "FORM DRAFT IMM-5669",
       size: "1.2 MB",
       hash: "3c990211...de51",
       status: "pending_review",
-      criterion: "USCIS Immigrant Petition for Alien Worker",
+      criterion: "IRCC Background Declaration (IMM 5669) & Family Info (IMM 5406)",
       pages: 8,
     },
   ];
@@ -163,7 +163,7 @@ export function DocumentoPreview() {
       {
         id: `m-${Date.now()}`,
         sender: "firm",
-        senderName: "Lead Immigration Counsel",
+        senderName: "Lead RCIC / Immigration Counsel",
         text: sampleReplyInput.trim(),
         time: "Just now",
       },
@@ -235,7 +235,7 @@ export function DocumentoPreview() {
               marginBottom: "12px",
             }}
           >
-            Evidence Architecture
+            Canada IRCC Evidence Architecture
           </div>
 
           <h2
@@ -249,7 +249,7 @@ export function DocumentoPreview() {
               fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
             }}
           >
-            From raw evidence to verified counsel judgment.
+            From raw Canadian case files to IRCC-ready filings.
           </h2>
 
           <p
@@ -263,7 +263,7 @@ export function DocumentoPreview() {
               marginRight: "auto",
             }}
           >
-            Unstructured source records become an indexed, tamper-evident evidentiary record ready for attorney adjudication.
+            Unstructured passports, CRA NOAs, language scores, and NOC reference letters become an indexed, tamper-evident Canadian e-APR dossier ready for RCIC and counsel adjudication.
           </p>
         </div>
 
@@ -327,7 +327,7 @@ export function DocumentoPreview() {
                       borderRadius: "4px",
                     }}
                   >
-                    {bentoExhibitIdx === 0 ? "BATES EX-A1-001" : "BATES EX-C1-004"}
+                    {bentoExhibitIdx === 0 ? "BATES EX-A1-001" : "BATES EX-D1-018"}
                   </span>
                 </div>
 
@@ -375,7 +375,7 @@ export function DocumentoPreview() {
                       transition: "all 0.15s ease",
                     }}
                   >
-                    Exh. C-1
+                    Exh. D-1
                   </button>
                 </div>
               </div>
@@ -390,13 +390,13 @@ export function DocumentoPreview() {
                   fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
                 }}
               >
-                Passport_Bio_Page_UK.pdf
+                {bentoExhibitIdx === 0 ? "Passport_Bio_Page_Applicant.pdf" : "CRA_NOA_And_Settlement_Funds.pdf"}
               </h3>
               <p style={{ fontSize: "13.5px", color: "#526663", lineHeight: 1.55, margin: "0 0 18px 0" }}>
-                Biometric identity exhibit anchored by SHA-256 provenance and coordinate-linked extraction.
+                Biometric passport MRZ and Canadian financial exhibits anchored by coordinate-linked extraction.
               </p>
 
-              {/* Extraction Confidence Controller */}
+              {/* Extraction Confidence Summary */}
               <div
                 style={{
                   background: "#F8FAF9",
@@ -410,34 +410,32 @@ export function DocumentoPreview() {
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    marginBottom: "10px",
+                    marginBottom: "8px",
                     fontSize: "12px",
                   }}
                 >
                   <span style={{ color: "#445451", fontWeight: 600 }}>
-                    {bentoExhibitIdx === 0 ? "Exhibit A-1 • 2 pgs" : "Exhibit C-1 • 14 pgs"}
+                    {bentoExhibitIdx === 0 ? "Exhibit A-1 • 2 pgs" : "Exhibit D-1 • 14 pgs"}
                   </span>
                   <span style={{ color: "#0D6866", fontWeight: 700 }}>
                     {ocrConfidence.toFixed(1)}% AI Extraction Confidence
                   </span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 550, whiteSpace: "nowrap" }}>
-                    Threshold
-                  </span>
-                  <input
-                    type="range"
-                    min="92.0"
-                    max="99.9"
-                    step="0.1"
-                    aria-label="AI Confidence Threshold"
-                    value={ocrConfidence}
-                    onChange={(e) => setOcrConfidence(parseFloat(e.target.value))}
+                <div
+                  style={{
+                    width: "100%",
+                    height: "6px",
+                    borderRadius: "999px",
+                    background: "#DCE5E1",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
                     style={{
-                      width: "100%",
-                      accentColor: "#0D6866",
-                      height: "4px",
-                      cursor: "pointer",
+                      width: `${Math.min(100, Math.max(0, ocrConfidence))}%`,
+                      height: "100%",
+                      background: "#0D6866",
+                      borderRadius: "999px",
                     }}
                   />
                 </div>
@@ -458,7 +456,7 @@ export function DocumentoPreview() {
             >
               <span>Tamper-evident vault</span>
               <code style={{ fontSize: "11px", color: "#07594F", fontWeight: 600 }}>
-                {bentoExhibitIdx === 0 ? "e3b0c442...a53b" : "8f4a2109...b76c"}
+                {bentoExhibitIdx === 0 ? "e3b0c442...a53b" : "19c3e982...98f4"}
               </code>
             </div>
           </div>
@@ -557,10 +555,10 @@ export function DocumentoPreview() {
                   fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
                 }}
               >
-                Principal Applicant (EB-1A)
+                Principal Applicant (Canada Express Entry)
               </h3>
               <p style={{ fontSize: "13.5px", color: "#526663", lineHeight: 1.55, margin: "0 0 18px 0" }}>
-                Cross-document verification flags date variances across exhibits before government submission.
+                Cross-document verification flags date variances between NOC letters and IMM 5669 before IRCC submission.
               </p>
 
               <div
@@ -574,20 +572,20 @@ export function DocumentoPreview() {
                 {auditViewMode === "timeline" ? (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "13px" }}>
                     <div>
-                      <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Exhibit E-2 (Support Letter)</div>
+                      <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Exhibit E-2 (NOC 21231 Letter)</div>
                       <div style={{ fontWeight: 700, color: "#063C3D" }}>Sept 1, 2021</div>
                     </div>
                     <span style={{ color: "#D97706", fontSize: "11px", fontWeight: 700, background: "#FEF7EA", padding: "2px 6px", borderRadius: "4px" }}>
                       variance
                     </span>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Applicant CV (Exhibit E-1)</div>
+                      <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>IMM 5669 History (Exh. E-1)</div>
                       <div style={{ fontWeight: 700, color: "#063C3D" }}>Oct 1, 2021</div>
                     </div>
                   </div>
                 ) : (
                   <div style={{ fontSize: "13px", color: "#063C3D", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span>MIT Quantum Engineering Lab</span>
+                    <span>Toronto Cloud Systems Inc. (NOC 21231)</span>
                     <span style={{ color: "#0D6866", fontWeight: 700 }}>3 Exhibits Linked</span>
                   </div>
                 )}
@@ -650,7 +648,7 @@ export function DocumentoPreview() {
                   Counsel Sign-Off
                 </span>
                 <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700 }}>
-                  G-28 Verified
+                  IMM 5476 Verified
                 </span>
               </div>
 
@@ -664,10 +662,10 @@ export function DocumentoPreview() {
                   fontFamily: "var(--font-display, 'Plus Jakarta Sans', Inter, sans-serif)",
                 }}
               >
-                Assigned Lead Counsel
+                Assigned Lead RCIC / Counsel
               </h3>
               <p style={{ fontSize: "13.5px", color: "#526663", lineHeight: 1.55, margin: "0 0 18px 0" }}>
-                Supervising counsel retains non-delegable legal authority over every discrepancy resolution and filing package.
+                Licensed RCICs and immigration counsel retain non-delegable legal authority over every discrepancy resolution and IRCC package.
               </p>
 
               <div
@@ -732,7 +730,7 @@ export function DocumentoPreview() {
                 borderTop: "1px solid #EAEFEA",
               }}
             >
-              Human-led legal judgment • Bar # NY-4921
+              Human-led representation • CICC # R709421
             </div>
           </div>
         </div>
@@ -765,11 +763,11 @@ export function DocumentoPreview() {
           >
             <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
               <span style={{ fontSize: "13.5px", fontWeight: 700, color: "#063C3D" }}>
-                Active Petition Docket: Principal Applicant
+                Active Canadian Case Docket: Principal Applicant
               </span>
               <span style={{ fontSize: "12px", color: "#BDCDC7" }}>•</span>
               <span style={{ fontSize: "13px", fontWeight: 600, color: "#0D6866" }}>
-                EB-1A Extraordinary Ability (Form I-140)
+                Canada Express Entry (FSWP / CEC — e-APR)
               </span>
             </div>
 
@@ -794,7 +792,7 @@ export function DocumentoPreview() {
                   color: "#5D6E7F",
                 }}
               >
-                Interactive Casework Studio
+                IRCC Casework Studio
               </span>
             </div>
           </div>
@@ -881,7 +879,7 @@ export function DocumentoPreview() {
                   </div>
                   <div style={{ fontSize: "24px", fontWeight: 750, color: "#063C3D" }}>68%</div>
                   <div style={{ fontSize: "12px", color: "#176B50", marginTop: "3px", fontWeight: 600 }}>
-                    ✓ 3 of 10 Criteria Satisfied
+                    ✓ CRS 518 Verified • 4 of 6 Exhibits Cleared
                   </div>
                 </div>
 
@@ -899,25 +897,25 @@ export function DocumentoPreview() {
 
                 <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    Target Submission Date
+                    Post-ITA 60-Day Clock
                   </div>
                   <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
-                    November 15, 2024
+                    42 Days Remaining
                   </div>
                   <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "4px" }}>
-                    32 business days remaining
+                    IRCC e-APR statutory deadline
                   </div>
                 </div>
 
                 <div style={{ background: "#FFFFFF", border: "1px solid #DCE5E1", borderRadius: "8px", padding: "14px 16px" }}>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", marginBottom: "4px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    Supervising Attorney
+                    Supervising Representative
                   </div>
                   <div style={{ fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
-                    Assigned Lead Counsel
+                    Assigned Lead RCIC / Counsel
                   </div>
                   <div style={{ fontSize: "12px", color: "#6E7F7C", marginTop: "4px" }}>
-                    Lead Counsel (Bar # NY-4921)
+                    CICC Reg. # R709421 (IMM 5476)
                   </div>
                 </div>
               </div>
@@ -935,11 +933,11 @@ export function DocumentoPreview() {
                   }}
                 >
                   {[
-                    { step: "Intake", status: "completed", desc: "Questionnaire submitted" },
-                    { step: "Documents", status: "completed", desc: "6 exhibits verified" },
-                    { step: "Review", status: "active", desc: "1 date flag under review" },
-                    { step: "Package", status: "pending", desc: "Exhibit bundle assembly" },
-                    { step: "Attorney Sign-off", status: "pending", desc: "Final USCIS evaluation" },
+                    { step: "Intake", status: "completed", desc: "English/Gujarati/Hindi form" },
+                    { step: "Documents", status: "completed", desc: "6 IRCC exhibits hashed" },
+                    { step: "Review", status: "active", desc: "1 NOC date flag under review" },
+                    { step: "Package", status: "pending", desc: "CIC/IRCC 5-folder assembly" },
+                    { step: "RCIC Sign-off", status: "pending", desc: "Final IRCC e-APR gate" },
                   ].map((s, idx) => {
                     const isCompleted = s.status === "completed";
                     const isActive = s.status === "active";
@@ -1011,7 +1009,7 @@ export function DocumentoPreview() {
                 <span style={{ fontSize: "12px", fontWeight: 700, color: "#6E7F7C", marginRight: "4px" }}>
                   Filter:
                 </span>
-                {["ALL", "Identity", "Academic", "Publications", "Patents", "Support Letters", "Forms"].map((cat) => {
+                {["ALL", "Identity", "Education", "Language", "Financial", "Employment", "IRCC Forms"].map((cat) => {
                   const isCatSelected = docCategoryFilter === cat;
                   return (
                     <button
@@ -1293,7 +1291,7 @@ export function DocumentoPreview() {
                     <span style={{ fontSize: "11.5px", color: "#6E7F7C" }}>Confidence: 94%</span>
                   </div>
                   <span style={{ fontSize: "11px", color: "#6E7F7C", fontFamily: "monospace" }}>
-                    Rule: USCIS-CRIT-03-CHRONO
+                    Rule: IRCC-EE-NOC21231-CHRONO
                   </span>
                 </div>
 
@@ -1302,11 +1300,11 @@ export function DocumentoPreview() {
                 </h4>
 
                 <p style={{ fontSize: "13px", color: "#445451", lineHeight: 1.5, margin: "0 0 12px 0" }}>
-                  Exhibit E-2 (MIT Employer Support Letter, Page 2, Para 3) lists appointment commencement as <strong>September 1, 2021</strong>. However, Exhibit E-1 (Curriculum Vitae) states full-time appointment as <strong>October 2021</strong>.
+                  Exhibit E-2 (Employer NOC 21231 Reference Letter, Page 2, Para 3) lists skilled employment commencement as <strong>September 1, 2021</strong>. However, Exhibit E-1 (IMM 5669 Personal History) states start date as <strong>October 2021</strong> — a mismatch that can trigger an IRCC Procedural Fairness Letter (PFL).
                 </p>
 
                 <div style={{ background: "#FFFFFF", padding: "8px 12px", borderRadius: "6px", border: "1px solid #DCE5E1", fontSize: "11.5px", color: "#063C3D", marginBottom: "14px" }}>
-                  <strong>Source Provenance:</strong> [Exhibit_E2_SupportLetter.pdf • Page 2 • Bounding Box: (x: 140, y: 320, w: 410, h: 45)]
+                  <strong>Source Provenance:</strong> [Employer_NOC21231_Reference_Letter.pdf • Page 2 • Bounding Box: (x: 140, y: 320, w: 410, h: 45)]
                 </div>
 
                 {/* Adjudication Action Controls */}

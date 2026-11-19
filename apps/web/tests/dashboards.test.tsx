@@ -83,13 +83,13 @@ describe("Three Separate Role Experiences", () => {
       expect(await screen.findByText("Company Operations, Workload & Governance")).toBeDefined();
       expect(await screen.findByText(/Sarah Jenkins/i)).toBeDefined();
 
-      // 5. Switch to Financials tab
+      // 5. Switch to Billing area (7-Area Consolidated Navigation)
       const finTabBtn = screen.getByRole("button", { name: /Revenue & Billing/i });
-      act(() => {
+      await act(async () => {
         fireEvent.click(finTabBtn);
       });
-      expect(screen.getByText("Retainers, Invoices & Escrow Ledger")).toBeDefined();
-      expect(screen.getByText("INV-2026-081")).toBeDefined();
+      expect(await screen.findByText("Issued Invoices & Settlement Status")).toBeDefined();
+      expect((await screen.findAllByText(/Total Invoiced/i)).length).toBeGreaterThan(0);
 
       // 6. Switch to Audit tab
       const auditTabBtn = screen.getByRole("button", { name: /Audit Alerts/i });
@@ -194,10 +194,10 @@ describe("Three Separate Role Experiences", () => {
         );
       });
 
-      // 1. Overview
+      // 1. Overview (3-Block Layout: Status & Next Step, Uploader & Sponsor, Quick Links & Actions)
       expect(screen.getByText(/Welcome to Your Immigration Transparency Portal/i)).toBeDefined();
-      expect(screen.getByText("My Petition Details")).toBeDefined();
-      expect(screen.getByText("CASE-US-8841")).toBeDefined();
+      expect(screen.getByText("Application Status")).toBeDefined();
+      expect(screen.getAllByText(/CASE-US-8841/i).length).toBeGreaterThan(0);
 
       // 2. Click Guided Questionnaire action in header
       const qBtns = screen.getAllByRole("button", { name: /Guided Questionnaire/i });
@@ -215,7 +215,7 @@ describe("Three Separate Role Experiences", () => {
       expect(screen.getByText("Legal Retainer Executed")).toBeDefined();
 
       // 4. Switch to Messages tab and send message
-      const messagesTabBtn = screen.getByRole("button", { name: /Lawyer Messages/i });
+      const messagesTabBtn = screen.getByRole("button", { name: /Lawyer Messages|^Messages$/i });
       act(() => {
         fireEvent.click(messagesTabBtn);
       });
@@ -237,7 +237,8 @@ describe("Three Separate Role Experiences", () => {
       });
       expect(screen.getByText("Two-Factor Authentication (MFA)")).toBeDefined();
       expect(screen.getByText("MFA Enabled")).toBeDefined();
-      expect(screen.getByText("Tenant Isolation Guarantee")).toBeDefined();
+      expect(screen.getByText("Private & Dedicated Case Access")).toBeDefined();
+      expect(screen.getByText("Private & Encrypted")).toBeDefined();
     });
   });
 });

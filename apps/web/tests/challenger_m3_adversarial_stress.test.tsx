@@ -92,17 +92,17 @@ describe("Empirical Challenger Adversarial Stress Harness — Milestone 3 Consol
         fireEvent.click(casesBtn!);
       });
 
-      // Verify that Section 2 is active and in-view sub-navigation pill bar is displayed
+      // Verify that Section 2 (Cases & Priority Queue) is active and in-view sub-navigation pill bar is displayed
       expect(screen.getByRole("heading", { name: "All Cases" })).toBeDefined();
-      const subNavTablist = screen.getByRole("tablist", { name: "Caseload & Retainers Views" });
+      const subNavTablist = screen.getByTestId("owner-area-subview-switcher");
       expect(subNavTablist).toBeDefined();
 
-      // Test sub-navigation pill switching inside main
-      const retainedClientsPill = screen.getByRole("tab", { name: /Retained Clients/i });
+      // Switch to Clients & Leads area via #tab-btn-clients
       act(() => {
-        fireEvent.click(retainedClientsPill);
+        const clientsBtn = container.querySelector("#tab-btn-clients");
+        fireEvent.click(clientsBtn!);
       });
-      expect(screen.getByRole("heading", { name: /Retained Clients & Portal Access Control/i })).toBeDefined();
+      expect(screen.getByRole("heading", { name: /Retained Applicant Directory & Portal Access Control/i })).toBeDefined();
     });
 
     it("EmployeeWorkspace: survives rapid 50-cycle switching across all 4 caseworker views and sub-tabs without crash or state tearing", async () => {
@@ -496,7 +496,7 @@ describe("Empirical Challenger Adversarial Stress Harness — Milestone 3 Consol
       act(() => {
         fireEvent.click(financialsTab);
       });
-      expect(screen.getByRole("heading", { name: "Revenue & Billing" })).toBeDefined();
+      expect(screen.getByRole("heading", { name: "Billing & Retainers" })).toBeDefined();
     });
 
     it("EmployeeWorkspace: renders clean zero-state gracefully when all queues and matters are empty", async () => {

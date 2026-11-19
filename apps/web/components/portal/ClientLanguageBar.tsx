@@ -110,7 +110,7 @@ export function ClientLanguageBar({
             }}
           >
             {currentLanguage === "en"
-              ? "Select Gujarati (ગુજરાતી) or Hindi (हिन्दी) for native language coordination."
+              ? "Choose English, Gujarati (ગુજરાતી), or Hindi (हिन्दी) to view your portal in your preferred language."
               : currentLanguage === "gu"
               ? "તમે ગુજરાતીમાં વિઝા અપડેટ્સ વાંચી શકો છો અને અધિકારી સાથે વાતચીત કરી શકો છો."
               : "आप हिन्दी में वीज़ा अपडेट पढ़ सकते हैं और अधिकारी के साथ समन्वय कर सकते हैं।"}

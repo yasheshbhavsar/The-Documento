@@ -20,12 +20,22 @@ interface FirmConfigurationHubProps {
   activeRole?: RoleCode;
 }
 
+const SUPPORTED_FIRM_JURISDICTIONS: { code: string; name: string; defaultPathways: string[] }[] = [
+  { code: "USA", name: "United States", defaultPathways: ["EB-1A", "O-1A", "H-1B", "L-1A", "I-485"] },
+  { code: "GBR", name: "United Kingdom", defaultPathways: ["Skilled Worker", "Global Talent", "Student Route", "Standard Visitor"] },
+  { code: "CAN", name: "Canada", defaultPathways: ["Express Entry FSW", "Study Permit", "PGWP", "Super Visa", "Spousal PR"] },
+  { code: "AUS", name: "Australia", defaultPathways: ["Subclass 189", "Subclass 190", "Subclass 482", "Subclass 500"] },
+  { code: "NZL", name: "New Zealand", defaultPathways: ["Skilled Migrant Category", "Accredited Employer Work Visa"] },
+  { code: "DEU", name: "Germany", defaultPathways: ["EU Blue Card (AufenthG §18g)", "Chancenkarte (AufenthG §20a)"] },
+  { code: "IND", name: "India", defaultPathways: ["OCI Card", "Employment Visa", "Consular Attestation"] },
+];
+
 export function FirmConfigurationHub({
   organizationId,
   activeRole = "master_admin",
 }: FirmConfigurationHubProps) {
   const [config, setConfig] = useState<FirmConfiguration>(FALLBACK_FIRM_CONFIGURATION);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [activeDomain, setActiveDomain] = useState<FirmConfigDomain>("roles");
   const [auditLogs, setAuditLogs] = useState<FirmConfigAuditLogItem[]>([]);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
@@ -38,7 +48,9 @@ export function FirmConfigurationHub({
   const [submitting, setSubmitting] = useState(false);
 
   // Editable domain states
-  const [domainForms, setDomainForms] = useState<Record<string, any>>({});
+  const [domainForms, setDomainForms] = useState<Record<string, any>>(() =>
+    JSON.parse(JSON.stringify(FALLBACK_FIRM_CONFIGURATION.domains || {}))
+  );
 
   useEffect(() => {
     loadConfiguration();
@@ -97,7 +109,7 @@ export function FirmConfigurationHub({
 
   const DOMAIN_TABS: { key: FirmConfigDomain; label: string; icon: string; desc: string }[] = [
     { key: "roles", label: "Roles & Access", icon: "👥", desc: "Staff roles, escalation contacts & permissions" },
-    { key: "country_pathway_enablement", label: "Pathways & Jurisdictions", icon: "🌐", desc: "Enabled jurisdictions (US, UK, CA) and visa categories" },
+    { key: "country_pathway_enablement", label: "Pathways & Jurisdictions", icon: "🌐", desc: "Enabled jurisdictions (US, UK, CA, AU, NZ, DE, IN) and visa categories" },
     { key: "folder_structure", label: "Dossier Folders", icon: "📁", desc: "Standard repository structure and strict hierarchy" },
     { key: "checklist_versions", label: "Checklists & Tiers", icon: "📋", desc: "Version standard pinning and mandatory criteria tiers" },
     { key: "reminders_escalations", label: "Cadence & Escalations", icon: "⏰", desc: "Automated reminders vs manual controls and intervals" },
@@ -119,6 +131,11 @@ export function FirmConfigurationHub({
             <Badge variant="info" size="md">
               Config v{config.version}
             </Badge>
+            {loading && (
+              <span role="status" aria-live="polite" className="text-xs text-teal-200 font-medium">
+                Syncing...
+              </span>
+            )}
           </div>
           <p className="text-teal-100/90 text-sm mt-1 max-w-2xl leading-relaxed">
             Configure firm-wide operating models, approval gates, checklist versions, and review policies.
@@ -281,8 +298,8 @@ export function FirmConfigurationHub({
               </div>
 
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={loadConfiguration}>
-                  Reset
+                <Button variant="outline" size="sm" onClick={loadConfiguration} disabled={loading}>
+                  {loading ? "Refreshing..." : "Reset"}
                 </Button>
                 <Button variant="primary" size="sm" onClick={handleSaveClick}>
                   Update Domain
@@ -327,13 +344,21 @@ export function FirmConfigurationHub({
               {activeDomain === "country_pathway_enablement" && (
                 <div className="space-y-5">
                   <h4 className="text-sm font-bold text-[#063C3D]">Active Jurisdictions & Pathway Offerings</h4>
-                  {["USA", "GBR", "CAN"].map((jur) => {
-                    const current = domainForms.country_pathway_enablement?.jurisdictions?.[jur] || { enabled: true, pathways: [] };
+                  {SUPPORTED_FIRM_JURISDICTIONS.map((item) => {
+                    const jur = item.code;
+                    const current = domainForms.country_pathway_enablement?.jurisdictions?.[jur] || {
+                      enabled: true,
+                      pathways: item.defaultPathways,
+                    };
+                    const activePathways =
+                      Array.isArray(current.pathways) && current.pathways.length > 0
+                        ? current.pathways
+                        : item.defaultPathways;
                     return (
                       <div key={jur} className="p-4 bg-[#F8FAF9] border border-[#DCE5E1] rounded-xl space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-sm text-[#063C3D]">
-                            {jur} - {jur === "USA" ? "United States" : jur === "GBR" ? "United Kingdom" : "Canada"}
+                            {jur} - {item.name}
                           </span>
                           <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-[#2C3E3A]">
                             <input
@@ -341,7 +366,10 @@ export function FirmConfigurationHub({
                               checked={current.enabled !== false}
                               onChange={(e) => {
                                 const updated = { ...domainForms.country_pathway_enablement };
-                                updated.jurisdictions = { ...updated.jurisdictions, [jur]: { ...current, enabled: e.target.checked } };
+                                updated.jurisdictions = {
+                                  ...updated.jurisdictions,
+                                  [jur]: { ...current, pathways: activePathways, enabled: e.target.checked },
+                                };
                                 setDomainForms({ ...domainForms, country_pathway_enablement: updated });
                               }}
                               className="rounded border-[#DCE5E1] text-[#0D6866] focus:ring-[#0D6866]"
@@ -350,7 +378,7 @@ export function FirmConfigurationHub({
                           </label>
                         </div>
                         <p className="text-xs text-[#526360]">
-                          Active Pathways: {(current.pathways || []).join(", ") || "All standard categories"}
+                          Active Pathways: {activePathways.join(", ") || "All standard categories"}
                         </p>
                       </div>
                     );

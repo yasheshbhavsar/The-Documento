@@ -62,15 +62,18 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
         />
       );
 
-      // Verify Visa File Scope card is present with active category
-      expect(screen.getByText(/Client Profile & Active Visa File Scope/i)).toBeDefined();
+      // Verify 3-Block Overview shows active category & supervising counsel
+      expect(screen.getByTestId("overview-block-status-next-step")).toBeDefined();
       expect(screen.getAllByText(/In-Canada Spousal Sponsorship \(Family Class \/ SCLPC\)/i).length).toBeGreaterThan(0);
-      expect(screen.getByText(/Supervised by Sarah Jenkins, Esq\./i)).toBeDefined();
+      expect(screen.getAllByText(/Sarah Jenkins, Esq\./i).length).toBeGreaterThan(0);
+
+      // Navigate to Profile & Scope view inside My Details to inspect full family composition & compiled forms
+      fireEvent.click(screen.getByTestId("client-nav-profile"));
 
       // Verify matter composition (Family members)
-      expect(screen.getAllByText(/Principal Applicant & Sponsor/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/Principal Beneficiary \/ Retained Client/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/Sponsor \/ Spouse/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Family Members Included in This Visa File/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Principal Applicant/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Sponsor & Co-Signer/i).length).toBeGreaterThan(0);
 
       // Verify statutory forms compiled
       expect(screen.getAllByText(/IMM 0008/i).length).toBeGreaterThan(0);
@@ -175,7 +178,7 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
   });
 
   describe("3. Overview Panel — Required / Pending Initial Information Sheet", () => {
-    it("renders 95% completion meter and previews key sections from SkySail intake PDF", () => {
+    it("renders 95% completion meter in Quick Links and navigates to 11-Section Initial Information Sheet", () => {
       render(
         <ClientPortal
           myCase={FIXTURE_CASES[0]}
@@ -186,16 +189,20 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
         />
       );
 
-      expect(screen.getAllByText(/Required \/ Pending Initial Information Sheet/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/My Details & Initial Information Sheet/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/95% Complete/i).length).toBeGreaterThan(0);
 
-      // Check section previews
+      // Navigate to My Details via Quick Link button
+      fireEvent.click(screen.getByRole("button", { name: /Go to My Details →/i }));
+
+      // Check 11-section tabs in InitialInformationSheet
+      expect(screen.getAllByText(/11-Section Intake Record/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/1\. Main Applicant Biodata/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/4\. 10-Yr Education History/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/5\. 10-Yr Employment History/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/6\. 10-Yr Travel History/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/10\. Sponsor & Relationship/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/11\. Statutory Declaration/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/4\. Education History/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/5\. Employment \(10-Yr\)/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/6\. Travel History \(10-Yr\)/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/10\. Sponsor & Relationship Details/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/11\. Declaration & Signing/i).length).toBeGreaterThan(0);
     });
 
     it("opens the Initial Information Sheet modal when clicking the action button", () => {
@@ -212,17 +219,17 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
       const openSheetBtn = screen.getByRole("button", { name: /Open \/ Complete Information Sheet →/i });
       fireEvent.click(openSheetBtn);
 
-      // Modal should open with full 12-page digital intake form
+      // Modal should open with full 11-section digital intake form
       expect(screen.getAllByText(/Main Applicant Initial Information Sheet/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Applicant Intake In Progress/i).length).toBeGreaterThan(0);
     });
   });
 
   describe("4. Overview Panel — Chat with Assigned Case Processing Officer", () => {
-    it("renders Officer Sarah Jenkins, Esq., online badge, and quick prompt chips", () => {
-      render(
+    it("renders Officer Sarah Jenkins, Esq., online badge, and jurisdiction-adaptive quick prompt chips", () => {
+      const { rerender } = render(
         <ClientPortal
-          myCase={FIXTURE_CASES[0]}
+          myCase={SPOUSAL_CASE_FIXTURE}
           documents={FIXTURE_DOCUMENTS}
           messages={FIXTURE_MESSAGES}
           notifications={FIXTURE_NOTIFICATIONS}
@@ -233,16 +240,30 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
       expect(screen.getAllByText(/Officer Sarah Jenkins, Esq\./i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/ONLINE NOW/i).length).toBeGreaterThan(0);
 
-      // Verify quick inquiry chips
+      // Verify Canada / IRCC quick inquiry chips
       expect(screen.getAllByText(/How long will the IRCC AOR take after filing\?/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Does the spousal residential lease need both our signatures\?/i).length).toBeGreaterThan(0);
+
+      // Rerender with US case and verify USCIS quick inquiry chips adapt to jurisdiction
+      rerender(
+        <ClientPortal
+          myCase={FIXTURE_CASES[0]}
+          documents={FIXTURE_DOCUMENTS}
+          messages={FIXTURE_MESSAGES}
+          notifications={FIXTURE_NOTIFICATIONS}
+          invoices={FIXTURE_INVOICES}
+        />
+      );
+      expect(
+        screen.getAllByText(/How long will the USCIS Form I-797C Receipt Notice take after filing\?/i).length
+      ).toBeGreaterThan(0);
     });
 
     it("pre-populates message input when clicking prompt chip and sends message", () => {
       const handleSendMessage = vi.fn();
       render(
         <ClientPortal
-          myCase={FIXTURE_CASES[0]}
+          myCase={SPOUSAL_CASE_FIXTURE}
           documents={FIXTURE_DOCUMENTS}
           messages={FIXTURE_MESSAGES}
           notifications={FIXTURE_NOTIFICATIONS}
@@ -297,7 +318,7 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
   });
 
   describe("5. Overview Panel — Standards for Uploading Documents for Optimal OCR", () => {
-    it("renders the 6 golden rules of document upload and pre-flight checklist", () => {
+    it("navigates to Upload Standards from My Files / Quick Links and renders the 6 golden rules of document upload", () => {
       render(
         <ClientPortal
           myCase={FIXTURE_CASES[0]}
@@ -308,13 +329,16 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
         />
       );
 
-      expect(screen.getAllByText(/Standards for Uploading Documents to the Portal \(Optimal AI OCR\)/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/300\+ DPI Resolution/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/Uniform Diffused Lighting/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/90° Overhead Orientation/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/All 4 Corners Visible/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/Zero Finger Occlusion/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/Complete Multi-Page PDFs/i).length).toBeGreaterThan(0);
+      // Navigate to Upload Standards & OCR Guidelines sub-view
+      fireEvent.click(screen.getByTestId("client-nav-ocr_faq"));
+
+      expect(screen.getAllByText(/Standards for Uploading Documents for Optimal OCR/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Minimum 300 DPI Optical Clarity/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Rule 2/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Rule 3/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Rule 4/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Rule 5/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Rule 6/i).length).toBeGreaterThan(0);
     });
 
     it("opens the full OCR standards modal when clicking the guide button", () => {
@@ -332,7 +356,7 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
       fireEvent.click(guideBtn);
 
       // Verify DocumentUploadStandardsFAQ modal is mounted
-      expect(screen.getAllByText(/Standards for Uploading Documents to the Portal/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Standards for Uploading Documents for Optimal OCR/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Interactive Pre-Flight OCR Checklist/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/DO: Ideal Upload Quality/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/DON'T: Common Pitfalls That Fail OCR Processing/i).length).toBeGreaterThan(0);
@@ -369,9 +393,18 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
       expect((checkboxes[0] as HTMLInputElement).checked).toBe(false);
     });
 
-    it("renders InitialInformationSheet with tabs for all 11 sections", () => {
-      render(<InitialInformationSheet />);
+    it("renders InitialInformationSheet with tabs for all 11 sections and parameterizes questions by jurisdiction", () => {
+      const { rerender } = render(<InitialInformationSheet jurisdiction="Canada (IRCC)" />);
+      expect(screen.getAllByText(/11-Section Intake Record/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Main Applicant/i).length).toBeGreaterThan(0);
+
+      // Section 2: Canada entry question
+      fireEvent.click(screen.getByRole("button", { name: /2\. Entry & Refusal History/i }));
+      expect(screen.getByText(/Have you visited Canada before\?/i)).toBeDefined();
+
+      // Rerender with United States jurisdiction -> question adapts to United States
+      rerender(<InitialInformationSheet jurisdiction="United States" />);
+      expect(screen.getByText(/Have you visited United States before\?/i)).toBeDefined();
 
       // Tab 4: Education History
       const eduTab = screen.getByRole("button", { name: /4\. Education History/i });
@@ -385,11 +418,12 @@ describe("Retained Client Dashboard — Streamlined Overview, Scope, Intake & OC
       expect(screen.getAllByText(/Employment History/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/\+ Add Employment Record/i).length).toBeGreaterThan(0);
 
-      // Tab 10: Sponsor & Relationship Details
+      // Tab 10: Sponsor & Relationship Details (shows Status in United States for US case)
       const sponsorTab = screen.getByRole("button", { name: /10\. Sponsor/i });
       fireEvent.click(sponsorTab);
       expect(screen.getAllByText(/Sponsor Personal Details & Relationship History/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Sponsor Legal Identity & Status/i).length).toBeGreaterThan(0);
+      expect(screen.getByText(/Status in United States/i)).toBeDefined();
     });
   });
 });

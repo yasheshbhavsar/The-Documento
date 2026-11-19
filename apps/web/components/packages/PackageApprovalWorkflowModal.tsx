@@ -44,6 +44,9 @@ export const PackageApprovalWorkflowModal: React.FC<PackageApprovalWorkflowModal
   };
 
   const currentStageObj = chain.find((s) => s.stage === activeStage);
+  const isPackageRejectedOrBlocked =
+    (packageItem.status || "").toLowerCase() === "rejected" ||
+    chain.some((s) => s.status === "rejected" || s.status === "blocked");
 
   return (
     <div
@@ -166,6 +169,23 @@ export const PackageApprovalWorkflowModal: React.FC<PackageApprovalWorkflowModal
               }}
             >
               ⚠️ {errorMessage}
+            </div>
+          )}
+
+          {isPackageRejectedOrBlocked && (
+            <div
+              data-testid="package-hold-rejection-banner"
+              style={{
+                padding: "12px 16px",
+                background: "#FEF2F2",
+                border: "1px solid #FECACA",
+                borderRadius: "8px",
+                fontSize: "12px",
+                color: "#991B1B",
+                fontWeight: 600,
+              }}
+            >
+              ⛔ Package Export Restricted: One or more approval stages are rejected or blocked. Filing package ZIP download is disabled until revisions are completed and re-approved.
             </div>
           )}
 

@@ -1,5 +1,13 @@
 import React, { useState } from "react";
 import { DocumentItem } from "../../lib/types";
+import { api } from "../../lib/api";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
+import { calculateSHA256, formatBytes } from "../../lib/crypto";
+import {
+  enqueueRawClientPacket,
+  extractSafeRawTextPreview,
+  inferRawFileCategoryAndLabel,
+} from "../../lib/rawClientPacketStore";
 
 export interface ClientDocumentUploadCardProps {
   documents: DocumentItem[];
@@ -8,6 +16,8 @@ export interface ClientDocumentUploadCardProps {
   overviewDocFilter: string;
   onFilterChange: (filter: string) => void;
   clientName?: string;
+  caseId?: string;
+  onDocumentUploaded?: (doc: DocumentItem) => void;
 }
 
 export function DocumentProgressionStepper({
@@ -138,7 +148,10 @@ export function ClientDocumentUploadCard({
   overviewDocFilter,
   onFilterChange,
   clientName = "Primary Applicant",
+  caseId,
+  onDocumentUploaded,
 }: ClientDocumentUploadCardProps) {
+  const ws = useWorkspaceSafe();
   const [isDragOver, setIsDragOver] = useState(false);
 
   // Status Counts
@@ -162,22 +175,102 @@ export function ClientDocumentUploadCard({
       d.status === "action_needed"
   ).length;
 
-  const handleDrop = (e: React.DragEvent) => {
+  const effectiveCaseId = caseId || documents[0]?.case_id || ws?.cases?.[0]?.id;
+
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    onOpenUploadModal();
+    const droppedFiles = Array.from(e.dataTransfer?.files || []).filter((f) => f && f.size > 0);
+    if (droppedFiles.length === 0) {
+      onOpenUploadModal();
+      return;
+    }
+
+    for (const file of droppedFiles) {
+      let sha256 = "";
+      try {
+        const buf = await file.arrayBuffer();
+        sha256 = await calculateSHA256(buf);
+      } catch {
+        sha256 = `sha256_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`;
+      }
+
+      const rawTextPreview = await extractSafeRawTextPreview(file);
+      const inferred = inferRawFileCategoryAndLabel(file.name);
+
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", inferred.category);
+      fd.append("title", file.name);
+      fd.append("raw_only", "true");
+      if (effectiveCaseId) {
+        fd.append("case_id", effectiveCaseId);
+      }
+
+      const uploadRes = await api.uploadDocumentFile(fd, "retained_client");
+      const vaultDocId =
+        uploadRes.data?.id ||
+        `raw-doc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+      const rawPacket = enqueueRawClientPacket({
+        file,
+        vaultDocId,
+        caseId: effectiveCaseId || "default_client",
+        title: file.name,
+        sha256,
+        uploaderRole: "applicant",
+        uploaderName: clientName,
+        declaredCategory: inferred.category,
+        rawTextPreview,
+      });
+
+      const uploadedDoc: DocumentItem = {
+        ...(uploadRes.data || ({} as DocumentItem)),
+        id: vaultDocId,
+        case_id: effectiveCaseId,
+        title: uploadRes.data?.title || file.name,
+        filename: file.name,
+        category: inferred.category,
+        file_size: formatBytes(file.size),
+        byte_size: file.size,
+        mime_type: file.type || "application/pdf",
+        sha256_hash: uploadRes.data?.sha256_hash || sha256,
+        status: "under_review",
+        verification_status: "unverified",
+        processing_status: "pending",
+        uploaded_at: uploadRes.data?.uploaded_at || new Date().toISOString(),
+        page_count: rawPacket.pageCountEstimate,
+        ocr_applied: false,
+        extracted_fields: [],
+        is_raw_packet: true,
+        raw_packet_id: rawPacket.id,
+        ai_lab_status: "pending",
+        uploader_role: "applicant",
+      };
+
+      ws?.handleDocumentUploaded(uploadedDoc);
+      onDocumentUploaded?.(uploadedDoc);
+    }
   };
 
   return (
     <div
+      data-testid="client-document-upload-card"
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={handleDrop}
       style={{
-        background: "#FFFFFF",
-        border: "1px solid #DCE5E1",
+        background: isDragOver ? "#EAF6F0" : "#FFFFFF",
+        border: isDragOver ? "1.5px dashed #0D6866" : "1px solid #DCE5E1",
         borderRadius: "12px",
         padding: "20px 22px",
         display: "flex",
         flexDirection: "column",
         gap: "14px",
+        transition: "all 0.15s ease",
       }}
     >
       {/* Header and Title */}

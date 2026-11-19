@@ -4,7 +4,7 @@ import { Card } from "../common/Card";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
 import { Modal } from "../common/Modal";
-import { ExecutiveDashboardData, MetricDefinition } from "../../lib/types";
+import { ExecutiveDashboardData } from "../../lib/types";
 import { fetchExecutiveDashboard } from "../../lib/api";
 
 interface ExecutiveCommandCenterProps {
@@ -24,10 +24,6 @@ export function ExecutiveCommandCenter({
   const [windowDays, setWindowDays] = useState<number>(30);
   const [isLoading, setIsLoading] = useState<boolean>(!initialData);
   const [isDictionaryOpen, setIsDictionaryOpen] = useState<boolean>(false);
-  const [activeMetricDetail, setActiveMetricDetail] = useState<{
-    title: string;
-    metric: MetricDefinition<any>;
-  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -168,7 +164,7 @@ export function ExecutiveCommandCenter({
           value={m.new_retained_clients.value}
           subtext={`${m.new_retained_clients.total_clients} all-time active client profiles`}
           meaning={m.new_retained_clients.calculation_method}
-          onDrilldown={() => onNavigateTab("operations")}
+          onDrilldown={() => onNavigateTab("billing")}
           drilldownLabel="View client retainers →"
           isLiveApi={isLiveBackend}
           statusBadge={renderStatusBadge(m.new_retained_clients.status)}
@@ -460,7 +456,7 @@ export function ExecutiveCommandCenter({
               <strong style={{ fontSize: "20px", display: "block", color: "#15803d", margin: "4px 0" }}>
                 {m.applications_prepared_reviewed_submitted.submitted}
               </strong>
-              <small style={{ fontSize: "10px", color: "var(--quiet)" }}>Filed with USCIS</small>
+              <small style={{ fontSize: "10px", color: "var(--quiet)" }}>Filed with Government Authority</small>
             </div>
           </div>
         </Card>
@@ -602,7 +598,7 @@ export function ExecutiveCommandCenter({
         isOpen={isDictionaryOpen}
         onClose={() => setIsDictionaryOpen(false)}
         title="Executive Metrics Dictionary & Statutory Formula Specifications"
-        subtitle="Full transparency into database queries, aggregation logic, time-windows, and data sources for all 12 executive dashboard indicators."
+        subtitle="Full transparency into database queries, aggregation logic, time-windows, and data sources for all 13 executive dashboard indicators."
         maxWidth="lg"
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxHeight: "65vh", overflowY: "auto" }}>

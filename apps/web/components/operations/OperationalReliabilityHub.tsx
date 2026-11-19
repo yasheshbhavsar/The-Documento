@@ -15,8 +15,11 @@ import {
   FirmExportRequest,
   ImmigrationCase,
   TeamMemberCapacity,
+  DocumentItem,
 } from "../../lib/types";
 import {
+  api,
+  fetchStaffWorkload,
   getOperationalDashboard,
   getCompletedApplicationSummaries,
   getWithdrawnTombstones,
@@ -34,18 +37,29 @@ import {
   reprocessDeadLetterJob,
   getDocumentDownloadToken,
 } from "../../lib/api";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 
 interface OperationalReliabilityHubProps {
   isLiveBackend?: boolean;
   cases?: ImmigrationCase[];
   staff?: TeamMemberCapacity[];
+  documents?: DocumentItem[];
 }
 
 export function OperationalReliabilityHub({
   isLiveBackend = true,
   cases = [],
   staff = [],
+  documents = [],
 }: OperationalReliabilityHubProps) {
+  const ws = useWorkspaceSafe();
+  const [fallbackCases, setFallbackCases] = useState<ImmigrationCase[]>([]);
+  const [fallbackDocs, setFallbackDocs] = useState<DocumentItem[]>([]);
+  const [fallbackStaff, setFallbackStaff] = useState<TeamMemberCapacity[]>([]);
+
+  const resolvedCases = cases.length > 0 ? cases : (ws?.cases?.length ? ws.cases : fallbackCases);
+  const resolvedDocs = documents.length > 0 ? documents : (ws?.documents?.length ? ws.documents : fallbackDocs);
+  const resolvedStaff = staff.length > 0 ? staff : (ws?.capacity?.length ? ws.capacity : fallbackStaff);
   const [activeTab, setActiveTab] = useState<
     "telemetry" | "data_flow_privacy" | "scenarios" | "archives" | "disaster_recovery"
   >("telemetry");
@@ -127,6 +141,29 @@ export function OperationalReliabilityHub({
       if (revs) setPrivacyReviews(revs);
       setCompletedSummaries(completed);
       setWithdrawnTombstones(withdrawn);
+
+      if (cases.length === 0 && !ws?.cases?.length) {
+        api.getCases().then((r) => setFallbackCases(r?.data || [])).catch(() => {});
+      }
+      if (documents.length === 0 && !ws?.documents?.length) {
+        api.getDocuments().then((r) => setFallbackDocs(r?.data || [])).catch(() => {});
+      }
+      if (staff.length === 0 && !ws?.capacity?.length) {
+        fetchStaffWorkload()
+          .then((wList) =>
+            setFallbackStaff(
+              (wList || []).map((w) => ({
+                id: w.user_id,
+                name: w.full_name,
+                role: w.roles?.[0] || "case_manager",
+                active_cases: w.assigned_cases || 0,
+                max_capacity: w.nominal_capacity || 20,
+                open_reviews: w.open_reviews || 0,
+              }))
+            )
+          )
+          .catch(() => {});
+      }
     } catch (err: any) {
       console.error("Failed to load operational hub data", err);
       showToast("Notice: Loaded operational configuration and fallback registers.", "info");
@@ -152,7 +189,7 @@ export function OperationalReliabilityHub({
 
   const handleExecuteWithdrawal = async () => {
     if (!withdrawForm.case_id || !withdrawForm.reason) {
-      alert("Please provide both Case ID and a valid withdrawal reason.");
+      showToast("Please provide both Case ID and a valid withdrawal reason.", "error");
       return;
     }
     try {
@@ -167,7 +204,7 @@ export function OperationalReliabilityHub({
 
   const handleExecuteCompletedCleanup = async () => {
     if (!completeForm.case_id) {
-      alert("Please enter a valid Case ID to perform cleanup on.");
+      showToast("Please enter a valid Case ID to perform cleanup on.", "error");
       return;
     }
     try {
@@ -182,7 +219,7 @@ export function OperationalReliabilityHub({
 
   const handleCreateReapplication = async () => {
     if (!reapplicationForm.prior_case_id || !reapplicationForm.new_case_number) {
-      alert("Please enter prior case ID and new case number.");
+      showToast("Please enter prior case ID and new case number.", "error");
       return;
     }
     try {
@@ -197,7 +234,7 @@ export function OperationalReliabilityHub({
 
   const handleOffboardEmployee = async () => {
     if (!offboardForm.departing_user_id) {
-      alert("Please enter the departing caseworker's User ID.");
+      showToast("Please enter the departing caseworker's User ID.", "error");
       return;
     }
     try {
@@ -260,7 +297,7 @@ export function OperationalReliabilityHub({
 
   const handleExecuteLockdown = async () => {
     if (!lockdownReason) {
-      alert("Please provide an incident rationale for emergency lockdown.");
+      showToast("Please provide an incident rationale for emergency lockdown.", "error");
       return;
     }
     try {
@@ -274,7 +311,7 @@ export function OperationalReliabilityHub({
 
   const handleTestDownloadToken = async () => {
     if (!testDocId) {
-      alert("Please enter a document ID to generate a short-lived download token.");
+      showToast("Please enter or select a document ID to generate a short-lived download token.", "error");
       return;
     }
     try {
@@ -569,9 +606,31 @@ export function OperationalReliabilityHub({
             subtitle="Simulate and test short-lived signed JWT download token issuance. Quarantined or infected documents are immediately rejected."
           >
             <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+              <select
+                aria-label="Select Workspace Document"
+                value={resolvedDocs.some((d) => d.id === testDocId) ? testDocId : ""}
+                onChange={(e) => {
+                  if (e.target.value) setTestDocId(e.target.value);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid #CBD5E1",
+                  fontSize: "13px",
+                  minWidth: "240px",
+                  background: "#FFFFFF",
+                }}
+              >
+                <option value="">-- Select Workspace Document --</option>
+                {resolvedDocs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.title} ({d.case_number || d.category || d.id})
+                  </option>
+                ))}
+              </select>
               <input
                 type="text"
-                placeholder="Enter Document UUID (e.g. 5dc5c489-023e-4a29-826f-d1c7503bcbea)"
+                placeholder="Or enter custom Document ID / UUID"
                 value={testDocId}
                 onChange={(e) => setTestDocId(e.target.value)}
                 style={{
@@ -579,7 +638,7 @@ export function OperationalReliabilityHub({
                   borderRadius: "6px",
                   border: "1px solid #CBD5E1",
                   fontSize: "13px",
-                  minWidth: "340px",
+                  minWidth: "260px",
                   flex: 1,
                 }}
               />
@@ -1042,34 +1101,32 @@ export function OperationalReliabilityHub({
           <p style={{ margin: 0, color: "#475569" }}>
             Executing withdrawal purges all client documents and package assemblies from storage and database. A minimal tombstone will be created with client name, contact, and intended application.
           </p>
-          {cases && cases.length > 0 && (
-            <div>
-              <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
-                Select From Active Cases:
-              </label>
-              <select
-                onChange={(e) => {
-                  if (e.target.value) setWithdrawForm({ ...withdrawForm, case_id: e.target.value });
-                }}
-                style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
-                defaultValue=""
-              >
-                <option value="">-- Choose active case --</option>
-                {cases.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.case_number} — {c.client_name} ({c.visa_category})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div>
+            <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
+              Select From Active Cases:
+            </label>
+            <select
+              value={resolvedCases.some((c) => c.id === withdrawForm.case_id) ? withdrawForm.case_id : ""}
+              onChange={(e) => {
+                if (e.target.value) setWithdrawForm({ ...withdrawForm, case_id: e.target.value });
+              }}
+              style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+            >
+              <option value="">-- Choose active case --</option>
+              {resolvedCases.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.case_number} — {c.client_name} ({c.visa_category})
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
               Case UUID:
             </label>
             <input
               type="text"
-              placeholder="e.g. 5dc5c489-023e-4a29-826f-d1c7503bcbea"
+              placeholder="Selected case ID or custom UUID"
               value={withdrawForm.case_id}
               onChange={(e) => setWithdrawForm({ ...withdrawForm, case_id: e.target.value })}
               style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #CBD5E1" }}
@@ -1118,34 +1175,32 @@ export function OperationalReliabilityHub({
           <p style={{ margin: 0, color: "#475569" }}>
             Under firm retention policy, completed cases delete underlying uploads and package files. A dedicated <em>Completed Applications Summary</em> will be generated for long-term audit compliance.
           </p>
-          {cases && cases.length > 0 && (
-            <div>
-              <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
-                Select From Active Cases:
-              </label>
-              <select
-                onChange={(e) => {
-                  if (e.target.value) setCompleteForm({ ...completeForm, case_id: e.target.value });
-                }}
-                style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
-                defaultValue=""
-              >
-                <option value="">-- Choose active case --</option>
-                {cases.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.case_number} — {c.client_name} ({c.visa_category})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div>
+            <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
+              Select From Active Cases:
+            </label>
+            <select
+              value={resolvedCases.some((c) => c.id === completeForm.case_id) ? completeForm.case_id : ""}
+              onChange={(e) => {
+                if (e.target.value) setCompleteForm({ ...completeForm, case_id: e.target.value });
+              }}
+              style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+            >
+              <option value="">-- Choose active case --</option>
+              {resolvedCases.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.case_number} — {c.client_name} ({c.visa_category})
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
               Case UUID:
             </label>
             <input
               type="text"
-              placeholder="e.g. 5dc5c489-023e-4a29-826f-d1c7503bcbea"
+              placeholder="Selected case ID or custom UUID"
               value={completeForm.case_id}
               onChange={(e) => setCompleteForm({ ...completeForm, case_id: e.target.value })}
               style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #CBD5E1" }}
@@ -1183,35 +1238,33 @@ export function OperationalReliabilityHub({
           <p style={{ margin: 0, color: "#475569" }}>
             Reapplication starts from <code>CLEARANCE_PENDING</code> with strictly no automatic reuse of documents. An audited historical link to the prior petition will be maintained.
           </p>
-          {cases && cases.length > 0 && (
-            <div>
-              <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
-                Select Prior Case:
-              </label>
-              <select
-                onChange={(e) => {
-                  if (e.target.value) {
-                    const selected = cases.find((c) => c.id === e.target.value);
-                    setReapplicationForm({
-                      ...reapplicationForm,
-                      prior_case_id: e.target.value,
-                      new_case_number: selected ? `${selected.case_number}-REAPP` : "CASE-REAPP",
-                      new_title: selected ? `Fresh Reapplication: ${selected.client_name}` : "Fresh Reapplication",
-                    });
-                  }
-                }}
-                style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
-                defaultValue=""
-              >
-                <option value="">-- Choose prior case --</option>
-                {cases.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.case_number} — {c.client_name} ({c.visa_category})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div>
+            <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
+              Select Prior Case:
+            </label>
+            <select
+              value={resolvedCases.some((c) => c.id === reapplicationForm.prior_case_id) ? reapplicationForm.prior_case_id : ""}
+              onChange={(e) => {
+                if (e.target.value) {
+                  const selected = resolvedCases.find((c) => c.id === e.target.value);
+                  setReapplicationForm({
+                    ...reapplicationForm,
+                    prior_case_id: e.target.value,
+                    new_case_number: selected ? `${selected.case_number}-REAPP` : "CASE-REAPP",
+                    new_title: selected ? `Fresh Reapplication: ${selected.client_name}` : "Fresh Reapplication",
+                  });
+                }
+              }}
+              style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+            >
+              <option value="">-- Choose prior case --</option>
+              {resolvedCases.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.case_number} — {c.client_name} ({c.visa_category})
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
               Prior Case UUID:
@@ -1266,57 +1319,55 @@ export function OperationalReliabilityHub({
           <p style={{ margin: 0, color: "#475569" }}>
             Offboarding deactivates the user account and revokes active sessions immediately. If the caseworker has active case assignments, an authorized successor must be specified.
           </p>
-          {staff && staff.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
-                  Select Departing Caseworker:
-                </label>
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) setOffboardForm({ ...offboardForm, departing_user_id: e.target.value });
-                  }}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
-                  defaultValue=""
-                >
-                  <option value="">-- Choose departing staff member --</option>
-                  {staff.map((s) => (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
+                Select Departing Caseworker:
+              </label>
+              <select
+                value={resolvedStaff.some((s) => s.id === offboardForm.departing_user_id) ? offboardForm.departing_user_id : ""}
+                onChange={(e) => {
+                  if (e.target.value) setOffboardForm({ ...offboardForm, departing_user_id: e.target.value });
+                }}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+              >
+                <option value="">-- Choose departing staff member --</option>
+                {resolvedStaff.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.role}) — {s.active_cases} active cases
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
+                Select Successor Caseworker:
+              </label>
+              <select
+                value={resolvedStaff.some((s) => s.id === offboardForm.successor_user_id) ? offboardForm.successor_user_id : ""}
+                onChange={(e) => {
+                  if (e.target.value) setOffboardForm({ ...offboardForm, successor_user_id: e.target.value });
+                }}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+              >
+                <option value="">-- Choose successor staff member --</option>
+                {resolvedStaff
+                  .filter((s) => s.id !== offboardForm.departing_user_id)
+                  .map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.role}) — {s.active_cases} active cases
+                      {s.name} ({s.role}) — Capacity: {s.active_cases}/{s.max_capacity}
                     </option>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", color: "#64748B", marginBottom: "4px" }}>
-                  Select Successor Caseworker:
-                </label>
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) setOffboardForm({ ...offboardForm, successor_user_id: e.target.value });
-                  }}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "13px" }}
-                  defaultValue=""
-                >
-                  <option value="">-- Choose successor staff member --</option>
-                  {staff
-                    .filter((s) => s.id !== offboardForm.departing_user_id)
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.role}) — Capacity: {s.active_cases}/{s.max_capacity}
-                      </option>
-                    ))}
-                </select>
-              </div>
+              </select>
             </div>
-          )}
+          </div>
           <div>
             <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
               Departing User UUID:
             </label>
             <input
               type="text"
-              placeholder="e.g. 22222222-2222-2222-2222-222222222222"
+              placeholder="Selected departing user ID or custom UUID"
               value={offboardForm.departing_user_id}
               onChange={(e) => setOffboardForm({ ...offboardForm, departing_user_id: e.target.value })}
               style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #CBD5E1" }}
@@ -1328,7 +1379,7 @@ export function OperationalReliabilityHub({
             </label>
             <input
               type="text"
-              placeholder="e.g. 33333333-3333-3333-3333-333333333333"
+              placeholder="Selected successor user ID or custom UUID"
               value={offboardForm.successor_user_id}
               onChange={(e) => setOffboardForm({ ...offboardForm, successor_user_id: e.target.value })}
               style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #CBD5E1" }}

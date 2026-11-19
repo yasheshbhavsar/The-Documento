@@ -68,6 +68,9 @@ export interface WorkspaceContextType {
   kickoffVersion: number;
   selectedCaseForKickoff: ImmigrationCase | null;
   setSelectedCaseForKickoff: (c: ImmigrationCase | null) => void;
+  isLaunchpadOpen: boolean;
+  setIsLaunchpadOpen: (open: boolean) => void;
+  openLaunchpadForCase: (c: ImmigrationCase | null) => void;
 
   // Global Feedback & UI State
   bannerAlert: BannerAlert | null;
@@ -77,6 +80,7 @@ export interface WorkspaceContextType {
   refreshCases: () => Promise<void>;
   refreshClients: () => Promise<void>;
   refreshDocuments: () => Promise<void>;
+  refreshCapacity: () => Promise<void>;
   refreshAll: () => Promise<void>;
   refreshLiveTasksAndAudit: () => Promise<void>;
 
@@ -85,9 +89,15 @@ export interface WorkspaceContextType {
     newCase: ImmigrationCase,
     linkedClient?: ClientProfile,
     isNewClientOnboarding?: boolean,
-    options?: { skipKickoffModal?: boolean; uploadedDocs?: DocumentItem[] }
+    options?: { skipKickoffModal?: boolean; openKickoffModal?: boolean; uploadedDocs?: DocumentItem[] }
   ) => void;
   handleCaseUpdated: (updatedCase: ImmigrationCase) => void;
+  handleAssignCaseworker: (params: {
+    caseId?: string;
+    clientId?: string;
+    officerName: string;
+    officerUserId?: string;
+  }) => Promise<void>;
   handleClientCreated: (newClient: ClientProfile) => void;
   handleClientUpdated: (updatedClient: ClientProfile) => void;
   handleDeleteClient: (clientId: string) => Promise<void>;
@@ -131,8 +141,29 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
   const [capacity, setCapacity] = useState<TeamMemberCapacity[]>([]);
 
   // Kickoff state
-  const [selectedCaseForKickoff, setSelectedCaseForKickoff] = useState<ImmigrationCase | null>(null);
+  const [selectedCaseForKickoff, setSelectedCaseForKickoffState] = useState<ImmigrationCase | null>(null);
+  const [isLaunchpadOpen, setIsLaunchpadOpenState] = useState<boolean>(false);
   const [kickoffVersion, setKickoffVersion] = useState<number>(0);
+
+  const openLaunchpadForCase = useCallback((c: ImmigrationCase | null) => {
+    setSelectedCaseForKickoffState(c);
+    setIsLaunchpadOpenState(Boolean(c));
+  }, []);
+
+  const setSelectedCaseForKickoff = useCallback((c: ImmigrationCase | null) => {
+    setSelectedCaseForKickoffState(c);
+    setIsLaunchpadOpenState(Boolean(c));
+  }, []);
+
+  const setIsLaunchpadOpen = useCallback(
+    (open: boolean) => {
+      setIsLaunchpadOpenState(open);
+      if (!open) {
+        setSelectedCaseForKickoffState(null);
+      }
+    },
+    []
+  );
 
   // Load existing session from storage if present (only when initialUser was not passed)
   useEffect(() => {
@@ -198,6 +229,15 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
     try {
       const res = await api.getDocuments();
       setDocuments(res.data);
+    } catch {
+      // Non-blocking
+    }
+  }, []);
+
+  const refreshCapacity = useCallback(async () => {
+    try {
+      const res = await api.getTeamCapacity();
+      setCapacity(res.data);
     } catch {
       // Non-blocking
     }
@@ -310,7 +350,7 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
       newCase: ImmigrationCase,
       linkedClient?: ClientProfile,
       isNewClientOnboarding?: boolean,
-      options?: { skipKickoffModal?: boolean; uploadedDocs?: DocumentItem[] }
+      options?: { skipKickoffModal?: boolean; openKickoffModal?: boolean; uploadedDocs?: DocumentItem[] }
     ) => {
       initCaseKickoffRecord({
         caseId: newCase.id,
@@ -323,8 +363,9 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
         setDocuments((prev) => [...options.uploadedDocs!, ...prev]);
       }
       setKickoffVersion((v) => v + 1);
-      if (!options?.skipKickoffModal) {
-        setSelectedCaseForKickoff(newCase);
+      // Do NOT auto-open PostOnboardingLaunchpadModal on client/case creation unless explicitly requested
+      if (options?.openKickoffModal === true && !options?.skipKickoffModal) {
+        openLaunchpadForCase(newCase);
       }
       setBannerAlert({
         type: "success",
@@ -335,8 +376,9 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
           : `Immigration Case ${newCase.case_number} created and assigned to lead counsel.`,
       });
       void refreshLiveTasksAndAudit();
+      void refreshCapacity();
     },
-    [currentUser?.full_name, refreshLiveTasksAndAudit]
+    [currentUser?.full_name, openLaunchpadForCase, refreshCapacity, refreshLiveTasksAndAudit]
   );
 
   const handleCaseUpdated = useCallback((updatedCase: ImmigrationCase) => {
@@ -346,6 +388,109 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
       message: `Case ${updatedCase.case_number} details and milestone progress updated.`,
     });
   }, []);
+
+  const handleAssignCaseworker = useCallback(
+    async ({
+      caseId,
+      clientId,
+      officerName,
+      officerUserId,
+    }: {
+      caseId?: string;
+      clientId?: string;
+      officerName: string;
+      officerUserId?: string;
+    }) => {
+      const trimmedOfficer = (officerName || "").trim() || "Unassigned";
+      const isUnassigning = trimmedOfficer.toLowerCase() === "unassigned";
+      const matchedCapacity = capacity.find(
+        (m) =>
+          (officerUserId && m.id === officerUserId) ||
+          m.name.trim().toLowerCase() === trimmedOfficer.toLowerCase()
+      );
+      const resolvedUserId = officerUserId || matchedCapacity?.id;
+
+      try {
+        if (caseId) {
+          const targetCase = cases.find((c) => c.id === caseId);
+          const res = await api.assignCaseOfficer(
+            caseId,
+            trimmedOfficer,
+            {
+              userId: resolvedUserId,
+              roleInCase: "case_manager",
+              fallbackCase: targetCase,
+            },
+            currentRoleCode
+          );
+          if (res.data) {
+            setCases((prev) => prev.map((c) => (c.id === res.data!.id ? res.data! : c)));
+            if (res.data.client_id) {
+              setClients((prev) =>
+                prev.map((cl) =>
+                  cl.id === res.data!.client_id
+                    ? {
+                        ...cl,
+                        assigned_caseworker: isUnassigning ? undefined : trimmedOfficer,
+                        assigned_caseworker_id: isUnassigning ? undefined : resolvedUserId,
+                      }
+                    : cl
+                )
+              );
+            }
+          }
+          setBannerAlert({
+            type: "success",
+            message: isUnassigning
+              ? `Removed caseworker assignment on ${targetCase?.case_number || "case"}.`
+              : `Assigned ${trimmedOfficer} to ${targetCase?.case_number || "case"}.`,
+          });
+        } else if (clientId) {
+          const targetClient = clients.find((cl) => cl.id === clientId);
+          const res = await api.assignClientCaseworker(
+            clientId,
+            trimmedOfficer,
+            {
+              userId: resolvedUserId,
+              roleInCase: "case_manager",
+              knownCases: cases,
+              fallbackClient: targetClient,
+            },
+            currentRoleCode
+          );
+          if (res.data.client) {
+            setClients((prev) =>
+              prev.map((cl) => (cl.id === clientId ? res.data.client! : cl))
+            );
+          }
+          if (res.data.updatedCases.length > 0) {
+            const byId = new Map(res.data.updatedCases.map((uc) => [uc.id, uc]));
+            setCases((prev) => prev.map((c) => byId.get(c.id) || c));
+          }
+          const clientLabel = targetClient
+            ? `${targetClient.first_name} ${targetClient.last_name}`.trim()
+            : "client";
+          const count = res.data.updatedCases.length;
+          setBannerAlert({
+            type: "success",
+            message: isUnassigning
+              ? `Cleared caseworker assignment for ${clientLabel}.`
+              : count > 0
+                ? `Assigned ${trimmedOfficer} to ${clientLabel} (${count} ${count === 1 ? "case" : "cases"} updated).`
+                : `Assigned ${trimmedOfficer} as primary caseworker for ${clientLabel}.`,
+          });
+        }
+
+        await Promise.all([refreshCapacity(), refreshLiveTasksAndAudit()]);
+      } catch (err: any) {
+        setBannerAlert({
+          type: "warning",
+          message: err?.message || "Failed to update caseworker assignment.",
+        });
+      }
+    },
+    [capacity, cases, clients, currentRoleCode, refreshCapacity, refreshLiveTasksAndAudit]
+  );
 
   const handleClientCreated = useCallback(
     (newClient: ClientProfile) => {
@@ -390,8 +535,9 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
         setTasks((prev) => prev.filter((t) => !linkedCaseIds.includes(t.case_id)));
         setAiFindings((prev) => prev.filter((f) => !linkedCaseIds.includes(f.case_id)));
 
-        setSelectedCaseForKickoff((prev) => {
+        setSelectedCaseForKickoffState((prev) => {
           if (prev && (prev.client_id === clientId || linkedCaseIds.includes(prev.id))) {
+            setIsLaunchpadOpenState(false);
             return null;
           }
           return prev;
@@ -436,7 +582,13 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
         setDocuments((prev) => prev.filter((d) => d.case_id !== caseId));
         setTasks((prev) => prev.filter((t) => t.case_id !== caseId));
         setAiFindings((prev) => prev.filter((f) => f.case_id !== caseId));
-        setSelectedCaseForKickoff((prev) => (prev?.id === caseId ? null : prev));
+        setSelectedCaseForKickoffState((prev) => {
+          if (prev?.id === caseId) {
+            setIsLaunchpadOpenState(false);
+            return null;
+          }
+          return prev;
+        });
 
         setBannerAlert({
           type: "success",
@@ -467,7 +619,10 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
   }, []);
 
   const handleDocumentUpdated = useCallback((updatedDoc: DocumentItem) => {
-    setDocuments((prev) => prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d)));
+    setDocuments((prev) => {
+      const exists = prev.some((d) => d.id === updatedDoc.id);
+      return exists ? prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d)) : [updatedDoc, ...prev];
+    });
     setBannerAlert({
       type: "info",
       message: `Document "${updatedDoc.title}" updated. Processing status: ${updatedDoc.processing_status}.`,
@@ -646,15 +801,20 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
       kickoffVersion,
       selectedCaseForKickoff,
       setSelectedCaseForKickoff,
+      isLaunchpadOpen,
+      setIsLaunchpadOpen,
+      openLaunchpadForCase,
       bannerAlert,
       setBannerAlert,
       refreshCases,
       refreshClients,
       refreshDocuments,
+      refreshCapacity,
       refreshAll,
       refreshLiveTasksAndAudit,
       handleCaseCreated,
       handleCaseUpdated,
+      handleAssignCaseworker,
       handleClientCreated,
       handleClientUpdated,
       handleDeleteClient,
@@ -691,14 +851,20 @@ export function WorkspaceProvider({ children, initialUser }: WorkspaceProviderPr
       capacity,
       kickoffVersion,
       selectedCaseForKickoff,
+      setSelectedCaseForKickoff,
+      isLaunchpadOpen,
+      setIsLaunchpadOpen,
+      openLaunchpadForCase,
       bannerAlert,
       refreshCases,
       refreshClients,
       refreshDocuments,
+      refreshCapacity,
       refreshAll,
       refreshLiveTasksAndAudit,
       handleCaseCreated,
       handleCaseUpdated,
+      handleAssignCaseworker,
       handleClientCreated,
       handleClientUpdated,
       handleDeleteClient,

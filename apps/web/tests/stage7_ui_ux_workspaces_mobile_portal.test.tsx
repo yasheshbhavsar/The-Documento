@@ -143,7 +143,7 @@ describe("Stage 7 — UI/UX Staff Work Queues, Case Workspaces, and Mobile Clien
       render(<ManagerPriorityQueueView data={FALLBACK_PRIORITY_QUEUE} />);
 
       // Verify Header
-      expect(screen.getByText(/Strict 1–8 Rank Order Management Protocol/i)).toBeDefined();
+      expect(screen.getByText(/Practice Priority Triage Queue \(Ranks 1–8\)/i)).toBeDefined();
 
       // Verify each rank card 1 through 8 is present
       for (let r = 1; r <= 8; r++) {
@@ -170,7 +170,7 @@ describe("Stage 7 — UI/UX Staff Work Queues, Case Workspaces, and Mobile Clien
       expect(screen.getByText(/Rajesh Patel/i)).toBeDefined();
 
       // Verify Rank 5 Pending Reviews
-      expect(screen.getByText(/Pending Reviews/i)).toBeDefined();
+      expect(screen.getAllByText(/Pending Reviews/i).length).toBeGreaterThan(0);
       expect(screen.getByText(/Form I-140 Immigrant Petition/i)).toBeDefined();
 
       // Verify Rank 6 Quality Issues & Escalations
@@ -280,7 +280,7 @@ describe("Stage 7 — UI/UX Staff Work Queues, Case Workspaces, and Mobile Clien
       fireEvent.click(teamQueuesBtn);
 
       // The 8-rank manager priority queue should now be rendered
-      expect(screen.getByText(/Strict 1–8 Rank Order Management Protocol/i)).toBeDefined();
+      expect(screen.getByText(/Practice Priority Triage Queue \(Ranks 1–8\)/i)).toBeDefined();
       expect(await screen.findByTestId("priority-rank-1")).toBeDefined();
       expect(await screen.findByTestId("priority-rank-2")).toBeDefined();
     });
@@ -381,10 +381,10 @@ describe("Stage 7 — UI/UX Staff Work Queues, Case Workspaces, and Mobile Clien
         />
       );
 
-      const stepper = screen.getByLabelText(/Document progression stage: Package-Ready/i);
+      const stepper = screen.getByLabelText(/Document progression stage: Ready for Filing/i);
       expect(stepper).toBeDefined();
-      expect(screen.getByTitle(/All 6 dimensions passed; ready for filing/i)).toBeDefined();
-      expect(screen.getByText("Package-Ready")).toBeDefined();
+      expect(screen.getByTitle(/Verified and ready for your application package/i)).toBeDefined();
+      expect(screen.getByText("Ready for Filing")).toBeDefined();
     });
   });
 

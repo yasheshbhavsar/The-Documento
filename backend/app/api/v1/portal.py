@@ -1108,7 +1108,12 @@ _FIRM_STAFF_ROLES: frozenset[str] = frozenset(
 
 
 class ContributorLinkCreateRequest(BaseModel):
+    token: Optional[str] = Field(
+        default=None,
+        description="Optional client-generated sponsor token so frontend and backend share the exact same token",
+    )
     case_id: str = Field(..., min_length=1, description="Case UUID or local demo case identifier")
+    case_number: Optional[str] = Field(default=None)
     sponsor_name: str = Field(..., min_length=2, description="Full name of overseas sponsor, host, or Canadian sibling")
     relationship: str = Field(..., min_length=2, description="e.g. child_host, canadian_sibling, uk_sponsor, au_relative")
     jurisdiction: Literal["CA", "UK", "AU"] = Field(default="CA")
@@ -1118,8 +1123,26 @@ class ContributorLinkCreateRequest(BaseModel):
         default=None,
         description="Optional sanitized applicant first name (auto-derived from DB case when omitted)",
     )
+    applicant_name: Optional[str] = Field(
+        default=None,
+        description="Optional applicant full/first name (sanitized to first name only)",
+    )
     requested_items: Optional[list[dict[str, Any]]] = Field(default=None)
     expires_in_days: int = Field(default=14, ge=1, le=90)
+
+
+class ContributorUploadMetadataRequest(BaseModel):
+    id: Optional[str] = None
+    subtype_label: str = Field(default="Sponsor Evidence")
+    category: str = Field(default="financial_evidence")
+    verified: bool = Field(default=False)
+    status: Optional[str] = None
+    sha256: Optional[str] = None
+    filename: Optional[str] = None
+    statutory_badge: Optional[str] = None
+    extracted_summary: Optional[dict[str, Any]] = None
+    is_private_to_firm: bool = Field(default=True)
+    item_id: Optional[str] = None
 
 
 async def _resolve_portal_optional_auth(
@@ -1260,14 +1283,23 @@ def _normalize_requested_items(
     source = raw_items if raw_items else _default_sponsor_requested_items(jurisdiction, pathway, relationship)
     normalized: list[dict[str, Any]] = []
     for idx, item in enumerate(source):
-        normalized.append(
-            {
-                "item_id": str(item.get("item_id") or item.get("id") or f"sponsor_item_{idx + 1}"),
-                "label": str(item.get("label") or item.get("title") or "Required Sponsor Evidence"),
-                "category": str(item.get("category") or "financial_evidence"),
-                "status": str(item.get("status") or "pending"),
-            }
-        )
+        raw_status = item.get("status")
+        if not raw_status:
+            if item.get("verified"):
+                raw_status = "received_verified"
+            elif item.get("satisfied") or item.get("received") or item.get("uploaded"):
+                raw_status = "received_pending_review"
+            else:
+                raw_status = "pending"
+        entry: dict[str, Any] = {
+            "item_id": str(item.get("item_id") or item.get("id") or f"sponsor_item_{idx + 1}"),
+            "label": str(item.get("label") or item.get("title") or "Required Sponsor Evidence"),
+            "category": str(item.get("category") or "financial_evidence"),
+            "status": str(raw_status),
+        }
+        if item.get("hint"):
+            entry["hint"] = str(item.get("hint"))
+        normalized.append(entry)
     return normalized
 
 
@@ -1422,7 +1454,8 @@ async def create_sponsor_contributor_link(
     Creates a passwordless, token-scoped upload link for an overseas sponsor, host, or sibling.
     Works seamlessly for authenticated retained clients, firm staff, and local/demo workflows.
     """
-    applicant_first_name = _sanitize_first_name(payload.applicant_first_name) if payload.applicant_first_name else None
+    raw_applicant_name = payload.applicant_first_name or payload.applicant_name
+    applicant_first_name = _sanitize_first_name(raw_applicant_name) if raw_applicant_name else None
     org_id_str: Optional[str] = str(ctx.organization_id) if ctx else None
 
     # Check DB case if case_id is a valid UUID and exists in SQLite/Postgres
@@ -1445,7 +1478,7 @@ async def create_sponsor_contributor_link(
     if not applicant_first_name:
         applicant_first_name = "Applicant"
 
-    token = generate_secure_random_token(24)
+    token = payload.token.strip() if (payload.token and payload.token.strip()) else generate_secure_random_token(24)
     expires_at = datetime.now(timezone.utc) + timedelta(days=payload.expires_in_days)
     req_items = _normalize_requested_items(
         payload.requested_items,
@@ -1458,6 +1491,7 @@ async def create_sponsor_contributor_link(
         "token": token,
         "token_hash": hash_opaque_token(token),
         "case_id": str(payload.case_id),
+        "case_number": str(payload.case_number or payload.case_id),
         "organization_id": org_id_str,
         "sponsor_name": payload.sponsor_name.strip(),
         "applicant_first_name": applicant_first_name,
@@ -1483,7 +1517,7 @@ async def create_sponsor_contributor_link(
         "privacy_shield": link_record["privacy_shield"],
         "requested_items": link_record["requested_items"],
         "expires_at": link_record["expires_at"],
-        "share_url": f"/contribute/{token}",
+        "share_url": f"/contribute?token={token}",
     }
 
 
@@ -1511,6 +1545,95 @@ async def get_public_contributor_link_scope(token: str) -> dict[str, Any]:
         "privacy_shield": link["privacy_shield"],
         "requested_items": link["requested_items"],
         "uploaded_summaries": link["uploaded_summaries"],
+    }
+
+
+@router.post("/contribute/{token}")
+async def record_sponsor_contribution_metadata(
+    token: str,
+    payload: ContributorUploadMetadataRequest,
+) -> dict[str, Any]:
+    """
+    Records a sponsor contribution upload metadata entry for the given invite token
+    (used by frontend store sync when a sponsor drops a file on `/contribute`).
+    """
+    link = _CONTRIBUTOR_LINKS_BY_TOKEN.get(token)
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contributor upload link not found.")
+
+    exp_dt = datetime.fromisoformat(link["expires_at"])
+    if exp_dt < datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Contributor upload link has expired.")
+
+    eff_privacy = payload.is_private_to_firm if isinstance(payload.is_private_to_firm, bool) else bool(link["privacy_shield"])
+    subtype_label = payload.subtype_label or "Sponsor Evidence"
+    pass_badge = payload.statutory_badge or f"{link['jurisdiction']} Sponsor Evidence Received (Pending Review)"
+    text_lower = f"{subtype_label} {payload.category} {payload.filename or ''} {pass_badge}".lower()
+
+    matched_item = _match_requested_item_for_upload(
+        link["requested_items"],
+        payload.item_id,
+        subtype_label,
+        payload.category,
+        text_lower,
+    )
+    record_status = "received_verified" if payload.verified else (payload.status or "received_pending_review")
+    if matched_item is not None:
+        matched_item["status"] = record_status
+
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+    contribution_id = payload.id or str(uuid.uuid4())
+
+    sanitized_summary = {
+        "contribution_id": contribution_id,
+        "matched_item_id": matched_item["item_id"] if matched_item else None,
+        "subtype_label": subtype_label,
+        "status": record_status,
+        "verified": bool(payload.verified),
+        "statutory_pass_badge": pass_badge,
+        "privacy_shield": eff_privacy,
+        "uploaded_at": uploaded_at,
+    }
+    link["uploaded_summaries"].append(sanitized_summary)
+
+    case_id = link["case_id"]
+    full_record = {
+        "contribution_id": contribution_id,
+        "case_id": case_id,
+        "organization_id": link.get("organization_id"),
+        "sponsor_name": link["sponsor_name"],
+        "relationship": link["relationship"],
+        "jurisdiction": link["jurisdiction"],
+        "pathway": link["pathway"],
+        "matched_item_id": matched_item["item_id"] if matched_item else None,
+        "filename": payload.filename or "sponsor_evidence.pdf",
+        "mime_type": "application/pdf",
+        "category": payload.category,
+        "person_role": "canadian_crs_sibling"
+        if ("sibling" in link["relationship"].lower() or "EXPRESS" in link["pathway"].upper())
+        else "overseas_sponsor_host",
+        "subtype_label": subtype_label,
+        "status": record_status,
+        "statutory_pass_badge": pass_badge,
+        "privacy_shield": eff_privacy,
+        "uploaded_at": uploaded_at,
+        "raw_text": "",
+        "extracted_fields": payload.extracted_summary or {},
+        "barcodes": [],
+        "statutory_evaluation": {},
+        "download_bytes_b64": None,
+    }
+    _CONTRIBUTIONS_BY_CASE_ID.setdefault(case_id, []).append(full_record)
+
+    return {
+        "status": record_status,
+        "contribution_id": contribution_id,
+        "matched_item_id": matched_item["item_id"] if matched_item else None,
+        "subtype_label": subtype_label,
+        "statutory_pass_badge": pass_badge,
+        "privacy_shield": eff_privacy,
+        "uploaded_at": uploaded_at,
+        "requested_items": link["requested_items"],
     }
 
 

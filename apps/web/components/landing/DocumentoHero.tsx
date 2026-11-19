@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import RotatingText from "../ui/RotatingText";
-import { Globe, type Marker } from "../ui/cobe-globe";
+import { Globe } from "../ui/cobe-globe";
 import OrbitImages from "../ui/OrbitImages";
 
 const ROTATING_HERO_HEADLINES = [
@@ -12,14 +12,6 @@ const ROTATING_HERO_HEADLINES = [
   "Complexity Made Simple.",
   "Evidence, Organized.",
   "A Clearer Way Forward.",
-];
-
-const JURISDICTION_MARKERS: Marker[] = [
-  { id: "usa", location: [39.0, -98.0], label: "USA" },
-  { id: "uk", location: [51.5074, -0.1278], label: "UK" },
-  { id: "canada", location: [45.4215, -75.6972], label: "Canada" },
-  { id: "australia", location: [-33.8688, 151.2093], label: "Australia" },
-  { id: "germany", location: [52.5200, 13.4050], label: "Germany" },
 ];
 
 const ORBIT_FLAG_ITEMS = [
@@ -52,7 +44,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
         promise.catch(() => {
           // Autoplay policy fallback: resume on user gesture
           const resume = () => {
-            video.play().catch(() => {});
+            video.play().catch(() => { });
             window.removeEventListener("pointerdown", resume);
             window.removeEventListener("scroll", resume);
             window.removeEventListener("touchstart", resume);
@@ -94,37 +86,18 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
           overflow: "hidden",
         }}
       >
-        {/* Top ambient aura flowing directly behind the sticky glass navbar */}
+        {/* Single lightweight CSS ambient aura behind the sticky glass navbar */}
         <div
           suppressHydrationWarning
           style={{
             position: "absolute",
             top: "0",
             left: "50%",
-            transform: "translate(-50%, -35%)",
-            width: "1360px",
-            height: "320px",
+            transform: "translate(-50%, -30%)",
+            width: "1200px",
+            height: "360px",
             borderRadius: "50%",
-            background: "radial-gradient(ellipse 70% 55% at 50% 50%, rgba(185, 222, 212, 0.6) 0%, rgba(221, 239, 232, 0.35) 50%, transparent 75%)",
-            filter: "blur(60px)",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
-
-        {/* Radiant ambient aura in soft seafoam to amplify wave luminosity & color depth */}
-        <div
-          suppressHydrationWarning
-          style={{
-            position: "absolute",
-            top: "42%",
-            left: "40%",
-            transform: "translate(-50%, -50%)",
-            width: "920px",
-            height: "420px",
-            borderRadius: "50%",
-            background: "radial-gradient(ellipse 70% 50% at 50% 50%, rgba(185, 222, 212, 0.45) 0%, rgba(221, 239, 232, 0.22) 55%, transparent 75%)",
-            filter: "blur(55px)",
+            background: "radial-gradient(ellipse 70% 55% at 50% 50%, rgba(185, 222, 212, 0.5) 0%, rgba(221, 239, 232, 0.25) 55%, transparent 75%)",
             pointerEvents: "none",
             zIndex: 0,
           }}
@@ -149,7 +122,7 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
             loop
             muted
             playsInline
-            preload="auto"
+            preload="metadata"
             style={{
               width: "100%",
               height: "100%",
@@ -162,7 +135,6 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
             }}
           >
             <source src="/videos/gradient-waves.webm" type="video/webm" />
-            <source src="/gradient-waves.webm" type="video/webm" />
           </video>
         </div>
 
@@ -185,21 +157,21 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               textAlign: "left",
             }}
           >
-          {/* Eyebrow Badge */}
-          <div
-            className="documento-hero-badge"
-            suppressHydrationWarning
-            style={{ marginBottom: "16px", display: "inline-flex" }}
-          >
-            <span
-              className="documento-hero-badge-dot"
+            {/* Eyebrow Badge */}
+            <div
+              className="documento-hero-badge"
               suppressHydrationWarning
-            />
-            <span>Immigration Case Management &amp; Evidence Intelligence</span>
-          </div>
+              style={{ marginBottom: "16px", display: "inline-flex" }}
+            >
+              <span
+                className="documento-hero-badge-dot"
+                suppressHydrationWarning
+              />
+              <span>Immigration Case Management &amp; Evidence Intelligence</span>
+            </div>
 
-          {/* Main Headline */}
-          <h1
+            {/* Main Headline */}
+            <h1
               style={{
                 fontSize: "clamp(38px, 6vw, 64px)",
                 fontWeight: 750,
@@ -233,256 +205,256 @@ export function DocumentoHero({ onOpenLogin }: DocumentoHeroProps) {
               />
             </h1>
 
-          {/* Subheading emphasizing reduced administrative burden, organized evidence, and coordination */}
-          <p
-            style={{
-              fontSize: "clamp(16px, 2.2vw, 20px)",
-              lineHeight: 1.6,
-              color: "#445451",
-              margin: "0 0 36px 0",
-              maxWidth: "760px",
-              textAlign: "left",
-              fontWeight: 400,
-            }}
-          >
-            Eliminate administrative paperwork chaos. Documento organizes evidentiary exhibits, maps statutory requirements, tracks procedural filing clocks, and unifies applicants with their legal counsel in one transparent workspace.
-          </p>
-
-          {/* Prominent Primary Calls to Action */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-start",
-              flexWrap: "wrap",
-              gap: "14px",
-              marginBottom: "28px",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => onOpenLogin("firm")}
+            {/* Subheading emphasizing reduced administrative burden, organized evidence, and coordination */}
+            <p
               style={{
-                background: "#0D6866",
-                color: "#FFFFFF",
-                border: "1px solid #063C3D",
-                padding: "14px 28px",
-                borderRadius: "10px",
-                fontWeight: 650,
-                fontSize: "16px",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "10px",
-                boxShadow: "0 4px 14px rgba(13, 104, 102, 0.25)",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#063C3D";
-                e.currentTarget.style.transform = "translateY(-1px)";
-                e.currentTarget.style.boxShadow = "0 6px 20px rgba(6, 60, 61, 0.3)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#0D6866";
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = "0 4px 14px rgba(13, 104, 102, 0.25)";
+                fontSize: "clamp(16px, 2.2vw, 20px)",
+                lineHeight: 1.6,
+                color: "#445451",
+                margin: "0 0 36px 0",
+                maxWidth: "760px",
+                textAlign: "left",
+                fontWeight: 400,
               }}
             >
-              <span>Get Started</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+              Eliminate administrative paperwork chaos. Documento organizes evidentiary exhibits, maps statutory requirements, tracks procedural filing clocks, and unifies applicants with their legal counsel in one transparent workspace.
+            </p>
 
-            <a
-              href="#workflow"
-              style={{
-                background: "#FFFFFF",
-                color: "#063C3D",
-                border: "1px solid #DCE5E1",
-                padding: "14px 24px",
-                borderRadius: "10px",
-                fontWeight: 600,
-                fontSize: "16px",
-                textDecoration: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                boxShadow: "0 2px 4px rgba(6, 60, 61, 0.04)",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#0D6866";
-                e.currentTarget.style.background = "#F4F7F6";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#DCE5E1";
-                e.currentTarget.style.background = "#FFFFFF";
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <polygon points="10 8 16 12 10 16 10 8" fill="#0D6866" stroke="none" />
-              </svg>
-              <span>Explore How It Works</span>
-            </a>
-
-            <a
-              href="#preview"
-              style={{
-                background: "transparent",
-                color: "#0D6866",
-                border: "1px solid transparent",
-                padding: "14px 20px",
-                borderRadius: "10px",
-                fontWeight: 600,
-                fontSize: "15px",
-                textDecoration: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#DDEFE8";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
-            >
-              <span>Test Interactive Demo ↓</span>
-            </a>
-          </div>
-
-          {/* Quick Scope & Trust Verification Bar */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-start",
-              flexWrap: "wrap",
-              gap: "16px",
-              fontSize: "13px",
-              color: "#6E7F7C",
-              marginBottom: "8px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
-              <span><strong>3 Verified Jurisdictions</strong> (US, UK, Canada)</span>
-            </div>
-            <span>•</span>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
-              <span><strong>6 Operational Pathways</strong></span>
-            </div>
-            <span>•</span>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
-              <span><strong>100% SHA-256 Provenance</strong></span>
-            </div>
-            <span>•</span>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
-              <span><strong>Mandatory Attorney Sign-Off</strong></span>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Interactive 3D Jurisdictions Globe with Orbiting Country Flags */}
-        <div
-          className="documento-hero-globe-column"
-          suppressHydrationWarning
-          style={{
-            position: "relative",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "100%",
-          }}
-        >
-          <div
-            className="documento-hero-globe-wrapper"
-            style={{
-              position: "relative",
-              width: "100%",
-              maxWidth: "660px",
-              aspectRatio: "1 / 1",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {/* Soft luminous ambient aura behind globe and orbit */}
+            {/* Prominent Primary Calls to Action */}
             <div
               style={{
-                position: "absolute",
-                inset: "-4%",
-                borderRadius: "50%",
-                background:
-                  "radial-gradient(circle at 50% 50%, rgba(185, 222, 212, 0.48) 0%, rgba(221, 239, 232, 0.22) 50%, transparent 72%)",
-                filter: "blur(36px)",
-                pointerEvents: "none",
-                zIndex: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                flexWrap: "wrap",
+                gap: "14px",
+                marginBottom: "28px",
               }}
-            />
+            >
+              <button
+                type="button"
+                onClick={() => onOpenLogin("firm")}
+                style={{
+                  background: "#0D6866",
+                  color: "#FFFFFF",
+                  border: "1px solid #063C3D",
+                  padding: "14px 28px",
+                  borderRadius: "10px",
+                  fontWeight: 650,
+                  fontSize: "16px",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  boxShadow: "0 4px 14px rgba(13, 104, 102, 0.25)",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "#063C3D";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(6, 60, 61, 0.3)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "#0D6866";
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 4px 14px rgba(13, 104, 102, 0.25)";
+                }}
+              >
+                <span>Get Started</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
 
-            {/* Orbiting Country Flags around the Centered Globe */}
-            <OrbitImages
-              images={ORBIT_FLAG_ITEMS}
-              shape="ellipse"
-              baseWidth={1400}
-              radiusX={720}
-              radiusY={220}
-              rotation={-12}
-              duration={26}
-              itemSize={125}
-              itemRadius={24}
-              depth={0.65}
-              showPath={false}
-              pathColor="#0D6866"
-              pathWidth={2.4}
-              shadow={0}
-              draggable={true}
-              clickToFront={true}
-              width="100%"
-              height="100%"
-              className="w-full h-full"
-              centerContent={
-                <div
-                  style={{
-                    position: "relative",
-                    width: "clamp(340px, 85%, 560px)",
-                    aspectRatio: "1 / 1",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Globe
-                    markers={[]}
-                    arcs={[]}
-                    markerColor={[0.051, 0.408, 0.400]}
-                    baseColor={[0.051, 0.408, 0.400]}
-                    glowColor={[0.74, 0.90, 0.85]}
-                    dark={0}
-                    mapBrightness={7}
-                    markerSize={0.045}
-                    speed={0.00268}
-                    theta={0.22}
-                    opacity={0.90}
-                    canvasOpacity={0.98}
-                    showMarkerLabels={false}
-                    className="w-full h-full"
-                  />
-                </div>
-              }
-            />
+              <a
+                href="#workflow"
+                style={{
+                  background: "#FFFFFF",
+                  color: "#063C3D",
+                  border: "1px solid #DCE5E1",
+                  padding: "14px 24px",
+                  borderRadius: "10px",
+                  fontWeight: 600,
+                  fontSize: "16px",
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  boxShadow: "0 2px 4px rgba(6, 60, 61, 0.04)",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#0D6866";
+                  e.currentTarget.style.background = "#F4F7F6";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#DCE5E1";
+                  e.currentTarget.style.background = "#FFFFFF";
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <polygon points="10 8 16 12 10 16 10 8" fill="#0D6866" stroke="none" />
+                </svg>
+                <span>Explore How It Works</span>
+              </a>
+
+              <a
+                href="#preview"
+                style={{
+                  background: "transparent",
+                  color: "#0D6866",
+                  border: "1px solid transparent",
+                  padding: "14px 20px",
+                  borderRadius: "10px",
+                  fontWeight: 600,
+                  fontSize: "15px",
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "#DDEFE8";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <span>Test Interactive Demo ↓</span>
+              </a>
+            </div>
+
+            {/* Quick Scope & Trust Verification Bar */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                flexWrap: "wrap",
+                gap: "16px",
+                fontSize: "13px",
+                color: "#6E7F7C",
+                marginBottom: "8px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
+                <span><strong>3 Verified Jurisdictions</strong> (US, UK, Canada)</span>
+              </div>
+              <span>•</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
+                <span><strong>6 Operational Pathways</strong></span>
+              </div>
+              <span>•</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
+                <span><strong>100% SHA-256 Provenance</strong></span>
+              </div>
+              <span>•</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ color: "#176B50", fontWeight: 700 }}>✓</span>
+                <span><strong>Mandatory Attorney Sign-Off</strong></span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Interactive 3D Jurisdictions Globe with Orbiting Country Flags */}
+          <div
+            className="documento-hero-globe-column"
+            suppressHydrationWarning
+            style={{
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "100%",
+            }}
+          >
+            <div
+              className="documento-hero-globe-wrapper"
+              style={{
+                position: "relative",
+                width: "100%",
+                maxWidth: "660px",
+                aspectRatio: "1 / 1",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {/* Soft luminous ambient aura behind globe and orbit */}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: "-4%",
+                  borderRadius: "50%",
+                  background:
+                    "radial-gradient(circle at 50% 50%, rgba(185, 222, 212, 0.48) 0%, rgba(221, 239, 232, 0.22) 50%, transparent 72%)",
+                  filter: "blur(36px)",
+                  pointerEvents: "none",
+                  zIndex: 0,
+                }}
+              />
+
+              {/* Orbiting Country Flags around the Centered Globe */}
+              <OrbitImages
+                images={ORBIT_FLAG_ITEMS}
+                shape="ellipse"
+                baseWidth={1400}
+                radiusX={720}
+                radiusY={220}
+                rotation={-12}
+                duration={26}
+                itemSize={125}
+                itemRadius={24}
+                depth={0.65}
+                showPath={false}
+                pathColor="#0D6866"
+                pathWidth={2.4}
+                shadow={0}
+                draggable={true}
+                clickToFront={true}
+                width="100%"
+                height="100%"
+                className="w-full h-full"
+                centerContent={
+                  <div
+                    style={{
+                      position: "relative",
+                      width: "clamp(340px, 85%, 560px)",
+                      aspectRatio: "1 / 1",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Globe
+                      markers={[]}
+                      arcs={[]}
+                      markerColor={[0.051, 0.408, 0.400]}
+                      baseColor={[0.051, 0.408, 0.400]}
+                      glowColor={[0.74, 0.90, 0.85]}
+                      dark={0}
+                      mapBrightness={7}
+                      markerSize={0.045}
+                      speed={0.00268}
+                      theta={0.22}
+                      opacity={0.90}
+                      canvasOpacity={0.98}
+                      showMarkerLabels={false}
+                      className="w-full h-full"
+                    />
+                  </div>
+                }
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
       {/* Lower Hero Stage: Below The Line (3 Core Pillars & Live AI Dossier Showcase) */}
       <div

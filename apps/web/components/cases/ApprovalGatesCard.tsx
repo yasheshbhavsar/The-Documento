@@ -294,10 +294,10 @@ export function ApprovalGatesCard({
         </div>
       )}
 
-      {/* 5 Decoupled Orthogonal State Machines Grid */}
+      {/* Case Readiness & Clearance Status Grid */}
       <div className="space-y-2">
         <p className="text-xs font-bold text-[#063C3D] uppercase tracking-wider">
-          5 Decoupled State Machines (Independent Lifecycle Gates)
+          Case Readiness &amp; Clearance Status
         </p>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
           {/* 1. Payment */}
@@ -383,13 +383,13 @@ export function ApprovalGatesCard({
         </div>
       </div>
 
-      {/* Tripartite Onboarding Clearance Gate */}
+      {/* Onboarding Clearances (Manager • Billing • Intake) */}
       <div className="p-4 bg-[#F8FAF9] border border-[#DCE5E1] rounded-xl space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-base">🛡️</span>
             <span className="text-xs font-bold uppercase tracking-wider text-[#063C3D]">
-              Tripartite Onboarding Clearance Gate
+              Onboarding Clearances (Manager • Billing • Intake)
             </span>
           </div>
           <span className="text-[11px] text-[#526360]">

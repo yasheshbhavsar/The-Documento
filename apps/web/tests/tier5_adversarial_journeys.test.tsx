@@ -9,7 +9,7 @@ import { CreateClientModal } from "../components/modals/CreateClientModal";
 import { PostOnboardingLaunchpadModal } from "../components/modals/PostOnboardingLaunchpadModal";
 import { CaseDrilldownDrawer } from "../components/modals/CaseDrilldownDrawer";
 import { DashboardErrorBoundary } from "../components/common/DashboardErrorBoundary";
-import { EmptyState, LoadingState } from "../components/common/StateViews";
+import { EmptyState, LoadingState } from "../components/common/EmptyStates";
 
 import {
   WorkspaceProvider,
@@ -211,9 +211,9 @@ describe("Tier 5: Adversarial Workload & UI Boundary Verification Suite", () => 
         />
       );
 
-      // Verify portal header & petition details
+      // Verify portal header & 4-tab plain-language navigation
       expect(screen.getByText(/Welcome to Your Immigration Transparency Portal/i)).toBeDefined();
-      expect(screen.getByText("My Petition Details")).toBeDefined();
+      expect(screen.getAllByText(/Home & Upload/i).length).toBeGreaterThan(0);
 
       // Verify canonical 6-stage lifecycle display for applicant
       expect(screen.getByText("Stage: Caseworker Review")).toBeDefined();
@@ -937,7 +937,7 @@ describe("Tier 5: Adversarial Workload & UI Boundary Verification Suite", () => 
       }
 
       // Suppress console.error in vitest during intentional error test
-      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const spy = vi.spyOn(console, "error").mockImplementation(() => { });
 
       render(<Harness />);
 

@@ -1,20 +1,27 @@
 import React from "react";
-import { ImmigrationCase } from "../../lib/types";
+import { ImmigrationCase, ClientProfile, DocumentItem } from "../../lib/types";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
 import { getJurisdictionRepresentationInfo } from "../../lib/jurisdictionForms";
+import { INITIAL_INFO_SHEET_STORAGE_KEY } from "./InitialInformationSheet";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 
 export interface ClientProfileScopeViewProps {
   myCase: ImmigrationCase | null;
+  clientProfile?: ClientProfile | null;
+  documents?: DocumentItem[];
   onNavigateTab?: (tab: string) => void;
   onOpenUploadModal?: () => void;
 }
 
 export function ClientProfileScopeView({
   myCase,
+  clientProfile,
+  documents,
   onNavigateTab,
   onOpenUploadModal,
 }: ClientProfileScopeViewProps) {
+  const ws = useWorkspaceSafe();
   // CRITICAL REQUIREMENT: Nothing should show up here until the class of application is selected by the owner/manager
   if (!myCase || !myCase.visa_category) {
     return (
@@ -148,6 +155,117 @@ export function ClientProfileScopeView({
       ];
 
   const activeMembersCount = isSpousalOrFamily ? 2 : 1;
+
+  // Derive actual profile & document status from case/client records and INITIAL_INFO_SHEET_STORAGE_KEY
+  let sheetFormData: Record<string, any> = {};
+  let storedClients: ClientProfile[] = [];
+  let storedDocuments: DocumentItem[] = [];
+  if (typeof window !== "undefined") {
+    try {
+      const rawSheet = window.localStorage.getItem(INITIAL_INFO_SHEET_STORAGE_KEY);
+      if (rawSheet) {
+        const parsedMap = JSON.parse(rawSheet);
+        const matchedRecord =
+          parsedMap?.[myCase.id] ||
+          (myCase.client_id ? parsedMap?.[myCase.client_id] : null) ||
+          parsedMap?.["default_client"] ||
+          parsedMap?.["active-client"] ||
+          Object.values(parsedMap || {})[0];
+        if (matchedRecord && typeof matchedRecord === "object" && (matchedRecord as any).formData) {
+          sheetFormData = (matchedRecord as any).formData;
+        }
+      }
+      const rawClients = window.localStorage.getItem("documento_clients_v3_clean");
+      if (rawClients) {
+        storedClients = JSON.parse(rawClients) || [];
+      }
+      const rawDocs = window.localStorage.getItem("documento_documents_v3_clean");
+      if (rawDocs) {
+        storedDocuments = JSON.parse(rawDocs) || [];
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  const allClients = clientProfile ? [clientProfile] : [...(ws?.clients || []), ...storedClients];
+  const resolvedClient =
+    clientProfile ||
+    allClients.find(
+      (c) =>
+        c.id === myCase.client_id ||
+        (myCase.client_name &&
+          `${c.first_name} ${c.last_name}`.trim().toLowerCase() === myCase.client_name.trim().toLowerCase())
+    ) ||
+    null;
+
+  const allDocs = documents ?? [...(ws?.documents || []), ...storedDocuments];
+  const caseDocuments = allDocs.filter(
+    (d) =>
+      d.case_id === myCase.id ||
+      (myCase.case_number && d.case_number === myCase.case_number)
+  );
+
+  const passportDoc = caseDocuments.find(
+    (d) =>
+      d.category === "identity_passport" ||
+      (d.title || "").toLowerCase().includes("passport")
+  );
+  const passportExtractedDob = passportDoc?.extracted_fields?.find(
+    (f) => f.field_name === "date_of_birth" || f.field_name === "dob"
+  )?.normalized_value;
+  const passportExtractedNumber = passportDoc?.extracted_fields?.find(
+    (f) => f.field_name === "passport_number" || f.field_name === "passport_no"
+  )?.normalized_value;
+
+  const applicantDob =
+    sheetFormData.dob?.trim() ||
+    sheetFormData.date_of_birth?.trim() ||
+    resolvedClient?.date_of_birth?.trim() ||
+    passportExtractedDob ||
+    "Not Provided Yet";
+
+  const applicantPlaceOfBirth =
+    sheetFormData.city_country_birth?.trim() ||
+    sheetFormData.place_of_birth?.trim() ||
+    myCase.client_nationality?.trim() ||
+    resolvedClient?.nationality?.trim() ||
+    "Not Provided Yet";
+
+  const passportNumberStr = sheetFormData.passport_number?.trim() || passportExtractedNumber || "";
+  const passportExpiryStr = sheetFormData.passport_expiry_date?.trim() || "";
+  const applicantPassportDisplay = passportDoc
+    ? passportDoc.verification_status === "verified" || passportDoc.status === "verified"
+      ? `${passportNumberStr ? `Passport ${passportNumberStr}` : passportDoc.title || "Passport"} (Verified)`
+      : `${passportNumberStr ? `Passport ${passportNumberStr}` : passportDoc.title || "Passport Uploaded"} (Pending Review)`
+    : passportNumberStr
+      ? `${passportNumberStr}${passportExpiryStr ? ` (Exp: ${passportExpiryStr})` : ""} — Pending Upload`
+      : "Pending Upload";
+
+  const applicantAddress =
+    sheetFormData.residential_address?.trim() ||
+    sheetFormData.current_address?.trim() ||
+    (Array.isArray(sheetFormData.addresses) && sheetFormData.addresses[0]?.street?.trim()) ||
+    "Not Provided Yet";
+
+  const sponsorData = sheetFormData.sponsor || {};
+  const sponsorDob = sponsorData.dob?.trim() || "Not Provided Yet";
+  const sponsorStatus =
+    sponsorData.status_in_canada?.trim() ||
+    sponsorData.status?.trim() ||
+    "Not Provided Yet";
+  const sponsorUciOrId =
+    sponsorData.uci?.trim()
+      ? `UCI: ${sponsorData.uci.trim()}`
+      : caseDocuments.some((d) => (d.title || "").toLowerCase().includes("sponsor") || (d.title || "").toLowerCase().includes("pr card"))
+        ? "Uploaded (Pending Review)"
+        : "Pending Upload";
+  const sponsorEmployment =
+    sponsorData.employer?.trim() ||
+    sponsorData.occupation?.trim() ||
+    (caseDocuments.some((d) => d.category === "employment_records" || d.category === "financial_evidence")
+      ? "Uploaded (Pending Review)"
+      : "Not Provided Yet");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
@@ -380,25 +498,25 @@ export function ClientProfileScopeView({
                 <div>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Date of Birth</div>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    Registered on Civil Record
+                    {applicantDob}
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Place of Birth</div>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    {myCase.client_nationality ? `${myCase.client_nationality} (as declared)` : "As recorded on official civil records"}
+                    {applicantPlaceOfBirth}
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Passport &amp; Expiry</div>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    Verified Travel Document on File
+                    {applicantPassportDisplay}
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Current Address</div>
                   <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                    On file in client intake records
+                    {applicantAddress}
                   </div>
                 </div>
               </div>
@@ -474,7 +592,7 @@ export function ClientProfileScopeView({
                   border: "1px solid #86EFAC",
                 }}
               >
-                Canadian Permanent Resident
+                {sponsorStatus !== "Not Provided Yet" ? sponsorStatus : "Sponsor Status Pending"}
               </span>
             </div>
 
@@ -499,10 +617,12 @@ export function ClientProfileScopeView({
               </div>
               <div style={{ flex: 1, minWidth: "260px" }}>
                 <h4 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 750, color: "#063C3D" }}>
-                  Sponsor &amp; Co-Signer
+                  {sponsorData.name?.trim() || "Sponsor & Co-Signer"}
                 </h4>
                 <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#64748B" }}>
-                  Eligible Canadian Sponsor • Providing 3-Year Statutory Financial Support Undertaking
+                  {isCanada
+                    ? "Designated Canadian Sponsor • Statutory Financial Support Undertaking"
+                    : "Designated Family Sponsor • Statutory Financial Support Undertaking"}
                 </p>
 
                 <div
@@ -519,25 +639,25 @@ export function ClientProfileScopeView({
                   <div>
                     <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Date of Birth</div>
                     <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                      Recorded on Official Canadian Identification
+                      {sponsorDob}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Status in Canada</div>
+                    <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Status in Destination</div>
                     <div style={{ fontSize: "13px", fontWeight: 700, color: "#166534" }}>
-                      PR (Permanent Resident Verified)
+                      {sponsorStatus}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>UCI / Client ID &amp; PR Card</div>
+                    <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>UCI / Client ID &amp; Identification</div>
                     <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                      Statutory Identification On File
+                      {sponsorUciOrId}
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: "11px", color: "#6E7F7C", fontWeight: 600 }}>Current Employment</div>
                     <div style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
-                      Employment &amp; Income Verification On File
+                      {sponsorEmployment}
                     </div>
                   </div>
                 </div>

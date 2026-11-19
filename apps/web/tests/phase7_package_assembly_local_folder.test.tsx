@@ -34,7 +34,36 @@ describe("Phase 7 — Package Assembly and Local-Folder Workflow (Frontend)", ()
   });
 
   it("previews excluded documents with exact reason codes and prevents including blocked anomalies", () => {
-    render(<PackageBuilderView packageItem={FALLBACK_FILING_PACKAGE} />);
+    const pkgWithExclusions = {
+      ...FALLBACK_FILING_PACKAGE,
+      excluded_documents: [
+        {
+          document_id: "doc-anom-01",
+          title: "Unverified Birth Certificate Scan",
+          filename: "Birth_Cert_Scan_Blurry.pdf",
+          reason_code: "UNRESOLVED_ANOMALY",
+          reason_description: "Active date-of-birth discrepancy flagged by OCR verification.",
+          is_blocker: true,
+        },
+        {
+          document_id: "doc-unassigned-02",
+          title: "Loose Utility Bill",
+          filename: "Hydro_Bill_Oct.pdf",
+          reason_code: "APPLICANT_UNASSIGNED",
+          reason_description: "Document not assigned to principal applicant or dependant.",
+          is_blocker: false,
+        },
+        {
+          document_id: "doc-unver-03",
+          title: "Draft Employment Reference Letter",
+          filename: "Reference_Letter_Draft.pdf",
+          reason_code: "HUMAN_VERIFICATION_REQUIRED",
+          reason_description: "Awaiting human officer verification before package inclusion.",
+          is_blocker: true,
+        },
+      ],
+    };
+    render(<PackageBuilderView packageItem={pkgWithExclusions as any} />);
 
     // Switch to Excluded Documents tab
     const excludedTab = screen.getByTestId("tab-excluded-documents");

@@ -166,8 +166,8 @@ describe("Phase 9 — Firm Configuration and Approval Gates", () => {
         />
       );
 
-      // Tripartite checklist
-      expect(screen.getByText("Tripartite Onboarding Clearance Gate")).toBeDefined();
+      // Onboarding Clearance checklist
+      expect(screen.getByText(/Onboarding Clearances/i)).toBeDefined();
       expect(screen.getByText("1. Manager Authorization")).toBeDefined();
       expect(screen.getByText("2. Accounts Clearance")).toBeDefined();
       expect(screen.getByText("3. Counsellor Confirmation")).toBeDefined();

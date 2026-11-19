@@ -83,22 +83,68 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
       return;
     }
 
+    const existingNatAnswer =
+      submission.answers?.beneficiary_country_of_citizenship?.value ||
+      submission.answers?.client_country_citizenship?.value ||
+      submission.answers?.country_of_citizenship?.value ||
+      submission.answers?.citizenship?.value ||
+      "";
+
     let clientPrefill: any = null;
     try {
       const raw = typeof window !== "undefined" ? window.localStorage.getItem("documento_initial_info_sheet_v3_clean") : null;
+      const rawClients = typeof window !== "undefined" ? window.localStorage.getItem("documento_clients_v3_clean") : null;
+      const rawCases = typeof window !== "undefined" ? window.localStorage.getItem("documento_cases_v3_clean") : null;
+
+      let storedNationality = "";
+      if (rawCases) {
+        const parsedCases = JSON.parse(rawCases);
+        if (Array.isArray(parsedCases)) {
+          const matchedCase = parsedCases.find((c: any) => c.id === submission.case_id) || parsedCases[0];
+          if (matchedCase?.client_nationality) {
+            storedNationality = matchedCase.client_nationality;
+          } else if (matchedCase?.client_id && rawClients) {
+            const parsedClients = JSON.parse(rawClients);
+            if (Array.isArray(parsedClients)) {
+              const matchedClient = parsedClients.find((cl: any) => cl.id === matchedCase.client_id);
+              if (matchedClient?.nationality) {
+                storedNationality = matchedClient.nationality;
+              }
+            }
+          }
+        }
+      }
+      if (!storedNationality && rawClients) {
+        const parsedClients = JSON.parse(rawClients);
+        if (Array.isArray(parsedClients) && parsedClients[0]?.nationality) {
+          storedNationality = parsedClients[0].nationality;
+        }
+      }
+
       if (raw) {
         const map = JSON.parse(raw);
-        const sheet = Object.values(map)[0] as any;
+        const sheet = (submission.case_id && map[submission.case_id]) ? map[submission.case_id] : (Object.values(map)[0] as any);
         const fd = sheet?.formData;
         if (fd) {
+          const sheetNationality =
+            fd.nationality ||
+            fd.citizenship ||
+            fd.country_of_citizenship ||
+            fd.country_of_birth ||
+            storedNationality ||
+            String(existingNatAnswer || "");
           clientPrefill = {
             first_name: fd.given_names || "",
             last_name: fd.family_name || "",
             email: fd.email || "",
             phone: fd.phone_number || "",
-            nationality: "United States",
+            nationality: sheetNationality,
           };
         }
+      } else if (storedNationality || existingNatAnswer) {
+        clientPrefill = {
+          nationality: storedNationality || String(existingNatAnswer || ""),
+        };
       }
     } catch {
       // ignore
@@ -181,7 +227,10 @@ export const ConfigurableFormViewer: React.FC<ConfigurableFormViewerProps> = ({
 
   const handleSignoffSensitive = async () => {
     if (!sensitiveNotes.trim()) {
-      alert("Please provide legal review notes certifying sensitive field review.");
+      setFeedbackMsg({
+        text: "Please provide legal review notes certifying sensitive field review.",
+        type: "error",
+      });
       return;
     }
     setIsSubmitting(true);

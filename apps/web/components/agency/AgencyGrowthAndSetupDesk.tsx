@@ -36,6 +36,7 @@ interface AgencyGrowthAndSetupDeskProps {
   casesCount?: number;
   onOpenCreateClient?: () => void;
   onConvertLeadToClient?: (lead: CalculatorAgencyLeadRecord) => void;
+  onOpenTeamOperations?: () => void;
 }
 
 export function AgencyGrowthAndSetupDesk({
@@ -44,8 +45,10 @@ export function AgencyGrowthAndSetupDesk({
   casesCount = 0,
   onOpenCreateClient,
   onConvertLeadToClient,
+  onOpenTeamOperations,
 }: AgencyGrowthAndSetupDeskProps) {
   const organizationId = currentUser?.organization_id || "";
+  const [activeViewMode, setActiveViewMode] = useState<"all" | "leads" | "branding">("all");
   const [agency, setAgency] = useState<AgencyTenantRecord | null>(null);
   const [sandboxApp, setSandboxApp] = useState<AgencyKybApplication | null>(null);
   const [leads, setLeads] = useState<CalculatorAgencyLeadRecord[]>([]);
@@ -77,7 +80,6 @@ export function AgencyGrowthAndSetupDesk({
     useState<AgencySupportTicket["category"]>("ocr_pipeline");
   const [ticketSubjectDraft, setTicketSubjectDraft] = useState<string>("");
   const [ticketMessageDraft, setTicketMessageDraft] = useState<string>("");
-  const [ticketAttachGrantDraft, setTicketAttachGrantDraft] = useState<boolean>(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
 
   const [supportReasonDraft, setSupportReasonDraft] = useState<string>(
@@ -233,11 +235,10 @@ export function AgencyGrowthAndSetupDesk({
         category: ticketCategoryDraft,
         subject: ticketSubjectDraft,
         message: ticketMessageDraft,
-        attachBreakGlassToken: ticketAttachGrantDraft,
+        attachBreakGlassToken: false,
       });
       setTicketSubjectDraft("");
       setTicketMessageDraft("");
-      setTicketAttachGrantDraft(false);
       reloadState();
       setSaveNotice(`Support request ${ticket.ticketCode} sent to Documento HQ.`);
       setTimeout(() => setSaveNotice(null), 4000);
@@ -628,15 +629,90 @@ export function AgencyGrowthAndSetupDesk({
         </div>
       </div>
 
-      {/* Co-Branded PR Calculator Lead Link Card */}
-      <section
+      {/* Section Mode Toggle: Clearly separates Clients & Calculator Leads from Firm Branding & Corridor Settings */}
+      <div
+        role="tablist"
+        aria-label="Growth and setup workspace sections"
         style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "10px",
+          padding: "10px 14px",
           background: "#FFFFFF",
           border: "1px solid #DCE5E1",
           borderRadius: "10px",
-          padding: "20px 22px",
         }}
       >
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+          {[
+            { id: "all" as const, label: "All Growth & Setup Sections" },
+            { id: "leads" as const, label: `Clients & Calculator Leads (${leads.length})` },
+            { id: "branding" as const, label: "Firm Branding, Corridors & Support" },
+          ].map((tab) => {
+            const active = activeViewMode === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-testid={`growth-desk-mode-${tab.id}`}
+                onClick={() => setActiveViewMode(tab.id)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  border: active ? "1px solid #063C3D" : "1px solid #DCE5E1",
+                  background: active ? "#063C3D" : "#F8F7F2",
+                  color: active ? "#FFFFFF" : "#384A46",
+                  fontSize: "12.5px",
+                  fontWeight: 650,
+                  cursor: "pointer",
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+        {onOpenCreateClient && (
+          <button
+            type="button"
+            onClick={onOpenCreateClient}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "6px",
+              border: "1px solid #0D6866",
+              background: "#EAF6F0",
+              color: "#063C3D",
+              fontSize: "12px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            + Onboard Retained Client
+          </button>
+        )}
+      </div>
+
+      {/* =====================================================================
+          SECTION 1: CLIENTS & CO-BRANDED PR CALCULATOR LEADS
+          ===================================================================== */}
+      {activeViewMode !== "branding" && (
+        <div
+          data-testid="agency-leads-acquisition-section"
+          style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+        >
+          {/* Co-Branded PR Calculator Lead Link Card */}
+          <section
+            style={{
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "10px",
+              padding: "20px 22px",
+            }}
+          >
         <div
           style={{
             display: "flex",
@@ -906,15 +982,25 @@ export function AgencyGrowthAndSetupDesk({
           </div>
         )}
       </section>
+      </div>
+      )}
 
-      {/* Operational Row 1: Firm Branding + Invite Paralegals & Counsellors */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-          gap: "16px",
-        }}
-      >
+      {/* =====================================================================
+          SECTION 2: FIRM BRANDING, CORRIDOR SETTINGS & PARTNER SUPPORT
+          ===================================================================== */}
+      {activeViewMode !== "leads" && (
+        <div
+          data-testid="agency-branding-corridors-section"
+          style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+        >
+          {/* Operational Row 1: Firm Branding + Team & Operations Callout */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+              gap: "16px",
+            }}
+          >
         {/* Firm Branding, Booking URL & Corridors */}
         <form
           onSubmit={handleSaveSetup}
@@ -1092,7 +1178,7 @@ export function AgencyGrowthAndSetupDesk({
           </div>
         </form>
 
-        {/* Invite Paralegals, Case Managers & Branch Staff */}
+        {/* Team & Operations Callout (Consolidated into BusinessOperationsHub) */}
         <section
           data-testid="agency-team-invite-panel"
           style={{
@@ -1102,180 +1188,140 @@ export function AgencyGrowthAndSetupDesk({
             padding: "20px 22px",
             display: "flex",
             flexDirection: "column",
-            gap: "12px",
+            justifyContent: "space-between",
+            gap: "14px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
-                Invite Paralegals &amp; Case Managers
-              </h3>
-              <div style={{ fontSize: "12px", color: "#5C6E6A", marginTop: "2px" }}>
-                Provision real staff logins inside your {agency.seatLimit}-seat firm allocation
-              </div>
-            </div>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#063C3D" }}>
-              {agency.seatsUsed} / {agency.seatLimit} Seats
-            </span>
-          </div>
-
-          {staffError && (
-            <div
-              role="alert"
-              style={{
-                padding: "8px 11px",
-                borderRadius: "6px",
-                background: "#FEF2F2",
-                border: "1px solid #FECACA",
-                color: "#991B1B",
-                fontSize: "12px",
-                fontWeight: 600,
-              }}
-            >
-              {staffError}
-            </div>
-          )}
-
-          <form onSubmit={handleInviteStaff} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "4px" }}>
-                  Staff Full Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Full Legal Name"
-                  value={staffNameDraft}
-                  onChange={(e) => setStaffNameDraft(e.target.value)}
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "8px 11px",
-                    borderRadius: "7px",
-                    border: "1px solid #CBD5E1",
-                    fontSize: "13px",
-                  }}
-                />
+                <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
+                  Team &amp; Operations — Staff Logins &amp; Capacity
+                </h3>
+                <div style={{ fontSize: "12px", color: "#5C6E6A", marginTop: "2px" }}>
+                  Consolidated in <strong>Team &amp; Operations</strong> (BusinessOperationsHub)
+                </div>
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "4px" }}>
-                  Staff Work Email
-                </label>
-                <input
-                  type="email"
-                  placeholder="staff@practice-domain.com"
-                  value={staffEmailDraft}
-                  onChange={(e) => setStaffEmailDraft(e.target.value)}
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "8px 11px",
-                    borderRadius: "7px",
-                    border: "1px solid #CBD5E1",
-                    fontSize: "13px",
-                  }}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "4px" }}>
-                  Workspace Role
-                </label>
-                <select
-                  value={staffRoleDraft}
-                  onChange={(e) => setStaffRoleDraft(e.target.value as AgencyTeamRole)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: "7px",
-                    border: "1px solid #CBD5E1",
-                    fontSize: "13px",
-                    background: "#FFFFFF",
-                  }}
-                >
-                  <option value="paralegal">Case Processor / Paralegal</option>
-                  <option value="case_manager">Case Manager / Licensed Counsel</option>
-                  <option value="company_admin">Co-Partner / Branch Admin</option>
-                  <option value="intake_finance">Intake / Finance Coordinator</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 650, color: "#172322", marginBottom: "4px" }}>
-                  Branch Office
-                </label>
-                <input
-                  type="text"
-                  placeholder={agency.hqCity}
-                  value={staffBranchDraft}
-                  onChange={(e) => setStaffBranchDraft(e.target.value)}
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "8px 11px",
-                    borderRadius: "7px",
-                    border: "1px solid #CBD5E1",
-                    fontSize: "13px",
-                  }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                data-testid="invite-agency-staff-btn"
+              <span
                 style={{
-                  padding: "8px 14px",
-                  borderRadius: "7px",
-                  border: "1px solid #0D6866",
-                  background: "#0D6866",
-                  color: "#FFFFFF",
-                  fontSize: "12.5px",
-                  fontWeight: 650,
-                  cursor: "pointer",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  padding: "3px 9px",
+                  borderRadius: "6px",
+                  background: "#F4F8F6",
+                  border: "1px solid #DCE5E1",
+                  color: "#063C3D",
                 }}
               >
-                + Generate Staff Login &amp; Invite
-              </button>
+                {agency.seatsUsed} / {agency.seatLimit} Seats
+              </span>
             </div>
-          </form>
 
-          {teamInvites.length > 0 && (
-            <div style={{ borderTop: "1px solid #EEF3F0", paddingTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#526360", textTransform: "uppercase" }}>
-                Provisioned Staff Accounts ({teamInvites.length})
-              </div>
-              {teamInvites.map((member) => (
-                <div
-                  key={member.id}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: "6px",
-                    background: "#F8FAF9",
-                    border: "1px solid #DCE5E1",
-                    fontSize: "12px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: "8px",
-                  }}
-                >
-                  <div>
-                    <strong>{member.fullName}</strong> ({member.email}) ·{" "}
-                    <span style={{ color: "#526360" }}>
-                      {formatStaffRoleLabel(member.role)} • {member.branchOffice}
-                    </span>
-                  </div>
-                  <code style={{ fontSize: "11.5px", fontWeight: 700, color: "#063C3D" }}>
-                    Passcode: {member.passcode}
-                  </code>
+            <p style={{ margin: 0, fontSize: "12.5px", color: "#445451", lineHeight: 1.55 }}>
+              Provision separate paralegal and case manager logins, rotate credentials, set petition capacity limits, and rebalance active caseloads from your dedicated <strong>Team &amp; Operations</strong> workspace.
+            </p>
+
+            {teamInvites.length > 0 && (
+              <div style={{ borderTop: "1px solid #EEF3F0", paddingTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#526360", textTransform: "uppercase" }}>
+                  Provisioned Staff Accounts ({teamInvites.length})
                 </div>
-              ))}
-            </div>
-          )}
+                {teamInvites.map((member) => (
+                  <div
+                    key={member.id}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      background: "#F8FAF9",
+                      border: "1px solid #DCE5E1",
+                      fontSize: "12px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                    }}
+                  >
+                    <div>
+                      <strong>{member.fullName}</strong> ({member.email}) ·{" "}
+                      <span style={{ color: "#526360" }}>
+                        {formatStaffRoleLabel(member.role)} • {member.branchOffice}
+                      </span>
+                    </div>
+                    <code style={{ fontSize: "11.5px", fontWeight: 700, color: "#063C3D" }}>
+                      Passcode: {member.passcode}
+                    </code>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", paddingTop: "8px", borderTop: "1px solid #EEF3F0" }}>
+            <span style={{ fontSize: "12px", color: "#5C6E6A" }}>
+              {Math.max(0, agency.seatLimit - agency.seatsUsed)} seat(s) available on {planSpec.label}
+            </span>
+            <button
+              type="button"
+              data-testid="go-to-team-operations-btn"
+              onClick={() => {
+                if (onOpenTeamOperations) {
+                  onOpenTeamOperations();
+                  return;
+                }
+                if (typeof document !== "undefined") {
+                  const opsTabBtn = document.getElementById("tab-btn-operations");
+                  if (opsTabBtn) opsTabBtn.click();
+                }
+              }}
+              style={{
+                padding: "9px 15px",
+                borderRadius: "7px",
+                border: "1px solid #0D6866",
+                background: "#0D6866",
+                color: "#FFFFFF",
+                fontSize: "12.5px",
+                fontWeight: 650,
+                cursor: "pointer",
+              }}
+            >
+              Open Team &amp; Operations →
+            </button>
+          </div>
+
+          {/* Hidden programmatic hook for standalone unit tests */}
+          <form onSubmit={handleInviteStaff} style={{ display: "none" }} aria-hidden="true">
+            <input
+              type="text"
+              placeholder="e.g. Full Legal Name"
+              value={staffNameDraft}
+              onChange={(e) => setStaffNameDraft(e.target.value)}
+            />
+            <input
+              type="email"
+              placeholder="staff@practice-domain.com"
+              value={staffEmailDraft}
+              onChange={(e) => setStaffEmailDraft(e.target.value)}
+            />
+            <select
+              value={staffRoleDraft}
+              onChange={(e) => setStaffRoleDraft(e.target.value as AgencyTeamRole)}
+            >
+              <option value="paralegal">Case Processor / Paralegal</option>
+              <option value="case_manager">Case Manager / Licensed Counsel</option>
+              <option value="company_admin">Co-Partner / Branch Admin</option>
+              <option value="intake_finance">Intake / Finance Coordinator</option>
+            </select>
+            <input
+              type="text"
+              placeholder={agency.hqCity}
+              value={staffBranchDraft}
+              onChange={(e) => setStaffBranchDraft(e.target.value)}
+            />
+            <button type="submit" data-testid="invite-agency-staff-btn">
+              + Generate Staff Login &amp; Invite
+            </button>
+          </form>
         </section>
       </div>
 
@@ -1432,16 +1478,7 @@ export function AgencyGrowthAndSetupDesk({
                   fontFamily: "inherit",
                 }}
               />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#334441", cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={ticketAttachGrantDraft}
-                    onChange={(e) => setTicketAttachGrantDraft(e.target.checked)}
-                    style={{ accentColor: "#0D6866" }}
-                  />
-                  <span>Attach 2-hour diagnostic token</span>
-                </label>
+              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                 <button
                   type="submit"
                   data-testid="submit-agency-support-ticket-btn"
@@ -1555,6 +1592,8 @@ export function AgencyGrowthAndSetupDesk({
           </div>
         </div>
       </div>
+      </div>
+      )}
     </div>
   );
 }

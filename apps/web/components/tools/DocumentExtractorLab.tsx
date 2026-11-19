@@ -895,6 +895,7 @@ export function DocumentExtractorLab({
               <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                 <button
                   type="button"
+                  data-testid="extractor-primary-submit-btn"
                   onClick={handleRunAnalysis}
                   disabled={isAnalyzing || isSortingPacket}
                   style={{
@@ -907,12 +908,12 @@ export function DocumentExtractorLab({
                     fontWeight: 700,
                     color: "#FFFFFF",
                     border: "1px solid #0D6866",
-                    background: isAnalyzing ? "#2A9288" : "#0D6866",
+                    background: isAnalyzing || isSortingPacket ? "#2A9288" : "#0D6866",
                     cursor: isAnalyzing || isSortingPacket ? "not-allowed" : "pointer",
                     transition: "all 0.15s ease",
                   }}
                 >
-                  {isAnalyzing ? (
+                  {isAnalyzing || isSortingPacket ? (
                     <>
                       <span
                         style={{
@@ -925,58 +926,46 @@ export function DocumentExtractorLab({
                           animation: "spin 1s linear infinite",
                         }}
                       />
-                      Processing Document...
+                      <span>
+                        {inputMode === "packet_sorter"
+                          ? "Sorting & Splitting Packet by Person..."
+                          : "Processing Document..."}
+                      </span>
+                    </>
+                  ) : inputMode === "packet_sorter" ? (
+                    <>
+                      <span>🗂️ Sort &amp; Split Multi-Person PDF Packet</span>
+                      <span
+                        style={{
+                          fontSize: "11.5px",
+                          fontWeight: 600,
+                          opacity: 0.9,
+                          paddingLeft: "8px",
+                          borderLeft: "1px solid rgba(255,255,255,0.3)",
+                        }}
+                      >
+                        Run AI Recognition &amp; Extraction
+                      </span>
                     </>
                   ) : (
                     <>
-                      <span>⚡</span> Run AI Recognition & Extraction
+                      <span>⚡ Run AI Recognition &amp; Extraction</span>
+                      {uploadedFile && (
+                        <span
+                          style={{
+                            fontSize: "11.5px",
+                            fontWeight: 600,
+                            opacity: 0.9,
+                            paddingLeft: "8px",
+                            borderLeft: "1px solid rgba(255,255,255,0.3)",
+                          }}
+                        >
+                          Sort &amp; Split Multi-Person PDF Packet
+                        </span>
+                      )}
                     </>
                   )}
                 </button>
-
-                {(inputMode === "packet_sorter" || (inputMode === "upload" && uploadedFile)) && (
-                  <button
-                    type="button"
-                    onClick={handleRunPacketSorter}
-                    disabled={isSortingPacket || isAnalyzing || !uploadedFile}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "11px 20px",
-                      borderRadius: "8px",
-                      fontSize: "14px",
-                      fontWeight: 650,
-                      color: "#063C3D",
-                      border: "1px solid #B9DED4",
-                      background: isSortingPacket ? "#DDEFE8" : "#EAF6F0",
-                      cursor: isSortingPacket || isAnalyzing || !uploadedFile ? "not-allowed" : "pointer",
-                      opacity: !uploadedFile ? 0.65 : 1,
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    {isSortingPacket ? (
-                      <>
-                        <span
-                          style={{
-                            width: "14px",
-                            height: "14px",
-                            border: "2px solid #063C3D",
-                            borderTopColor: "transparent",
-                            borderRadius: "50%",
-                            display: "inline-block",
-                            animation: "spin 1s linear infinite",
-                          }}
-                        />
-                        Sorting & Splitting Packet by Person...
-                      </>
-                    ) : (
-                      <>
-                        <span>🗂️</span> Sort & Split Multi-Person PDF Packet
-                      </>
-                    )}
-                  </button>
-                )}
               </div>
 
               {/* Stepper info during analysis */}

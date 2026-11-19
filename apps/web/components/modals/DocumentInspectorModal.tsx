@@ -189,6 +189,52 @@ export function DocumentInspectorModal({
       .replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
+  const rawOcrConfidence =
+    (doc as any).ocr_confidence ??
+    (doc.extracted_fields && doc.extracted_fields.length > 0
+      ? doc.extracted_fields.reduce((acc, f) => acc + (f.ocr_confidence || 0), 0) /
+        doc.extracted_fields.length
+      : null);
+  const derivedOcrConfidenceLabel =
+    typeof rawOcrConfidence === "number" && rawOcrConfidence > 0
+      ? `${(rawOcrConfidence <= 1 ? rawOcrConfidence * 100 : rawOcrConfidence).toFixed(1)}%`
+      : "Not Recorded";
+
+  const rawClassificationConfidence =
+    (doc as any).classification_confidence ??
+    doc.review_dimensions?.document_type?.score ??
+    (doc.extracted_fields && doc.extracted_fields.length > 0
+      ? doc.extracted_fields.reduce((acc, f) => acc + (f.extraction_confidence || 0), 0) /
+        doc.extracted_fields.length
+      : null);
+  const derivedCategoryConfidenceLabel =
+    typeof rawClassificationConfidence === "number" && rawClassificationConfidence > 0
+      ? `${Math.round(
+          rawClassificationConfidence <= 1
+            ? rawClassificationConfidence * 100
+            : rawClassificationConfidence
+        )}%`
+      : "Metadata Declared";
+
+  const derivedMalwareStatusLabel = doc.malware_scan_status
+    ? doc.malware_scan_status.toUpperCase()
+    : "Not Recorded";
+
+  const pageImageUrl =
+    (doc as any).page_image_data_url ||
+    (doc as any).preview_url ||
+    ((doc as any).file_url && /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test((doc as any).file_url)
+      ? (doc as any).file_url
+      : null);
+  const pdfPreviewUrl =
+    !pageImageUrl &&
+    ((doc as any).pdf_url ||
+      (doc as any).file_url ||
+      (doc.download_url && /\.pdf($|\?)/i.test(doc.download_url) ? doc.download_url : null));
+  const currentPageFields = (doc.extracted_fields || []).filter(
+    (f) => !f.source_page || f.source_page === currentPage
+  );
+
   return (
     <Modal
       isOpen={isOpen}
@@ -340,8 +386,180 @@ export function DocumentInspectorModal({
           )}
         </div>
 
+        {/* SHARED 2-PANE DOCUMENT INSPECTOR: LEFT = PAGE PREVIEW, RIGHT = EXTRACTED FIELDS & VERIFICATION */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* LEFT PANE: REAL DOCUMENT PAGE PREVIEW / HONEST SUMMARY SHEET */}
+          <div
+            data-testid="inspector-left-page-pane"
+            className="lg:col-span-5 bg-slate-950 border border-slate-800 rounded-xl p-4 shadow-sm space-y-3"
+          >
+            <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-800 gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                  Interactive Document Viewer
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
+                  {pageImageUrl || pdfPreviewUrl ? "Live Page Render" : "Document Sheet"}
+                </span>
+              </div>
+
+              {/* Page Navigation & Zoom Controls */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="px-2 py-1 text-xs font-medium rounded border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  ‹ Prev Page
+                </button>
+
+                <span className="text-xs font-semibold text-slate-200 font-mono px-2 py-1 bg-slate-900 rounded border border-slate-800">
+                  Page {currentPage} of {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="px-2 py-1 text-xs font-medium rounded border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Next Page ›
+                </button>
+
+                <div className="flex items-center gap-1 pl-1.5 border-l border-slate-800">
+                  {[1, 2, 3].slice(0, totalPages).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setCurrentPage(p)}
+                      className={`w-6 h-6 text-xs rounded font-mono ${
+                        currentPage === p
+                          ? "bg-[#0D6866] text-white font-bold"
+                          : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1 pl-1.5 border-l border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel((z) => Math.max(60, z - 20))}
+                    className="px-2 py-1 text-xs rounded bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800"
+                    title="Zoom Out"
+                  >
+                    -
+                  </button>
+                  <span className="text-[11px] font-mono text-slate-400 w-10 text-center">
+                    {zoomLevel}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel((z) => Math.min(180, z + 20))}
+                    className="px-2 py-1 text-xs rounded bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800"
+                    title="Zoom In"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Real Document Page or Honest Metadata Summary Sheet */}
+            <div
+              data-testid="inspector-page-canvas"
+              className="bg-slate-900 rounded-lg p-4 border border-slate-800 flex flex-col items-center justify-center min-h-[280px] overflow-hidden relative"
+            >
+              <div
+                style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: "top center" }}
+                className="w-full bg-white text-slate-900 rounded shadow-md border border-slate-300 overflow-hidden transition-transform duration-150"
+              >
+                {pageImageUrl ? (
+                  <div className="relative">
+                    <img
+                      src={pageImageUrl}
+                      alt="Document page preview"
+                      className="w-full h-auto max-h-[360px] object-contain block"
+                    />
+                  </div>
+                ) : pdfPreviewUrl ? (
+                  <iframe
+                    src={pdfPreviewUrl}
+                    title="Document PDF preview"
+                    className="w-full h-[340px] border-0"
+                  />
+                ) : (
+                  <div className="p-5 space-y-3">
+                    <div className="flex justify-between items-start border-b border-slate-200 pb-2.5">
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                          Evidentiary Summary Sheet
+                        </div>
+                        <div className="text-xs font-semibold text-slate-800 font-mono mt-0.5">
+                          Reference #{doc.case_number || "UNASSIGNED"} • MIME: {doc.mime_type || "application/pdf"}
+                        </div>
+                      </div>
+                      <span className="inline-block px-2 py-0.5 text-[9px] font-bold rounded bg-teal-50 text-teal-800 border border-teal-200 uppercase">
+                        {doc.verification_status === "verified" ? "Certified Evidence" : "Intake Record"}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-[11px] text-slate-700">
+                      <div className="p-2.5 bg-slate-50 border border-slate-200 rounded font-mono text-[10px] text-slate-700 space-y-1">
+                        <div>
+                          <strong>SHA-256 Digest:</strong>{" "}
+                          {doc.sha256_hash ? `${doc.sha256_hash.slice(0, 24)}…` : "N/A"}
+                        </div>
+                        <div>
+                          <strong>File Size:</strong> {doc.file_size || "N/A"} •{" "}
+                          <strong>Regions on Page:</strong> {currentPageFields.length}
+                        </div>
+                      </div>
+
+                      {currentPageFields.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Spatial Bounding Boxes (Click to Inspect / Edit)
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {currentPageFields.map((fld) => (
+                              <button
+                                key={fld.id}
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab("fields");
+                                  if (isStaff) handleStartFieldEdit(fld);
+                                }}
+                                className="px-2 py-1 rounded text-[10px] font-mono bg-teal-50 hover:bg-teal-100 text-[#063C3D] border border-teal-200 transition-colors"
+                              >
+                                🎯 {fld.field_name}
+                                {fld.source_location
+                                  ? ` [${Math.round(fld.source_location.x0 || 0)}, ${Math.round(fld.source_location.y0 || 0)}]`
+                                  : ""}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2.5 border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-500 font-mono">
+                      <span>OCR Confidence: {derivedOcrConfidenceLabel}</span>
+                      <span>Category Conf: {derivedCategoryConfidenceLabel}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT PANE: EXTRACTED FIELDS, PREVIEW METADATA, STRUCTURED REJECTION & VERSIONS */}
+          <div data-testid="inspector-right-review-pane" className="lg:col-span-7 space-y-4">
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#EAF0ED] gap-1">
+        <div className="flex border-b border-[#EAF0ED] gap-1 flex-wrap">
           <button
             onClick={() => setActiveTab("fields")}
             className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
@@ -606,157 +824,30 @@ export function DocumentInspectorModal({
         {/* TAB 2: PREVIEW & EXTRACTED OCR TEXT */}
         {activeTab === "preview" && (
           <div className="space-y-4">
-            {/* Integrated Document Viewer with Page Navigation Controls */}
+            {/* Page-Specific Extracted Evidence / Provenance summary */}
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 shadow-sm">
-              <div className="flex flex-col md:flex-row items-center justify-between pb-3 mb-3 border-b border-slate-800 gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                    Interactive Document Viewer
-                  </span>
-                  <span className="text-[11px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
-                    PDF / High-Res Scan
-                  </span>
-                </div>
-
-                {/* Page Navigation Controls */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage <= 1}
-                    className="px-2.5 py-1 text-xs font-medium rounded border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                  >
-                    ‹ Prev Page
-                  </button>
-
-                  <span className="text-xs font-semibold text-slate-200 font-mono px-2 py-1 bg-slate-900 rounded border border-slate-800">
-                    Page {currentPage} of {totalPages}
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage >= totalPages}
-                    className="px-2.5 py-1 text-xs font-medium rounded border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                  >
-                    Next Page ›
-                  </button>
-
-                  <div className="flex items-center gap-1 pl-2 border-l border-slate-800">
-                    {[1, 2, 3].slice(0, totalPages).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setCurrentPage(p)}
-                        className={`w-6 h-6 text-xs rounded font-mono ${
-                          currentPage === p
-                            ? "bg-[#0D6866] text-white font-bold"
-                            : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Zoom Controls */}
-                  <div className="flex items-center gap-1 pl-2 border-l border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => setZoomLevel((z) => Math.max(60, z - 20))}
-                      className="px-2 py-1 text-xs rounded bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800"
-                      title="Zoom Out"
-                    >
-                      -
-                    </button>
-                    <span className="text-[11px] font-mono text-slate-400 w-10 text-center">
-                      {zoomLevel}%
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setZoomLevel((z) => Math.min(180, z + 20))}
-                      className="px-2 py-1 text-xs rounded bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800"
-                      title="Zoom In"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-300">
+                  Fields Extracted from Page {currentPage} ({currentPageFields.length})
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  OCR Confidence: <strong className="text-emerald-400">{derivedOcrConfidenceLabel}</strong>
+                </span>
               </div>
-
-              {/* Simulated Document Canvas with Page Elements */}
-              <div className="bg-slate-900 rounded-lg p-6 border border-slate-800 flex flex-col items-center justify-center min-h-[300px] overflow-hidden relative">
-                <div
-                  style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: "top center" }}
-                  className="w-full max-w-md bg-white text-slate-900 rounded shadow-md p-6 border border-slate-300 space-y-4 transition-transform duration-150"
-                >
-                  <div className="flex justify-between items-start border-b border-slate-200 pb-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                {currentPageFields.slice(0, 4).map((f) => (
+                  <div key={f.id} className="p-2 bg-slate-900 rounded border border-slate-800 flex justify-between items-center">
                     <div>
-                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                        Official Legal Instrument • {formatCategoryName(doc.category)}
-                      </div>
-                      <div className="text-sm font-bold text-slate-900">{doc.title}</div>
-                      <div className="text-[10px] text-slate-600 font-mono">
-                        Page {currentPage} of {totalPages} • SHA-256: {doc.sha256_hash ? doc.sha256_hash.slice(0, 12) : "VERIFIED"}...
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span className="inline-block px-2 py-0.5 text-[9px] font-bold rounded bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase">
-                        {doc.verification_status === "verified" ? "Certified Evidence" : doc.verification_status?.toUpperCase() || "INTAKE"}
+                      <span className="text-slate-400 block text-[10px]">{f.field_label}</span>
+                      <span className="font-mono text-slate-200 text-[11px]">
+                        {f.corrected_value || f.normalized_value || f.original_value}
                       </span>
                     </div>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                      {Math.round((f.extraction_confidence || 0.95) * 100)}% Conf
+                    </span>
                   </div>
-
-                  {/* Simulated Document Body Lines with Bounding Box Highlights */}
-                  <div className="space-y-2 text-[11px] text-slate-700 font-serif leading-relaxed">
-                    <p>
-                      THIS IS AN OFFICIAL RECORD VERIFIED UNDER IMMIGRATION AND NATIONALITY ACT (INA) COMPLIANCE STANDARDS.
-                    </p>
-                    <div className="p-2 bg-indigo-50 border border-indigo-200 rounded text-indigo-900 font-mono text-[10px]">
-                      <strong>Extracted Page {currentPage} Identifier:</strong> {doc.title} — Reference #{doc.case_number || "UNASSIGNED"}
-                    </div>
-                    <p className="text-slate-600 italic text-[10px]">
-                      Document fingerprint verified: <code className="bg-slate-100 px-1 rounded">{doc.sha256_hash ? doc.sha256_hash.slice(0, 24) : "SHA256-AUTHENTICATED"}</code>
-                    </p>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-200 flex justify-between items-center text-[9px] text-slate-500">
-                    <span>Documento Tamper-Proof Storage Vault</span>
-                    <span>Watermark Verified: 8 CFR § 204.5</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Page-Specific Extracted Evidence / Provenance summary */}
-              <div className="mt-4 pt-3 border-t border-slate-800">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-slate-300">
-                    Fields Extracted from Page {currentPage} ({
-                      (doc.extracted_fields || []).filter((f) => !f.source_page || f.source_page === currentPage).length
-                    })
-                  </span>
-                  <span className="text-[11px] text-slate-500">
-                    OCR Confidence: <strong className="text-emerald-400">96.8%</strong>
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                  {(doc.extracted_fields || [])
-                    .filter((f) => !f.source_page || f.source_page === currentPage)
-                    .slice(0, 4)
-                    .map((f) => (
-                      <div key={f.id} className="p-2 bg-slate-900 rounded border border-slate-800 flex justify-between items-center">
-                        <div>
-                          <span className="text-slate-400 block text-[10px]">{f.field_label}</span>
-                          <span className="font-mono text-slate-200 text-[11px]">
-                            {f.corrected_value || f.normalized_value || f.original_value}
-                          </span>
-                        </div>
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
-                          {Math.round((f.extraction_confidence || 0.95) * 100)}% Conf
-                        </span>
-                      </div>
-                    ))}
-                </div>
+                ))}
               </div>
             </div>
 
@@ -783,7 +874,7 @@ export function DocumentInspectorModal({
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-800">
                     <span className="text-slate-400">Malware Scan:</span>
-                    <span className="text-emerald-400 font-medium">Verified Clean (Heuristic + Signature)</span>
+                    <span className="text-emerald-400 font-medium">{derivedMalwareStatusLabel}</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-800">
                     <span className="text-slate-400">Uploaded At:</span>
@@ -810,7 +901,7 @@ export function DocumentInspectorModal({
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-800">
                     <span className="text-slate-400">Category Confidence:</span>
-                    <span className="text-emerald-400 font-medium">96%</span>
+                    <span className="text-emerald-400 font-medium">{derivedCategoryConfidenceLabel}</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-800">
                     <span className="text-slate-400">Security Sandbox:</span>
@@ -1115,6 +1206,9 @@ export function DocumentInspectorModal({
             </div>
           </div>
         )}
+
+          </div>
+        </div>
 
         <div className="flex justify-end pt-2 border-t border-[#EAF0ED]">
           <Button variant="outline" size="sm" onClick={onClose}>

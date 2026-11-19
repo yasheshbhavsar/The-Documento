@@ -8,7 +8,6 @@ interface FAQItem {
   question: string;
   category: "Coverage & Scope" | "Legal & Ethics" | "AI & Accuracy" | "Security & Privacy" | "Collaboration";
   answer: string;
-  provenance: string;
 }
 
 const FAQS: FAQItem[] = [
@@ -17,56 +16,56 @@ const FAQS: FAQItem[] = [
     category: "Coverage & Scope",
     question: "Which destination countries and immigration categories does Documento support today?",
     answer:
-      "Documento provides verified, operational casework pipelines for three primary jurisdictions: the United States (USCIS: EB-1A Extraordinary Ability, O-1A Nonimmigrant Talent, EB-2 National Interest Waiver, and L-1A Multinational Transferee), the United Kingdom (UKVI: Global Talent Visa via Tech Nation and academic endorsing bodies), and Canada (IRCC: Express Entry FSWP and PNP). Two additional jurisdictions—Australia (Subclass 858) and Germany (EU Blue Card & Chancenkarte)—are currently active in our regulatory pilot watchlist. We do not claim universal coverage for all world visas.",
-    provenance: "STATUTORY PIPELINE CODEX § 4.1 // USCIS • UKVI • IRCC VERIFIED",
+      "Documento is engineered primarily for Canada (IRCC), providing 8 verified end-to-end Canadian visa pipelines: Express Entry (FSWP, CEC & PNP), Super Visa (Parents & Grandparents), Study Permit (DLI & PAL), Post-Graduation Work Permit (PGWP), Spousal Open Work Permit (SOWP), Visitor Visa (TRV), Spousal & Family Class Sponsorship, and LMIA / Employer Work Permits. Alongside our core Canadian suite, Documento also supports cross-border workflows for the United States (USCIS: EB-1A, EB-2 NIW, O-1A, H-1B, L-1A, I-485) and the United Kingdom (UKVI: Global Talent & Skilled Worker), with Australia and Germany active in our roadmap pilot.",
+  },
+  {
+    id: "canada-ircc-services",
+    category: "Coverage & Scope",
+    question: "Which Canadian IRCC forms, calculators, and document checks does Documento automate?",
+    answer:
+      "For Canadian immigration practices, Documento automates CRS and Provincial Nominee (PNP) score calculators, Super Visa host LICO income verification from CRA Notices of Assessment (Line 15000), ICAO and Indian passport MRZ extraction, NOC 2021 TEER duty alignment checks, Study Permit DLI/PAL and PGWP 180-day deadline tracking, privacy-shielded Canadian sponsor upload links, and structured 5-folder CIC/IRCC dossier assembly across IMM 5257, IMM 1294, IMM 5710, IMM 5669, IMM 1344, and IMM 5476.",
   },
   {
     id: "legal-advice-boundary",
     category: "Legal & Ethics",
     question: "Does Documento replace immigration attorneys or provide legal advice?",
     answer:
-      "No. Documento is an immigration casework and evidence intelligence platform, not a law firm. Documento does not provide legal representation, statutory interpretation, or legal advice, and is not affiliated with USCIS, UKVI, IRCC, or any government body. Consequential legal conclusions, petition brief drafting, and final case authorization strictly require the evaluation and signature of a licensed immigration attorney or accredited representative.",
-    provenance: "ABA MODEL RULES 5.3 & 5.5 // STATUTORY ETHICAL SEPARATION",
+      "No. Documento is an immigration casework and evidence intelligence platform, not a law firm. It does not operate as a regulated immigration consultancy, provide legal representation, statutory interpretation, or legal advice, and is not affiliated with IRCC, USCIS, UKVI, or any government body. Consequential legal conclusions, submission letters, and final case authorization strictly require the evaluation and signature of a licensed Regulated Canadian Immigration Consultant (RCIC), immigration lawyer, or accredited representative.",
   },
   {
     id: "ai-accuracy",
     category: "AI & Accuracy",
     question: "How does Documento's AI assistance work, and can it hallucinate or fabricate facts?",
     answer:
-      "Documento enforces 100% source provenance. Unlike general-purpose chatbots, our extraction engine binds every extracted fact (dates, names, citations, entity titles) to exact physical page coordinates and paragraph numbers within your uploaded exhibits. Every file receives an immutable SHA-256 cryptographic hash. If a document scan is blurred or contradictory, Documento flags a low-confidence discrepancy for attorney review rather than inventing a fact.",
-    provenance: "OCR & PROVENANCE PROTOCOL // SHA-256 GEOMETRIC COORDINATE BINDING",
+      "Documento enforces 100% source provenance. Unlike general-purpose chatbots, our extraction engine binds every extracted fact (passport MRZ data, CRA NOA Line 15000 totals, NOC reference letter dates, IMM 5669 personal history) to exact physical page coordinates within uploaded exhibits. Every file receives an immutable SHA-256 cryptographic hash. If a scan is blurred or contradictory, Documento flags a low-confidence discrepancy for RCIC or counsel review to prevent IRCC Procedural Fairness Letters (PFLs) rather than inventing facts.",
   },
   {
     id: "data-privacy",
     category: "Security & Privacy",
     question: "How are sensitive identity documents, passports, and tax records protected?",
     answer:
-      "All documents are encrypted in transit via TLS 1.3 and at rest using AES-256 vault encryption. Documento enforces strict multi-tenant row- and schema-level isolation. Confidential attorney strategy notes, private partner deliberations, and case evaluation memos are enforced by backend security rules and are strictly inaccessible to client portal logins.",
-    provenance: "NIST SP 800-88 / SOC-2 TYPE II // AES-256 VAULT ENCRYPTION",
+      "All documents—including passports, CRA Notices of Assessment, GIC certificates, and bank statements—are encrypted in transit via TLS 1.3 and at rest using AES-256 vault encryption. Canadian sponsors and hosts receive privacy-shielded magic links so their financial records upload directly to the firm without being exposed to other parties, and internal RCIC/counsel strategy notes are strictly quarantined from client portal logins.",
   },
   {
     id: "client-collaboration",
     category: "Collaboration",
     question: "How do retained applicants and law firm paralegals collaborate in Documento?",
     answer:
-      "Applicants receive a secure invite to their dedicated portal where they can complete structured multi-lingual questionnaires, review explicit document checklists with accepted formatting guidelines, upload records directly from a phone or computer, and message their assigned legal team. A dual waiting-state indicator shows exactly who holds the next action item ('Waiting on You' vs 'Waiting on Firm').",
-    provenance: "DUAL-PORTAL INTERFACE // ASYMMETRIC PERMISSIONING MESH",
+      "Applicants receive a secure invite to their dedicated portal where they can complete structured intake questionnaires in English, Gujarati, or Hindi, review explicit IRCC document checklists with formatting guidelines, upload records directly from a phone or computer, and message their assigned representative. A dual waiting-state indicator shows exactly who holds the next action item ('Waiting on You' vs 'Waiting on Firm').",
   },
   {
     id: "unlisted-categories",
     category: "Coverage & Scope",
     question: "What happens if my visa category is not currently listed as Available?",
     answer:
-      "For unlisted or custom categories, law firms can still utilize Documento's core encrypted document vault, procedural task checklists, milestone tracking, and secure messaging hub. However, automated statutory criteria checklists and form mappings for those categories require confirmation or custom configuration. Contact our legal operations team to verify our roadmap schedule.",
-    provenance: "REGULATORY ROADMAP TRACKER // CUSTOM FORM CONFIGURATION",
+      "For specialized Canadian pathways (such as Start-Up Visa, H&C applications, or Judicial Reviews) and unlisted categories, practices can still use Documento's encrypted document vault, multi-lingual intake, procedural checklists, milestone tracking, and secure messaging hub. Automated statutory criteria rulesets for custom categories can be configured through our workspace rule studio.",
   },
   {
     id: "guarantee-outcomes",
     category: "Legal & Ethics",
     question: "Can Documento guarantee that an immigration petition or visa will be approved?",
     answer:
-      "No. No software, attorney, or company can guarantee an immigration outcome. Government immigration authorities possess sovereign adjudicative discretion. Documento's role is to minimize administrative confusion, prevent avoidable evidentiary omissions, catch cross-exhibit discrepancies early, and ensure legal packages are assembled to the highest standards of clarity.",
-    provenance: "GOVERNMENT DISCRETIONARY MANDATE // ZERO GUARANTEE POLICY",
+      "No. No software, RCIC, attorney, or company can guarantee an immigration outcome. IRCC and other government immigration authorities possess sovereign adjudicative discretion. Documento's role is to minimize administrative confusion, prevent avoidable evidentiary omissions, catch cross-exhibit discrepancies before filing, and ensure dossiers are assembled to the highest standards of clarity.",
   },
 ];
 
@@ -565,30 +564,9 @@ export function DocumentoFAQ({ onOpenLogin }: DocumentoFAQProps = {}) {
                           fontSize: "14.5px",
                           color: "#384846",
                           lineHeight: 1.7,
-                          marginBottom: "16px",
                         }}
                       >
                         {item.answer}
-                      </div>
-
-                      {/* Provenance Footer */}
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          padding: "5px 10px",
-                          borderRadius: "4px",
-                          background: "#F8F7F2",
-                          border: "1px solid rgba(13, 104, 102, 0.1)",
-                          fontSize: "10.5px",
-                          fontFamily: "monospace",
-                          color: "#0D6866",
-                          letterSpacing: "0.04em",
-                        }}
-                      >
-                        <span style={{ color: "#169B77" }}>●</span>
-                        <span>{item.provenance}</span>
                       </div>
                     </div>
                   )}
@@ -653,7 +631,7 @@ export function DocumentoFAQ({ onOpenLogin }: DocumentoFAQProps = {}) {
                 marginBottom: "16px",
               }}
             >
-              <span>Production-Ready Casework Architecture</span>
+              <span>Canada-First IRCC Casework Architecture</span>
             </div>
 
             {/* Main Headline - UNIFIED TEXT NODE */}
@@ -668,12 +646,12 @@ export function DocumentoFAQ({ onOpenLogin }: DocumentoFAQProps = {}) {
                 fontFamily: "var(--font-display, Inter, sans-serif)",
               }}
             >
-              Ready to bring clarity and structure to your immigration casework?
+              Ready to bring clarity and structure to your Canadian immigration practice?
             </h3>
 
             {/* Body */}
             <p style={{ fontSize: "15px", color: "#E2F2ED", margin: 0, lineHeight: 1.65, maxWidth: "580px" }}>
-              Join immigration law firms and applicants using Documento to eliminate administrative chaos and assemble verified filings.
+              Join Canadian RCICs, immigration law firms, and applicants using Documento to eliminate administrative chaos and assemble verified IRCC filings.
             </p>
 
             {/* Trust Micro-Bullets */}
@@ -690,7 +668,7 @@ export function DocumentoFAQ({ onOpenLogin }: DocumentoFAQProps = {}) {
             >
               <span>🔒 Zero AI Training on Client Data</span>
               <span>•</span>
-              <span>⚖️ Rule 1.6 &amp; 5.3 Safeguards</span>
+              <span>⚖️ CICC &amp; Legal Ethics Safeguards</span>
               <span>•</span>
               <span>🛡️ AES-256 Vault Encryption</span>
             </div>

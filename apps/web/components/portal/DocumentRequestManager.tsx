@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
-import { DocumentRequestItem, DocumentRequestCommentItem } from "../../lib/types";
+import { DocumentRequestItem, DocumentRequestCommentItem, DocumentItem } from "../../lib/types";
 import {
+  api,
   FALLBACK_DOCUMENT_REQUESTS,
   fetchDocumentRequests,
   respondToDocumentRequest,
@@ -11,6 +12,8 @@ import {
   reviewDocumentRequest,
   createDocumentRequest,
 } from "../../lib/api";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
+import { enqueueRawClientPacket, extractSafeRawTextPreview } from "../../lib/rawClientPacketStore";
 
 interface DocumentRequestManagerProps {
   requests?: DocumentRequestItem[];
@@ -21,7 +24,8 @@ interface DocumentRequestManagerProps {
   onReview?: (requestId: string, decision: "approved" | "rejected", reason?: string, notes?: string) => Promise<void>;
   onCreateRequest?: (payload: Partial<DocumentRequestItem>) => Promise<void>;
   onPostComment?: (requestId: string, content: string, isInternal?: boolean) => Promise<void>;
-  onUploadEvidence?: (request: DocumentRequestItem) => void;
+  onUploadEvidence?: (request: DocumentRequestItem, uploadedDoc?: DocumentItem) => void;
+  onDocumentUploaded?: (doc: DocumentItem) => void;
 }
 
 export function DocumentRequestManager({
@@ -34,7 +38,9 @@ export function DocumentRequestManager({
   onCreateRequest,
   onPostComment,
   onUploadEvidence,
+  onDocumentUploaded,
 }: DocumentRequestManagerProps) {
+  const ws = useWorkspaceSafe();
   const [internalRequests, setInternalRequests] = useState<DocumentRequestItem[]>(
     requests || []
   );
@@ -43,8 +49,10 @@ export function DocumentRequestManager({
   const [activeModal, setActiveModal] = useState<"upload" | "replace" | "review" | "comments" | "create" | null>(null);
 
   // Form states
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadFileName, setUploadFileName] = useState("");
   const [responseNotes, setResponseNotes] = useState("");
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [reviewNotes, setReviewNotes] = useState("");
   const [commentInput, setCommentInput] = useState("");
@@ -92,28 +100,136 @@ export function DocumentRequestManager({
     }
   };
 
-  const handleUploadSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedRequest || !uploadFileName.trim()) return;
-    const dummyDocId = `doc-client-${Date.now()}`;
+  const fulfillDocumentRequest = async (
+    requestId: string,
+    documentId: string,
+    notes?: string
+  ): Promise<DocumentRequestItem> => {
     if (activeModal === "replace") {
       if (onReplace) {
-        await onReplace(selectedRequest.id, dummyDocId, responseNotes || "Replaced document");
-      } else {
-        const updated = await replaceDocumentRequestEvidence(selectedRequest.id, dummyDocId, responseNotes);
-        setInternalRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+        await onReplace(requestId, documentId, notes || "Replaced document");
+        return {
+          ...selectedRequest!,
+          status: "submitted",
+          fulfilled_document_id: documentId,
+          rejection_reason: undefined,
+        };
       }
-    } else {
-      if (onRespond) {
-        await onRespond(selectedRequest.id, dummyDocId, responseNotes);
-      } else {
-        const updated = await respondToDocumentRequest(selectedRequest.id, dummyDocId, responseNotes);
-        setInternalRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-      }
+      return replaceDocumentRequestEvidence(requestId, documentId, notes);
     }
-    setActiveModal(null);
-    setUploadFileName("");
-    setResponseNotes("");
+    if (onRespond) {
+      await onRespond(requestId, documentId, notes);
+      return {
+        ...selectedRequest!,
+        status: "submitted",
+        fulfilled_document_id: documentId,
+        rejection_reason: undefined,
+      };
+    }
+    if (typeof (api as any).fulfillDocumentRequest === "function") {
+      const res = await (api as any).fulfillDocumentRequest(requestId, documentId, notes);
+      return res?.data || res;
+    }
+    return respondToDocumentRequest(requestId, documentId, notes);
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setSelectedFile(file);
+    if (file) {
+      setUploadFileName(file.name);
+    }
+  };
+
+  const handleUploadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRequest || (!selectedFile && !uploadFileName.trim())) return;
+
+    setIsUploadingFile(true);
+    try {
+      let resolvedDocId = `doc-client-${Date.now()}`;
+      let uploadedDoc: DocumentItem | undefined;
+
+      if (selectedFile) {
+        const targetCaseId = selectedRequest.case_id || caseId || "";
+        const effectiveCategory = selectedRequest.category || "supporting_evidence";
+        const effectiveTitle = uploadFileName.trim() || selectedRequest.title || selectedFile.name;
+
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("category", effectiveCategory);
+        formData.append("title", effectiveTitle);
+        if (targetCaseId) formData.append("case_id", targetCaseId);
+        if (!isStaffMode) formData.append("raw_only", "true");
+
+        const uploadRes = await api.uploadDocumentFile(
+          formData,
+          isStaffMode ? "case_manager" : "retained_client"
+        );
+        const rawDoc = uploadRes?.data;
+        resolvedDocId = rawDoc?.id || resolvedDocId;
+
+        if (!isStaffMode) {
+          try {
+            const rawTextPreview = await extractSafeRawTextPreview(selectedFile);
+            const rawPkt = enqueueRawClientPacket({
+              file: selectedFile,
+              vaultDocId: resolvedDocId,
+              caseId: targetCaseId || "default_client",
+              title: effectiveTitle,
+              sha256: rawDoc?.sha256_hash || `sha256_${Date.now()}`,
+              uploaderRole: "applicant",
+              declaredCategory: effectiveCategory,
+              officerNote: responseNotes || undefined,
+              rawTextPreview,
+            });
+            uploadedDoc = {
+              ...(rawDoc || ({} as DocumentItem)),
+              id: resolvedDocId,
+              case_id: targetCaseId || rawDoc?.case_id,
+              title: effectiveTitle,
+              filename: selectedFile.name,
+              category: effectiveCategory,
+              status: "under_review",
+              processing_status: "pending",
+              verification_status: "unverified",
+              ocr_applied: false,
+              extracted_fields: [],
+              is_raw_packet: true,
+              raw_packet_id: rawPkt.id,
+              ai_lab_status: "pending",
+              uploader_role: "applicant",
+            };
+          } catch {
+            uploadedDoc = rawDoc;
+          }
+        } else {
+          uploadedDoc = rawDoc;
+        }
+
+        if (uploadedDoc) {
+          ws?.handleDocumentUploaded?.(uploadedDoc);
+          onDocumentUploaded?.(uploadedDoc);
+        }
+      }
+
+      const updated = await fulfillDocumentRequest(
+        selectedRequest.id,
+        resolvedDocId,
+        responseNotes
+      );
+      setInternalRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      if (selectedFile) {
+        onUploadEvidence?.(selectedRequest, uploadedDoc);
+      }
+
+      setActiveModal(null);
+      setSelectedFile(null);
+      setUploadFileName("");
+      setResponseNotes("");
+    } finally {
+      setIsUploadingFile(false);
+    }
   };
 
   const handleReviewSubmit = async (decision: "approved" | "rejected") => {
@@ -475,6 +591,30 @@ export function DocumentRequestManager({
 
             <form onSubmit={handleUploadSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <div>
+                <label
+                  htmlFor="request-evidence-file-input"
+                  style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}
+                >
+                  Choose Document File (PDF or Image):
+                </label>
+                <input
+                  id="request-evidence-file-input"
+                  data-testid="request-evidence-file-input"
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.tiff,.webp"
+                  onChange={handleFileInputChange}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px dashed var(--border, #cbd5e1)",
+                    borderRadius: "6px",
+                    background: "var(--surface-subtle, #f8fafc)",
+                    fontSize: "12px",
+                  }}
+                />
+              </div>
+
+              <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
                   Select File or Name:
                 </label>
@@ -483,7 +623,7 @@ export function DocumentRequestManager({
                   placeholder="e.g. ieee_senior_cert_highres.pdf"
                   value={uploadFileName}
                   onChange={(e) => setUploadFileName(e.target.value)}
-                  required
+                  required={!selectedFile}
                   style={{
                     width: "100%",
                     padding: "8px 12px",
@@ -512,11 +652,26 @@ export function DocumentRequestManager({
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-                <Button variant="ghost" type="button" onClick={() => setActiveModal(null)}>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  disabled={isUploadingFile}
+                  onClick={() => {
+                    setActiveModal(null);
+                    setSelectedFile(null);
+                    setUploadFileName("");
+                    setResponseNotes("");
+                  }}
+                >
                   Cancel
                 </Button>
-                <Button variant="primary" type="submit" data-testid="submit-evidence-btn">
-                  Submit Evidence →
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={isUploadingFile}
+                  data-testid="submit-evidence-btn"
+                >
+                  {isUploadingFile ? "Uploading..." : "Submit Evidence →"}
                 </Button>
               </div>
             </form>

@@ -28,6 +28,7 @@ import {
   extractSafeRawTextPreview,
   inferRawFileCategoryAndLabel,
 } from "../../lib/rawClientPacketStore";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 
 export interface SmartIntakeDocumentResult {
   id: string;
@@ -253,6 +254,16 @@ export function SmartDropzone(props: SmartDropzoneProps): React.JSX.Element {
   } = props;
 
   const isRawOnlyMode = uploadMode === "raw_only";
+  const ws = useWorkspaceSafe();
+
+  const notifyDocumentUploaded = (uploadedDoc: DocumentItem) => {
+    if (onDocumentUploaded) {
+      onDocumentUploaded(uploadedDoc);
+      ws?.handleDocumentUpdated?.(uploadedDoc);
+    } else {
+      ws?.handleDocumentUploaded?.(uploadedDoc);
+    }
+  };
   const copy = LOCALIZED_COPY[language] || LOCALIZED_COPY.en;
   const rawCopy = RAW_ONLY_LOCALIZED_COPY[language] || RAW_ONLY_LOCALIZED_COPY.en;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -390,7 +401,7 @@ export function SmartDropzone(props: SmartDropzoneProps): React.JSX.Element {
           is_private_to_firm: privacyShield,
         };
 
-        onDocumentUploaded?.(uploadedDoc);
+        notifyDocumentUploaded(uploadedDoc);
         uploadedPackets.push(rawPacket);
 
         summaryDocs.push({
@@ -501,18 +512,62 @@ export function SmartDropzone(props: SmartDropzoneProps): React.JSX.Element {
         }
 
         const uploadRes = await api.uploadDocumentFile(fd, uploadRole);
+        const extractedFieldsForVault =
+          doc.analysis?.extracted_fields && doc.analysis.extracted_fields.length > 0
+            ? doc.analysis.extracted_fields.map((ef, fIdx) => ({
+                id: `${doc.id}-fld-${fIdx}`,
+                field_name: ef.field_name,
+                field_label: ef.field_label,
+                original_value: ef.original_value,
+                normalized_value: ef.normalized_value,
+                field_value: ef.normalized_value || ef.original_value,
+                source_page: ef.source_page || 1,
+                extraction_method: ef.extraction_method || "smart_intake_pipeline",
+                ocr_confidence: ef.ocr_confidence || doc.confidence,
+                extraction_confidence: ef.extraction_confidence || doc.confidence,
+                validation_status: "verified" as const,
+                is_manually_corrected: false,
+              }))
+            : Object.entries(doc.extractedFields || {}).map(([k, v], fIdx) => ({
+                id: `${doc.id}-fld-${fIdx}`,
+                field_name: k,
+                field_label: k.replace(/_/g, " ").toUpperCase(),
+                original_value: v,
+                normalized_value: v,
+                field_value: v,
+                source_page: 1,
+                extraction_method: "smart_intake_pipeline",
+                ocr_confidence: doc.confidence,
+                extraction_confidence: doc.confidence,
+                validation_status: "verified" as const,
+                is_manually_corrected: false,
+              }));
         const uploadedDoc: DocumentItem = {
           ...(uploadRes.data || ({} as DocumentItem)),
           id: uploadRes.data?.id || doc.id,
+          case_id: caseId || uploadRes.data?.case_id,
           title: uploadRes.data?.title || `${doc.subtypeLabel} — ${doc.personName}`,
           filename: doc.filename,
           category: mapToVaultCategory(doc.category),
+          file_size: uploadRes.data?.file_size || formatBytes(doc.sourceFile.size),
+          byte_size: uploadRes.data?.byte_size || doc.sourceFile.size,
+          mime_type: doc.sourceFile.type || "application/pdf",
           sha256_hash: uploadRes.data?.sha256_hash || doc.sha256,
           status: uploadRes.data?.status || "verified",
           verification_status: uploadRes.data?.verification_status || "verified",
           processing_status: "completed",
+          uploaded_at: uploadRes.data?.uploaded_at || new Date().toISOString(),
+          page_count: doc.pageCount,
+          ocr_applied: true,
+          extracted_fields: uploadRes.data?.extracted_fields?.length
+            ? uploadRes.data.extracted_fields
+            : (extractedFieldsForVault as any),
+          person_role: doc.personRole,
+          person_name: doc.personName,
+          uploader_role: contributorRole,
+          is_private_to_firm: privacyShield,
         };
-        onDocumentUploaded?.(uploadedDoc);
+        notifyDocumentUploaded(uploadedDoc);
 
         // Build staged InitialInformationSheet mapping from in-memory analysis
         if (doc.analysis) {

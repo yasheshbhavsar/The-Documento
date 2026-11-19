@@ -76,6 +76,8 @@ export function WorkspaceHeader({
     }
   };
 
+  const isProduction = process.env.NODE_ENV === "production";
+
   return (
     <header
       style={{
@@ -118,35 +120,37 @@ export function WorkspaceHeader({
 
       {/* Right: Status & User Profile Menu */}
       <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-        {/* Backend health */}
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "4px 10px",
-            borderRadius: "14px",
-            background: "rgba(23, 107, 80, 0.35)",
-            border: "1px solid rgba(185, 222, 212, 0.25)",
-            fontSize: "11px",
-            color: "#B9DED4",
-            fontWeight: 550,
-          }}
-        >
-          <span
+        {/* Backend health (hidden in production) */}
+        {!isProduction && (
+          <div
             style={{
-              width: "6px",
-              height: "6px",
-              borderRadius: "50%",
-              background: "#2A9288",
-              boxShadow: "0 0 6px #2A9288",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "4px 10px",
+              borderRadius: "14px",
+              background: "rgba(23, 107, 80, 0.35)",
+              border: "1px solid rgba(185, 222, 212, 0.25)",
+              fontSize: "11px",
+              color: "#B9DED4",
+              fontWeight: 550,
             }}
-          />
-          <span>{isLiveBackend ? "FastAPI Live" : "Sandbox"}</span>
-        </div>
+          >
+            <span
+              style={{
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                background: "#2A9288",
+                boxShadow: "0 0 6px #2A9288",
+              }}
+            />
+            <span>{isLiveBackend ? "FastAPI Live" : "Sandbox"}</span>
+          </div>
+        )}
 
-        {/* Accessible Day 0 Reset Anchor for Testing and Administrative Governance */}
-        {onResetToScratch && (
+        {/* Accessible Day 0 Reset Anchor for Testing and Non-Production Governance */}
+        {!isProduction && onResetToScratch && (
           <button
             type="button"
             data-testid="day0-reset-btn"
@@ -279,18 +283,20 @@ export function WorkspaceHeader({
                   >
                     {getRoleLabel(currentUser)}
                   </span>
-                  <span
-                    style={{
-                      background: "#DDEFE8",
-                      color: "#063C3D",
-                      fontSize: "10px",
-                      fontWeight: 650,
-                      padding: "2px 8px",
-                      borderRadius: "10px",
-                    }}
-                  >
-                    Tenant: {currentUser.organization_id}
-                  </span>
+                  {!isProduction && (
+                    <span
+                      style={{
+                        background: "#DDEFE8",
+                        color: "#063C3D",
+                        fontSize: "10px",
+                        fontWeight: 650,
+                        padding: "2px 8px",
+                        borderRadius: "10px",
+                      }}
+                    >
+                      Tenant: {currentUser.organization_id}
+                    </span>
+                  )}
                 </div>
               </div>
 

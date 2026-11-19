@@ -14,38 +14,38 @@ const CORE_CAPABILITIES: CapabilityItem[] = [
   {
     id: "intake",
     title: "Intake & Organization",
-    description: "Collect and structure client evidence in a centralized repository with automated categorization and cryptographic audit stamping.",
+    description: "Collect applicant and Canadian host/sponsor records in a centralized vault with multi-lingual intake and cryptographic audit stamping.",
     tag: "SHA-256 Provenance",
   },
   {
     id: "ocr",
     title: "OCR & Field Extraction",
-    description: "Extract dates, biographic details, and form fields directly from PDFs and scanned documents to eliminate manual transcription.",
-    tag: "RapidOCR Engine",
+    description: "Extract ICAO/Indian passport MRZ fields, CRA NOA Line 15000 income, WES ECAs, and IMM form fields automatically.",
+    tag: "MRZ & RapidOCR Engine",
   },
   {
     id: "verification",
     title: "Cross-Document Verification",
-    description: "Compare dates, names, and employer entities across multiple exhibits to identify conflicting facts before filing.",
+    description: "Compare dates, NOC 2021 TEER duties, and personal history across IMM 5669 and employer letters to prevent IRCC PFLs.",
     tag: "Deterministic Audits",
   },
   {
     id: "mapping",
     title: "Requirements Mapping",
-    description: "Map submitted documents directly against visa criteria and jurisdictional checklists with real-time gap analysis.",
-    tag: "Statutory Rulesets",
+    description: "Map submitted documents directly against IRCC checklists, Super Visa LICO thresholds, PAL rules, and CRS/PNP criteria.",
+    tag: "IRPA / IRPR Rulesets",
   },
   {
     id: "coordination",
     title: "Caseload Coordination",
-    description: "Balance workflow across attorneys and paralegals with role-based permissions and strict ethical wall boundaries.",
+    description: "Balance workflow across RCICs, immigration lawyers, and case managers with role-based permissions and strict ethical walls.",
     tag: "Ethical Wall RBAC",
   },
   {
     id: "assembly",
     title: "Package Assembly",
-    description: "Generate sequential exhibit tabs, tables of contents, and organized filing packages ready for final legal review.",
-    tag: "Deterministic Indexing",
+    description: "Generate structured CIC/IRCC 5-folder dossiers, sequential exhibit tabs, and validated IMM filing packages ready for sign-off.",
+    tag: "IRCC 5-Folder Packaging",
   },
 ];
 
@@ -58,8 +58,8 @@ export function DocumentoTrust() {
     {
       title: "Human-in-the-Loop Review",
       description:
-        "Consequential filings, legal arguments, and client submissions require licensed attorney adjudication and authorization.",
-      tag: "Attorney Led",
+        "Consequential IRCC filings, submission letters, and client applications require licensed RCIC or immigration attorney adjudication and authorization.",
+      tag: "RCIC & Counsel Led",
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#07594F" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -70,7 +70,7 @@ export function DocumentoTrust() {
     {
       title: "Evidence-Linked Findings",
       description:
-        "Automated findings cite specific exhibit coordinates and page numbers, surfacing low-confidence indicators when text is ambiguous.",
+        "Automated IRCC checks cite specific exhibit coordinates and page numbers, surfacing low-confidence indicators when text is ambiguous.",
       tag: "100% Cited",
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#07594F" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -82,7 +82,7 @@ export function DocumentoTrust() {
     {
       title: "Tenant & Role Isolation",
       description:
-        "Internal legal strategies and firm notes are separated by role-based permissions and quarantined from client-facing portals.",
+        "Internal firm strategies, Canadian sponsor CRA NOAs, and staff notes are separated by role-based permissions and privacy-shielded portals.",
       tag: "Ethical Wall",
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#07594F" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -94,7 +94,7 @@ export function DocumentoTrust() {
     {
       title: "Provenance & Audit Trails",
       description:
-        "Uploaded exhibits are recorded with cryptographic SHA-256 verification and immutable activity timestamps.",
+        "Uploaded IRCC exhibits and IMM form drafts are recorded with cryptographic SHA-256 verification and immutable activity timestamps.",
       tag: "SHA-256 Vault",
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#07594F" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -483,7 +483,7 @@ export function DocumentoTrust() {
           <span style={{ fontWeight: 700, color: "#063C3D" }}>
             Legal Safeguards &amp; Regulatory Boundaries:
           </span>{" "}
-          Documento is an immigration casework and evidence intelligence platform, not a law firm. Documento does not provide legal representation, statutory interpretation, or legal advice, and is not affiliated with USCIS, UKVI, IRCC, or any government body. Consequential legal conclusions, petition brief drafting, and final case authorization strictly require the evaluation and signature of a licensed immigration attorney or accredited representative.
+          Documento is an immigration casework and evidence intelligence platform, not a law firm or regulated immigration consultancy. Documento does not provide legal representation, statutory interpretation, or legal advice, and is not affiliated with IRCC, USCIS, UKVI, or any government body. Consequential legal conclusions, submission letters, and final case authorization strictly require the evaluation and signature of a licensed Regulated Canadian Immigration Consultant (RCIC), immigration lawyer, or accredited representative.
         </div>
       </div>
     </section>

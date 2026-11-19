@@ -105,7 +105,7 @@ export function BillingManager({
     place_of_supply: "",
     line_items: [
       { description: "Primary Petition Preparation & Statutory Strategy", quantity: 1, unit_price: 3500, line_type: "service_fee", total: 3500, sac_code: "998311", gst_rate: 0.18 },
-      { description: "USCIS Government Statutory Filing Fee (I-129 / I-140)", quantity: 1, unit_price: 700, line_type: "filing_fee", total: 700, sac_code: "998311", gst_rate: 0.0 },
+      { description: "Government Statutory Filing Fee", quantity: 1, unit_price: 700, line_type: "filing_fee", total: 700, sac_code: "998311", gst_rate: 0.0 },
     ],
   });
 
@@ -140,6 +140,7 @@ export function BillingManager({
   });
 
   const [notification, setNotification] = useState<string | null>(null);
+  const [errorFeedback, setErrorFeedback] = useState<string | null>(null);
 
   const loadAllBillingData = async () => {
     setIsLoading(true);
@@ -188,8 +189,14 @@ export function BillingManager({
   }, [isAuthorized]);
 
   const showNotification = (msg: string) => {
+    setErrorFeedback(null);
     setNotification(msg);
     setTimeout(() => setNotification(null), 5000);
+  };
+
+  const showErrorFeedback = (msg: string) => {
+    setErrorFeedback(msg);
+    setTimeout(() => setErrorFeedback(null), 5000);
   };
 
   // RBAC Banner if Unauthorized
@@ -223,7 +230,7 @@ export function BillingManager({
   // Invoice Handlers
   const handleCreateInvoice = async () => {
     if (!newInvoiceData.client_id) {
-      alert("Please onboard and select a retained client before issuing an invoice.");
+      showErrorFeedback("Please onboard and select a retained client before issuing an invoice.");
       return;
     }
     try {
@@ -232,7 +239,8 @@ export function BillingManager({
       let cgst = 0;
       let sgst = 0;
       let igst = 0;
-      if (newInvoiceData.currency === "INR" || newInvoiceData.is_interstate) {
+      const isInr = newInvoiceData.currency === "INR";
+      if (isInr) {
         if (newInvoiceData.is_interstate) {
           igst = Math.round(sub * 0.18 * 100) / 100;
           tax = igst;
@@ -253,25 +261,25 @@ export function BillingManager({
         cgst_amount: cgst,
         sgst_amount: sgst,
         igst_amount: igst,
-        gst_rate: 0.18,
-        sac_code: newInvoiceData.sac_code || "998311",
-        gstin: newInvoiceData.gstin || null,
-        place_of_supply: newInvoiceData.place_of_supply || null,
-        is_interstate: newInvoiceData.is_interstate,
+        gst_rate: isInr ? 0.18 : 0,
+        sac_code: isInr ? newInvoiceData.sac_code || "998311" : undefined,
+        gstin: isInr ? newInvoiceData.gstin || null : null,
+        place_of_supply: isInr ? newInvoiceData.place_of_supply || null : null,
+        is_interstate: isInr ? newInvoiceData.is_interstate : false,
       });
       setInvoices([created, ...invoices]);
       setIsCreateInvoiceOpen(false);
       showNotification(`✓ Invoice ${created.invoice_number} successfully issued for ${formatCurrency(created.total_amount, created.currency)}.`);
       loadAllBillingData();
-    } catch (err) {
-      alert("Failed to issue invoice");
+    } catch (err: any) {
+      showErrorFeedback(err?.message || "Failed to issue invoice.");
     }
   };
 
   const handleRecordPayment = async () => {
     if (!selectedInvoice) return;
     try {
-      const res = await recordInvoicePayment(selectedInvoice.id, {
+      await recordInvoicePayment(selectedInvoice.id, {
         amount: Number(paymentForm.amount),
         payment_method: paymentForm.payment_method,
         card_brand: paymentForm.payment_method === "credit_card" ? paymentForm.card_brand : null,
@@ -279,10 +287,10 @@ export function BillingManager({
         transaction_reference: paymentForm.provider_token,
       });
       setIsRecordPaymentOpen(false);
-      showNotification(`✓ Confirmed payment of $${paymentForm.amount} for ${selectedInvoice.invoice_number}.`);
+      showNotification(`✓ Confirmed payment of ${formatCurrency(Number(paymentForm.amount), selectedInvoice.currency)} for ${selectedInvoice.invoice_number}.`);
       loadAllBillingData();
-    } catch (err) {
-      alert("Failed to record payment");
+    } catch (err: any) {
+      showErrorFeedback(err?.message || "Failed to record payment.");
     }
   };
 
@@ -295,10 +303,10 @@ export function BillingManager({
         reason: refundForm.reason,
       });
       setIsRefundPaymentOpen(false);
-      showNotification(`✓ Issued refund of $${refundForm.refund_amount} for payment ${payment.transaction_reference}.`);
+      showNotification(`✓ Issued refund of ${formatCurrency(Number(refundForm.refund_amount), selectedInvoice.currency)} for payment ${payment.transaction_reference}.`);
       loadAllBillingData();
-    } catch (err) {
-      alert("Failed to process refund");
+    } catch (err: any) {
+      showErrorFeedback(err?.message || "Failed to process refund.");
     }
   };
 
@@ -308,8 +316,8 @@ export function BillingManager({
       setServices([...services, created]);
       setIsCreateServiceOpen(false);
       showNotification(`✓ Service ${created.code} - ${created.name} added to catalog.`);
-    } catch (err) {
-      alert("Failed to create service item");
+    } catch (err: any) {
+      showErrorFeedback(err?.message || "Failed to create service item.");
     }
   };
 
@@ -319,8 +327,8 @@ export function BillingManager({
       setEngagements([created, ...engagements]);
       setIsCreateEngagementOpen(false);
       showNotification(`✓ Engagement contract ${created.engagement_number} created.`);
-    } catch (err) {
-      alert("Failed to create engagement");
+    } catch (err: any) {
+      showErrorFeedback(err?.message || "Failed to create engagement.");
     }
   };
 
@@ -486,6 +494,7 @@ export function BillingManager({
       {notification && (
         <div
           id="billing-notification-toast"
+          role="status"
           style={{
             padding: "12px 16px",
             background: "#ecfdf5",
@@ -497,6 +506,24 @@ export function BillingManager({
           }}
         >
           {notification}
+        </div>
+      )}
+
+      {errorFeedback && (
+        <div
+          id="billing-error-toast"
+          role="alert"
+          style={{
+            padding: "12px 16px",
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: "8px",
+            color: "#991B1B",
+            fontSize: "13px",
+            fontWeight: 600,
+          }}
+        >
+          {errorFeedback}
         </div>
       )}
 
@@ -740,6 +767,22 @@ export function BillingManager({
         maxWidth="lg"
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {errorFeedback && (
+            <div
+              role="alert"
+              style={{
+                padding: "10px 12px",
+                borderRadius: "8px",
+                background: "#FEF2F2",
+                border: "1px solid #FECACA",
+                color: "#991B1B",
+                fontSize: "12.5px",
+                fontWeight: 600,
+              }}
+            >
+              {errorFeedback}
+            </div>
+          )}
           {!useLegacyTestDefaults && clientsList.length === 0 && (
             <div style={{ padding: "10px 12px", borderRadius: "8px", background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", fontSize: "12px" }}>
               Add a retained client in <strong>Clients &amp; Leads</strong> first so invoices link directly to their billing account.
@@ -862,7 +905,7 @@ export function BillingManager({
                     style={{ padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
                   />
                   <span style={{ fontWeight: 700, fontSize: "13px" }}>
-                    ${line.quantity * line.unit_price}
+                    {formatCurrency(line.quantity * line.unit_price, newInvoiceData.currency)}
                   </span>
                 </div>
               ))}
@@ -886,7 +929,13 @@ export function BillingManager({
             </Button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: newInvoiceData.currency === "INR" ? "1fr 1fr 1fr" : "1fr 1fr",
+              gap: "12px",
+            }}
+          >
             <div>
               <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
                 Currency
@@ -901,20 +950,24 @@ export function BillingManager({
                 <option value="INR">INR (₹ - Indian Rupee with 18% GST)</option>
                 <option value="CAD">CAD (CA$ - Canadian Dollar)</option>
                 <option value="GBP">GBP (£ - British Pound)</option>
+                <option value="AUD">AUD (A$ - Australian Dollar)</option>
+                <option value="EUR">EUR (€ - Euro)</option>
               </select>
             </div>
-            <div>
-              <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-                SAC Classification Code
-              </label>
-              <input
-                type="text"
-                value={newInvoiceData.sac_code}
-                onChange={(e) => setNewInvoiceData({ ...newInvoiceData, sac_code: e.target.value })}
-                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
-                placeholder="998311"
-              />
-            </div>
+            {newInvoiceData.currency === "INR" && (
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                  SAC Classification Code
+                </label>
+                <input
+                  type="text"
+                  value={newInvoiceData.sac_code}
+                  onChange={(e) => setNewInvoiceData({ ...newInvoiceData, sac_code: e.target.value })}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+                  placeholder="998311"
+                />
+              </div>
+            )}
             <div>
               <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
                 Payment Terms (Days)
@@ -1035,7 +1088,7 @@ export function BillingManager({
 
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-              Settlement Amount ($ USD)
+              Settlement Amount ({selectedInvoice?.currency || newInvoiceData.currency || "USD"})
             </label>
             <input
               id="input-payment-amount"
@@ -1139,7 +1192,7 @@ export function BillingManager({
             </div>
 
             {/* Indian GST Breakdown */}
-            {(selectedInvoice.tax_amount > 0 || selectedInvoice.currency === "INR" || selectedInvoice.sac_code) && (
+            {(selectedInvoice.tax_amount > 0 || selectedInvoice.currency === "INR") && (
               <div style={{ padding: "10px 12px", background: "var(--surface-subtle)", borderRadius: "6px", fontSize: "12px", border: "1px solid var(--border)" }}>
                 <strong style={{ display: "block", marginBottom: "4px", color: "var(--text)" }}>
                   GST Breakdown (SAC {selectedInvoice.sac_code || "998311"} - Legal & Consulting Support)
@@ -1188,10 +1241,12 @@ export function BillingManager({
                     <div>
                       <strong>{line.description}</strong>
                       <small style={{ display: "block", color: "var(--quiet)" }}>
-                        Qty: {line.quantity} × ${line.unit_price} ({line.line_type})
+                        Qty: {line.quantity} × {formatCurrency(line.unit_price, selectedInvoice.currency)} ({line.line_type})
                       </small>
                     </div>
-                    <strong style={{ color: "var(--text)" }}>${line.total || line.quantity * line.unit_price}</strong>
+                    <strong style={{ color: "var(--text)" }}>
+                      {formatCurrency(line.total || line.quantity * line.unit_price, selectedInvoice.currency)}
+                    </strong>
                   </div>
                 ))}
               </div>
@@ -1217,7 +1272,7 @@ export function BillingManager({
                     >
                       <div>
                         <strong style={{ fontSize: "13px", display: "block" }}>
-                          ${p.amount} ({p.payment_method})
+                          {formatCurrency(p.amount, selectedInvoice.currency)} ({p.payment_method})
                         </strong>
                         <small style={{ color: "var(--quiet)", fontFamily: "monospace" }}>
                           Ref: {p.transaction_reference} {p.card_last4 ? `• Card: ${p.card_brand?.toUpperCase()} ****${p.card_last4}` : ""}
@@ -1261,7 +1316,7 @@ export function BillingManager({
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-              Refund Amount ($ USD)
+              Refund Amount ({selectedInvoice?.currency || newInvoiceData.currency || "USD"})
             </label>
             <input
               id="input-refund-amount"
@@ -1344,11 +1399,15 @@ export function BillingManager({
                 <option value="US">US</option>
                 <option value="UK">UK</option>
                 <option value="CA">CA</option>
+                <option value="AU">AU</option>
+                <option value="NZ">NZ</option>
+                <option value="DE">DE</option>
+                <option value="IN">IN</option>
               </select>
             </div>
             <div>
               <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-                Base Fee ($ USD)
+                Base Fee ({newInvoiceData.currency || "USD"})
               </label>
               <input
                 id="input-service-fee"

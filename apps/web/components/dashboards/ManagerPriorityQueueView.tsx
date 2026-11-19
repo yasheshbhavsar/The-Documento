@@ -209,11 +209,47 @@ export function ManagerPriorityQueueView({
 
   const totalPriorityCount = ranks.reduce((acc, r) => acc + (r.count || 0), 0);
 
+  const derivedFirstTimePassRate = (() => {
+    if (
+      typeof activeData.summary?.first_time_pass_rate_percent === "number" &&
+      activeData.summary.first_time_pass_rate_percent > 0
+    ) {
+      return activeData.summary.first_time_pass_rate_percent;
+    }
+    const rank8 = ranks.find((r) => r.rank === 8);
+    if (
+      typeof rank8?.first_time_pass_rate_percent === "number" &&
+      rank8.first_time_pass_rate_percent > 0
+    ) {
+      return rank8.first_time_pass_rate_percent;
+    }
+    const qualityCount =
+      activeData.summary?.quality_issues_count ??
+      ranks.find((r) => r.rank === 6)?.count ??
+      0;
+    const pendingReviews =
+      activeData.summary?.pending_reviews_count ??
+      ranks.find((r) => r.rank === 5)?.count ??
+      0;
+    const assignedCases = (ranks.find((r) => r.rank === 2)?.staff_allocation || []).reduce(
+      (sum, st) => sum + (st.assigned_cases_count ?? st.active_cases_count ?? 0),
+      0
+    );
+    const totalEvaluated = assignedCases + pendingReviews + qualityCount;
+    if (totalEvaluated > 0) {
+      return Math.max(
+        0,
+        Math.min(100, Math.round(((totalEvaluated - qualityCount) / totalEvaluated) * 1000) / 10)
+      );
+    }
+    return activeData.summary?.first_time_pass_rate_percent ?? 0;
+  })();
+
   return (
     <div
       id="manager-priority-queue-view"
       role="region"
-      aria-label="Staff Work Queue Priority Triage - 8 Strict Ranks"
+      aria-label="Staff Work Queue Priority Triage - Ranks 1 to 8"
       style={{ display: "flex", flexDirection: "column", gap: "20px" }}
     >
       {/* Header Bar */}
@@ -235,17 +271,17 @@ export function ManagerPriorityQueueView({
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <span style={{ fontSize: "18px" }} aria-hidden="true">🚨</span>
             <h2 style={{ margin: 0, fontSize: "16px", color: "#063C3D", fontWeight: 750 }}>
-              Strict 1–8 Rank Order Management Protocol
+              Practice Priority Triage Queue (Ranks 1–8)
             </h2>
             <Badge variant="action">Rank 1 to 8 Triage</Badge>
           </div>
           <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#64748B" }}>
-            Priority triage is enforced strictly in Ranks 1 through 8. Resolving critical authority deadlines and structural blockers unlocks lower-tier processing.
+            Prioritized operational queue ordered from urgent agency deadlines and active case blockers through pending reviews, billing, and quality coaching.
           </p>
         </div>
         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
           <Badge variant="success">
-            FTFR: {activeData.summary?.first_time_pass_rate_percent || 94.6}%
+            FTFR: {derivedFirstTimePassRate}%
           </Badge>
           <Badge variant="review">
             {ranks.length} Priority Ranks Active
@@ -908,9 +944,9 @@ export function ManagerPriorityQueueView({
                       <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "12px" }}>
                         <span style={{ fontSize: "11px", color: "#64748B" }}>First-Time Pass Rate</span>
                         <strong style={{ fontSize: "18px", color: "#063C3D", display: "block", marginTop: "2px" }}>
-                          {rankItem.first_time_pass_rate_percent || 94.6}%
+                          {rankItem.first_time_pass_rate_percent ?? derivedFirstTimePassRate}%
                         </strong>
-                        <span style={{ fontSize: "10px", color: "#166534" }}>+2.1% vs last quarter</span>
+                        <span style={{ fontSize: "10px", color: "#166534" }}>Derived from case review metrics</span>
                       </div>
                       <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "12px" }}>
                         <span style={{ fontSize: "11px", color: "#64748B" }}>Avg. Review Cycles</span>

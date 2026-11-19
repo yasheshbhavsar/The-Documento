@@ -2,7 +2,6 @@
 
 import React from "react";
 import { DocumentoLogo } from "../common/DocumentoLogo";
-import GradientWaves from "../ui/GradientWaves";
 
 interface DocumentoFooterProps {
   onOpenLogin: (portal?: "firm" | "client") => void;
@@ -23,37 +22,18 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
         color: "#FFFFFF",
       }}
     >
-      {/* Background Gradient Waves Animation - Balanced Luxury Silk Motion */}
+      {/* Lightweight CSS Ambient Gradient Backdrop */}
       <div
+        aria-hidden="true"
         style={{
           position: "absolute",
           inset: 0,
           zIndex: 0,
-          pointerEvents: "auto",
+          pointerEvents: "none",
+          background:
+            "radial-gradient(ellipse 80% 60% at 50% 100%, rgba(45, 212, 191, 0.16) 0%, rgba(7, 78, 76, 0.35) 45%, transparent 80%)",
         }}
-      >
-        <GradientWaves
-          horizonColor="#022121"
-          waveColor="#074e4c"
-          crestColor="#2dd4bf"
-          speed={0.22}
-          amplitude={2.0}
-          relief={0.75}
-          sheen={0.25}
-          brightness={0.92}
-          lightAngle={150}
-          height={5.6}
-          tilt={64}
-          waveScale={0.65}
-          waveRatio={1.15}
-          swell={12}
-          turbulence={10}
-          fogDepth={16}
-          mouseInteraction
-          swellOnClick={false}
-          lightMode={false}
-        />
-      </div>
+      />
 
       {/* Content Layer on Top */}
       <div
@@ -202,19 +182,6 @@ export function DocumentoFooter({ onOpenLogin }: DocumentoFooterProps) {
                   }}
                 >
                   Partner Visa Agency Onboarding →
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/super-admin"
-                  style={{
-                    color: "#B8E2D8",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    textShadow: "0 1px 4px rgba(0, 15, 15, 0.95)",
-                  }}
-                >
-                  Documento HQ Control Plane →
                 </a>
               </li>
               <li style={{ marginTop: "4px" }}>

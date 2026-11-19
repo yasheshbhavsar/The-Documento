@@ -2,13 +2,93 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ShieldCheck, Send, CheckCircle2, AlertCircle, X } from "lucide-react";
 import {
   type AgencyTenantRecord,
   clearActiveCobrandedAgency,
   resolveActiveCobrandedAgency,
   submitCobrandedCalculatorLead,
 } from "../../lib/agencyPlatformStore";
+
+type SvgIconProps = {
+  size?: number;
+  color?: string;
+  className?: string;
+  style?: React.CSSProperties;
+};
+
+function IconPropsSvg({
+  size = 16,
+  color = "currentColor",
+  className,
+  style,
+  children,
+}: SvgIconProps & {
+  children: React.ReactNode;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function ShieldCheck(props: SvgIconProps) {
+  return (
+    <IconPropsSvg {...props}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="m9 12 2 2 4-4" />
+    </IconPropsSvg>
+  );
+}
+
+function Send(props: SvgIconProps) {
+  return (
+    <IconPropsSvg {...props}>
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </IconPropsSvg>
+  );
+}
+
+function CheckCircle2(props: SvgIconProps) {
+  return (
+    <IconPropsSvg {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m9 12 2 2 4-4" />
+    </IconPropsSvg>
+  );
+}
+
+function AlertCircle(props: SvgIconProps) {
+  return (
+    <IconPropsSvg {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </IconPropsSvg>
+  );
+}
+
+function X(props: SvgIconProps) {
+  return (
+    <IconPropsSvg {...props}>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </IconPropsSvg>
+  );
+}
 
 export interface CobrandedAgencyLeadWidgetProps {
   calculatorId: string;

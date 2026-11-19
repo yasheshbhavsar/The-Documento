@@ -202,12 +202,12 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     actingOfficerLabel: "Acting Officer:",
 
     uploadHeaderTitle: "Direct Document Upload to Case Processing Officer",
-    uploadHeaderSubtitle: "Directly transmit evidence files to your assigned case processing officer. Each document is cryptographically fingerprinted on your device.",
+    uploadHeaderSubtitle: "Directly upload supporting documents to your assigned case processing officer. Upload clear, readable PDFs or photos; multi-page files are supported automatically.",
     dropzoneTitle: "Click to browse or drag and drop your file here",
     dropzoneSubtitle: "Secure direct upload to legal review queue",
     supportedFormatsText: "Accepted formats: PDF, JPEG, PNG, TIFF, WebP (Max 50MB per file)",
-    sha256NoticeTitle: "SHA-256 Client-Side Cryptographic Fingerprinting Active",
-    sha256NoticeDesc: "An immutable cryptographic hash is generated locally in your browser to guarantee tamper-proof chain of custody under USCIS standards.",
+    sha256NoticeTitle: "Secure Document Upload Protection Active",
+    sha256NoticeDesc: "Each uploaded document is verified locally in your browser to ensure an accurate, complete record for your legal review team.",
     categorySelectLabel: "Evidence Category",
     categoryPlaceholder: "Select evidentiary category...",
     categories: {
@@ -338,8 +338,8 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     dropzoneTitle: "ફાઇલ પસંદ કરવા માટે ક્લિક કરો અથવા અહીં ખેંચીને લાવો (Drag & Drop)",
     dropzoneSubtitle: "કાનૂની સમીક્ષા ટીમ માટે સુરક્ષિત સીધું અપલોડ",
     supportedFormatsText: "માન્ય ફોર્મેટ્સ: PDF, JPEG, PNG, TIFF, WebP (મહત્તમ ફાઇલ કદ: 50MB)",
-    sha256NoticeTitle: "SHA-256 ક્રિપ્ટોગ્રાફિક ફિંગરપ્રિન્ટિંગ સક્રિય છે",
-    sha256NoticeDesc: "તમારી ફાઇલ સાથે કોઈ છેડછાડ ન થાય તેની ખાતરી માટે બ્રાઉઝરમાં આપોઆપ ડિજિટલ હેશ કોડ જનરેટ થાય છે.",
+    sha256NoticeTitle: "સુરક્ષિત દસ્તાવેજ અપલોડ સુરક્ષા સક્રિય છે",
+    sha256NoticeDesc: "તમારી ફાઇલ સુરક્ષિત અને સંપૂર્ણ રીતે તમારી કાનૂની ટીમ સુધી પહોંચે તેની ખાતરી કરવામાં આવે છે.",
     categorySelectLabel: "દસ્તાવેજની શ્રેણી પસંદ કરો",
     categoryPlaceholder: "શ્રેણી પસંદ કરો...",
     categories: {
@@ -470,8 +470,8 @@ export const CLIENT_TRANSLATIONS: Record<ClientLanguage, ClientTranslations> = {
     dropzoneTitle: "फ़ाइल चुनने के लिए क्लिक करें या यहाँ खींचकर छोड़ें (Drag & Drop)",
     dropzoneSubtitle: "कानूनी समीक्षा टीम के लिए सुरक्षित सीधा अपलोड",
     supportedFormatsText: "स्वीकृत प्रारूप: PDF, JPEG, PNG, TIFF, WebP (अधिकतम फ़ाइल आकार: 50MB)",
-    sha256NoticeTitle: "SHA-256 क्रिप्टोग्राफ़िक फ़िंगरप्रिंटिंग सक्रिय है",
-    sha256NoticeDesc: "दस्तावेज़ की प्रामाणिकता और अखंडता सुनिश्चित करने के लिए आपके ब्राउज़र में स्वचालित डिजिटल हैश उत्पन्न होता है।",
+    sha256NoticeTitle: "सुरक्षित दस्तावेज़ अपलोड सुरक्षा सक्रिय है",
+    sha256NoticeDesc: "आपकी फ़ाइल सुरक्षित और पूर्ण रूप से आपकी कानूनी समीक्षा टीम तक पहुँचे यह सुनिश्चित किया जाता है।",
     categorySelectLabel: "दस्तावेज़ श्रेणी चुनें",
     categoryPlaceholder: "श्रेणी चुनें...",
     categories: {

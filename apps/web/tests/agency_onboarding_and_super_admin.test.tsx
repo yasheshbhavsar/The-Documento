@@ -832,23 +832,28 @@ describe("Visa Agency KYB Onboarding, Documento HQ Super-Admin & End-to-End Zero
     expect(screen.getByTestId("tenant-governance-drawer")).toBeDefined();
     expect(screen.getByTestId("tenant-credentials-panel")).toBeDefined();
 
-    // Managing Partner ID & Password show up immediately
+    // Managing Partner ID shows immediately; passwords default to masked (••••••••••••)
     expect(screen.getByTestId("tenant-owner-login-id").textContent).toBe(
       "yasheshbhavsartzuyu@gmail.com"
     );
-    expect(screen.getByTestId("tenant-owner-password").textContent).toBe(
-      provisioned.temporaryPassword
-    );
+    expect(screen.getByTestId("tenant-owner-password").textContent).toBe("••••••••••••");
 
-    // Invited Staff Seat ID & Passcode also show up immediately
+    // Invited Staff Seat ID shows immediately; passcode defaults to masked (••••••••••••)
     expect(screen.getByTestId(`tenant-staff-login-id-${staffSeat.id}`).textContent).toBe(
       "neha.patel@ybimmigration.com"
     );
     expect(screen.getByTestId(`tenant-staff-password-${staffSeat.id}`).textContent).toBe(
-      staffSeat.passcode
+      "••••••••••••"
     );
 
-    // Hide / Show toggle works
+    // Show / Hide toggle reveals and re-masks passwords
+    fireEvent.click(screen.getByTestId("toggle-tenant-passwords-btn"));
+    expect(screen.getByTestId("tenant-owner-password").textContent).toBe(
+      provisioned.temporaryPassword
+    );
+    expect(screen.getByTestId(`tenant-staff-password-${staffSeat.id}`).textContent).toBe(
+      staffSeat.passcode
+    );
     fireEvent.click(screen.getByTestId("toggle-tenant-passwords-btn"));
     expect(screen.getByTestId("tenant-owner-password").textContent).toBe("••••••••••••");
     fireEvent.click(screen.getByTestId("toggle-tenant-passwords-btn"));

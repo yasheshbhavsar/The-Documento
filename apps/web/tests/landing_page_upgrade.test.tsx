@@ -4,7 +4,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { DocumentoHero } from "../components/landing/DocumentoHero";
 import { DocumentoPreview } from "../components/landing/DocumentoPreview";
 import { DocumentoCoverageExplorer } from "../components/landing/DocumentoCoverageExplorer";
-import { DocumentoProblemSolution } from "../components/landing/DocumentoProblemSolution";
 import { DocumentoWorkflow } from "../components/landing/DocumentoWorkflow";
 import { DocumentoInteractiveTools } from "../components/landing/DocumentoInteractiveTools";
 import { DocumentoFAQ } from "../components/landing/DocumentoFAQ";
@@ -45,8 +44,8 @@ describe("Landing Page Enhanced Features & Quality Gate", () => {
       // Switch to Tab 2: Document Vault & Checklist
       const vaultTab = screen.getByRole("tab", { name: /2\. Document Vault & Checklist/i });
       fireEvent.click(vaultTab);
-      expect(screen.getAllByText(/Passport_Bio_Page_UK\.pdf/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/Employer_Support_Letter_MIT\.pdf/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Passport_Bio_Page_Applicant\.pdf/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Employer_NOC21231_Reference_Letter\.pdf/i).length).toBeGreaterThan(0);
       expect(screen.getByText(/Exhibit Metadata Inspector/i)).toBeDefined();
 
       // Switch to Tab 3: Milestones & Tasks
@@ -86,9 +85,14 @@ describe("Landing Page Enhanced Features & Quality Gate", () => {
       render(<DocumentoCoverageExplorer />);
 
       expect(screen.getByText(/Explicit pathway coverage\. Zero exaggerated claims\./i)).toBeDefined();
+      expect(screen.getByText(/8 Canada IRCC Visa Services/i)).toBeDefined();
       expect(screen.getByText(/3 Active Jurisdictions/i)).toBeDefined();
-      expect(screen.getByText(/6 Operational Pathways/i)).toBeDefined();
       expect(screen.getByText(/2 Roadmap Pathways/i)).toBeDefined();
+
+      // Default featured cards showcase Canada IRCC core services
+      expect(screen.getAllByText(/Canada Express Entry/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Canadian Super Visa/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Canada Spousal & Family Class Sponsorship/i).length).toBeGreaterThan(0);
 
       // Search input test
       const searchInput = screen.getByPlaceholderText(/Search visa name/i);
@@ -106,26 +110,7 @@ describe("Landing Page Enhanced Features & Quality Gate", () => {
       fireEvent.change(searchInput, { target: { value: "" } });
       expect(screen.getAllByText(/EB-1A Extraordinary Ability/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Canada Express Entry/i).length).toBeGreaterThan(0);
-    });
-  });
-
-  describe("4. DocumentoProblemSolution", () => {
-    it("renders before-and-after challenges and switches between views", () => {
-      render(<DocumentoProblemSolution />);
-
-      expect(screen.getByText(/Immigration is complicated enough\./i)).toBeDefined();
-      expect(screen.getByText(/Managing it shouldn’t be\./i)).toBeDefined();
-      expect(screen.getAllByText(/Scattered Documents & Version Confusion/i).length).toBeGreaterThan(0);
-      expect(screen.getByText(/With Documento Vault/i)).toBeDefined();
-      expect(screen.getByRole("tab", { name: /Evidence Management/i })).toBeDefined();
-      expect(screen.getByRole("tab", { name: /Statutory Criteria/i })).toBeDefined();
-      expect(screen.getByRole("tab", { name: /Timeline & Bottlenecks/i })).toBeDefined();
-
-      // Switch to Challenge 2
-      const tab2 = screen.getByRole("tab", { name: /Statutory Criteria/i });
-      fireEvent.click(tab2);
-      expect(screen.getAllByText(/Unclear Requirements & Regulatory Guesswork/i).length).toBeGreaterThan(0);
-      expect(screen.getByText(/With Documento Rule Engine/i)).toBeDefined();
+      expect(screen.getAllByText(/Canada LMIA & Employer Work Permit/i).length).toBeGreaterThan(0);
     });
   });
 
@@ -156,13 +141,13 @@ describe("Landing Page Enhanced Features & Quality Gate", () => {
       render(<DocumentoInteractiveTools onOpenLogin={handleOpenLogin} />);
 
       expect(screen.getByText(/Is Documento right for your case\?/i)).toBeDefined();
-      expect(screen.getByText(/EB-1A & O-1A Extraordinary Ability/i)).toBeDefined();
+      expect(screen.getByText(/Canada Express Entry \(FSWP \/ CEC\) & PNP/i)).toBeDefined();
       expect(screen.getByText(/Coverage Verified • Operational/i)).toBeDefined();
 
-      // Select Germany
-      const germanyBtn = screen.getByText(/Germany \(Planned\)/i);
+      // Select Germany & Australia roadmap preset
+      const germanyBtn = screen.getByText(/Germany & Australia \(Planned\)/i);
       fireEvent.click(germanyBtn);
-      expect(screen.getByText(/Germany EU Blue Card & Chancenkarte/i)).toBeDefined();
+      expect(screen.getByText(/Germany EU Blue Card & Australia Pilot/i)).toBeDefined();
       expect(screen.getByText(/Expansion Pipeline • In Development/i)).toBeDefined();
 
       // Toggle personas

@@ -24,79 +24,93 @@ interface CasePreset {
 
 const CASE_PRESETS: CasePreset[] = [
   {
-    id: "us-eb1a",
-    tabLabel: "EB-1A & O-1A (US)",
+    id: "ca-pr",
+    tabLabel: "Canada Express Entry & PNP",
     status: "Available",
-    title: "EB-1A & O-1A Extraordinary Ability",
-    desc: "10-criteria statutory matrix, Kazarian two-stage evaluation, citation extraction, and Form I-140/I-129 draft compilation.",
-    fitScore: "100% Codified Statutory Fit",
-    fitVerdict: "Eliminates 12+ hours of manual exhibit Bates-stamping, citation indexing, and Kazarian final merits analysis.",
+    title: "Canada Express Entry (FSWP / CEC) & PNP",
+    desc: "CRS score optimization, NOC 2021 TEER duty matching, WES ECA verification, post-ITA 60-day e-APR assembly, and provincial nominee tracking.",
+    fitScore: "100% Codified IRCC Fit",
+    fitVerdict: "Eliminates hours of manual CRS/PNP recalculation, NOC reference auditing, and post-ITA e-APR document indexing.",
     pillars: [
-      { tag: "8 CFR § 204.5(h)", title: "Statutory Rules Engine", detail: "10-criteria scorecard mapped directly to published regulations." },
-      { tag: "SHA-256", title: "Automated Exhibit Index", detail: "Sequential tabs (Exhibits A-1 to E-12) stamped with cryptographic hashes." },
-      { tag: "RBAC", title: "Ethical Wall Isolation", detail: "Internal attorney work-product strictly quarantined from clients." },
+      { tag: "CRS & PNP", title: "Live Points & Draws", detail: "Official CRS and Provincial Nominee scoring aligned to IRCC human-capital criteria." },
+      { tag: "NOC 2021", title: "TEER Duty Verification", detail: "Cross-checks employer reference letters and IMM 5669 timelines to prevent PFLs." },
+      { tag: "60-Day SLA", title: "Post-ITA e-APR Clock", detail: "Tracks police clearances, medicals, and settlement funds before statutory expiry." },
     ],
   },
   {
-    id: "us-eb2-niw",
-    tabLabel: "EB-2 NIW (US)",
+    id: "ca-super-visa",
+    tabLabel: "Canada Super Visa & TRV",
     status: "Available",
-    title: "EB-2 National Interest Waiver (NIW)",
-    desc: "Matter of Dhanasar 3-prong endeavor matrix, advanced degree credential verification, and government interest support evidence tracking.",
-    fitScore: "100% Codified Statutory Fit",
-    fitVerdict: "Systematizes Matter of Dhanasar into an objective, evidence-anchored petition docket.",
+    title: "Canada Super Visa & Visitor Visa (TRV)",
+    desc: "Automated LICO household income checks from Canadian host CRA NOAs, privacy-shielded sponsor upload portals, $100k+ medical insurance verification, and IMM 5257/5707 packaging.",
+    fitScore: "100% Codified IRCC Fit",
+    fitVerdict: "Collects private Canadian host CRA NOAs securely while verifying LICO benchmarks and $100k+ medical insurance binders automatically.",
     pillars: [
-      { tag: "Prongs I–III", title: "Dhanasar 3-Prong Matrix", detail: "Substantial merit, national importance, and waiver justification." },
-      { tag: "Degrees", title: "Credential Verification", detail: "Foreign tertiary degree comparability and academic transcript auditing." },
-      { tag: "Letters", title: "Support Letters Docket", detail: "Tracks stakeholder, industry, and academic reference letters against prongs." },
+      { tag: "LICO / NOA", title: "Host Income Validator", detail: "Extracts CRA NOA Line 15000 and validates against IRCC family-size LICO tables." },
+      { tag: "Sponsor Link", title: "Privacy-Shielded Portal", detail: "Canadian hosts upload tax and payroll docs directly without exposing financials." },
+      { tag: "IMM 5257e", title: "Insurance & Form Audit", detail: "Verifies 365-day medical coverage ($100k+ CAD) and compiles 5-folder TRV packages." },
     ],
   },
   {
-    id: "ca-all",
-    tabLabel: "Canada (Express Entry & Super Visa)",
+    id: "ca-study-work",
+    tabLabel: "Canada Study, PGWP & SOWP",
     status: "Available",
-    title: "Canada Express Entry & Super Visa",
-    desc: "CRS point evaluation, NOC/TEER lead-statement matching, IRCC AcroForm XFA extraction, and automated LICO family calculations.",
-    fitScore: "100% Codified Statutory Fit",
-    fitVerdict: "Comprehensive Canadian legal ops across Express Entry, Super Visa, Study, and Work Permits.",
+    title: "Canada Study Permits, PGWP & SOWP",
+    desc: "DLI Letter of Acceptance & Provincial Attestation Letter (PAL) validation, GIC living funds checks, 180-day PGWP filing countdowns, and IMM 1294/5710 work permit workflows.",
+    fitScore: "100% Codified IRCC Fit",
+    fitVerdict: "Prevents avoidable Study Permit, PGWP, and Spousal Open Work Permit refusals under current IRCC cap and TEER reforms.",
     pillars: [
-      { tag: "IRCC", title: "LICO & CRS Engine", detail: "Low Income Cut-Off family calculator and CRS points validation." },
-      { tag: "XFA XML", title: "AcroForm XFA Parser", detail: "Zero manual data re-entry from IMM 5257e with field-level audit." },
-      { tag: "SLA", title: "60-Day Post-ITA Countdown", detail: "Procedural deadline management with supervisor escalation alerts." },
+      { tag: "DLI & PAL", title: "Cap & Funds Verification", detail: "Checks DLI LOA numbers, PAL allocations, and GIC living-cost thresholds." },
+      { tag: "180-Day PGWP", title: "Graduation & Language Gate", detail: "Monitors the 180-day post-completion clock, full-time transcripts, and CLB scores." },
+      { tag: "SOWP / TEER", title: "Spousal Eligibility Matrix", detail: "Verifies principal spouse graduate study or qualifying TEER 0–3 work status." },
     ],
   },
   {
-    id: "uk-gtv",
-    tabLabel: "UK Global Talent",
+    id: "ca-family-lmia",
+    tabLabel: "Canada Family & LMIA Work",
     status: "Available",
-    title: "UK Global Talent Visa (Tech Nation & Sciences)",
-    desc: "Stage 1 endorsement dossier builder, 10-document evidentiary limit enforcement, and reference letter audit tools.",
-    fitScore: "100% Codified Statutory Fit",
-    fitVerdict: "Guarantees strict adherence to the UKVI 10-document / 3-page rule and endorsing body criteria.",
+    title: "Canada Spousal Sponsorship & LMIA Work Permits",
+    desc: "Bona fide relationship timelines, sponsor undertaking & IMM 1344/5532 assembly, plus ESDC LMIA confirmation and employer-specific work permit compliance.",
+    fitScore: "100% Codified IRCC Fit",
+    fitVerdict: "Structures complex relationship proof and employer LMIA / IMP packages into R10-complete CIC/IRCC 5-folder dossiers.",
     pillars: [
-      { tag: "UKVI Rule", title: "10-Document Limit Guardrail", detail: "Page-length and exhibit count constraints prevent rejections." },
-      { tag: "Stage 1", title: "Endorsing Criteria", detail: "Evidentiary mapping for Tech Nation and UKRI criteria." },
-      { tag: "Stage 2", title: "Dual-Stage Pipeline", detail: "Endorsement Stage 1 cleanly separated from Home Office Stage 2." },
+      { tag: "IMM 1344/5532", title: "Sponsorship Integrity", detail: "Cross-checks sponsor and applicant timelines, cohabitation proof, and CRA NOAs." },
+      { tag: "ESDC LMIA", title: "TFWP & IMP Compliance", detail: "Tracks positive LMIA expiry, NOC 2021 wage thresholds, and Offer of Employment #s." },
+      { tag: "5-Folder", title: "IRCC Package Assembly", detail: "Compiles sequential exhibit tabs with IMM 5476 representative sign-off." },
+    ],
+  },
+  {
+    id: "us-uk",
+    tabLabel: "US (USCIS) & UK (UKVI)",
+    status: "Available",
+    title: "Cross-Border US (EB-1A / NIW / H-1B) & UK Global Talent",
+    desc: "Secondary cross-border operational coverage for North American and Commonwealth firms handling US Form I-140/I-129 petitions and UKVI Global Talent or Skilled Worker filings.",
+    fitScore: "Cross-Border Operational Fit",
+    fitVerdict: "Lets Canadian practices serve cross-border US and UK corporate clients inside the exact same audited workspace.",
+    pillars: [
+      { tag: "USCIS I-140", title: "EB-1A, NIW & H-1B", detail: "Kazarian & Dhanasar matrices, LCA wage tracking, and Form I-140/I-129 workflows." },
+      { tag: "UKVI Rule", title: "UK Global Talent & Skilled", detail: "10-document / 3-page guardrails and CoS salary threshold checks." },
+      { tag: "SHA-256", title: "Unified Practice Vault", detail: "Single RBAC, billing, and evidentiary standard across CA, US, and UK dockets." },
     ],
   },
   {
     id: "de-bluecard",
-    tabLabel: "Germany (Planned)",
+    tabLabel: "Germany & Australia (Planned)",
     status: "Planned",
-    title: "Germany EU Blue Card & Chancenkarte",
-    desc: "BAMF minimum salary threshold validation, Anabin comparability checks, and points-based Opportunity Card simulator.",
+    title: "Germany EU Blue Card & Australia Pilot",
+    desc: "Roadmap expansion for BAMF salary threshold validation, Anabin H+ degree comparability, Chancenkarte points simulation, and Australia Subclass 858/482 workflows.",
     fitScore: "Expansion Roadmap",
-    fitVerdict: "Engineered for Fachkräfteeinwanderungsgesetz (FEG) standards and Anabin degree equivalence.",
+    fitVerdict: "Engineered for Fachkräfteeinwanderungsgesetz (FEG) and Australian Department of Home Affairs standards.",
     pillars: [
       { tag: "H+ Check", title: "Anabin Database Matcher", detail: "Foreign tertiary degree comparability and H+ institution check." },
-      { tag: "BAMF", title: "BAMF Salary Thresholds", detail: "Automated calculation for standard vs shortage occupation tiers." },
+      { tag: "BAMF / TSMIT", title: "Salary Threshold Validators", detail: "Automated checks for EU Blue Card and Australian skilled tiers." },
       { tag: "SHA-256", title: "Universal Vault Ready", detail: "Cryptographic SHA-256 exhibit storage immediately operational." },
     ],
   },
 ];
 
 export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveToolsProps) {
-  const [activePresetId, setActivePresetId] = useState<string>("us-eb1a");
+  const [activePresetId, setActivePresetId] = useState<string>("ca-pr");
   const [exhibitCount, setExhibitCount] = useState<number>(28);
   const [activePersonaTab, setActivePersonaTab] = useState<"applicant" | "lawfirm">("applicant");
   const [waitingDemoState, setWaitingDemoState] = useState<"applicant" | "firm">("firm");
@@ -177,7 +191,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                 margin: 0,
               }}
             >
-              Purpose-built for immigration law firms handling complex petitions, evidentiary exhibits, and client coordination.
+              Purpose-built for Canadian immigration consultants (RCICs), immigration law firms, and agencies handling IRCC filings, sponsor documents, and multi-lingual client intake.
             </p>
 
             {/* Vertical Pathway List */}
@@ -308,7 +322,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
               }}
             >
               <div style={{ marginBottom: "14px" }}>
-                <strong style={{ color: "#07594F" }}>Law Firm Verdict:</strong> {activePreset.fitVerdict}
+                <strong style={{ color: "#07594F" }}>Practice Verdict:</strong> {activePreset.fitVerdict}
               </div>
 
               {/* Interactive Micro-UI: Exhibit Volume & Time-Savings Simulator */}
@@ -436,10 +450,10 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                     : "Join Jurisdiction Waitlist →"}
                 </button>
 
-                {activePreset.id === "ca-all" && (
+                {activePreset.id.startsWith("ca-") && (
                   <>
                     <a
-                      href="/crs-calculator"
+                      href="/calculators/canada-crs"
                       style={{
                         padding: "11px 18px",
                         borderRadius: "8px",
@@ -452,10 +466,10 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                         transition: "all 0.15s ease",
                       }}
                     >
-                      Open Official CRS Score Calculator →
+                      Open Official Canada CRS Calculator →
                     </a>
                     <a
-                      href="/pnp-calculator"
+                      href="/calculators/canada-pnp"
                       style={{
                         padding: "11px 18px",
                         borderRadius: "8px",
@@ -468,12 +482,12 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                         transition: "all 0.15s ease",
                       }}
                     >
-                      Open Official PNP Points Calculator →
+                      Open Official Canada PNP Calculator →
                     </a>
                   </>
                 )}
 
-                {activePreset.id === "uk-gtv" && (
+                {activePreset.id === "us-uk" && (
                   <a
                     href="/calculators/uk-skilled-worker"
                     style={{
@@ -604,7 +618,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                 margin: 0,
               }}
             >
-              Immigration case management works only when both sides have clarity. Explore how Documento tailors tools for retained applicants and practicing immigration professionals.
+              Canadian immigration casework succeeds when applicants, Canadian hosts, and representatives share complete clarity. Explore how Documento supports clients and licensed RCIC or legal teams.
             </p>
 
             {/* Persona Toggle */}
@@ -718,7 +732,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                       Know Exactly What Documents Are Needed
                     </h3>
                     <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
-                      Receive structured checklists with sample templates and file guidelines so you upload the right paperwork the first time.
+                      Receive structured IRCC checklists in English, Gujarati, or Hindi with sample templates and file guidelines so you upload the right documents the first time.
                     </p>
                   </div>
                 </div>
@@ -823,7 +837,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                       Private &amp; Secure Direct Uploads
                     </h3>
                     <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
-                      Upload sensitive identity documents straight to a private, encrypted vault with cryptographic audit protection.
+                      Upload passports, CRA NOAs, GICs, and identity records directly to an encrypted vault—with privacy-shielded magic links for Canadian Super Visa and Family sponsors.
                     </p>
                   </div>
                 </div>
@@ -867,7 +881,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                       Automated Evidence Cross-Examination
                     </h3>
                     <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
-                      Cross-verify dates, entity spellings, and biographic facts across exhibits automatically to catch conflicting details early.
+                      Cross-verify passport MRZ fields, CRA NOA Line 15000 LICO thresholds, NOC 2021 dates, and IMM 5669 timelines automatically to prevent IRCC refusals and PFLs.
                     </p>
                   </div>
                 </div>
@@ -909,7 +923,7 @@ export function DocumentoInteractiveTools({ onOpenLogin }: DocumentoInteractiveT
                       Deterministic Exhibit Index &amp; Assembly
                     </h3>
                     <p style={{ fontSize: "14px", color: "#475955", lineHeight: 1.6, margin: 0 }}>
-                      Generate sequential exhibit tabs, tables of contents, and filing packages deterministically without manual PDF merging.
+                      Generate structured CIC/IRCC 5-folder filing dossiers, sequential exhibit tabs, and validated IMM packages deterministically without manual PDF merging.
                     </p>
                   </div>
                 </div>

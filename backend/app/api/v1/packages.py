@@ -707,6 +707,34 @@ def download_package_zip(
         raise EntityNotFoundError("FilingPackage", str(package_id))
 
     case = db.execute(select(ImmigrationCase).where(ImmigrationCase.id == package.case_id)).scalar_one()
+
+    # Enforce package approval and case operational/submission hold guards before ZIP assembly
+    pkg_status = (package.status or "").lower().strip()
+    approval_chain = package.approval_chain_json or []
+    has_rejected_stage = any(
+        isinstance(stage, dict) and str(stage.get("status", "")).lower().strip() == "rejected"
+        for stage in approval_chain
+    )
+    if pkg_status == "rejected" or has_rejected_stage:
+        raise ValidationError(
+            "Cannot download filing package ZIP: package has been rejected during review. "
+            "Resolve review rejections before exporting the filing archive."
+        )
+
+    op_state = (getattr(case, "operational_state", None) or "").upper().strip()
+    if op_state == "ON_HOLD":
+        raise ValidationError(
+            f"Cannot download filing package ZIP while parent case is ON_HOLD. "
+            f"Hold reason: {getattr(case, 'hold_reason', None) or 'Operational hold active'}"
+        )
+
+    sub_auth_status = (getattr(case, "submission_authorization_status", None) or "").upper().strip()
+    if sub_auth_status in ("HELD_FOR_ACCOUNTS", "HELD_FOR_COUNSELLOR", "HELD_FOR_CLIENT_DECISION"):
+        raise ValidationError(
+            f"Cannot download filing package ZIP: parent case has an active submission hold ({sub_auth_status}). "
+            "Clear the hold before downloading the filing package."
+        )
+
     manifest_json = package.manifest_json or {}
     folder_list = manifest_json.get("folders", [])
     items = manifest_json.get("items", [])

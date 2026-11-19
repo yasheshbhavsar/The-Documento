@@ -1,14 +1,17 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Modal } from "../common/Modal";
 import { TextInput, SelectInput } from "../common/FormControls";
 import { Button } from "../common/Button";
-import { ClientProfile, ImmigrationCase, RoleCode } from "../../lib/types";
+import { ClientProfile, ImmigrationCase, RoleCode, TeamMemberCapacity, UserContext } from "../../lib/types";
 import { api } from "../../lib/api";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 
 interface CreateCaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   clients: ClientProfile[];
+  teamCapacity?: TeamMemberCapacity[];
+  currentUser?: UserContext | null;
   onCaseCreated: (newCase: ImmigrationCase) => void;
   activeRole?: RoleCode;
 }
@@ -54,29 +57,67 @@ export const JURISDICTION_PATHWAYS: Record<string, { label: string; value: strin
   ],
 };
 
+const EMPTY_CAPACITY: TeamMemberCapacity[] = [];
+
 export function CreateCaseModal({
   isOpen,
   onClose,
   clients,
+  teamCapacity,
+  currentUser,
   onCaseCreated,
   activeRole = "master_admin",
 }: CreateCaseModalProps) {
+  const ws = useWorkspaceSafe();
+  const effectiveTeam = teamCapacity ?? ws?.capacity ?? EMPTY_CAPACITY;
+  const effectiveUser = currentUser ?? ws?.currentUser ?? null;
+
+  const caseworkerRoster = useMemo(() => {
+    const map = new Map<string, { id?: string; name: string; role?: string }>();
+    for (const tm of effectiveTeam) {
+      if (tm.name) {
+        map.set(tm.name.trim().toLowerCase(), { id: tm.id, name: tm.name.trim(), role: tm.role });
+      }
+    }
+    if (effectiveUser?.full_name && !map.has(effectiveUser.full_name.trim().toLowerCase())) {
+      map.set(effectiveUser.full_name.trim().toLowerCase(), {
+        id: effectiveUser.id,
+        name: effectiveUser.full_name.trim(),
+        role: effectiveUser.role === "master_admin" ? "Managing Partner" : "Case Manager",
+      });
+    }
+    return Array.from(map.values());
+  }, [effectiveTeam, effectiveUser?.full_name, effectiveUser?.id, effectiveUser?.role]);
+
   const [clientId, setClientId] = useState(clients[0]?.id || "");
   const [title, setTitle] = useState("");
   const [caseNumber, setCaseNumber] = useState("CASE-8850");
   const [jurisdiction, setJurisdiction] = useState("United States (USCIS)");
   const [visaCategory, setVisaCategory] = useState("EB-1A Extraordinary Ability");
+  const [assignedCaseworker, setAssignedCaseworker] = useState(effectiveUser?.full_name || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (isOpen) {
       setCaseNumber(`CASE-${Math.floor(1000 + Math.random() * 9000)}`);
-      if (clients.length > 0 && !clients.some((c) => c.id === clientId)) {
-        setClientId(clients[0].id);
-      } else if (clients.length === 0) {
-        setClientId("");
-      }
+      const nextClient = clients[0] || null;
+      setClientId((prev) =>
+        clients.some((c) => c.id === prev) ? prev : nextClient?.id || ""
+      );
+      setAssignedCaseworker(
+        nextClient?.assigned_caseworker || effectiveUser?.full_name || caseworkerRoster[0]?.name || ""
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (clients.length === 0) {
+      setClientId("");
+    } else if (!clients.some((c) => c.id === clientId)) {
+      setClientId(clients[0].id);
     }
   }, [isOpen, clients, clientId]);
 
@@ -95,6 +136,7 @@ export function CreateCaseModal({
     setError(null);
 
     try {
+      const matchedWorker = caseworkerRoster.find((m) => m.name === assignedCaseworker);
       const res = await api.createCase(
         {
           client_id: clientId,
@@ -102,6 +144,8 @@ export function CreateCaseModal({
           case_number: caseNumber,
           jurisdiction,
           visa_category: visaCategory,
+          assigned_manager: assignedCaseworker || undefined,
+          case_manager_id: matchedWorker?.id,
         },
         activeRole
       );
@@ -190,7 +234,14 @@ export function CreateCaseModal({
           label="Retained Client"
           options={clientOptions.length > 0 ? clientOptions : [{ label: "No clients registered yet — Retain Client first", value: "" }]}
           value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
+          onChange={(e) => {
+            const nextId = e.target.value;
+            setClientId(nextId);
+            const selected = clients.find((c) => c.id === nextId);
+            if (selected?.assigned_caseworker) {
+              setAssignedCaseworker(selected.assigned_caseworker);
+            }
+          }}
           required
         />
 
@@ -227,6 +278,19 @@ export function CreateCaseModal({
             required
           />
         </div>
+
+        <SelectInput
+          label="Assigned Caseworker"
+          options={[
+            { label: "Unassigned (Assign later)", value: "" },
+            ...caseworkerRoster.map((m) => ({
+              label: m.role ? `${m.name} (${m.role})` : m.name,
+              value: m.name,
+            })),
+          ]}
+          value={assignedCaseworker}
+          onChange={(e) => setAssignedCaseworker(e.target.value)}
+        />
       </form>
     </Modal>
   );

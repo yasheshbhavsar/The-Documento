@@ -46,8 +46,12 @@ describe("Challenger 2 — Contract Invariants & Dynamic Import Verification", (
     expect(footerContent.length).toBeGreaterThan(0);
   });
 
-  it("Invariant 2: Dynamic lazy imports — apps/web/app/page.tsx preserves all 12 dynamic imports and prewarming logic", () => {
+  it("Invariant 2: Dynamic lazy imports — AuthenticatedWorkspaceShell & apps/web/app/page.tsx preserve all 12 dynamic imports and prewarming logic", () => {
     const pageContent = fs.readFileSync(path.resolve(__dirname, "../app/page.tsx"), "utf8");
+    const shellContent = fs.readFileSync(
+      path.resolve(__dirname, "../components/layout/AuthenticatedWorkspaceShell.tsx"),
+      "utf8"
+    );
 
     const expectedDynamicComponents = [
       "WorkspaceHeader",
@@ -67,13 +71,13 @@ describe("Challenger 2 — Contract Invariants & Dynamic Import Verification", (
     expectedDynamicComponents.forEach((componentName) => {
       const pattern = new RegExp(`const\\s+${componentName}\\s*=\\s*dynamic\\(`, "g");
       expect(
-        pageContent.match(pattern),
+        shellContent.match(pattern),
         `Dynamic import for ${componentName} must be defined using next/dynamic`
       ).not.toBeNull();
     });
 
-    // Count total next/dynamic definitions in page.tsx
-    const dynamicMatches = pageContent.match(/dynamic\(\(\)\s*=>\s*import\(/g);
+    // Count total next/dynamic definitions in AuthenticatedWorkspaceShell.tsx
+    const dynamicMatches = shellContent.match(/dynamic\(\(\)\s*=>\s*import\(/g);
     expect(dynamicMatches).not.toBeNull();
     expect(dynamicMatches?.length).toBe(12);
 

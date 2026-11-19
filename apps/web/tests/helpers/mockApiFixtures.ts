@@ -11,7 +11,26 @@ import type {
   MessageThreadItem,
   ThreadMessageItem,
 } from "../../lib/types";
-import type { ApplicantRequirementGroup } from "../../components/dashboards/ClientPortal";
+import { FALLBACK_VISA_FILE_UPDATES as PORTAL_FALLBACK_VISA_FILE_UPDATES } from "../../components/portal/VisaFileUpdatesView";
+
+export interface ApplicantRequirementItem {
+  id: string;
+  title: string;
+  status: "accepted" | "received" | "rejected" | "required" | "outstanding";
+  statutoryBasis: string;
+  notes?: string;
+  rejectionReasonCode?: string;
+  rejectionReasonLabel?: string;
+  clientExplanation?: string;
+}
+
+export interface ApplicantRequirementGroup {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+  items: ApplicantRequirementItem[];
+}
 import {
   DEMO_ORG_ID,
   DEMO_USERS,
@@ -422,6 +441,9 @@ export function seedStorageFixtures(): void {
 }
 
 export function mockApiModuleWithFixtures(actual: typeof ApiModule) {
+  if (PORTAL_FALLBACK_VISA_FILE_UPDATES.length === 0) {
+    PORTAL_FALLBACK_VISA_FILE_UPDATES.push(...cloneValue(FALLBACK_VISA_FILE_UPDATES));
+  }
   let docRequests: DocumentRequestItem[] = cloneValue(FALLBACK_DOCUMENT_REQUESTS);
   const msgThreads: MessageThreadItem[] = cloneValue(FALLBACK_MESSAGE_THREADS);
   const threadMsgs: ThreadMessageItem[] = cloneValue(FALLBACK_THREAD_MESSAGES);
@@ -716,6 +738,19 @@ export function mockApiModuleWithFixtures(actual: typeof ApiModule) {
 
     api: {
       ...actual.api,
+
+      getVisaAppointments: async (filters?: { case_id?: string; status?: string }) => {
+        const res = await actual.api.getVisaAppointments(filters);
+        const list = Array.isArray(res) ? res : res?.data || [];
+        if (list.length > 0 || hasStorageKey("documento_appointments_v3_clean")) {
+          return res;
+        }
+        let fallback = cloneValue(FALLBACK_APPOINTMENTS);
+        if (filters?.case_id) {
+          fallback = fallback.filter((a) => a.case_id === filters.case_id);
+        }
+        return { data: fallback, isLiveBackend: false };
+      },
 
       getCaseEvaluations: async (caseId: string, role?: any) => {
         if (!hasStorageKey("documento_case_evaluations_v3_clean") && caseId === "case-01") {

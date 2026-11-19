@@ -424,11 +424,12 @@ describe("Workstream D — Guided 3-Tab Client Portal, Split-Screen Case Studio 
       // Express launch MUST NOT pop open the 4-step kickoff modal
       expect(screen.getByTestId("ctx-kickoff-case").textContent).toBe("NONE");
 
-      // Legacy callers without skipKickoffModal still open kickoff modal as before
+      // Standard callers without skipKickoffModal also do not auto-pop kickoff modal (accessible via explicit Kickoff button)
       await act(async () => {
         fireEvent.click(screen.getByTestId("trigger-legacy-create"));
       });
-      expect(screen.getByTestId("ctx-kickoff-case").textContent).toBe("CASE-LEGACY-002");
+      expect(screen.getByTestId("ctx-kickoff-case").textContent).toBe("NONE");
+      expect(Number(screen.getByTestId("ctx-cases-count").textContent)).toBeGreaterThanOrEqual(2);
     });
   });
 });

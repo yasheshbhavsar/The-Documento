@@ -215,7 +215,7 @@ export function WaitingStateBanner({
           {waiting_on_client.length === 0 ? (
             data?.onboarding_completed || profile_completeness_percentage > 0 ? (
               <p style={{ margin: 0, fontSize: "13px", color: "#176B50" }}>
-                ✓ All required evidentiary items submitted. Nothing currently pending on your end!
+                ✓ All required items submitted. Nothing currently pending on your end!
               </p>
             ) : (
               <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
@@ -341,52 +341,19 @@ export function WaitingStateBanner({
         </div>
       </div>
 
-      {/* 3. Filing Readiness Meter with Legal Precision Disclaimer */}
+      {/* 3. Concise Readiness Disclaimer (Unified readiness bar lives in ClientStatusHeroCard) */}
       <div
         style={{
-          background: "#FFFFFF",
-          border: "1px solid #DCE5E1",
-          borderRadius: "10px",
-          padding: "14px 18px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
+          fontSize: "11.5px",
+          color: "#6E7F7C",
+          lineHeight: 1.4,
+          padding: "2px 4px",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
-          <span style={{ fontWeight: 650, color: "#063C3D" }}>
-            Petition Filing &amp; Onboarding Readiness
-          </span>
-          <strong style={{ color: "#0D6866", fontVariantNumeric: "tabular-nums" }}>
-            {profile_completeness_percentage}% Ready
-          </strong>
-        </div>
-        <div
-          role="progressbar"
-          aria-valuenow={profile_completeness_percentage}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Petition Filing and Onboarding Readiness"
-          style={{
-            width: "100%",
-            height: "8px",
-            backgroundColor: "#E7EFEB",
-            borderRadius: "4px",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: `${profile_completeness_percentage}%`,
-              height: "100%",
-              background: "#0D6866",
-              transition: "width 0.5s ease",
-            }}
-          />
-        </div>
-        <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "2px", lineHeight: 1.4 }}>
-          * Workflow progress measures procedural evidentiary milestone completion and does not predict USCIS processing times, statutory eligibility, or petition adjudication outcome.
-        </div>
+        <strong style={{ color: "#445451", fontWeight: 600 }}>
+          Petition Filing &amp; Onboarding Readiness:
+        </strong>{" "}
+        Progress reflects completed intake and document steps and does not predict government processing times or decision outcomes.
       </div>
     </div>
   );

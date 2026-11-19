@@ -1,3 +1,5 @@
+import { FALLBACK_FORM_SCHEMAS } from "./canonicalFormSchemas";
+export { FALLBACK_FORM_SCHEMAS };
 import {
   ImmigrationCase,
   ClientProfile,
@@ -469,6 +471,41 @@ function getAuthHeaders(role: RoleCode = "company_admin"): Record<string, string
   return headers;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUuid(value?: string | null): value is string {
+  return Boolean(value && UUID_PATTERN.test(value.trim()));
+}
+
+function extractAssignedManagerFromCase(
+  caseItem: Partial<ImmigrationCase>,
+  localFallback?: Partial<ImmigrationCase>
+): string | undefined {
+  if (caseItem.assigned_manager && caseItem.assigned_manager.trim() && caseItem.assigned_manager !== "Unassigned") {
+    return caseItem.assigned_manager.trim();
+  }
+  const assignments = Array.isArray(caseItem.assignments) ? caseItem.assignments : [];
+  if (assignments.length > 0) {
+    const preferredOrder = ["case_manager", "case_worker", "lead_attorney", "reviewer"];
+    for (const role of preferredOrder) {
+      const match = assignments.find(
+        (a) => (a.role_in_case || "").toLowerCase() === role && a.user_name && a.user_name.trim()
+      );
+      if (match?.user_name) return match.user_name.trim();
+    }
+    const anyNamed = assignments.find((a) => a.user_name && a.user_name.trim());
+    if (anyNamed?.user_name) return anyNamed.user_name.trim();
+  }
+  if (
+    localFallback?.assigned_manager &&
+    localFallback.assigned_manager.trim() &&
+    localFallback.assigned_manager !== "Unassigned"
+  ) {
+    return localFallback.assigned_manager.trim();
+  }
+  return caseItem.assigned_manager;
+}
+
 export const api = {
   // Check if live backend is running
   async checkBackendHealth(): Promise<boolean> {
@@ -490,7 +527,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           email: payload.email,
           password: payload.password || "",
@@ -533,9 +570,14 @@ export const api = {
       if (res.ok) {
         const data: ImmigrationCase[] = await res.json();
         const enrichedBackendCases = data.map((c) => {
+          const localMatch = orgCases.find(
+            (lc) => lc.id === c.id || (Boolean(c.case_number) && lc.case_number === c.case_number)
+          );
+          const derivedManager = extractAssignedManagerFromCase(c, localMatch);
           const base = {
             ...c,
             readiness_score: c.readiness_score ?? 0,
+            ...(derivedManager ? { assigned_manager: derivedManager } : {}),
           };
           if (base.client_name) return base;
           const matchedClient = localClients.find((cl) => cl.id === base.client_id);
@@ -572,6 +614,8 @@ export const api = {
       case_number: string;
       jurisdiction: string;
       visa_category: string;
+      assigned_manager?: string;
+      case_manager_id?: string;
     },
     role: RoleCode = "master_admin"
   ): Promise<ApiResponse<ImmigrationCase>> {
@@ -592,14 +636,22 @@ export const api = {
                   ? "US"
                   : payload.jurisdiction.trim().slice(0, 3).toUpperCase() || "US";
 
+    const backendPayload: Record<string, any> = {
+      client_id: payload.client_id,
+      title: payload.title,
+      case_number: payload.case_number,
+      jurisdiction: normalizedJurisdictionCode,
+      visa_category: payload.visa_category,
+    };
+    if (isValidUuid(payload.case_manager_id)) {
+      backendPayload.case_manager_id = payload.case_manager_id;
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/cases`, {
         method: "POST",
         headers: getAuthHeaders(role),
-        body: JSON.stringify({
-          ...payload,
-          jurisdiction: normalizedJurisdictionCode,
-        }),
+        body: JSON.stringify(backendPayload),
       });
       if (res.ok) {
         const data = await res.json();
@@ -609,7 +661,10 @@ export const api = {
           ? `${matchedClient.first_name} ${matchedClient.last_name}`.trim()
           : "Retained Client";
         const assignedManager =
-          data.assigned_manager || (payload as any).assigned_manager || (ctx.hasSession ? ctx.fullName : undefined);
+          extractAssignedManagerFromCase(data) ||
+          payload.assigned_manager ||
+          matchedClient?.assigned_caseworker ||
+          (ctx.hasSession ? ctx.fullName : undefined);
         const enrichedCase: ImmigrationCase = {
           ...data,
           client_name: data.client_name || fallbackClientName,
@@ -632,7 +687,10 @@ export const api = {
     syncFromStorage();
     const client = localClients.find((c) => c.id === payload.client_id);
     const clientName = client ? `${client.first_name} ${client.last_name}`.trim() : "Retained Client";
-    const assignedManager = (payload as any).assigned_manager || (ctx.hasSession ? ctx.fullName : undefined);
+    const assignedManager =
+      payload.assigned_manager ||
+      client?.assigned_caseworker ||
+      (ctx.hasSession ? ctx.fullName : undefined);
     const newCase: ImmigrationCase = {
       id: `case-${Date.now()}`,
       case_number: payload.case_number,
@@ -697,26 +755,112 @@ export const api = {
   async assignCaseOfficer(
     caseId: string,
     officerName: string,
-    options?: { markChecklistTaskComplete?: boolean; advanceToAwaitingDocuments?: boolean },
+    options?: {
+      markChecklistTaskComplete?: boolean;
+      advanceToAwaitingDocuments?: boolean;
+      userId?: string;
+      roleInCase?: string;
+      fallbackCase?: ImmigrationCase;
+    },
     role: RoleCode = "master_admin"
   ): Promise<ApiResponse<ImmigrationCase | null>> {
     syncFromStorage();
     const ctx = getActiveSessionContext(role);
-    const trimmedOfficer = officerName.trim() || ctx.fullName || "Assigned Counsel";
+    const rawTrimmed = (officerName || "").trim();
+    const trimmedOfficer = rawTrimmed || "Unassigned";
+    const isUnassigning = trimmedOfficer.toLowerCase() === "unassigned";
+    let backendSynced = false;
+    let backendCaseData: ImmigrationCase | null = null;
+
+    if (!isUnassigning && isValidUuid(caseId)) {
+      let resolvedUserId = isValidUuid(options?.userId) ? options!.userId : undefined;
+      if (!resolvedUserId && (isLiveBackend || Boolean(getAccessToken()))) {
+        try {
+          const wRes = await fetch(`${API_BASE_URL}/operations/workload`, {
+            headers: getAuthHeaders(role),
+            cache: "no-store",
+          });
+          if (wRes.ok) {
+            const staffList = await wRes.json();
+            if (Array.isArray(staffList)) {
+              const normTarget = trimmedOfficer.toLowerCase();
+              const matchedStaff = staffList.find(
+                (s: any) =>
+                  (s.full_name || "").trim().toLowerCase() === normTarget ||
+                  (s.email || "").trim().toLowerCase() === normTarget
+              );
+              if (matchedStaff && isValidUuid(matchedStaff.user_id)) {
+                resolvedUserId = matchedStaff.user_id;
+              }
+            }
+          }
+        } catch {
+          // Non-blocking lookup
+        }
+      }
+
+      if (isValidUuid(resolvedUserId)) {
+        const roleInCase = options?.roleInCase || "case_manager";
+        try {
+          let assignRes = await fetch(`${API_BASE_URL}/cases/${caseId}/lifecycle/reassign`, {
+            method: "POST",
+            headers: getAuthHeaders(role),
+            body: JSON.stringify({
+              new_user_id: resolvedUserId,
+              role_in_case: roleInCase,
+              notify_client: false,
+            }),
+          });
+          if (!assignRes.ok) {
+            assignRes = await fetch(`${API_BASE_URL}/cases/${caseId}/assignments`, {
+              method: "POST",
+              headers: getAuthHeaders(role),
+              body: JSON.stringify({
+                user_id: resolvedUserId,
+                role_in_case: roleInCase,
+              }),
+            });
+          }
+          if (assignRes.ok) {
+            backendCaseData = await assignRes.json();
+            backendSynced = true;
+          }
+        } catch {
+          // Fallback to local persisted update
+        }
+      }
+    }
+
     let updatedCase: ImmigrationCase | null = null;
+    let foundInLocal = false;
 
     localCases = localCases.map((c) => {
       if (c.id !== caseId && c.case_number !== caseId) return c;
+      foundInLocal = true;
       updatedCase = {
         ...c,
-        assigned_manager: trimmedOfficer,
+        ...(backendCaseData || {}),
+        assigned_manager: isUnassigning ? undefined : trimmedOfficer,
         status:
           options?.advanceToAwaitingDocuments && c.status === "intake"
             ? "awaiting_documents"
-            : c.status,
+            : (backendCaseData?.status || c.status),
       };
       return updatedCase;
     });
+
+    if (!foundInLocal && (backendCaseData || options?.fallbackCase)) {
+      const base = backendCaseData || options!.fallbackCase!;
+      updatedCase = {
+        ...base,
+        assigned_manager: isUnassigning ? undefined : trimmedOfficer,
+        status:
+          options?.advanceToAwaitingDocuments && base.status === "intake"
+            ? "awaiting_documents"
+            : base.status,
+      };
+      localCases = [updatedCase, ...localCases];
+    }
     setStored(CASES_STORAGE_KEY, localCases);
 
     if (updatedCase) {
@@ -729,7 +873,7 @@ export const api = {
           t.title.toLowerCase().includes("send intake document checklist");
         return {
           ...t,
-          assigned_to: trimmedOfficer,
+          assigned_to: isUnassigning ? "Unassigned" : trimmedOfficer,
           is_completed: shouldComplete ? true : t.is_completed,
         };
       });
@@ -740,7 +884,7 @@ export const api = {
           id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           action: "case.officer_assigned",
           object_type: "case",
-          object_id: targetNumber,
+          object_id: targetNumber || targetId,
           actor_email: ctx.email,
           created_at: new Date().toISOString(),
           metadata: {
@@ -754,7 +898,113 @@ export const api = {
       setStored(AUDIT_STORAGE_KEY, localAuditEvents);
     }
 
-    return fallbackResponse(updatedCase);
+    return { data: updatedCase, isLiveBackend: backendSynced };
+  },
+
+  async assignClientCaseworker(
+    clientId: string,
+    officerName: string,
+    options?: {
+      userId?: string;
+      roleInCase?: string;
+      knownCases?: ImmigrationCase[];
+      fallbackClient?: ClientProfile;
+    },
+    role: RoleCode = "master_admin"
+  ): Promise<
+    ApiResponse<{
+      client: ClientProfile | null;
+      updatedCases: ImmigrationCase[];
+    }>
+  > {
+    syncFromStorage();
+    const ctx = getActiveSessionContext(role);
+    const rawTrimmed = (officerName || "").trim();
+    const trimmedOfficer = rawTrimmed || "Unassigned";
+    const isUnassigning = trimmedOfficer.toLowerCase() === "unassigned";
+
+    let updatedClient: ClientProfile | null = null;
+    let foundClient = false;
+
+    localClients = localClients.map((cl) => {
+      if (cl.id !== clientId) return cl;
+      foundClient = true;
+      updatedClient = {
+        ...cl,
+        assigned_caseworker: isUnassigning ? undefined : trimmedOfficer,
+        assigned_caseworker_id: isUnassigning ? undefined : options?.userId,
+      };
+      return updatedClient;
+    });
+
+    if (!foundClient && options?.fallbackClient) {
+      updatedClient = {
+        ...options.fallbackClient,
+        assigned_caseworker: isUnassigning ? undefined : trimmedOfficer,
+        assigned_caseworker_id: isUnassigning ? undefined : options?.userId,
+      };
+      localClients = [updatedClient, ...localClients];
+    }
+    setStored(CLIENTS_STORAGE_KEY, localClients);
+
+    const clientFullName = updatedClient
+      ? `${updatedClient.first_name} ${updatedClient.last_name}`.trim().toLowerCase()
+      : "";
+
+    const candidateCasesMap = new Map<string, ImmigrationCase>();
+    for (const c of [...(options?.knownCases || []), ...localCases]) {
+      const sameClient =
+        c.client_id === clientId ||
+        (Boolean(clientFullName) && (c.client_name || "").trim().toLowerCase() === clientFullName);
+      if (sameClient) {
+        candidateCasesMap.set(c.id, c);
+      }
+    }
+
+    const updatedCases: ImmigrationCase[] = [];
+    let anyLive = false;
+    for (const linkedCase of candidateCasesMap.values()) {
+      const res = await this.assignCaseOfficer(
+        linkedCase.id,
+        trimmedOfficer,
+        {
+          userId: options?.userId,
+          roleInCase: options?.roleInCase || "case_manager",
+          fallbackCase: linkedCase,
+        },
+        role
+      );
+      if (res.isLiveBackend) anyLive = true;
+      if (res.data) updatedCases.push(res.data);
+    }
+
+    if (updatedCases.length === 0 && updatedClient) {
+      localAuditEvents = [
+        {
+          id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          action: "client.caseworker_assigned",
+          object_type: "client",
+          object_id: `${updatedClient.first_name} ${updatedClient.last_name}`.trim() || clientId,
+          actor_email: ctx.email,
+          created_at: new Date().toISOString(),
+          metadata: {
+            client_id: clientId,
+            assigned_caseworker: trimmedOfficer,
+            organization_id: ctx.organizationId,
+          },
+        },
+        ...localAuditEvents,
+      ];
+      setStored(AUDIT_STORAGE_KEY, localAuditEvents);
+    }
+
+    return {
+      data: {
+        client: updatedClient,
+        updatedCases,
+      },
+      isLiveBackend: anyLive,
+    };
   },
 
   async deleteCase(
@@ -858,12 +1108,22 @@ export const api = {
       });
       if (res.ok) {
         const data: ClientProfile[] = await res.json();
-        const seenIds = new Set(data.map((c) => c.id));
-        const seenEmails = new Set(data.map((c) => c.email?.toLowerCase()).filter(Boolean));
+        const enrichedClients = data.map((cl) => {
+          const localMatch = orgClients.find(
+            (lc) => lc.id === cl.id || (Boolean(cl.email) && lc.email?.toLowerCase() === cl.email.toLowerCase())
+          );
+          return {
+            ...cl,
+            assigned_caseworker: cl.assigned_caseworker || localMatch?.assigned_caseworker,
+            assigned_caseworker_id: cl.assigned_caseworker_id || localMatch?.assigned_caseworker_id,
+          };
+        });
+        const seenIds = new Set(enrichedClients.map((c) => c.id));
+        const seenEmails = new Set(enrichedClients.map((c) => c.email?.toLowerCase()).filter(Boolean));
         const unsyncedLocal = orgClients.filter(
           (c) => !seenIds.has(c.id) && (!c.email || !seenEmails.has(c.email.toLowerCase()))
         );
-        return { data: [...unsyncedLocal, ...data], isLiveBackend: true };
+        return { data: [...unsyncedLocal, ...enrichedClients], isLiveBackend: true };
       }
     } catch {
       // Fallback
@@ -885,17 +1145,20 @@ export const api = {
       portal_credentials_provided?: boolean;
       portal_access_enabled?: boolean;
       temporary_password?: string;
+      assigned_caseworker?: string;
+      assigned_caseworker_id?: string;
     },
     role: RoleCode = "master_admin"
   ): Promise<ApiResponse<ClientProfile>> {
     const ctx = getActiveSessionContext(role);
     const resolvedOrgId = payload.organization_id || ctx.organizationId;
     const resolvedOrgName = ctx.hasSession ? ctx.organizationName : undefined;
+    const { assigned_caseworker, assigned_caseworker_id, ...backendClientPayload } = payload;
     try {
       const res = await fetch(`${API_BASE_URL}/clients`, {
         method: "POST",
         headers: getAuthHeaders(role),
-        body: JSON.stringify(payload),
+        body: JSON.stringify(backendClientPayload),
       });
       if (res.ok) {
         const data = await res.json();
@@ -913,6 +1176,8 @@ export const api = {
           credentials_provisioned_by: hasCredentials ? provisionedBy : undefined,
           credentials_provisioned_at: hasCredentials ? provisionedAt : undefined,
           portal_temporary_password: hasCredentials ? (payload.temporary_password || "ClientPass2026!") : undefined,
+          assigned_caseworker: assigned_caseworker || undefined,
+          assigned_caseworker_id: assigned_caseworker_id || undefined,
         };
 
         if (hasCredentials && clientWithCreds.portal_temporary_password) {
@@ -980,6 +1245,8 @@ export const api = {
       credentials_provisioned_by: hasCredentials ? provisionedBy : undefined,
       credentials_provisioned_at: hasCredentials ? provisionedAt : undefined,
       portal_temporary_password: hasCredentials ? (payload.temporary_password || "ClientPass2026!") : undefined,
+      assigned_caseworker: assigned_caseworker || undefined,
+      assigned_caseworker_id: assigned_caseworker_id || undefined,
     };
     localClients = [newClient, ...localClients];
     setStored(CLIENTS_STORAGE_KEY, localClients);
@@ -3039,31 +3306,72 @@ export const api = {
       (d) => d.status === "under_review" && (!d.case_id || orgCaseIds.has(d.case_id))
     ).length;
 
+    const roster: Array<{ id: string; name: string; email?: string; role: string; maxCapacity: number; backendCases?: number }> = [];
+    let backendSynced = false;
+
+    if (isLiveBackend || Boolean(getAccessToken())) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/operations/workload`, {
+          headers: getAuthHeaders(),
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const rawList = await res.json();
+          if (Array.isArray(rawList) && rawList.length > 0) {
+            backendSynced = true;
+            for (const m of rawList) {
+              if (!m?.full_name) continue;
+              const primaryRole = Array.isArray(m.roles) && m.roles.length > 0 ? m.roles[0] : "case_manager";
+              roster.push({
+                id: String(m.user_id || m.id || `tm-${m.email}`),
+                name: String(m.full_name),
+                email: m.email ? String(m.email) : undefined,
+                role: formatStaffRoleLabel(primaryRole),
+                maxCapacity: Number(m.nominal_capacity || 25),
+                backendCases: typeof m.active_cases_count === "number" ? m.active_cases_count : undefined,
+              });
+            }
+          }
+        }
+      } catch {
+        // Fallback to local roster
+      }
+    }
+
     const agency = getAgencyForOrganization(ctx.organizationId);
     const invites = getAgencyTeamInvites(ctx.organizationId);
-    const roster: Array<{ id: string; name: string; role: string; maxCapacity: number }> = [];
 
-    if (agency) {
+    const hasRosterMember = (name: string, email?: string) =>
+      roster.some(
+        (r) =>
+          r.name.toLowerCase() === name.toLowerCase() ||
+          (email && r.email && r.email.toLowerCase() === email.toLowerCase())
+      );
+
+    if (agency && !hasRosterMember(agency.ownerFullName, agency.ownerEmail)) {
       roster.push({
         id: `tm-owner-${agency.slug}`,
         name: agency.ownerFullName,
+        email: agency.ownerEmail,
         role: "Managing Partner / Agency Owner",
         maxCapacity: 25,
       });
-    } else if (ctx.hasSession && ctx.role !== "retained_client") {
+    } else if (!agency && ctx.hasSession && ctx.role !== "retained_client" && !hasRosterMember(ctx.fullName, ctx.email)) {
       roster.push({
-        id: `tm-${ctx.userId}`,
+        id: ctx.userId || `tm-${ctx.email}`,
         name: ctx.fullName,
+        email: ctx.email,
         role: ctx.role === "master_admin" ? "Managing Partner" : "Case Manager",
         maxCapacity: 25,
       });
     }
 
     for (const inv of invites) {
-      if (!roster.some((r) => r.name.toLowerCase() === inv.fullName.toLowerCase())) {
+      if (!hasRosterMember(inv.fullName, inv.email)) {
         roster.push({
           id: inv.id,
           name: inv.fullName,
+          email: inv.email,
           role: formatStaffRoleLabel(inv.role),
           maxCapacity: inv.nominalCapacity || 20,
         });
@@ -3071,22 +3379,22 @@ export const api = {
     }
 
     const dynamicCapacity: TeamMemberCapacity[] = roster.map((member) => {
-      const firstToken = member.name.split(" ")[0].toLowerCase();
-      const activeCount = orgCases.filter((c) => {
+      const localCount = orgCases.filter((c) => {
         if (!c.assigned_manager) return member.id.startsWith("tm-owner-");
-        return c.assigned_manager.toLowerCase().includes(firstToken);
+        return matchesAssigneeIdentity(c.assigned_manager, member.name, member.email || "");
       }).length;
       return {
         id: member.id,
         name: member.name,
+        email: member.email,
         role: member.role,
-        active_cases: activeCount,
+        active_cases: Math.max(member.backendCases ?? 0, localCount),
         max_capacity: member.maxCapacity,
         open_reviews: openReviews,
       };
     });
 
-    return fallbackResponse(dynamicCapacity);
+    return { data: dynamicCapacity, isLiveBackend: backendSynced };
   },
 
   // Reset to Scratch (Day-0 Clean Slate)
@@ -4428,7 +4736,7 @@ export async function fetchDocumentRequests(caseId?: string, statusFilter?: stri
       const params = new URLSearchParams();
       if (caseId) params.append("case_id", caseId);
       if (statusFilter) params.append("status", statusFilter);
-      const res = await fetch(`${API_BASE}/requests?${params.toString()}`);
+      const res = await fetch(`${API_BASE}/requests?${params.toString()}`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -4451,7 +4759,7 @@ export async function createDocumentRequest(payload: Partial<DocumentRequestItem
     try {
       const res = await fetch(`${API_BASE}/requests`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (res.ok) return await res.json();
@@ -4494,7 +4802,7 @@ export async function respondToDocumentRequest(
     try {
       const res = await fetch(`${API_BASE}/requests/${requestId}/respond`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ document_id: documentId, response_notes: notes }),
       });
       if (res.ok) return await res.json();
@@ -4531,7 +4839,7 @@ export async function reviewDocumentRequest(
     try {
       const res = await fetch(`${API_BASE}/requests/${requestId}/review`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ decision, rejection_reason: rejectionReason, review_notes: reviewNotes }),
       });
       if (res.ok) return await res.json();
@@ -4567,7 +4875,7 @@ export async function replaceDocumentRequestEvidence(
     try {
       const res = await fetch(`${API_BASE}/requests/${requestId}/replace`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ replacement_document_id: replacementDocId, explanation }),
       });
       if (res.ok) return await res.json();
@@ -4598,7 +4906,7 @@ export async function fetchMessageThreads(caseId?: string): Promise<MessageThrea
   if (isLiveBackend) {
     try {
       const params = caseId ? `?case_id=${caseId}` : "";
-      const res = await fetch(`${API_BASE}/messaging/threads${params}`);
+      const res = await fetch(`${API_BASE}/messaging/threads${params}`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -4642,7 +4950,7 @@ export async function fetchMessageThreads(caseId?: string): Promise<MessageThrea
 export async function fetchThreadMessages(threadId: string): Promise<ThreadMessageItem[]> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/messaging/threads/${threadId}/messages`);
+      const res = await fetch(`${API_BASE}/messaging/threads/${threadId}/messages`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -4663,7 +4971,7 @@ export async function postThreadMessage(
     try {
       const res = await fetch(`${API_BASE}/messaging/threads/${threadId}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ content, is_internal: isInternal, attachment_document_ids: attachments }),
       });
       if (res.ok) return await res.json();
@@ -4694,7 +5002,7 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
   if (isLiveBackend) {
     try {
       const params = caseId ? `?case_id=${caseId}` : "";
-      const res = await fetch(`${API_BASE}/portal/waiting-state${params}`);
+      const res = await fetch(`${API_BASE}/portal/waiting-state${params}`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -4791,7 +5099,7 @@ export async function fetchClientWaitingState(caseId?: string): Promise<WaitingS
 export async function fetchClientProfile(): Promise<ClientProfileData> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/portal/profile`);
+      const res = await fetch(`${API_BASE}/portal/profile`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -4853,7 +5161,7 @@ export async function fetchQuestionnaires(caseId?: string): Promise<ClientQuesti
   if (isLiveBackend) {
     try {
       const params = caseId ? `?case_id=${caseId}` : "";
-      const res = await fetch(`${API_BASE}/portal/questionnaires${params}`);
+      const res = await fetch(`${API_BASE}/portal/questionnaires${params}`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -4895,7 +5203,7 @@ export async function saveQuestionnaire(
     try {
       const res = await fetch(`${API_BASE}/portal/questionnaires/${questionnaireId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ responses, submit_for_review: submitForReview }),
       });
       if (res.ok) return await res.json();
@@ -4947,187 +5255,6 @@ export async function saveQuestionnaire(
 // PHASE 8: FORMS, READINESS & PACKAGE BUILDER
 // ==========================================
 
-export const FALLBACK_FORM_SCHEMAS: FormSchemaItem[] = [
-  {
-    id: "schema-i140",
-    form_code: "USCIS_I140",
-    name: "Form I-140: Immigrant Petition for Alien Workers",
-    jurisdiction: "US",
-    pathway: "EB-1A",
-    description: "Petition to classify an alien as eligible for an immigrant visa under INA § 203(b)(1)(A).",
-    versions: [
-      {
-        id: "ver-i140-2026",
-        version_number: "v2026.1",
-        is_active: true,
-        effective_date: "2026-01-01",
-        schema_definition: {
-          sections: [
-            {
-              id: "part1_petitioner",
-              title: "Part 1. Information About the Person or Organization Filing This Petition",
-              description: "Petitioner identifying and contact information.",
-              fields: [
-                {
-                  key: "petitioner_is_self",
-                  label: "Is the beneficiary self-petitioning?",
-                  field_type: "boolean",
-                  required: true,
-                  default: true,
-                  source_mapping_hint: "case.is_self_petition",
-                },
-                {
-                  key: "petitioner_family_name",
-                  label: "Family Name (Last Name)",
-                  field_type: "text",
-                  required: true,
-                  source_mapping_hint: "profile.last_name",
-                },
-                {
-                  key: "petitioner_given_name",
-                  label: "Given Name (First Name)",
-                  field_type: "text",
-                  required: true,
-                  source_mapping_hint: "profile.first_name",
-                },
-                {
-                  key: "petitioner_company_name",
-                  label: "Company or Organization Name (if petitioning entity)",
-                  field_type: "text",
-                  required: false,
-                  conditional: {
-                    depends_on_field: "petitioner_is_self",
-                    operator: "equals",
-                    expected_value: false,
-                  },
-                },
-                {
-                  key: "petitioner_email",
-                  label: "Primary Contact Email Address",
-                  field_type: "text",
-                  required: true,
-                  validation_rules: { regex: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" },
-                  source_mapping_hint: "profile.email",
-                },
-              ],
-            },
-            {
-              id: "part2_petition_type",
-              title: "Part 2. Petition Type & Classification",
-              description: "Select the statutory immigrant classification being sought.",
-              fields: [
-                {
-                  key: "visa_classification",
-                  label: "Requested Immigrant Classification",
-                  field_type: "select",
-                  required: true,
-                  options: [
-                    { value: "EB1A_EXTRAORDINARY", label: "Alien of Extraordinary Ability (INA § 203(b)(1)(A))" },
-                    { value: "EB1B_PROFESSOR", label: "Outstanding Professor or Researcher (INA § 203(b)(1)(B))" },
-                    { value: "EB1C_MANAGER", label: "Multinational Executive or Manager (INA § 203(b)(1)(C))" },
-                    { value: "EB2_NIW", label: "Member of Professions with Advanced Degree / NIW (INA § 203(b)(2))" },
-                  ],
-                  default: "EB1A_EXTRAORDINARY",
-                  source_mapping_hint: "case.visa_category",
-                },
-              ],
-            },
-            {
-              id: "part3_beneficiary_bio",
-              title: "Part 3. Information About the Alien (Beneficiary)",
-              description: "Biographical data and identity identifiers matching passport.",
-              fields: [
-                {
-                  key: "beneficiary_family_name",
-                  label: "Beneficiary Family Name (Last Name)",
-                  field_type: "text",
-                  required: true,
-                  source_mapping_hint: "profile.last_name",
-                },
-                {
-                  key: "beneficiary_given_name",
-                  label: "Beneficiary Given Name (First Name)",
-                  field_type: "text",
-                  required: true,
-                  source_mapping_hint: "profile.first_name",
-                },
-                {
-                  key: "beneficiary_passport_number",
-                  label: "Passport Number",
-                  field_type: "text",
-                  required: true,
-                  source_mapping_hint: "doc.ocr.passport_number",
-                },
-                {
-                  key: "beneficiary_country_of_citizenship",
-                  label: "Country of Citizenship or Nationality",
-                  field_type: "text",
-                  required: true,
-                  source_mapping_hint: "profile.nationality",
-                },
-                {
-                  key: "beneficiary_alien_number",
-                  label: "Alien Registration Number (A-Number, if any)",
-                  field_type: "text",
-                  required: false,
-                  validation_rules: { regex: "^A?\\d{9}$" },
-                  source_mapping_hint: "doc.ocr.alien_number",
-                },
-              ],
-            },
-            {
-              id: "part4_processing",
-              title: "Part 4. Processing Information & Sensitive Inadmissibility Background",
-              description: "Statutory background questions requiring certified legal counsel review.",
-              fields: [
-                {
-                  key: "prior_removal_or_criminal_record",
-                  label: "Has the beneficiary ever been in removal proceedings or convicted of a criminal offense?",
-                  field_type: "boolean",
-                  required: true,
-                  is_sensitive: true,
-                  default: false,
-                },
-                {
-                  key: "removal_details_notes",
-                  label: "Explanation of Prior Proceedings / Incidents (if applicable)",
-                  field_type: "textarea",
-                  required: false,
-                  conditional: {
-                    depends_on_field: "prior_removal_or_criminal_record",
-                    operator: "equals",
-                    expected_value: true,
-                  },
-                },
-              ],
-            },
-            {
-              id: "part8_endeavor",
-              title: "Part 8. Proposed Endeavor & Extraordinary Ability Rationale",
-              description: "Summary statement of proposed national importance endeavor.",
-              fields: [
-                {
-                  key: "proposed_endeavor_summary",
-                  label: "Proposed Endeavor Statement (Drafted by AI Synthesis)",
-                  field_type: "textarea",
-                  required: true,
-                  source_mapping_hint: "case.title",
-                },
-                {
-                  key: "soc_code",
-                  label: "Standard Occupational Classification (SOC Code)",
-                  field_type: "text",
-                  required: true,
-                  default: "19-1029",
-                },
-              ],
-            },
-          ],
-        },
-      },
-    ],
-  },
-];
 
 export const FALLBACK_FORM_SUBMISSION: FormSubmissionItem = {
   id: "",
@@ -5257,7 +5384,7 @@ export async function fetchFormSchemas(jurisdiction?: string, pathway?: string):
       const q = new URLSearchParams();
       if (jurisdiction) q.append("jurisdiction", jurisdiction);
       if (pathway) q.append("pathway", pathway);
-      const res = await fetch(`${API_BASE}/forms/schemas?${q.toString()}`);
+      const res = await fetch(`${API_BASE}/forms/schemas?${q.toString()}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const json = await res.json();
         return json.schemas || [];
@@ -5272,7 +5399,7 @@ export async function fetchFormSchemas(jurisdiction?: string, pathway?: string):
 export async function fetchFormSchemaDetail(schemaId: string): Promise<FormSchemaItem> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/forms/schemas/${schemaId}`);
+      const res = await fetch(`${API_BASE}/forms/schemas/${schemaId}`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -5402,7 +5529,7 @@ function buildDynamicFormSubmission(caseId: string): FormSubmissionItem {
 export async function fetchCaseFormSubmissions(caseId: string): Promise<FormSubmissionItem[]> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/forms/cases/${caseId}/submissions`);
+      const res = await fetch(`${API_BASE}/forms/cases/${caseId}/submissions`, { headers: getAuthHeaders() });
       if (res.ok) {
         const json = await res.json();
         return json.submissions || [];
@@ -5417,7 +5544,7 @@ export async function fetchCaseFormSubmissions(caseId: string): Promise<FormSubm
 export async function fetchFormSubmission(submissionId: string): Promise<FormSubmissionItem> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/forms/submissions/${submissionId}`);
+      const res = await fetch(`${API_BASE}/forms/submissions/${submissionId}`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -5437,7 +5564,7 @@ export async function createFormSubmissionDraft(caseId: string, schemaVersionId?
     try {
       const res = await fetch(`${API_BASE}/forms/cases/${caseId}/submissions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ schema_version_id: schemaVersionId }),
       });
       if (res.ok) return await res.json();
@@ -5457,7 +5584,7 @@ export async function updateFormAnswers(
     try {
       const res = await fetch(`${API_BASE}/forms/submissions/${submissionId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ answers, notes }),
       });
       if (res.ok) return await res.json();
@@ -5508,7 +5635,7 @@ export async function confirmFormField(submissionId: string, fieldKey: string): 
     try {
       const res = await fetch(`${API_BASE}/forms/submissions/${submissionId}/confirm-field`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ field_key: fieldKey }),
       });
       if (res.ok) return await res.json();
@@ -5542,7 +5669,7 @@ export async function reviewSensitiveFields(submissionId: string, notes: string)
     try {
       const res = await fetch(`${API_BASE}/forms/submissions/${submissionId}/review-sensitive`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ notes }),
       });
       if (res.ok) return await res.json();
@@ -5575,7 +5702,7 @@ export async function finalizeFormSubmission(
     try {
       const res = await fetch(`${API_BASE}/forms/submissions/${submissionId}/finalize`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ target_status: targetStatus }),
       });
       if (res.ok) return await res.json();
@@ -5687,7 +5814,7 @@ function buildDynamicFilingPackage(caseId: string, customName?: string): FilingP
 export async function fetchCaseReadinessChecklist(caseId: string): Promise<PackageReadinessChecklist> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/packages/cases/${caseId}/readiness`);
+      const res = await fetch(`${API_BASE}/packages/cases/${caseId}/readiness`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -5759,7 +5886,7 @@ export async function buildFilingPackage(
     try {
       const res = await fetch(`${API_BASE}/packages/cases/${caseId}/build`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ name, template_id: templateId }),
       });
       if (res.ok) return await res.json();
@@ -5777,7 +5904,7 @@ export async function buildFilingPackage(
 export async function fetchCaseFilingPackages(caseId: string): Promise<FilingPackageItem[]> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/packages/cases/${caseId}`);
+      const res = await fetch(`${API_BASE}/packages/cases/${caseId}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const json = await res.json();
         if (Array.isArray(json)) {
@@ -5802,7 +5929,7 @@ export async function fetchCaseFilingPackages(caseId: string): Promise<FilingPac
 export async function fetchFilingPackage(packageId: string): Promise<FilingPackageItem> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/packages/${packageId}`);
+      const res = await fetch(`${API_BASE}/packages/${packageId}`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -5829,7 +5956,7 @@ export async function advancePackageApproval(
     try {
       const res = await fetch(`${API_BASE}/packages/${packageId}/approval`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ stage, decision, notes }),
       });
       if (res.ok) return await res.json();
@@ -5866,7 +5993,7 @@ export async function advancePackageApproval(
 export async function exportFilingPackage(packageId: string): Promise<any> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/packages/${packageId}/export`);
+      const res = await fetch(`${API_BASE}/packages/${packageId}/export`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -5922,7 +6049,7 @@ export const FALLBACK_PHASE7_MANIFEST: Phase7CanonicalManifest = {
 export async function fetchCanonicalManifest(packageId: string): Promise<Phase7CanonicalManifest> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/packages/${packageId}/manifest`);
+      const res = await fetch(`${API_BASE}/packages/${packageId}/manifest`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -5958,7 +6085,7 @@ export async function downloadPackageZip(packageId: string, filename?: string): 
   const targetName = filename || `package_${packageId}.zip`;
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/packages/${packageId}/download-zip`);
+      const res = await fetch(`${API_BASE}/packages/${packageId}/download-zip`, { headers: getAuthHeaders() });
       if (res.ok) {
         const blob = await res.blob();
         triggerBrowserDownload(blob, targetName);
@@ -5982,7 +6109,7 @@ export async function downloadManifestReport(
   const targetName = filename || `manifest_report_${packageId}.${ext}`;
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/packages/${packageId}/report?format=${format}`);
+      const res = await fetch(`${API_BASE}/packages/${packageId}/report?format=${format}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const blob = await res.blob();
         triggerBrowserDownload(blob, targetName);
@@ -6006,7 +6133,7 @@ export async function downloadCaseInterimReport(
   const targetName = filename || `interim_hold_report_${caseId}.${ext}`;
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/packages/cases/${caseId}/interim-report?format=${format}`);
+      const res = await fetch(`${API_BASE}/packages/cases/${caseId}/interim-report?format=${format}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const blob = await res.blob();
         triggerBrowserDownload(blob, targetName);
@@ -6029,7 +6156,7 @@ export async function includePackageDocument(
     try {
       const res = await fetch(`${API_BASE}/packages/${packageId}/documents/${documentId}/include`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
       });
       if (res.ok) {
         return await res.json();
@@ -6057,7 +6184,7 @@ export async function excludePackageDocument(
     try {
       const res = await fetch(`${API_BASE}/packages/${packageId}/documents/${documentId}/exclude`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ reason_code: reasonCode, notes }),
       });
       if (res.ok) {
@@ -6624,7 +6751,7 @@ export async function fetchOperationsAnalytics(filters: Record<string, any> = {}
 export async function fetchServices(): Promise<ServiceCatalogItem[]> {
   if (isLiveBackend) {
     try {
-      const res = await fetch(`${API_BASE}/billing/services`);
+      const res = await fetch(`${API_BASE}/billing/services`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -6639,7 +6766,7 @@ export async function createServiceItem(data: Partial<ServiceCatalogItem>): Prom
     try {
       const res = await fetch(`${API_BASE}/billing/services`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       if (res.ok) return await res.json();
@@ -6687,7 +6814,7 @@ export async function createEngagement(data: Partial<ClientEngagementItem>): Pro
     try {
       const res = await fetch(`${API_BASE}/billing/engagements`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       if (res.ok) return await res.json();
@@ -6715,7 +6842,7 @@ export async function fetchInvoices(filter: Record<string, any> = {}): Promise<I
   if (isLiveBackend) {
     try {
       const query = new URLSearchParams(filter).toString();
-      const res = await fetch(`${API_BASE}/billing/invoices?${query}`);
+      const res = await fetch(`${API_BASE}/billing/invoices?${query}`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -7165,7 +7292,7 @@ export async function fetchFinancialReports(startDate?: string, endDate?: string
         ...(startDate ? { start_date: startDate } : {}),
         ...(endDate ? { end_date: endDate } : {}),
       }).toString();
-      const res = await fetch(`${API_BASE}/billing/reports/financial?${query}`);
+      const res = await fetch(`${API_BASE}/billing/reports/financial?${query}`, { headers: getAuthHeaders() });
       if (res.ok) return await res.json();
     } catch {
       // Fallback
@@ -7226,12 +7353,80 @@ function matchesAssigneeIdentity(
 }
 
 export async function fetchStaffWorkload(): Promise<StaffWorkloadItem[]> {
-  if (isLiveBackend) {
+  if (isLiveBackend || Boolean(getAccessToken())) {
     try {
       const res = await fetch(`${API_BASE}/operations/workload`, {
         headers: getAuthHeaders(),
+        cache: "no-store",
       });
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const raw = await res.json();
+        if (Array.isArray(raw) && raw.length > 0) {
+          syncFromStorage();
+          const ctx = getActiveSessionContext();
+          const invites = getAgencyTeamInvites(ctx.organizationId);
+          const mapped: StaffWorkloadItem[] = raw.map((item: any) => {
+            const matchedInv = invites.find(
+              (inv) => inv.email.toLowerCase() === String(item.email || "").toLowerCase()
+            );
+            const assigned = Number(item.active_cases_count ?? item.assigned_cases ?? 0);
+            const pending = Number(item.pending_tasks_count ?? item.pending_tasks ?? 0);
+            const cap = Number(item.nominal_capacity ?? matchedInv?.nominalCapacity ?? 25);
+            const util = Math.round(
+              typeof item.capacity_utilization_pct === "number"
+                ? item.capacity_utilization_pct
+                : (assigned / Math.max(1, cap)) * 100
+            );
+            const roles: string[] = Array.isArray(item.roles) && item.roles.length > 0 ? item.roles : ["case_manager"];
+            const isOwner = roles.some((r) => ["master_admin", "organization_admin"].includes(r.toLowerCase()));
+            return {
+              user_id: String(item.user_id || item.id),
+              invite_id: matchedInv?.id,
+              is_owner: isOwner,
+              full_name: String(item.full_name || item.name || "Team Member"),
+              email: String(item.email || ""),
+              roles,
+              branch_office: matchedInv?.branchOffice || "Primary Office",
+              assigned_cases: assigned,
+              pending_tasks: pending,
+              nominal_capacity: cap,
+              utilization_pct: util,
+              status: item.is_overloaded || util >= 100 ? "overloaded" : "normal",
+              login_enabled: item.login_enabled !== false,
+              passcode: matchedInv?.passcode,
+              invited_at: matchedInv?.invitedAt,
+              branch_id: item.branch_id ?? "branch-hq",
+              team_id: item.team_id ?? "team-core",
+            };
+          });
+          // Merge any local-only invites that haven't been synced to backend
+          for (const inv of invites) {
+            if (!mapped.some((m) => m.email.toLowerCase() === inv.email.toLowerCase())) {
+              const cap = inv.nominalCapacity || 20;
+              mapped.push({
+                user_id: inv.id,
+                invite_id: inv.id,
+                is_owner: false,
+                full_name: inv.fullName,
+                email: inv.email,
+                roles: [inv.role],
+                branch_office: inv.branchOffice || "Primary Office",
+                assigned_cases: 0,
+                pending_tasks: 0,
+                nominal_capacity: cap,
+                utilization_pct: 0,
+                status: "normal",
+                login_enabled: inv.loginEnabled !== false,
+                passcode: inv.passcode,
+                invited_at: inv.invitedAt,
+                branch_id: "branch-hq",
+                team_id: "team-core",
+              });
+            }
+          }
+          return mapped;
+        }
+      }
     } catch {
       // Fallback
     }
@@ -7484,7 +7679,7 @@ export async function updateOrganizationSetting(key: string, value: any): Promis
     try {
       const res = await fetch(`${API_BASE}/operations/settings`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ key, value }),
       });
       if (res.ok) return await res.json();
@@ -7580,14 +7775,38 @@ export async function inviteStaffMember(data: {
   nominal_capacity?: number;
   login_enabled?: boolean;
 }): Promise<any> {
-  if (isLiveBackend) {
+  if (isLiveBackend || Boolean(getAccessToken())) {
     try {
       const res = await fetch(`${API_BASE}/operations/staff`, {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const created = await res.json();
+        // Mirror into local store so client-side logins/rosters stay in sync immediately
+        try {
+          syncFromStorage();
+          const ctx = getActiveSessionContext();
+          const targetOrgId = ctx.hasSession ? ctx.organizationId : DEMO_ORG_ID;
+          const targetOrgName = ctx.hasSession ? ctx.organizationName : "Partner Immigration Practice";
+          inviteAgencyTeamMember({
+            organizationId: targetOrgId,
+            fullName: created.full_name || data.full_name || data.email,
+            email: created.email || data.email,
+            role: normalizeStaffRoleCode(data.role_code),
+            branchOffice: data.branch,
+            customPasscode: created.temporary_password || data.password,
+            nominalCapacity: data.nominal_capacity,
+            loginEnabled: data.login_enabled !== false,
+            fallbackOrganizationName: targetOrgName,
+            actorEmail: ctx.email || "system",
+          });
+        } catch {
+          // Non-blocking local mirror
+        }
+        return created;
+      }
     } catch {
       // Fallback to local multi-tenant store
     }
@@ -11281,7 +11500,7 @@ export async function quickCalculateWorkflow(
 }> {
   const res = await fetch(`${API_BASE_URL}/governance/kpis/quick-calc`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({
       baseline_workflow_hours: baselineWorkflowHours,
       documento_workflow_hours: documentoWorkflowHours,

@@ -88,12 +88,12 @@ export function DocumentUploadStandardsFAQ({
     {
       id: 6,
       badge: "Rule 6",
-      title: "Multi-Page Documents as a Single Continuous PDF",
-      summary: "Combine multi-page records into one chronological PDF.",
+      title: "Clear PDFs or Photos — Multi-Page Files Supported Automatically",
+      summary: "Upload clear, readable PDFs or photos; multi-page files are supported automatically.",
       details:
-        "For multi-page records—such as 12-page intake sheets, bank statements, academic transcripts, or tenancy leases—do not upload individual separate image files. Merge all sequential pages into one orderly, uncompressed PDF file. This preserves page numbering and allows AI evidence indexing across pages.",
-      goodExample: "1 single 12-page PDF containing all sections in consecutive order.",
-      badExample: "12 individual JPEG files uploaded out of order with different orientations.",
+        "You can upload clear, readable PDFs or photos directly from your phone or computer. Single-page and multi-page files (such as bank statements, academic transcripts, tenancy leases, or combined family packets) are supported automatically—simply ensure all pages are included and readable.",
+      goodExample: "Complete multi-page PDF or clear, full-page photos with every page readable.",
+      badExample: "Missing pages from a multi-page record or blurry, cropped screenshots.",
       icon: "📑",
     },
     {
@@ -102,7 +102,7 @@ export function DocumentUploadStandardsFAQ({
       title: "Full-Color Scans of Original Documents",
       summary: "Color scans preserve official ink stamps, notary seals, and security threads.",
       details:
-        "Government immigration authorities frequently reject black-and-white photocopies because ink authenticity, colored seal stamps, and security fibers cannot be verified. Scan your original physical document in full color to guarantee rapid acceptance by your supervising case manager and IRCC/USCIS officers.",
+        "Government immigration authorities frequently reject black-and-white photocopies because ink authenticity, colored seal stamps, and security fibers cannot be verified. Scan your original physical document in full color to guarantee rapid acceptance by your supervising case manager and immigration authorities.",
       goodExample: "Full-color scan showing blue ink signatures and red government stamp seals.",
       badExample: "Low-contrast black-and-white photocopy with grainy, faded text.",
       icon: "🎨",
@@ -149,7 +149,7 @@ export function DocumentUploadStandardsFAQ({
             Standards for Uploading Documents for Optimal OCR
           </h2>
           <p style={{ margin: 0, fontSize: "14px", color: "#DCE5E1", lineHeight: 1.5, maxWidth: "680px" }}>
-            Documento uses advanced computer vision and neural OCR to automatically extract and verify your passport numbers, marriage records, and dates. Following these standards ensures <strong>99.8% first-pass accuracy</strong> and prevents government rejection or delays.
+            Upload clear, readable PDFs or photos; multi-page files are supported automatically. Following these quality guidelines helps your legal team verify your passport numbers, civil records, and dates quickly and prevents filing delays.
           </p>
         </div>
 
@@ -236,7 +236,7 @@ export function DocumentUploadStandardsFAQ({
             <li>All four corners and outer page margins completely visible.</li>
             <li>Soft, natural room lighting without flash reflection or hot spots.</li>
             <li>Camera held directly parallel (90° overhead angle) to avoid slant.</li>
-            <li>Multi-page records assembled sequentially in a single clean PDF.</li>
+            <li>Upload clear, readable PDFs or photos — multi-page files are supported automatically.</li>
             <li>Original color scans with clearly legible signatures and red/blue ink seals.</li>
           </ul>
         </div>
@@ -289,7 +289,7 @@ export function DocumentUploadStandardsFAQ({
             <li>Angled photos taken at 45° resulting in trapezoidal distortion.</li>
             <li>Corners cropped out or edges missing from the frame.</li>
             <li>Faded, low-contrast black-and-white photocopies.</li>
-            <li>Dozens of scattered individual image screenshots for multi-page statements.</li>
+            <li>Missing pages from multi-page records or unreadable low-resolution screenshots.</li>
           </ul>
         </div>
       </div>
@@ -476,7 +476,7 @@ export function DocumentUploadStandardsFAQ({
             },
             {
               key: "pdfFormat",
-              label: "File Completeness: Multi-page document combined into a single continuous PDF.",
+              label: "File Completeness: All pages are included (clear PDFs, photos, and multi-page files are supported automatically).",
             },
           ].map((item) => (
             <label

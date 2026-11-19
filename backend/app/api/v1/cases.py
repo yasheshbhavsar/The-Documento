@@ -631,6 +631,13 @@ def change_case_status(
         target_status=target_status,
         ctx=ctx,
         is_pathway_override=payload.is_pathway_override,
+        case=case,
+    )
+    CaseLifecycleService.enforce_legacy_status_transition_guards(
+        case=case,
+        target_status=target_status,
+        ctx=ctx,
+        is_pathway_override=payload.is_pathway_override,
     )
 
     old_status = case.status
@@ -678,11 +685,13 @@ def close_case(
         current_status=case.status,
         target_status=CaseStage.CLOSED.value,
         ctx=ctx,
+        case=case,
     )
 
     old_status = case.status
     now = datetime.now(timezone.utc)
     case.status = CaseStage.CLOSED.value
+    sync_legacy_to_decoupled_lifecycle(case, CaseStage.CLOSED.value)
     case.updated_at = now
 
     audit = AuditEvent(
@@ -719,11 +728,13 @@ def reopen_case(
         current_status=case.status,
         target_status=CaseStage.REOPENED.value,
         ctx=ctx,
+        case=case,
     )
 
     old_status = case.status
     now = datetime.now(timezone.utc)
     case.status = CaseStage.REOPENED.value
+    sync_legacy_to_decoupled_lifecycle(case, CaseStage.REOPENED.value)
     case.updated_at = now
 
     audit = AuditEvent(
@@ -760,11 +771,13 @@ def archive_case(
         current_status=case.status,
         target_status=CaseStage.ARCHIVED.value,
         ctx=ctx,
+        case=case,
     )
 
     old_status = case.status
     now = datetime.now(timezone.utc)
     case.status = CaseStage.ARCHIVED.value
+    sync_legacy_to_decoupled_lifecycle(case, CaseStage.ARCHIVED.value)
     case.updated_at = now
 
     audit = AuditEvent(

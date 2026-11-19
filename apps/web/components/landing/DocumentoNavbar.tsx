@@ -170,7 +170,7 @@ export function DocumentoNavbar({
             onMouseLeave={(e) => (e.currentTarget.style.color = "#384A46")}
             title="Try standalone OCR, entity extraction & evidence AI without logging in"
           >
-            AI Lab
+            AI Extractor Lab
           </a>
 
           <a
@@ -228,10 +228,9 @@ export function DocumentoNavbar({
             Sign In
           </button>
 
-          {/* Confident Flat Action Button */}
-          <button
-            type="button"
-            onClick={() => onOpenLogin("firm")}
+          {/* Confident Flat Action Link */}
+          <a
+            href="/agency-onboarding"
             style={{
               background: "#07594F",
               color: "#FFFFFF",
@@ -244,6 +243,7 @@ export function DocumentoNavbar({
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
+              textDecoration: "none",
               transition: "background-color 0.15s ease, transform 0.12s ease",
             }}
             onMouseEnter={(e) => {
@@ -254,14 +254,13 @@ export function DocumentoNavbar({
             }}
           >
             <span>Get Started</span>
-          </button>
+          </a>
         </nav>
 
         {/* Mobile Action Controls */}
         <div className="mobile-action-group" style={{ display: "none", alignItems: "center", gap: "8px" }}>
-          <button
-            type="button"
-            onClick={() => onOpenLogin("firm")}
+          <a
+            href="/agency-onboarding"
             style={{
               background: "#07594F",
               color: "#FFFFFF",
@@ -271,10 +270,11 @@ export function DocumentoNavbar({
               fontWeight: 650,
               fontSize: "12.5px",
               cursor: "pointer",
+              textDecoration: "none",
             }}
           >
             Get Started
-          </button>
+          </a>
 
           <button
             type="button"
@@ -390,7 +390,7 @@ export function DocumentoNavbar({
               justifyContent: "space-between",
             }}
           >
-            <span>For Visa Agencies</span>
+            <span>For Agencies</span>
             <span style={{ fontSize: "11px", fontWeight: 700, color: "#063C3D" }}>KYB Onboarding →</span>
           </a>
 
@@ -433,7 +433,7 @@ export function DocumentoNavbar({
                 cursor: "pointer",
               }}
             >
-              Firm Sign In
+              Sign In
             </button>
           </div>
         </div>

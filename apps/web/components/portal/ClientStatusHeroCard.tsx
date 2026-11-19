@@ -49,6 +49,7 @@ export function ClientStatusHeroCard({
           display: "flex",
           flexDirection: "column",
           gap: "16px",
+          width: "100%",
         }}
       >
         <UnassignedClientEmptyState
@@ -63,30 +64,47 @@ export function ClientStatusHeroCard({
             background: "#FFFFFF",
             border: "1px dashed #B9DED4",
             borderRadius: "12px",
-            padding: "24px 20px",
-            textAlign: "center",
+            padding: "18px 22px",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "14px",
+            width: "100%",
+            boxSizing: "border-box",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px" }} aria-hidden="true">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div
+            style={{
+              width: "40px",
+              height: "40px",
+              borderRadius: "10px",
+              background: "#EAF6F0",
+              border: "1px solid #B9DED4",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+            aria-hidden="true"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0D6866" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
           </div>
-          <h3 style={{ margin: "0 0 6px 0", fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
-            Awaiting Case File Setup by Legal Team
-          </h3>
-          <p
-            style={{
-              margin: 0,
-              fontSize: "13px",
-              color: "#64748B",
-              maxWidth: "560px",
-              marginInline: "auto",
-              lineHeight: 1.5,
-            }}
-          >
-            Your secure portal account is active. Your legal team (firm Owner or Lead Paralegal) will configure your immigration matter, upload initial petition filings, and assign required checklists. You will be notified as soon as actions are ready.
-          </p>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ margin: "0 0 4px 0", fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
+              Awaiting Case File Setup by Legal Team
+            </h3>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "13px",
+                color: "#445451",
+                lineHeight: 1.55,
+              }}
+            >
+              Your secure portal account is active. Your legal team (firm Owner or Lead Paralegal) will configure your immigration matter, upload initial petition filings, and assign required checklists. You will be notified as soon as actions are ready.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -106,7 +124,7 @@ export function ClientStatusHeroCard({
         gap: "16px",
       }}
     >
-      {/* Pillar 1 Hero Card */}
+      {/* Application Status Hero Card */}
       <div
         style={{
           background: "#FFFFFF",
@@ -133,7 +151,7 @@ export function ClientStatusHeroCard({
                   textTransform: "uppercase",
                 }}
               >
-                Pillar 1 • Quick-Glance Status
+                Application Status
               </span>
               <span
                 style={{

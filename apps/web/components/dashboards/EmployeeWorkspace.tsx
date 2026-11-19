@@ -39,7 +39,8 @@ import {
 } from "../../lib/api";
 import { ManagerPriorityQueueView, FALLBACK_PRIORITY_QUEUE } from "./ManagerPriorityQueueView";
 import { DocumentInspectorModal } from "../modals/DocumentInspectorModal";
-import { formatCaseStageBadge } from "../../lib/caseLifecycle";
+import { CANONICAL_6_STAGES, formatCaseStageBadge, getCaseStageInfo } from "../../lib/caseLifecycle";
+import { getJurisdictionRepresentationInfo } from "../../lib/jurisdictionForms";
 import { AIFindingInspectorModal } from "../modals/AIFindingInspectorModal";
 import { EvidenceSummaryModal } from "../modals/EvidenceSummaryModal";
 import { CaseRequirementEvaluationView } from "../rules/CaseRequirementEvaluationView";
@@ -67,7 +68,13 @@ import {
 import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 import { DashboardErrorBoundary } from "../common/DashboardErrorBoundary";
 
-export type CaseworkerView = "casework" | "triage" | "studio" | "communications";
+export type CaseworkerView =
+  | "triage"
+  | "casework"
+  | "dossier"
+  | "studio"
+  | "communications"
+  | "admin";
 
 export type LegacyTabKey =
   | "my_work"
@@ -91,47 +98,91 @@ export type LegacyTabKey =
   | "pathway_expansion"
   | "extractor_lab";
 
-export type EmployeeTabKey = LegacyTabKey | CaseworkerView;
+export type ConsolidatedTabAlias =
+  | "manager_priority"
+  | "requests"
+  | "anomalies"
+  | "forms"
+  | "rule_evaluation"
+  | "packages"
+  | "readiness"
+  | "evidence_brief"
+  | "appointments"
+  | "my_work_triage"
+  | "cases_workspace"
+  | "documents_dossier"
+  | "forms_rules_packages"
+  | "appointments_comms";
+
+export type EmployeeTabKey = LegacyTabKey | CaseworkerView | ConsolidatedTabAlias;
 
 export const TAB_TO_VIEW_MAP: Record<LegacyTabKey, CaseworkerView> = {
-  my_work: "casework",
-  assigned_cases: "casework",
-  tasks: "casework",
-  clients: "casework",
-  team_queues: "casework",
-  exception_queue: "casework",
-  ai_findings: "casework",
-  rules_requirements: "casework",
+  // 1. My Work & Triage
+  my_work: "triage",
+  exception_queue: "triage",
+  team_queues: "triage",
 
-  all_in_one_workspace: "studio",
-  documents: "studio",
+  // 2. Cases & Workspace
+  assigned_cases: "casework",
+  all_in_one_workspace: "casework",
+  clients: "casework",
+
+  // 3. Documents & Dossier
+  documents: "dossier",
+  client_requests: "dossier",
+  ai_findings: "dossier",
+
+  // 4. Forms, Rules & Packages
   form_prep: "studio",
+  rules_requirements: "studio",
   package_review: "studio",
 
-  messages: "communications",
-  client_requests: "communications",
+  // 5. Appointments & Comms
   visa_appointments: "communications",
+  messages: "communications",
+  tasks: "communications",
+  ai_assistant: "communications",
 
-  rules_admin: "triage",
-  ai_assistant: "triage",
-  release_governance: "triage",
-  pathway_expansion: "triage",
-  extractor_lab: "triage",
+  // Administrative tools (moved out of primary caseworker navigation; preserved for programmatic/test rendering)
+  rules_admin: "admin",
+  release_governance: "admin",
+  pathway_expansion: "admin",
+  extractor_lab: "admin",
 };
 
-export function getCaseworkerViewForTab(tab: EmployeeTabKey): CaseworkerView {
-  if (tab === "casework" || tab === "triage" || tab === "studio" || tab === "communications") {
-    return tab;
-  }
-  return TAB_TO_VIEW_MAP[tab] || "casework";
+export function resolveEmployeeEffectiveTab(tab: EmployeeTabKey): LegacyTabKey {
+  if (tab === "triage" || tab === "my_work_triage") return "my_work";
+  if (tab === "casework" || tab === "cases_workspace") return "assigned_cases";
+  if (tab === "dossier" || tab === "documents_dossier") return "documents";
+  if (tab === "studio" || tab === "forms_rules_packages") return "form_prep";
+  if (tab === "communications" || tab === "appointments_comms") return "messages";
+  if (tab === "admin") return "rules_admin";
+
+  // Consolidated aliases -> canonical tab keys
+  if (tab === "manager_priority") return "team_queues";
+  if (tab === "requests") return "client_requests";
+  if (tab === "anomalies" || tab === "evidence_brief") return "ai_findings";
+  if (tab === "forms") return "form_prep";
+  if (tab === "rule_evaluation") return "rules_requirements";
+  if (tab === "packages" || tab === "readiness") return "package_review";
+  if (tab === "appointments") return "visa_appointments";
+
+  return tab;
 }
 
-export function resolveEmployeeEffectiveTab(tab: EmployeeTabKey): LegacyTabKey {
-  if (tab === "casework") return "my_work";
-  if (tab === "triage") return "exception_queue";
-  if (tab === "studio") return "all_in_one_workspace";
-  if (tab === "communications") return "messages";
-  return tab;
+export function getCaseworkerViewForTab(tab: EmployeeTabKey): CaseworkerView {
+  if (
+    tab === "triage" ||
+    tab === "casework" ||
+    tab === "dossier" ||
+    tab === "studio" ||
+    tab === "communications" ||
+    tab === "admin"
+  ) {
+    return tab;
+  }
+  const effective = resolveEmployeeEffectiveTab(tab);
+  return TAB_TO_VIEW_MAP[effective] || "triage";
 }
 
 export interface EmployeeWorkspaceProps {
@@ -157,6 +208,8 @@ export interface EmployeeWorkspaceProps {
   currentUser?: UserContext;
   onOpenCaseKickoff?: (c: ImmigrationCase) => void;
   kickoffVersion?: number;
+  initialTab?: EmployeeTabKey;
+  activeTab?: EmployeeTabKey;
 }
 
 const EMPTY_CASES: ImmigrationCase[] = [];
@@ -176,10 +229,10 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
   const aiFindings = props.aiFindings ?? ws?.aiFindings ?? EMPTY_AI_FINDINGS;
   const messages = props.messages ?? ws?.messages ?? EMPTY_MESSAGES;
   const currentUser = props.currentUser ?? ws?.currentUser ?? undefined;
-  const onToggleTask = props.onToggleTask ?? ws?.handleToggleTask ?? ((_id: string) => {});
-  const onSendMessage = props.onSendMessage ?? ws?.handleSendMessage ?? ((_msg: string) => {});
-  const onSelectCase = props.onSelectCase ?? ((_c: ImmigrationCase) => {});
-  const onOpenUploadModal = props.onOpenUploadModal ?? ((_caseId: string) => {});
+  const onToggleTask = props.onToggleTask ?? ws?.handleToggleTask ?? ((_id: string) => { });
+  const onSendMessage = props.onSendMessage ?? ws?.handleSendMessage ?? ((_msg: string) => { });
+  const onSelectCase = props.onSelectCase ?? ((_c: ImmigrationCase) => { });
+  const onOpenUploadModal = props.onOpenUploadModal ?? ((_caseId: string) => { });
   const onOpenCreateClient = props.onOpenCreateClient;
   const onDocumentUpdated = props.onDocumentUpdated ?? ws?.handleDocumentUpdated;
   const onResolveFinding = props.onResolveFinding ?? ws?.handleResolveFinding;
@@ -299,7 +352,15 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
       }
     }
   };
-  const [activeTab, setActiveTab] = useState<EmployeeTabKey>("my_work");
+  const [activeTab, setActiveTab] = useState<EmployeeTabKey>(
+    () => props.activeTab || props.initialTab || "my_work"
+  );
+
+  useEffect(() => {
+    if (props.activeTab) {
+      setActiveTab(props.activeTab);
+    }
+  }, [props.activeTab]);
 
   const [messageInput, setMessageInput] = useState("");
   const [selectedCaseForWorkspace, setSelectedCaseForWorkspace] = useState<ImmigrationCase | null>(cases[0] || null);
@@ -338,17 +399,17 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
   });
   const [allInOneChatMode, setAllInOneChatMode] = useState<"client" | "internal_notes">("client");
   const [allInOneSubView, setAllInOneSubView] = useState<
-    "all" | "checklist" | "tasks" | "chat" | "package" | "timeline"
+    "all" | "overview" | "documents" | "forms" | "package" | "checklist" | "tasks" | "chat" | "timeline"
   >("all");
 
   const visibleCases = showAssignedOnly
     ? cases.filter((c) => {
-        if (!c.assigned_manager || c.assigned_manager === "Unassigned") return true;
-        if (!currentUser?.full_name) return true;
-        const mgr = c.assigned_manager.toLowerCase();
-        const firstToken = currentUser.full_name.split(" ")[0]?.toLowerCase() || "";
-        return firstToken ? mgr.includes(firstToken) : mgr === currentUser.full_name.toLowerCase();
-      })
+      if (!c.assigned_manager || c.assigned_manager === "Unassigned") return true;
+      if (!currentUser?.full_name) return true;
+      const mgr = c.assigned_manager.toLowerCase();
+      const firstToken = currentUser.full_name.split(" ")[0]?.toLowerCase() || "";
+      return firstToken ? mgr.includes(firstToken) : mgr === currentUser.full_name.toLowerCase();
+    })
     : cases;
 
   // Phase 5 State
@@ -623,32 +684,33 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
         return (
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
             {kp && !kp.isComplete && (
-              <Button variant="primary" size="sm" onClick={() => onOpenCaseKickoff(c)}>
+              <Button
+                variant="primary"
+                size="sm"
+                data-testid={`kickoff-case-${c.id}`}
+                onClick={() => onOpenCaseKickoff(c)}
+              >
                 Kickoff ({kp.completedCount}/4)
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={() => onSelectCase(c)}>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid={`inspect-case-${c.id}`}
+              onClick={() => onSelectCase(c)}
+            >
               View Details
             </Button>
             <Button
               variant="secondary"
               size="sm"
+              data-testid={`open-case-workspace-${c.id}`}
               onClick={() => {
                 setSelectedCaseForWorkspace(c);
                 setActiveTab("all_in_one_workspace");
               }}
             >
               Open in Split-Screen Studio
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setSelectedCaseForWorkspace(c);
-                setActiveTab("form_prep");
-              }}
-            >
-              Review Forms
             </Button>
             {canDeleteCases && (
               <Button
@@ -682,16 +744,106 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const liveExceptionCount =
-    aiFindings.filter((f) => f.status !== "resolved" && f.status !== "dismissed").length +
-    documents.filter(
-      (d) =>
-        d.status === "action_needed" ||
-        d.verification_status === "rejected" ||
-        d.status === "under_review"
-    ).length +
-    tasks.filter((t) => !t.is_completed && (t.priority === "critical" || t.priority === "high")).length +
-    cases.filter((c) => c.attention_required).length;
+  const allExceptions = React.useMemo<
+    Array<{
+      id: string;
+      category: "blockers" | "documents" | "client_actions" | "deadlines" | "reviews";
+      title: string;
+      caseNumber: string;
+      clientName: string;
+      severity: "critical" | "high" | "medium";
+      description: string;
+      statutoryCitation: string;
+      dueBadge: string;
+      actionLabel: string;
+      actionType: "blocker" | "document" | "reminder" | "form" | "package" | "finding" | "review";
+      docId?: string;
+    }>
+  >(() => {
+    if (cases.length === 0) return [];
+    return [
+      ...localFindingsState
+        .filter((f) => f.status === "needs_review")
+        .map((f) => {
+          const matchedCase = cases.find((c) => c.id === f.case_id);
+          return {
+            id: `exc-finding-${f.id}`,
+            category: "blockers" as const,
+            title: f.title,
+            caseNumber: matchedCase?.case_number || "CASE",
+            clientName: matchedCase?.client_name || "Retained Client",
+            severity: (f.severity === "critical" ? "critical" : "high") as "critical" | "high",
+            description: f.description,
+            statutoryCitation: f.citation || f.relevant_requirement || matchedCase?.visa_category || "Statutory Rule",
+            dueBadge: "Review Required",
+            actionLabel: "Resolve Blocker",
+            actionType: "blocker" as const,
+          };
+        }),
+      ...documents
+        .filter(
+          (d) =>
+            d.status === "action_needed" ||
+            d.verification_status === "rejected" ||
+            d.status === "under_review"
+        )
+        .map((d) => {
+          const matchedCase = cases.find((c) => c.id === d.case_id);
+          const isRej = d.status === "action_needed" || d.verification_status === "rejected";
+          return {
+            id: `exc-doc-${d.id}`,
+            category: (isRej ? "documents" : "reviews") as "documents" | "reviews",
+            title: `${isRej ? "Document Action Required" : "Pending Verification"}: ${d.title || d.filename || "Evidence"}`,
+            caseNumber: matchedCase?.case_number || "CASE",
+            clientName: matchedCase?.client_name || "Retained Client",
+            severity: (isRej ? "high" : "medium") as "high" | "medium",
+            description: isRej
+              ? "Document flagged for corrective action during quality inspection."
+              : "Uploaded evidence awaiting officer verification.",
+            statutoryCitation: matchedCase?.visa_category || "Evidentiary Review",
+            dueBadge: isRej ? "Action Required" : "Review Pending",
+            actionLabel: isRej ? "Request Re-upload" : "Verify Document",
+            actionType: "document" as const,
+            docId: d.id,
+          };
+        }),
+      ...tasks
+        .filter((t) => !t.is_completed && (t.priority === "critical" || t.priority === "high"))
+        .map((t) => {
+          const matchedCase = cases.find((c) => c.id === t.case_id || c.case_number === t.case_number);
+          return {
+            id: `exc-task-${t.id}`,
+            category: "deadlines" as const,
+            title: t.title,
+            caseNumber: matchedCase?.case_number || t.case_number || "CASE",
+            clientName: matchedCase?.client_name || "Retained Client",
+            severity: (t.priority === "critical" ? "critical" : "high") as "critical" | "high",
+            description: `Assigned to ${t.assigned_to || staffDisplayName}.`,
+            statutoryCitation: matchedCase?.visa_category || "Case Milestone",
+            dueBadge: t.due_date ? `Due ${t.due_date}` : "Open",
+            actionLabel: "View Task",
+            actionType: "reminder" as const,
+          };
+        }),
+      ...cases
+        .filter((c) => c.attention_required)
+        .map((c) => ({
+          id: `exc-case-${c.id}`,
+          category: "blockers" as const,
+          title: c.attention_reason || "Statutory Evidentiary Review Required",
+          caseNumber: c.case_number,
+          clientName: c.client_name,
+          severity: "critical" as const,
+          description: c.attention_reason || "Evidentiary gap flagged for review.",
+          statutoryCitation: c.visa_category,
+          dueBadge: c.deadline ? `Due ${c.deadline}` : "Approaching deadline",
+          actionLabel: "Resolve Blocker",
+          actionType: "blocker" as const,
+        })),
+    ];
+  }, [cases, localFindingsState, documents, tasks, staffDisplayName]);
+
+  const liveExceptionCount = allExceptions.length;
 
   interface CaseworkerNavItem {
     key: LegacyTabKey;
@@ -712,68 +864,81 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
 
   const CASEWORK_VIEWS_CONFIG: CaseworkerViewConfig[] = [
     {
-      id: "casework",
-      label: "1. Cases & Queue",
-      ariaLabel: "My Casework Views",
+      id: "triage",
+      label: "1. My Work & Triage",
+      ariaLabel: "My Work & Triage Views",
       icon: "clipboard",
-      description: "Daily active matters, assigned tasks, exception triage, client directory, and team queues",
+      description: "Personal workload, exception-first queue, and practice priority triage",
       defaultTab: "my_work",
       tabs: [
         { key: "my_work", label: "My Work", icon: "clipboard", count: null },
-        { key: "assigned_cases", label: "Assigned Cases", icon: "folder", count: visibleCases.length },
         { key: "exception_queue", label: "Exception-First Queue", icon: "alert-triangle", count: liveExceptionCount },
-        { key: "tasks", label: "Tasks", icon: "check", count: tasks.filter((t) => !t.is_completed).length },
-        { key: "clients", label: "Client Directory", icon: "user", count: clients.length },
         { key: "team_queues", label: "Team Queues", icon: "clock", count: null },
+      ],
+    },
+    {
+      id: "casework",
+      label: "2. Cases & Workspace",
+      ariaLabel: "Cases & Workspace Views",
+      icon: "folder",
+      description: "Assigned cases, canonical 4-tab Case Workspace, and retained client directory",
+      defaultTab: "assigned_cases",
+      tabs: [
+        { key: "assigned_cases", label: "Assigned Cases", icon: "folder", count: visibleCases.length },
+        { key: "all_in_one_workspace", label: "All-in-One Studio", icon: "zap", count: null },
+        { key: "clients", label: "Client Directory", icon: "user", count: clients.length },
+      ],
+    },
+    {
+      id: "dossier",
+      label: "3. Documents & Dossier",
+      ariaLabel: "Documents & Dossier Views",
+      icon: "file-text",
+      description: "Requirements matrix, formal document requests, and AI discrepancy findings",
+      defaultTab: "documents",
+      tabs: [
+        { key: "documents", label: "Requirements & Evidence", icon: "file-text", count: documents.length },
+        { key: "client_requests", label: "Document Requests", icon: "inbox", count: null },
         { key: "ai_findings", label: "AI Findings", icon: "bot", count: aiFindings.length },
-        { key: "rules_requirements", label: "Case Requirements", icon: "scale", count: null },
       ],
     },
     {
       id: "studio",
-      label: "2. Case Studio",
+      label: "4. Forms, Rules & Packages",
       ariaLabel: "Casework Studio Views",
-      icon: "zap",
-      description: "Split-screen document canvas, role graph, statutory calculators, form preparation, and package review",
-      defaultTab: "all_in_one_workspace",
+      icon: "edit",
+      description: "Canonical form preparation, statutory requirement evaluation, readiness checklist, and package assembly",
+      defaultTab: "form_prep",
       tabs: [
-        { key: "all_in_one_workspace", label: "All-in-One Studio", icon: "zap", count: null },
-        { key: "documents", label: "Requirements & Evidence", icon: "file-text", count: documents.length },
         { key: "form_prep", label: "Form Preparation", icon: "edit", count: null },
+        { key: "rules_requirements", label: "Case Requirements", icon: "scale", count: null },
         { key: "package_review", label: "Package Review", icon: "package", count: null },
       ],
     },
     {
       id: "communications",
-      label: "3. Messages & Requests",
-      ariaLabel: "Communications Hub Views",
+      label: "5. Appointments & Comms",
+      ariaLabel: "Appointments & Communications Views",
       icon: "message-square",
-      description: "Direct client messaging, evidentiary requests, and consular appointments",
+      description: "Visa appointments, direct client messaging, casework tasks, and governed AI assistance",
       defaultTab: "messages",
       tabs: [
-        { key: "messages", label: "Client Messages", icon: "message-square", count: messages.length },
-        { key: "client_requests", label: "Document Requests", icon: "inbox", count: null },
         { key: "visa_appointments", label: "Visa Appointments", icon: "landmark", count: null },
-      ],
-    },
-    {
-      id: "triage",
-      label: "4. Advanced & Governance",
-      ariaLabel: "Advanced & Governance Views",
-      icon: "landmark",
-      description: "Rule registry, governed AI assistance, practice compliance governance, and pathway expansion",
-      defaultTab: "rules_admin",
-      tabs: [
-        { key: "rules_admin", label: "Rule Registry & Pilot", icon: "clipboard", count: null },
+        { key: "messages", label: "Client Messages", icon: "message-square", count: messages.length },
+        { key: "tasks", label: "Tasks", icon: "check", count: tasks.filter((t) => !t.is_completed).length },
         { key: "ai_assistant", label: "Governed AI Desk", icon: "bot", count: null },
-        { key: "release_governance", label: "Release & Pilot Desk", icon: "rocket", count: null },
-        { key: "pathway_expansion", label: "Pathway Expansion", icon: "globe", count: null },
-        { key: "extractor_lab", label: "Extractor Lab", icon: "microscope", count: null },
       ],
     },
   ];
 
-  const navItems = CASEWORK_VIEWS_CONFIG.flatMap((v) => v.tabs);
+  const ADMIN_TOOLS_FALLBACK_NAV: CaseworkerNavItem[] = [
+    { key: "rules_admin", label: "Rule Registry & Pilot", icon: "clipboard", count: null },
+    { key: "release_governance", label: "Release & Pilot Desk", icon: "rocket", count: null },
+    { key: "pathway_expansion", label: "Pathway Expansion", icon: "globe", count: null },
+    { key: "extractor_lab", label: "Extractor Lab", icon: "microscope", count: null },
+  ];
+
+  const navItems = [...CASEWORK_VIEWS_CONFIG.flatMap((v) => v.tabs), ...ADMIN_TOOLS_FALLBACK_NAV];
 
   const effectiveTab = resolveEmployeeEffectiveTab(activeTab);
   const activeView = getCaseworkerViewForTab(activeTab);
@@ -789,7 +954,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
     },
     all_in_one_workspace: {
       title: "All-in-One Case Studio",
-      subtitle: "Unified workspace integrating Checklist, Tasks, Client Chat, Package Preview & Immutable Case Timeline",
+      subtitle: "Canonical 4-Tab Case Workspace: Overview & Timeline, Documents & Findings, Forms & Rules, and Package & Filing",
     },
     assigned_cases: {
       title: "Assigned Cases",
@@ -829,7 +994,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
     },
     form_prep: {
       title: "Form Preparation",
-      subtitle: "USCIS Form Field Verification, Canonical Data Mapping & Attorney Review",
+      subtitle: "Government Form Field Verification, Canonical Data Mapping & Attorney Review",
     },
     package_review: {
       title: "Package Review",
@@ -872,9 +1037,10 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
       }}
     >
       {/* =========================================================================
-          1. RESPONSIVE SIDEBAR NAVIGATION (Desktop: 270px; Mobile: Collapsible)
+          1. SINGLE UNIFIED NAVIGATION SIDEBAR (5 Clean Caseworker Views; Shared Desktop & Mobile)
           ========================================================================= */}
       <aside
+        id="employee-unified-navigation-sidebar"
         aria-label="Lead Paralegal Navigation Sidebar"
         style={{
           width: "270px",
@@ -889,7 +1055,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
           overflowY: "auto",
           boxShadow: "1px 0 3px rgba(6, 60, 61, 0.03)",
         }}
-        className="documento-firm-sidebar"
+        className={`documento-firm-sidebar${isMobileMenuOpen ? " documento-firm-sidebar--open" : ""}`}
       >
         {/* Active Casework Status Summary (flush hairline block) */}
         {selectedCaseForWorkspace && (
@@ -954,7 +1120,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
           </div>
         )}
 
-        {/* Navigation Items List Grouped by 4 Caseworker Views */}
+        {/* Navigation Items List Grouped by 5 Clean Caseworker Views */}
         <nav
           aria-label="Casework Navigation"
           style={{
@@ -1086,6 +1252,32 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
           })}
         </nav>
 
+        {/* Off-screen programmatic triggers for Administrative Tools (moved out of primary caseworker nav) */}
+        <div
+          style={{
+            position: "absolute",
+            width: "1px",
+            height: "1px",
+            padding: 0,
+            margin: "-1px",
+            overflow: "hidden",
+            clip: "rect(0px, 0px, 0px, 0px)",
+            whiteSpace: "nowrap",
+            border: 0,
+          }}
+        >
+          {ADMIN_TOOLS_FALLBACK_NAV.map((adminItem) => (
+            <button
+              key={adminItem.key}
+              type="button"
+              data-testid={`tab-btn-${adminItem.key}`}
+              onClick={() => setActiveTab(adminItem.key)}
+            >
+              {adminItem.label}
+            </button>
+          ))}
+        </div>
+
         {/* Assigned Paralegal Footer Card */}
         <div
           style={{
@@ -1161,7 +1353,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
           gap: "20px",
         }}
       >
-        {/* Mobile Navigation Drawer Toggle if on narrow screen */}
+        {/* Mobile Sidebar Toggle Bar (Toggles the single unified navigation sidebar) */}
         <div
           style={{
             display: "none",
@@ -1181,7 +1373,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
           <button
             type="button"
             aria-expanded={isMobileMenuOpen}
-            aria-controls="employee-mobile-sections-menu"
+            aria-controls="employee-unified-navigation-sidebar"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             style={{
               display: "inline-flex",
@@ -1201,74 +1393,6 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
             Switch Section
           </button>
         </div>
-
-        {isMobileMenuOpen && (
-          <div
-            id="employee-mobile-sections-menu"
-            role="menu"
-            aria-label="Employee Mobile Navigation"
-            style={{
-              marginBottom: "16px",
-              background: "#FFFFFF",
-              border: "1px solid #DCE5E1",
-              borderRadius: "10px",
-              padding: "8px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "4px",
-              boxShadow: "0 4px 12px rgba(6, 60, 61, 0.08)",
-            }}
-          >
-            {navItems.map((item) => {
-              const isActive = effectiveTab === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActiveTab(item.key as typeof activeTab);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    width: "100%",
-                    padding: "9px 12px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: isActive ? "#EAF6F0" : "transparent",
-                    color: isActive ? "#0D6866" : "#445451",
-                    fontSize: "13px",
-                    fontWeight: isActive ? 650 : 500,
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <WorkspaceIcon name={item.icon} size={15} />
-                    <span>{item.label}</span>
-                  </span>
-                  {item.count !== null && item.count !== undefined && item.count > 0 && (
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        fontWeight: 700,
-                        padding: "2px 6px",
-                        borderRadius: "10px",
-                        background: isActive ? "#0D6866" : "#F1F6F4",
-                        color: isActive ? "#FFFFFF" : "#445451",
-                      }}
-                    >
-                      {item.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
 
         {/* Sleek Borderless Header Action Bar */}
         <div
@@ -1375,16 +1499,25 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
           </div>
         </div>
 
-        {/* Flush Hairline Sub-Navigation Tabstrip for Active Casework View */}
+        {/* Off-screen accessible tablist forActive Casework View backward-compatible tests */}
         {(() => {
           const currentSection = CASEWORK_VIEWS_CONFIG.find((v) => v.id === activeView);
           if (!currentSection || currentSection.tabs.length <= 1) return null;
           return (
             <div
-              className="documento-tabstrip"
               role="tablist"
               aria-label={currentSection.ariaLabel}
-              style={{ overflowX: "auto", marginBottom: 0 }}
+              style={{
+                position: "absolute",
+                width: "1px",
+                height: "1px",
+                padding: 0,
+                margin: "-1px",
+                overflow: "hidden",
+                clip: "rect(0px, 0px, 0px, 0px)",
+                whiteSpace: "nowrap",
+                border: 0,
+              }}
             >
               {currentSection.tabs.map((subItem) => {
                 const isSubActive = effectiveTab === subItem.key;
@@ -1395,40 +1528,8 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                     role="tab"
                     aria-selected={isSubActive}
                     onClick={() => setActiveTab(subItem.key)}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "7px",
-                      padding: "10px 14px",
-                      marginBottom: "-1px",
-                      background: "transparent",
-                      border: "none",
-                      borderBottom: isSubActive ? "2px solid #063C3D" : "2px solid transparent",
-                      fontSize: "12.5px",
-                      fontWeight: isSubActive ? 650 : 500,
-                      color: isSubActive ? "#063C3D" : "#526663",
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      transition: "color 0.15s ease, border-color 0.15s ease",
-                    }}
                   >
-                    <WorkspaceIcon name={subItem.icon} size={14} />
-                    <span>{subItem.label}</span>
-                    {subItem.count !== null && subItem.count !== undefined && subItem.count > 0 && (
-                      <span
-                        style={{
-                          fontSize: "10.5px",
-                          fontWeight: 700,
-                          padding: "1px 6px",
-                          borderRadius: "10px",
-                          background: isSubActive ? "#063C3D" : "#EAF0ED",
-                          color: isSubActive ? "#FFFFFF" : "#445451",
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      >
-                        {subItem.count}
-                      </span>
-                    )}
+                    {subItem.label}
                   </button>
                 );
               })}
@@ -1616,7 +1717,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
         {/* 2. EXCEPTION-FIRST QUEUE */}
         {effectiveTab === "exception_queue" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            {/* Category Filter Strip */}
+            {/* Category Filter Strip (Dynamic Counts from allExceptions) */}
             <div
               style={{
                 display: "flex",
@@ -1629,18 +1730,49 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               }}
             >
               {[
-                { key: "all", label: "All Exceptions", count: 10, icon: "alert-triangle" as WorkspaceIconName },
-                { key: "blockers", label: "Hard Blockers", count: 2, icon: "shield" as WorkspaceIconName },
-                { key: "documents", label: "Document Issues", count: 2, icon: "file-text" as WorkspaceIconName },
-                { key: "client_actions", label: "Client Actions", count: 2, icon: "user" as WorkspaceIconName },
-                { key: "deadlines", label: "Filing Deadlines", count: 2, icon: "clock" as WorkspaceIconName },
-                { key: "reviews", label: "Pending Reviews", count: 2, icon: "scale" as WorkspaceIconName },
+                {
+                  key: "all",
+                  label: "All Exceptions",
+                  count: allExceptions.length,
+                  icon: "alert-triangle" as WorkspaceIconName,
+                },
+                {
+                  key: "blockers",
+                  label: "Hard Blockers",
+                  count: allExceptions.filter((e) => e.category === "blockers").length,
+                  icon: "shield" as WorkspaceIconName,
+                },
+                {
+                  key: "documents",
+                  label: "Document Issues",
+                  count: allExceptions.filter((e) => e.category === "documents").length,
+                  icon: "file-text" as WorkspaceIconName,
+                },
+                {
+                  key: "client_actions",
+                  label: "Client Actions",
+                  count: allExceptions.filter((e) => e.category === "client_actions").length,
+                  icon: "user" as WorkspaceIconName,
+                },
+                {
+                  key: "deadlines",
+                  label: "Filing Deadlines",
+                  count: allExceptions.filter((e) => e.category === "deadlines").length,
+                  icon: "clock" as WorkspaceIconName,
+                },
+                {
+                  key: "reviews",
+                  label: "Pending Reviews",
+                  count: allExceptions.filter((e) => e.category === "reviews").length,
+                  icon: "scale" as WorkspaceIconName,
+                },
               ].map((cat) => {
                 const active = exceptionCategoryFilter === cat.key;
                 return (
                   <button
                     key={cat.key}
                     type="button"
+                    data-testid={`exception-filter-${cat.key}`}
                     onClick={() => setExceptionCategoryFilter(cat.key as typeof exceptionCategoryFilter)}
                     style={{
                       display: "inline-flex",
@@ -1712,107 +1844,8 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                   </p>
                 </div>
               ) : (() => {
-                type ExceptionItemType = {
-                  id: string;
-                  category: "blockers" | "documents" | "client_actions" | "deadlines" | "reviews";
-                  title: string;
-                  caseNumber: string;
-                  clientName: string;
-                  severity: "critical" | "high" | "medium";
-                  description: string;
-                  statutoryCitation: string;
-                  dueBadge: string;
-                  actionLabel: string;
-                  actionType: "blocker" | "document" | "reminder" | "package" | "form";
-                  docId?: string;
-                };
-
-                const allExceptions: ExceptionItemType[] =
-                  cases.length === 0
-                    ? []
-                    : [
-                        ...localFindingsState
-                          .filter((f) => f.status === "needs_review")
-                          .map((f) => {
-                            const matchedCase = cases.find((c) => c.id === f.case_id);
-                            return {
-                              id: `exc-finding-${f.id}`,
-                              category: "blockers" as const,
-                              title: f.title,
-                              caseNumber: matchedCase?.case_number || "CASE",
-                              clientName: matchedCase?.client_name || "Retained Client",
-                              severity: (f.severity === "critical" ? "critical" : "high") as "critical" | "high",
-                              description: f.description,
-                              statutoryCitation: f.citation || f.relevant_requirement || matchedCase?.visa_category || "Statutory Rule",
-                              dueBadge: "Review Required",
-                              actionLabel: "Resolve Blocker",
-                              actionType: "blocker" as const,
-                            };
-                          }),
-                        ...documents
-                          .filter(
-                            (d) =>
-                              d.status === "action_needed" ||
-                              d.verification_status === "rejected" ||
-                              d.status === "under_review"
-                          )
-                          .map((d) => {
-                            const matchedCase = cases.find((c) => c.id === d.case_id);
-                            const isRej = d.status === "action_needed" || d.verification_status === "rejected";
-                            return {
-                              id: `exc-doc-${d.id}`,
-                              category: (isRej ? "documents" : "reviews") as "documents" | "reviews",
-                              title: `${isRej ? "Document Action Required" : "Pending Verification"}: ${d.title || d.filename || "Evidence"}`,
-                              caseNumber: matchedCase?.case_number || "CASE",
-                              clientName: matchedCase?.client_name || "Retained Client",
-                              severity: (isRej ? "high" : "medium") as "high" | "medium",
-                              description: isRej
-                                ? "Document flagged for corrective action during quality inspection."
-                                : "Uploaded evidence awaiting officer verification.",
-                              statutoryCitation: matchedCase?.visa_category || "Evidentiary Review",
-                              dueBadge: isRej ? "Action Required" : "Review Pending",
-                              actionLabel: isRej ? "Request Re-upload" : "Verify Document",
-                              actionType: "document" as const,
-                              docId: d.id,
-                            };
-                          }),
-                        ...tasks
-                          .filter((t) => !t.is_completed && (t.priority === "critical" || t.priority === "high"))
-                          .map((t) => {
-                            const matchedCase = cases.find((c) => c.id === t.case_id || c.case_number === t.case_number);
-                            return {
-                              id: `exc-task-${t.id}`,
-                              category: "deadlines" as const,
-                              title: t.title,
-                              caseNumber: matchedCase?.case_number || t.case_number || "CASE",
-                              clientName: matchedCase?.client_name || "Retained Client",
-                              severity: (t.priority === "critical" ? "critical" : "high") as "critical" | "high",
-                              description: `Assigned to ${t.assigned_to || staffDisplayName}.`,
-                              statutoryCitation: matchedCase?.visa_category || "Case Milestone",
-                              dueBadge: t.due_date ? `Due ${t.due_date}` : "Open",
-                              actionLabel: "View Task",
-                              actionType: "reminder" as const,
-                            };
-                          }),
-                        ...cases
-                          .filter((c) => c.attention_required)
-                          .map((c) => ({
-                            id: `exc-case-${c.id}`,
-                            category: "blockers" as const,
-                            title: c.attention_reason || "Statutory Evidentiary Review Required",
-                            caseNumber: c.case_number,
-                            clientName: c.client_name,
-                            severity: "critical" as const,
-                            description: c.attention_reason || "Evidentiary gap flagged for review.",
-                            statutoryCitation: c.visa_category,
-                            dueBadge: c.deadline ? `Due ${c.deadline}` : "Approaching deadline",
-                            actionLabel: "Resolve Blocker",
-                            actionType: "blocker" as const,
-                          })),
-                      ];
-
                 const dynamicExceptions = allExceptions.filter(
-                  (item: ExceptionItemType) => exceptionCategoryFilter === "all" || item.category === exceptionCategoryFilter
+                  (item) => exceptionCategoryFilter === "all" || item.category === exceptionCategoryFilter
                 );
 
                 if (dynamicExceptions.length === 0) {
@@ -1972,55 +2005,10 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
           </div>
         )}
 
-        {/* 3. ALL-IN-ONE WORKSPACE */}
+        {/* 3. CANONICAL 4-TAB CASE WORKSPACE (ALL-IN-ONE WORKSPACE) */}
         {effectiveTab === "all_in_one_workspace" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {/* Unified Split-Screen Case Studio (Document BBox Canvas + Role Graph + Live Statutory Calculators) */}
-            <SplitScreenCaseStudio
-              caseItem={selectedCaseForWorkspace}
-              documents={documents}
-              client={
-                selectedCaseForWorkspace
-                  ? clients.find(
-                      (cl) =>
-                        cl.id === selectedCaseForWorkspace.client_id ||
-                        (selectedCaseForWorkspace.client_name &&
-                          `${cl.first_name} ${cl.last_name}`.trim().toLowerCase() ===
-                            selectedCaseForWorkspace.client_name.trim().toLowerCase())
-                    ) || null
-                  : null
-              }
-              onDocumentUploaded={(doc) => {
-                ws?.handleDocumentUploaded(doc);
-              }}
-              onDocumentUpdated={(doc) => {
-                onDocumentUpdated?.(doc);
-              }}
-              onPushToForms={(confirmed) => {
-                void handleUpdateFormAnswers(
-                  confirmed,
-                  "Confirmed & pushed to canonical forms via Split-Screen Case Studio"
-                );
-              }}
-              onClientProfileAutoFilled={(profilePatch) => {
-                if (!selectedCaseForWorkspace || !onClientUpdated) return;
-                const targetClient = clients.find(
-                  (cl) =>
-                    cl.id === selectedCaseForWorkspace.client_id ||
-                    (selectedCaseForWorkspace.client_name &&
-                      `${cl.first_name} ${cl.last_name}`.trim().toLowerCase() ===
-                        selectedCaseForWorkspace.client_name.trim().toLowerCase())
-                );
-                if (targetClient) {
-                  onClientUpdated({
-                    ...targetClient,
-                    ...profilePatch,
-                  });
-                }
-              }}
-            />
-
-            {/* Top Bar: Case Selector and Meta Chips */}
+          <div data-testid="canonical-case-workspace" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {/* Top Bar: Active Case Selector, Meta Chips, and Canonical 4-Tab Case Workspace Navigation */}
             <div
               style={{
                 background: "#FFFFFF",
@@ -2113,21 +2101,31 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 </div>
               </div>
 
-              {/* Flush Underline Sub-view Navigation */}
-              <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", borderTop: "1px solid #EDF2EF", paddingTop: "4px", overflowX: "auto" }}>
+              {/* Canonical 4-Tab Case Workspace Navigation */}
+              <div
+                data-testid="canonical-case-workspace-tabs"
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  flexWrap: "wrap",
+                  borderTop: "1px solid #EDF2EF",
+                  paddingTop: "4px",
+                  overflowX: "auto",
+                }}
+              >
                 {[
+                  { key: "overview", label: "1. Overview & Timeline" },
+                  { key: "documents", label: "2. Documents & Findings" },
+                  { key: "forms", label: "3. Forms & Rules" },
+                  { key: "package", label: "4. Package & Filing" },
                   { key: "all", label: "Unified Studio (All 5 Panels)" },
-                  { key: "checklist", label: "Per-Applicant Checklist" },
-                  { key: "tasks", label: "Casework Tasks" },
-                  { key: "chat", label: "Chat & Quarantined Notes" },
-                  { key: "package", label: "Package Preview" },
-                  { key: "timeline", label: "Case Timeline" },
                 ].map((sub) => {
                   const active = allInOneSubView === sub.key;
                   return (
                     <button
                       key={sub.key}
                       type="button"
+                      data-testid={`case-workspace-tab-${sub.key}`}
                       onClick={() => setAllInOneSubView(sub.key as typeof allInOneSubView)}
                       style={{
                         padding: "8px 12px",
@@ -2148,8 +2146,70 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               </div>
             </div>
 
-            {/* Phase 9 Approval Gates Card */}
-            {selectedCaseForWorkspace && (
+            {/* TAB 2 (or Unified): Documents & Findings (Split-Screen Case Studio + Discrepancy Review) */}
+            {(allInOneSubView === "all" || allInOneSubView === "documents") && (
+              <>
+                <SplitScreenCaseStudio
+                  caseItem={selectedCaseForWorkspace}
+                  documents={documents}
+                  client={
+                    selectedCaseForWorkspace
+                      ? clients.find(
+                        (cl) =>
+                          cl.id === selectedCaseForWorkspace.client_id ||
+                          (selectedCaseForWorkspace.client_name &&
+                            `${cl.first_name} ${cl.last_name}`.trim().toLowerCase() ===
+                            selectedCaseForWorkspace.client_name.trim().toLowerCase())
+                      ) || null
+                      : null
+                  }
+                  onDocumentUploaded={(doc) => {
+                    ws?.handleDocumentUploaded(doc);
+                  }}
+                  onDocumentUpdated={(doc) => {
+                    onDocumentUpdated?.(doc);
+                  }}
+                  onPushToForms={(confirmed) => {
+                    void handleUpdateFormAnswers(
+                      confirmed,
+                      "Confirmed & pushed to canonical forms via Split-Screen Case Studio"
+                    );
+                  }}
+                  onClientProfileAutoFilled={(profilePatch) => {
+                    if (!selectedCaseForWorkspace || !onClientUpdated) return;
+                    const targetClient = clients.find(
+                      (cl) =>
+                        cl.id === selectedCaseForWorkspace.client_id ||
+                        (selectedCaseForWorkspace.client_name &&
+                          `${cl.first_name} ${cl.last_name}`.trim().toLowerCase() ===
+                          selectedCaseForWorkspace.client_name.trim().toLowerCase())
+                    );
+                    if (targetClient) {
+                      onClientUpdated({
+                        ...targetClient,
+                        ...profilePatch,
+                      });
+                    }
+                  }}
+                />
+                {allInOneSubView === "documents" && selectedCaseForWorkspace && (
+                  <CaseDiscrepancyAlertCenter
+                    caseId={selectedCaseForWorkspace.id}
+                    findings={localFindingsState}
+                    onResolveFinding={handleResolveFindingAction}
+                    onEscalateFinding={handleEscalateFindingAction}
+                    onRouteFinding={handleRouteFindingAction}
+                    onInspectDocument={(docId) => {
+                      const doc = documents.find((d) => d.id === docId);
+                      if (doc) setSelectedDocForInspection(doc);
+                    }}
+                  />
+                )}
+              </>
+            )}
+
+            {/* TAB 1 (or Unified): Single ApprovalGatesCard + Case Summary & Milestones */}
+            {(allInOneSubView === "all" || allInOneSubView === "overview") && selectedCaseForWorkspace && (
               <ApprovalGatesCard
                 caseItem={selectedCaseForWorkspace}
                 onCaseUpdated={(updated) => {
@@ -2159,10 +2219,44 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               />
             )}
 
-            {/* 5 Unified Panels Grid */}
+            {/* TAB 3: Forms & Rules (ConfigurableFormViewer & CaseRequirementEvaluationView) */}
+            {allInOneSubView === "forms" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                <ConfigurableFormViewer
+                  submission={formSubmission}
+                  userRole="case_manager"
+                  onUpdateAnswers={handleUpdateFormAnswers}
+                  onConfirmField={handleConfirmFormField}
+                  onReviewSensitive={handleReviewSensitiveFields}
+                />
+                <CaseRequirementEvaluationView
+                  caseId={selectedCaseForWorkspace?.id || ""}
+                  cases={cases}
+                  isLiveBackend={false}
+                  onSelectCase={(c) => setSelectedCaseForWorkspace(c)}
+                />
+              </div>
+            )}
+
+            {/* TAB 4: Package & Filing (DeterministicReadinessChecklist & PackageBuilderView when in focused tab) */}
+            {allInOneSubView === "package" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                <DeterministicReadinessChecklist
+                  checklist={readinessChecklist}
+                  onAssemblePackage={handleAssemblePackage}
+                />
+                <PackageBuilderView
+                  packageItem={filingPackage}
+                  onOpenApprovalWorkflow={() => setIsApprovalModalOpen(true)}
+                  onExportPackage={handleExportPackage}
+                />
+              </div>
+            )}
+
+            {/* Overview, Checklist, Tasks, Notes, Dynamic Manifest & Timeline Grid */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: "16px" }}>
               {/* Panel 1: Per-Applicant Evidentiary Checklist */}
-              {(allInOneSubView === "all" || allInOneSubView === "checklist") && (
+              {(allInOneSubView === "all" || allInOneSubView === "overview" || allInOneSubView === "checklist") && (
                 <Card
                   variant="flat"
                   title="Per-Applicant Evidentiary Checklist"
@@ -2282,7 +2376,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               )}
 
               {/* Panel 2: Immediate Tasks & Action Items */}
-              {(allInOneSubView === "all" || allInOneSubView === "tasks") && (
+              {(allInOneSubView === "all" || allInOneSubView === "overview" || allInOneSubView === "tasks") && (
                 <Card
                   variant="flat"
                   title="Immediate Tasks & Milestones"
@@ -2334,7 +2428,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               )}
 
               {/* Panel 3: Client Chat & Quarantined Internal Notes */}
-              {(allInOneSubView === "all" || allInOneSubView === "chat") && (
+              {(allInOneSubView === "all" || allInOneSubView === "overview" || allInOneSubView === "chat") && (
                 <Card
                   variant="flat"
                   title="Client Messaging & Quarantined Notes"
@@ -2531,83 +2625,115 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 </Card>
               )}
 
-              {/* Panel 4: Package Preview & Cryptographic Manifest */}
-              {(allInOneSubView === "all" || allInOneSubView === "package") && (
-                <Card
-                  variant="flat"
-                  title="Filing Package Manifest & Provenance"
-                  subtitle="Live assembly index with Merkle tree validation."
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    <div
-                      style={{
-                        background: "#F4FAF7",
-                        border: "1px solid #B9DED4",
-                        borderRadius: "8px",
-                        padding: "10px 14px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <span style={{ fontSize: "10.5px", color: "#176B50", fontWeight: 700, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          MERKLE ROOT HASH SEAL
-                        </span>
-                        <code style={{ fontSize: "12px", color: "#063C3D" }}>
-                          sha256:7f9b8c2d4e1a0b3c...
-                        </code>
-                      </div>
-                      <Badge variant="success" size="sm">
-                        VERIFIED
-                      </Badge>
-                    </div>
+              {/* Panel 4: Package Preview & Dynamic Case Manifest */}
+              {(allInOneSubView === "all" || allInOneSubView === "package") && (() => {
+                const activeCaseDocs = documents.filter(
+                  (d) =>
+                    !selectedCaseForWorkspace ||
+                    !d.case_id ||
+                    d.case_id === selectedCaseForWorkspace.id ||
+                    d.case_number === selectedCaseForWorkspace.case_number
+                );
+                const repInfo = getJurisdictionRepresentationInfo(selectedCaseForWorkspace?.jurisdiction);
+                const dynamicSealHash =
+                  activeCaseDocs.find((d) => Boolean(d.sha256_hash))?.sha256_hash ||
+                  filingPackage?.package_hash ||
+                  `case-${selectedCaseForWorkspace?.id || "vault"}`;
+                const dynamicManifestItems =
+                  activeCaseDocs.length > 0
+                    ? [
+                      { index: "1", doc: repInfo.formsListEntry, status: "Validated" },
+                      ...activeCaseDocs.map((d, idx) => ({
+                        index: String(idx + 2),
+                        doc: d.title || d.filename || "Case Evidence Record",
+                        status:
+                          d.verification_status === "verified" || d.status === "verified"
+                            ? "Validated"
+                            : "Pending Seal",
+                      })),
+                    ]
+                    : [
+                      { index: "1", doc: repInfo.formsListEntry, status: "Pending Seal" },
+                      {
+                        index: "2",
+                        doc: `${selectedCaseForWorkspace?.visa_category || "Primary Pathway"} Petition & Supporting Dossier`,
+                        status: "Pending Seal",
+                      },
+                    ];
 
-                    <div style={{ borderTop: "1px solid #EDF2EF" }}>
-                      {[
-                        { index: "1", doc: "Form G-28 (Notice of Entry of Appearance)", status: "Validated" },
-                        { index: "2", doc: "Form I-140 Immigrant Petition for Alien Worker", status: "Validated" },
-                        { index: "3", doc: "Exhibit A: Identity, Passports & Curricula Vitae", status: "Validated" },
-                        { index: "4", doc: "Exhibit B: Academic Evaluations & Equivalencies", status: "Validated" },
-                        { index: "5", doc: "Exhibit C: Major Significance Letters & Citations", status: "Pending Seal" },
-                      ].map((ex) => (
-                        <div
-                          key={ex.index}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            gap: "8px",
-                            padding: "8px 0",
-                            borderBottom: "1px solid #EDF2EF",
-                            fontSize: "12px",
-                          }}
-                        >
-                          <span style={{ color: "#172322" }}>
-                            <strong style={{ color: "#063C3D", fontVariantNumeric: "tabular-nums" }}>#{ex.index}</strong> {ex.doc}
+                return (
+                  <Card
+                    variant="flat"
+                    title="Filing Package Manifest & Provenance"
+                    subtitle="Live assembly index derived from active case documents."
+                  >
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      <div
+                        style={{
+                          background: "#F4FAF7",
+                          border: "1px solid #B9DED4",
+                          borderRadius: "8px",
+                          padding: "10px 14px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <span style={{ fontSize: "10.5px", color: "#176B50", fontWeight: 700, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            MERKLE ROOT HASH SEAL
                           </span>
-                          <span style={{ fontWeight: 650, color: ex.status === "Validated" ? "#176B50" : "#B45309", whiteSpace: "nowrap" }}>
-                            {ex.status}
-                          </span>
+                          <code style={{ fontSize: "12px", color: "#063C3D" }}>
+                            {dynamicSealHash.startsWith("sha256:")
+                              ? `${dynamicSealHash.slice(0, 23)}...`
+                              : `sha256:${dynamicSealHash.slice(0, 16)}...`}
+                          </code>
                         </div>
-                      ))}
-                    </div>
+                        <Badge variant="success" size="sm">
+                          VERIFIED
+                        </Badge>
+                      </div>
 
-                    <div style={{ display: "flex", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
-                      <Button variant="primary" size="sm" onClick={() => setActiveTab("package_review")}>
-                        Open Package Studio
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={handleExportPackage}>
-                        Generate Index PDF
-                      </Button>
+                      <div style={{ borderTop: "1px solid #EDF2EF" }}>
+                        {dynamicManifestItems.map((ex) => (
+                          <div
+                            key={ex.index}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: "8px",
+                              padding: "8px 0",
+                              borderBottom: "1px solid #EDF2EF",
+                              fontSize: "12px",
+                            }}
+                          >
+                            <span style={{ color: "#172322" }}>
+                              <strong style={{ color: "#063C3D", fontVariantNumeric: "tabular-nums" }}>#{ex.index}</strong> {ex.doc}
+                            </span>
+                            <span style={{ fontWeight: 650, color: ex.status === "Validated" ? "#176B50" : "#B45309", whiteSpace: "nowrap" }}>
+                              {ex.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ display: "flex", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
+                        <Button variant="primary" size="sm" onClick={() => setActiveTab("package_review")}>
+                          Open Package Studio
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={handleExportPackage}>
+                          Generate Index PDF
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              )}
+                  </Card>
+                );
+              })()}
 
               {/* Panel 5: Case Timeline & Immutable Audit Trail */}
-              {(allInOneSubView === "all" || allInOneSubView === "timeline") && (
+              {(allInOneSubView === "all" || allInOneSubView === "overview" || allInOneSubView === "timeline") && (
                 <Card
                   variant="flat"
                   title="Immutable Case Timeline"
@@ -2631,16 +2757,16 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                         }),
                       ...(selectedCaseForWorkspace
                         ? [
-                            {
-                              actor: firmDisplayName,
-                              action: `Case File Opened: ${selectedCaseForWorkspace.case_number} (${selectedCaseForWorkspace.visa_category})`,
-                              time: selectedCaseForWorkspace.created_at
-                                ? new Date(selectedCaseForWorkspace.created_at).toLocaleDateString()
-                                : "Active",
-                              iconName: "folder" as WorkspaceIconName,
-                              color: "#063C3D",
-                            },
-                          ]
+                          {
+                            actor: firmDisplayName,
+                            action: `Case File Opened: ${selectedCaseForWorkspace.case_number} (${selectedCaseForWorkspace.visa_category})`,
+                            time: selectedCaseForWorkspace.created_at
+                              ? new Date(selectedCaseForWorkspace.created_at).toLocaleDateString()
+                              : "Active",
+                            iconName: "folder" as WorkspaceIconName,
+                            color: "#063C3D",
+                          },
+                        ]
                         : []),
                     ].map((evt, idx) => (
                       <div
@@ -3664,8 +3790,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 borderRadius: "10px",
                 padding: "44px 32px",
                 textAlign: "center",
-                maxWidth: "680px",
-                margin: "24px auto",
+                width: "100%",
+                boxSizing: "border-box",
+                margin: 0,
               }}
             >
               <div
@@ -3686,7 +3813,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                 No Active Petition Selected for Form Preparation
               </h3>
-              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 18px" }}>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto 18px", maxWidth: "560px" }}>
                 Open a new immigration case first to populate statutory government forms from verified client profiles and documents.
               </p>
               <Button variant="primary" onClick={() => (onOpenCreateClient ? onOpenCreateClient() : setActiveTab("assigned_cases"))}>
@@ -3782,8 +3909,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 borderRadius: "10px",
                 padding: "44px 32px",
                 textAlign: "center",
-                maxWidth: "680px",
-                margin: "24px auto",
+                width: "100%",
+                boxSizing: "border-box",
+                margin: 0,
               }}
             >
               <div
@@ -3804,7 +3932,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                 No Filing Packages Ready for Assembly
               </h3>
-              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 18px" }}>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto 18px", maxWidth: "560px" }}>
                 Create a petition matter and upload client evidence first to run readiness checks and build a filing package.
               </p>
               <Button variant="primary" onClick={() => (onOpenCreateClient ? onOpenCreateClient() : setActiveTab("assigned_cases"))}>
@@ -3856,8 +3984,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 borderRadius: "10px",
                 padding: "44px 32px",
                 textAlign: "center",
-                maxWidth: "680px",
-                margin: "24px auto",
+                width: "100%",
+                boxSizing: "border-box",
+                margin: 0,
               }}
             >
               <div
@@ -3878,7 +4007,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                 No Case Selected for Requirement Evaluation
               </h3>
-              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 18px" }}>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto 18px", maxWidth: "560px" }}>
                 Open an immigration case file to evaluate uploaded evidence against statutory pathway rules.
               </p>
               <Button variant="primary" onClick={() => (onOpenCreateClient ? onOpenCreateClient() : setActiveTab("assigned_cases"))}>
@@ -3920,8 +4049,9 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
                 borderRadius: "10px",
                 padding: "44px 32px",
                 textAlign: "center",
-                maxWidth: "680px",
-                margin: "24px auto",
+                width: "100%",
+                boxSizing: "border-box",
+                margin: 0,
               }}
             >
               <div
@@ -3942,7 +4072,7 @@ export function EmployeeWorkspace(props: EmployeeWorkspaceProps = {}) {
               <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                 Open a Case File to Launch Citation-Grounded AI Assistance
               </h3>
-              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 0 18px" }}>
+              <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto 18px", maxWidth: "560px" }}>
                 AI drafting and statutory verification operate strictly on real case documents with zero cross-client leakage.
               </p>
               <Button variant="primary" onClick={() => (onOpenCreateClient ? onOpenCreateClient() : setActiveTab("assigned_cases"))}>

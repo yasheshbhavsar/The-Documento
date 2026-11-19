@@ -27,7 +27,7 @@ import { enqueueRawClientPacket, extractSafeRawTextPreview } from "../../lib/raw
 interface FamilyDocumentIntakeHubProps {
   caseId?: string;
   clientName?: string;
-  onDocumentUploaded?: () => void;
+  onDocumentUploaded?: (newDoc?: any) => void;
 }
 
 export function FamilyDocumentIntakeHub({
@@ -141,7 +141,7 @@ export function FamilyDocumentIntakeHub({
       setLastBatchReceipt(receipt);
       setQueuedFiles([]);
 
-      // Enqueue untouched raw files directly for the Paralegal's local AI Lab (zero client OCR wait)
+      // Enqueue untouched raw files directly for the Paralegal's review queue (zero client OCR wait)
       try {
         for (let i = 0; i < rawFiles.length; i++) {
           const rawFile = rawFiles[i];
@@ -263,7 +263,7 @@ export function FamilyDocumentIntakeHub({
                   border: "1px solid rgba(255, 255, 255, 0.25)",
                 }}
               >
-                Phase 4 Certified Intake
+                Document Intake &amp; Checklist
               </span>
               <span style={{ fontSize: "12px", color: "#B9DED4" }}>
                 Temporary Lifecycle &amp; Privacy Protection
@@ -273,8 +273,8 @@ export function FamilyDocumentIntakeHub({
               Mobile-First Evidentiary Intake &amp; Family Checklist
             </h2>
             <p style={{ margin: 0, fontSize: "13.5px", lineHeight: 1.55, color: "#E7EFEB" }}>
-              Upload individual documents or combined multipage scans with automated page boundary detection.
-              All files are quarantined in tamper-proof encrypted storage with SHA-256 integrity validation.
+              Upload clear, readable PDFs or photos; multi-page files are supported automatically.
+              All files are stored securely in encrypted storage for review by your legal team.
             </p>
           </div>
 
@@ -469,7 +469,7 @@ export function FamilyDocumentIntakeHub({
               Upload New Documents &amp; Camera Scans
             </h3>
             <p style={{ margin: 0, fontSize: "12.5px", color: "#6E7F7C" }}>
-              Batch uploads supported. You can select one file or multiple files simultaneously.
+              Upload clear, readable PDFs or photos — single-page and multi-page files are supported automatically.
             </p>
           </div>
 
@@ -492,7 +492,7 @@ export function FamilyDocumentIntakeHub({
                 onChange={(e) => setIsCombinedFile(e.target.checked)}
                 style={{ cursor: "pointer", accentColor: "#0D6866" }}
               />
-              Combined File with Multiple Documents (Automated Boundary Splitting)
+              Multi-page file containing multiple documents (supported automatically)
             </label>
           </div>
         </div>
@@ -555,10 +555,10 @@ export function FamilyDocumentIntakeHub({
               <option value="identity_passport">Identity &amp; Passports</option>
               <option value="civil_status">Civil Status &amp; Family Records (Marriage, Birth)</option>
               <option value="educational_records">Educational Degrees &amp; Transcripts</option>
-              <option value="employment_records">Employment Experience &amp; W-2 Records</option>
+              <option value="employment_records">Employment &amp; Income Records</option>
               <option value="awards_honors">Awards, Honors &amp; Judging Evidence</option>
-              <option value="police_medical">Police Clearance &amp; Sealed Medical (I-693)</option>
-              <option value="translations_certifications">Certified English Translations</option>
+              <option value="police_medical">Police Clearance &amp; Medical Examination Records</option>
+              <option value="translations_certifications">Certified Translations</option>
               <option value="supporting_evidence">Other Supporting Evidence</option>
             </select>
           </div>
@@ -697,7 +697,7 @@ export function FamilyDocumentIntakeHub({
                   cursor: isUploading ? "not-allowed" : "pointer",
                 }}
               >
-                {isUploading ? `Uploading & Generating Hashes (${uploadProgress}%)...` : `Submit ${queuedFiles.length} Document(s)`}
+                {isUploading ? `Uploading Documents (${uploadProgress}%)...` : `Submit ${queuedFiles.length} Document(s)`}
               </button>
             </div>
           </div>
@@ -764,7 +764,7 @@ export function FamilyDocumentIntakeHub({
                   <div>
                     <strong>{item.filename}</strong>
                     <span style={{ color: "#6E7F7C", marginLeft: "8px" }}>
-                      SHA-256: {item.sha256_hash.slice(0, 16)}...
+                      Ref: #{item.document_id?.slice(-8) || idx + 1}
                     </span>
                   </div>
                   <div>
@@ -1288,7 +1288,7 @@ export function FamilyDocumentIntakeHub({
               {purgeStep.step1.impact_summary}
             </p>
 
-            {/* Cryptographic challenge token */}
+            {/* Deletion confirmation reference */}
             <div
               style={{
                 background: "#F8F7F2",
@@ -1301,7 +1301,7 @@ export function FamilyDocumentIntakeHub({
                 wordBreak: "break-all",
               }}
             >
-              Challenge Token: <code>{purgeStep.step1.confirmation_token}</code>
+              Deletion Confirmation Reference: <code>{purgeStep.step1.confirmation_token}</code>
             </div>
 
             {/* Local Copy Notice */}

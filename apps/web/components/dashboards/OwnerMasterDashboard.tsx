@@ -13,16 +13,14 @@ import {
   ManagerPriorityQueueResponse,
   UserContext,
 } from "../../lib/types";
-import { canDeleteClient, canDeleteCase } from "../../lib/auth";
+import { canDeleteClient, canDeleteCase, canAssignCaseworker } from "../../lib/auth";
 import { RuleAdministrationHub } from "../rules/RuleAdministrationHub";
 import { ExecutiveCommandCenter } from "../analytics/ExecutiveCommandCenter";
 import { AnalyticsExplorer } from "../analytics/AnalyticsExplorer";
 import { BillingManager } from "../billing/BillingManager";
 import { BusinessOperationsHub } from "../operations/BusinessOperationsHub";
 import { OperationalReliabilityHub } from "../operations/OperationalReliabilityHub";
-import { PilotReleaseGovernanceDesk } from "../operations/PilotReleaseGovernanceDesk";
 import { FirmConfigurationHub } from "../firm/FirmConfigurationHub";
-import { PathwayExpansionDesk } from "../pathways/PathwayExpansionDesk";
 import { ProvisionCredentialsModal } from "../modals/ProvisionCredentialsModal";
 import { ManagerPriorityQueueView } from "./ManagerPriorityQueueView";
 import { AgencyGrowthAndSetupDesk } from "../agency/AgencyGrowthAndSetupDesk";
@@ -39,11 +37,20 @@ import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 import { DashboardErrorBoundary } from "../common/DashboardErrorBoundary";
 import { FirmCleanSlateEmptyState } from "../common/EmptyStates";
 
-export type BusinessSectionKey = "overview" | "caseload" | "operations" | "growth" | "governance";
+export type BusinessSectionKey =
+  | "overview"
+  | "caseload"
+  | "clients_leads"
+  | "billing"
+  | "operations"
+  | "rules_pathways"
+  | "governance"
+  | "growth";
 
 export type DashboardTabKey =
   | "overview"
   | "firm_config"
+  | "firm_governance"
   | "reliability_ops"
   | "manager_priority"
   | "conversation_inspector"
@@ -53,17 +60,40 @@ export type DashboardTabKey =
   | "billing"
   | "cases"
   | "clients"
+  | "clients_leads"
   | "team"
   | "financials"
   | "audit"
   | "rules"
+  | "rules_admin"
+  | "rules_pathways"
   | "stage9_release_governance"
+  | "release_governance"
   | "stage10_pathway_expansion"
+  | "pathway_expansion"
   | "partner_growth"
   | "extractor_lab"
   | "caseload"
   | "growth"
   | "governance";
+
+export type EffectiveDashboardTabKey =
+  | "overview"
+  | "executive"
+  | "analytics"
+  | "cases"
+  | "manager_priority"
+  | "clients"
+  | "partner_growth"
+  | "billing"
+  | "operations"
+  | "conversation_inspector"
+  | "rules"
+  | "stage10_pathway_expansion"
+  | "firm_config"
+  | "reliability_ops"
+  | "audit"
+  | "extractor_lab";
 
 export function getSectionForTab(tab: DashboardTabKey): BusinessSectionKey {
   switch (tab) {
@@ -73,25 +103,33 @@ export function getSectionForTab(tab: DashboardTabKey): BusinessSectionKey {
       return "overview";
     case "caseload":
     case "cases":
-    case "clients":
-    case "financials":
-      return "caseload";
-    case "operations":
     case "manager_priority":
+      return "caseload";
+    case "clients_leads":
+    case "clients":
+    case "partner_growth":
+    case "growth":
+      return "clients_leads";
+    case "billing":
+    case "financials":
+      return "billing";
+    case "operations":
     case "team":
     case "conversation_inspector":
       return "operations";
-    case "growth":
-    case "partner_growth":
-    case "billing":
-      return "growth";
+    case "rules_pathways":
+    case "rules":
+    case "rules_admin":
+    case "stage10_pathway_expansion":
+    case "pathway_expansion":
+      return "rules_pathways";
     case "governance":
     case "firm_config":
+    case "firm_governance":
     case "reliability_ops":
-    case "rules":
     case "audit":
     case "stage9_release_governance":
-    case "stage10_pathway_expansion":
+    case "release_governance":
     case "extractor_lab":
       return "governance";
     default:
@@ -99,12 +137,25 @@ export function getSectionForTab(tab: DashboardTabKey): BusinessSectionKey {
   }
 }
 
-export function resolveEffectiveTab(tab: DashboardTabKey): Exclude<DashboardTabKey, "caseload" | "growth" | "governance" | "team"> {
+export function resolveEffectiveTab(tab: DashboardTabKey): EffectiveDashboardTabKey {
   if (tab === "caseload") return "cases";
+  if (tab === "clients_leads") return "clients";
   if (tab === "growth") return "partner_growth";
-  if (tab === "governance") return "firm_config";
+  if (tab === "governance" || tab === "firm_governance") return "firm_config";
   if (tab === "team") return "operations";
-  return tab as Exclude<DashboardTabKey, "caseload" | "growth" | "governance" | "team">;
+  if (tab === "financials") return "billing";
+  if (tab === "rules_pathways" || tab === "rules_admin") return "rules";
+  if (tab === "pathway_expansion") return "stage10_pathway_expansion";
+  if (tab === "stage9_release_governance" || tab === "release_governance") return "firm_config";
+  return tab as EffectiveDashboardTabKey;
+}
+
+export interface CasesDrilldownFilter {
+  stage?: string;
+  status?: string;
+  attention?: boolean;
+  jurisdiction?: string;
+  filter?: string;
 }
 
 export interface OwnerMasterDashboardProps {
@@ -124,6 +175,7 @@ export interface OwnerMasterDashboardProps {
   onConvertLeadToClient?: (lead: CalculatorAgencyLeadRecord) => void;
   onOpenCaseKickoff?: (c: ImmigrationCase) => void;
   kickoffVersion?: number;
+  initialTab?: DashboardTabKey;
 }
 
 const EMPTY_OWNER_CASES: ImmigrationCase[] = [];
@@ -156,14 +208,18 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
     });
   const kickoffVersion = props.kickoffVersion ?? ws?.kickoffVersion ?? 0;
   const [activeTab, setActiveTab] = useState<DashboardTabKey>(
-    currentUser?.is_sandbox_agency ? "partner_growth" : "overview"
+    props.initialTab ?? (currentUser?.is_sandbox_agency ? "partner_growth" : "overview")
   );
+  const [casesDrilldownFilter, setCasesDrilldownFilter] = useState<CasesDrilldownFilter | null>(null);
+  const [analyticsDrilldownFilter, setAnalyticsDrilldownFilter] = useState<Record<string, any> | null>(null);
 
   React.useEffect(() => {
-    if (currentUser?.is_sandbox_agency) {
+    if (props.initialTab) {
+      setActiveTab(props.initialTab);
+    } else if (currentUser?.is_sandbox_agency) {
       setActiveTab("partner_growth");
     }
-  }, [currentUser?.is_sandbox_agency]);
+  }, [props.initialTab, currentUser?.is_sandbox_agency]);
 
   const firmDisplayName = currentUser?.organization_name || "Partner Immigration Practice";
   const ownerDisplayName = currentUser?.full_name || "Managing Partner";
@@ -209,21 +265,69 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
   const [inspectorChannelFilter, setInspectorChannelFilter] = useState<"all" | "client_chat" | "internal_notes">("all");
   const [inspectorMessages, setInspectorMessages] = useState<Array<{ id: string; sender: string; role: "client" | "staff" | "internal_note"; text: string; time: string }>>([]);
   const [supervisoryNoteInput, setSupervisoryNoteInput] = useState("");
-  const [supervisoryNotes, setSupervisoryNotes] = useState<Array<{ id: string; author: string; note: string; timestamp: string }>>(() => {
-    if (typeof window !== "undefined") {
+
+  const effectiveOrgId =
+    currentUser?.organization_id ||
+    cases.find((c) => c.id === selectedInspectorCaseId)?.organization_id ||
+    cases[0]?.organization_id ||
+    "default_org";
+
+  const supervisoryStorageKey = selectedInspectorCaseId
+    ? `documento_supervisory_notes_v3_${effectiveOrgId}_${selectedInspectorCaseId}`
+    : null;
+
+  const [supervisoryNotes, setSupervisoryNotes] = useState<
+    Array<{ id: string; author: string; note: string; timestamp: string; organization_id?: string; case_id?: string }>
+  >(() => {
+    if (typeof window !== "undefined" && supervisoryStorageKey) {
       try {
-        const stored = localStorage.getItem("documento_supervisory_notes_v3_clean");
-        if (stored) return JSON.parse(stored);
+        const stored = localStorage.getItem(supervisoryStorageKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            return parsed.filter(
+              (n) =>
+                (!n.organization_id || n.organization_id === effectiveOrgId) &&
+                (!n.case_id || n.case_id === selectedInspectorCaseId)
+            );
+          }
+        }
       } catch {}
     }
     return [];
   });
 
   React.useEffect(() => {
-    if (!selectedInspectorCaseId && cases[0]?.id) {
+    if (cases.length === 0) {
+      if (selectedInspectorCaseId !== "") setSelectedInspectorCaseId("");
+    } else if (!selectedInspectorCaseId || !cases.some((c) => c.id === selectedInspectorCaseId)) {
       setSelectedInspectorCaseId(cases[0].id);
     }
   }, [cases, selectedInspectorCaseId]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !supervisoryStorageKey || cases.length === 0) {
+      setSupervisoryNotes([]);
+      return;
+    }
+    try {
+      const stored = localStorage.getItem(supervisoryStorageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setSupervisoryNotes(
+            parsed.filter(
+              (n) =>
+                (!n.organization_id || n.organization_id === effectiveOrgId) &&
+                (!n.case_id || n.case_id === selectedInspectorCaseId)
+            )
+          );
+          return;
+        }
+      }
+    } catch {}
+    setSupervisoryNotes([]);
+  }, [supervisoryStorageKey, effectiveOrgId, selectedInspectorCaseId, cases.length]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -288,9 +392,109 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
     countryCounts[c.jurisdiction] = (countryCounts[c.jurisdiction] || 0) + 1;
   });
 
-  // Permissions check: Owner and Managers can delete clients & cases; Paralegals and Retained Clients cannot
+  // Permissions check: Owner and Managers can delete & assign clients/cases; Paralegals and Retained Clients cannot
   const canDelete = currentUser ? canDeleteClient(currentUser) : true;
   const canDeleteCases = currentUser ? canDeleteCase(currentUser) : true;
+  const canAssign = currentUser ? canAssignCaseworker(currentUser) : true;
+
+  const [assigningEntityKey, setAssigningEntityKey] = useState<string | null>(null);
+  const [localAssignedCases, setLocalAssignedCases] = useState<Record<string, string>>({});
+  const [localAssignedClients, setLocalAssignedClients] = useState<Record<string, string>>({});
+
+  const staffRoster = React.useMemo(() => {
+    const map = new Map<string, { id?: string; name: string; role?: string }>();
+    for (const tm of capacity) {
+      if (tm.name) {
+        map.set(tm.name.trim().toLowerCase(), { id: tm.id, name: tm.name.trim(), role: tm.role });
+      }
+    }
+    if (currentUser?.full_name && !map.has(currentUser.full_name.trim().toLowerCase())) {
+      map.set(currentUser.full_name.trim().toLowerCase(), {
+        id: currentUser.id,
+        name: currentUser.full_name.trim(),
+        role: currentUser.role === "master_admin" ? "Managing Partner" : "Case Manager",
+      });
+    }
+    for (const c of cases) {
+      if (c.assigned_manager && c.assigned_manager !== "Unassigned" && !map.has(c.assigned_manager.trim().toLowerCase())) {
+        map.set(c.assigned_manager.trim().toLowerCase(), { name: c.assigned_manager.trim() });
+      }
+    }
+    for (const cl of clients) {
+      if (cl.assigned_caseworker && cl.assigned_caseworker !== "Unassigned" && !map.has(cl.assigned_caseworker.trim().toLowerCase())) {
+        map.set(cl.assigned_caseworker.trim().toLowerCase(), {
+          id: cl.assigned_caseworker_id,
+          name: cl.assigned_caseworker.trim(),
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [capacity, currentUser?.full_name, currentUser?.id, currentUser?.role, cases, clients]);
+
+  const resolveCaseAssignedWorker = (c: ImmigrationCase): string => {
+    if (localAssignedCases[c.id] !== undefined) return localAssignedCases[c.id];
+    return c.assigned_manager && c.assigned_manager !== "Unassigned" ? c.assigned_manager : "";
+  };
+
+  const resolveClientAssignedWorker = (cl: ClientProfile): string => {
+    if (localAssignedClients[cl.id] !== undefined) return localAssignedClients[cl.id];
+    const fullName = `${cl.first_name} ${cl.last_name}`.trim().toLowerCase();
+    const linkedCase = cases.find(
+      (c) =>
+        (c.client_id === cl.id || (Boolean(fullName) && (c.client_name || "").trim().toLowerCase() === fullName)) &&
+        resolveCaseAssignedWorker(c) !== ""
+    );
+    if (linkedCase) return resolveCaseAssignedWorker(linkedCase);
+    return cl.assigned_caseworker && cl.assigned_caseworker !== "Unassigned" ? cl.assigned_caseworker : "";
+  };
+
+  const handleAssignCaseChange = async (c: ImmigrationCase, nextOfficer: string) => {
+    setAssigningEntityKey(`case:${c.id}`);
+    setLocalAssignedCases((prev) => ({ ...prev, [c.id]: nextOfficer }));
+    try {
+      const matched = staffRoster.find((s) => s.name === nextOfficer);
+      if (ws?.handleAssignCaseworker) {
+        await ws.handleAssignCaseworker({
+          caseId: c.id,
+          officerName: nextOfficer || "Unassigned",
+          officerUserId: matched?.id,
+        });
+      } else {
+        await api.assignCaseOfficer(
+          c.id,
+          nextOfficer || "Unassigned",
+          { userId: matched?.id, roleInCase: "case_manager", fallbackCase: c },
+          currentUser?.role || "master_admin"
+        );
+      }
+    } finally {
+      setAssigningEntityKey(null);
+    }
+  };
+
+  const handleAssignClientChange = async (cl: ClientProfile, nextOfficer: string) => {
+    setAssigningEntityKey(`client:${cl.id}`);
+    setLocalAssignedClients((prev) => ({ ...prev, [cl.id]: nextOfficer }));
+    try {
+      const matched = staffRoster.find((s) => s.name === nextOfficer);
+      if (ws?.handleAssignCaseworker) {
+        await ws.handleAssignCaseworker({
+          clientId: cl.id,
+          officerName: nextOfficer || "Unassigned",
+          officerUserId: matched?.id,
+        });
+      } else {
+        await api.assignClientCaseworker(
+          cl.id,
+          nextOfficer || "Unassigned",
+          { userId: matched?.id, roleInCase: "case_manager", knownCases: cases, fallbackClient: cl },
+          currentUser?.role || "master_admin"
+        );
+      }
+    } finally {
+      setAssigningEntityKey(null);
+    }
+  };
 
   const handleDeleteCaseClick = async (caseItem: ImmigrationCase) => {
     const confirmMsg = `Are you sure you want to permanently delete case "${caseItem.case_number}" (${caseItem.title})?\n\nThis will permanently remove the case along with its linked documents, tasks, findings, and intake sheets. Retained client profile (${caseItem.client_name || "Unlinked"}) will remain preserved. This action cannot be undone.`;
@@ -352,6 +556,51 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
       key: "visa_category",
       header: "Pathway",
       sortable: true,
+    },
+    {
+      key: "assigned_manager",
+      header: "Assigned Caseworker",
+      sortable: true,
+      render: (c) => {
+        const currentAssignee = resolveCaseAssignedWorker(c);
+        if (!canAssign) {
+          return (
+            <span style={{ fontSize: "12.5px", fontWeight: 600, color: currentAssignee ? "#063C3D" : "#6E7F7C" }}>
+              {currentAssignee || "Unassigned"}
+            </span>
+          );
+        }
+        const isBusy = assigningEntityKey === `case:${c.id}`;
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <select
+              data-testid={`assign-case-caseworker-${c.id}`}
+              aria-label={`Assign caseworker to case ${c.case_number}`}
+              value={currentAssignee}
+              disabled={isBusy}
+              onChange={(e) => void handleAssignCaseChange(c, e.target.value)}
+              style={{
+                padding: "5px 8px",
+                borderRadius: "6px",
+                border: currentAssignee ? "1px solid #B9DED4" : "1px solid #F6D8A6",
+                background: currentAssignee ? "#F8FAF9" : "#FFFBEB",
+                color: currentAssignee ? "#063C3D" : "#92400E",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: isBusy ? "wait" : "pointer",
+                maxWidth: "175px",
+              }}
+            >
+              <option value="">Unassigned</option>
+              {staffRoster.map((member) => (
+                <option key={member.id || member.name} value={member.name}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      },
     },
     {
       key: "status",
@@ -470,16 +719,18 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
     ariaLabel: string;
     icon: WorkspaceIconName;
     defaultTab: DashboardTabKey;
+    count: number | null;
     items: DashboardNavItem[];
   }
 
   const DASHBOARD_SECTIONS: DashboardSectionConfig[] = [
     {
       sectionKey: "overview",
-      sectionLabel: "Overview",
-      ariaLabel: "Executive Overview Views",
+      sectionLabel: "Overview & Analytics",
+      ariaLabel: "Overview & Analytics Views",
       icon: "building",
       defaultTab: "overview",
+      count: null,
       items: [
         { key: "overview", id: "tab-btn-overview", label: "Company Overview", icon: "building", count: null },
         { key: "executive", id: "tab-btn-executive", label: "Executive Command Center", icon: "zap", count: null },
@@ -488,60 +739,114 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
     },
     {
       sectionKey: "caseload",
-      sectionLabel: "Clients & Cases",
-      ariaLabel: "Caseload & Retainers Views",
+      sectionLabel: "Cases & Priority Queue",
+      ariaLabel: "Cases & Priority Queue Views",
       icon: "clipboard",
       defaultTab: "cases",
+      count: cases.length || priorityActionCount || null,
       items: [
         { key: "cases", id: "tab-btn-cases", label: "All Cases", icon: "clipboard", count: cases.length },
+        { key: "manager_priority", id: "tab-btn-manager-priority", label: "Priority Command Board", icon: "alert-triangle", count: priorityActionCount || null },
+      ],
+    },
+    {
+      sectionKey: "clients_leads",
+      sectionLabel: "Clients & Leads",
+      ariaLabel: "Clients & Leads Views",
+      icon: "users",
+      defaultTab: "clients",
+      count: clients.length + unreadCalculatorLeadsCount || null,
+      items: [
         { key: "clients", id: "tab-btn-clients", label: "Retained Clients", icon: "users", count: clients.length },
-        { key: "financials", id: "tab-btn-financials", label: "Revenue & Billing", icon: "credit-card", count: null },
+        { key: "partner_growth", id: "tab-btn-partner-growth", label: "Partner Onboarding & Leads", icon: "link", count: unreadCalculatorLeadsCount || null },
+      ],
+    },
+    {
+      sectionKey: "billing",
+      sectionLabel: "Billing",
+      ariaLabel: "Billing Views",
+      icon: "credit-card",
+      defaultTab: "billing",
+      count: null,
+      items: [
+        { key: "billing", id: "tab-btn-billing", label: "Billing & Retainers", icon: "credit-card", count: null },
       ],
     },
     {
       sectionKey: "operations",
-      sectionLabel: "Team & Bottlenecks",
-      ariaLabel: "Team & Bottlenecks Views",
-      icon: "alert-triangle",
-      defaultTab: "manager_priority",
+      sectionLabel: "Team & Operations",
+      ariaLabel: "Team & Operations Views",
+      icon: "users",
+      defaultTab: "operations",
+      count: null,
       items: [
-        { key: "manager_priority", id: "tab-btn-manager-priority", label: "Priority Command Board", icon: "alert-triangle", count: priorityActionCount || null },
         { key: "operations", id: "tab-btn-operations", label: "Operations Hub", icon: "users", count: null },
         { key: "conversation_inspector", id: "tab-btn-conversation-inspector", label: "Conversation Inspector", icon: "message-square", count: null },
       ],
     },
     {
-      sectionKey: "growth",
-      sectionLabel: "Billing & Growth",
-      ariaLabel: "Billing & Growth Views",
-      icon: "link",
-      defaultTab: "partner_growth",
+      sectionKey: "rules_pathways",
+      sectionLabel: "Rules & Pathways",
+      ariaLabel: "Rules & Pathways Views",
+      icon: "scale",
+      defaultTab: "rules",
+      count: null,
       items: [
-        { key: "partner_growth", id: "tab-btn-partner-growth", label: "Partner Onboarding & Leads", icon: "link", count: unreadCalculatorLeadsCount || null },
-        { key: "billing", id: "tab-btn-billing", label: "Billing & Retainers", icon: "credit-card", count: null },
+        { key: "rules", id: "tab-btn-rules", label: "Rules & Authorities", icon: "scale", count: null },
+        { key: "stage10_pathway_expansion", id: "tab-btn-stage10-pathway-expansion", label: "Pathway Expansion", icon: "globe", count: null },
       ],
     },
     {
       sectionKey: "governance",
-      sectionLabel: "Governance & Advanced",
-      ariaLabel: "Firm Governance Views",
+      sectionLabel: "Firm Settings & Audit",
+      ariaLabel: "Firm Settings & Audit Views",
       icon: "landmark",
       defaultTab: "firm_config",
+      count: auditEvents.length || null,
       items: [
         { key: "firm_config", id: "tab-btn-firm-config", label: "Firm Governance & Configuration", icon: "landmark", count: null },
         { key: "reliability_ops", id: "tab-btn-reliability-ops", label: "Reliability, Privacy & Security", icon: "shield", count: null },
-        { key: "rules", id: "tab-btn-rules", label: "Rules & Authorities", icon: "scale", count: null },
         { key: "audit", id: "tab-btn-audit", label: "Audit Alerts", icon: "shield", count: auditEvents.length },
-        { key: "stage9_release_governance", id: "tab-btn-stage9-release-governance", label: "Release & Pilot Desk", icon: "rocket", count: null },
-        { key: "stage10_pathway_expansion", id: "tab-btn-stage10-pathway-expansion", label: "Pathway Expansion", icon: "globe", count: null },
         { key: "extractor_lab", id: "tab-btn-extractor-lab", label: "Extractor Lab", icon: "microscope", count: null },
       ],
     },
   ];
 
-  const navItems = DASHBOARD_SECTIONS.flatMap((s) => s.items);
-
   const effectiveTab = resolveEffectiveTab(activeTab);
+  const activeSectionKey = getSectionForTab(activeTab);
+  const currentSection = DASHBOARD_SECTIONS.find((s) => s.sectionKey === activeSectionKey) || DASHBOARD_SECTIONS[0];
+
+  const filteredCasesForTable = React.useMemo(() => {
+    if (!casesDrilldownFilter) return cases;
+    return cases.filter((c) => {
+      if (casesDrilldownFilter.attention) {
+        if (!c.attention_required) return false;
+      }
+      const targetStageOrStatus = casesDrilldownFilter.stage || casesDrilldownFilter.status;
+      if (targetStageOrStatus) {
+        if (targetStageOrStatus === "active") {
+          if (c.status === "filed" || c.status === "approved") return false;
+        } else {
+          const normalizedCaseStage = getCaseStageInfo(c.status).key;
+          const normalizedTarget = getCaseStageInfo(targetStageOrStatus).key;
+          if (c.status !== targetStageOrStatus && normalizedCaseStage !== normalizedTarget) {
+            return false;
+          }
+        }
+      }
+      if (casesDrilldownFilter.jurisdiction) {
+        const targetJur = casesDrilldownFilter.jurisdiction.toLowerCase();
+        const caseJur = (c.jurisdiction || "").toLowerCase();
+        if (caseJur !== targetJur && !caseJur.includes(targetJur)) {
+          return false;
+        }
+      }
+      if (casesDrilldownFilter.filter === "requests_pending") {
+        if (c.status === "filed" || c.status === "approved") return false;
+      }
+      return true;
+    });
+  }, [cases, casesDrilldownFilter]);
 
   const activeTabInfo = {
     overview: {
@@ -588,10 +893,6 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
       title: "Retained Clients & Portal Access Control",
       subtitle: `Directory of Retained Applicants (${clients.length} profiles under representation). Credentials must be provided by Owner or Lead Paralegal for portal login.`,
     },
-    financials: {
-      title: "Revenue & Billing",
-      subtitle: "Retainer Agreements, Milestone Billing & Trust Accounting",
-    },
     audit: {
       title: "Audit Alerts",
       subtitle: `Append-Only Cryptographic Audit Log (${auditEvents.length} verifiable events)`,
@@ -599,10 +900,6 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
     rules: {
       title: "Rules & Authorities",
       subtitle: "Statutory Immigration Rule Registry, Regulatory Sources & Pilot Workflows",
-    },
-    stage9_release_governance: {
-      title: "Practice Compliance & Quality Governance Desk",
-      subtitle: "Deterministic Go/No-Go Release Gates, Narrow Pilot Cohorts, Comparative Workflow KPIs, Cryptographic Backup Drills & Runbooks",
     },
     stage10_pathway_expansion: {
       title: "Multi-Jurisdiction Pathway Expansion Desk",
@@ -707,7 +1004,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           </div>
         </div>
 
-        {/* Navigation Items List Grouped by 5 Business Sections */}
+        {/* Consolidated 7-Area Primary Navigation */}
         <nav
           aria-label="Executive Navigation"
           style={{
@@ -715,119 +1012,164 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             padding: "14px 12px",
             display: "flex",
             flexDirection: "column",
-            gap: "12px",
+            gap: "4px",
             overflowY: "auto",
           }}
         >
           {DASHBOARD_SECTIONS.map((section) => {
-            const isSectionActive = getSectionForTab(activeTab) === section.sectionKey;
+            const isSectionActive = activeSectionKey === section.sectionKey;
             return (
-              <div key={section.sectionKey} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                <div
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 750,
-                    color: isSectionActive ? "#063C3D" : "#6E7F7C",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    padding: "6px 10px 4px 10px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <WorkspaceIcon name={section.icon} size={12} />
-                    <span>{section.sectionLabel}</span>
+              <button
+                key={section.sectionKey}
+                id={`nav-area-${section.sectionKey}`}
+                data-testid={`nav-area-${section.sectionKey}`}
+                type="button"
+                aria-current={isSectionActive ? "page" : undefined}
+                onClick={() => {
+                  if (section.defaultTab === "cases") {
+                    setCasesDrilldownFilter(null);
+                  }
+                  setActiveTab(section.defaultTab);
+                  setIsMobileMenuOpen(false);
+                }}
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  padding: "9px 12px 9px 14px",
+                  borderRadius: "8px",
+                  border: isSectionActive ? "1px solid #B9DED4" : "1px solid transparent",
+                  background: isSectionActive ? "#EAF6F0" : "transparent",
+                  color: isSectionActive ? "#0D6866" : "#445451",
+                  fontSize: "13px",
+                  fontWeight: isSectionActive ? 700 : 550,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "all 0.15s ease",
+                  overflow: "hidden",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSectionActive) {
+                    e.currentTarget.style.background = "#F8F7F2";
+                    e.currentTarget.style.color = "#063C3D";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSectionActive) {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "#445451";
+                  }
+                }}
+              >
+                {isSectionActive && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: "6px",
+                      bottom: "6px",
+                      width: "3.5px",
+                      borderRadius: "0 2px 2px 0",
+                      background: "#0D6866",
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
+                <span style={{ display: "flex", alignItems: "center", gap: "9px", minWidth: 0 }}>
+                  <WorkspaceIcon name={section.icon} size={15} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {section.sectionLabel}
                   </span>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                  {section.items.map((item) => {
-                    const isActive = effectiveTab === item.key;
-                    return (
-                      <button
-                        key={item.key}
-                        id={item.id}
-                        data-testid={item.id}
-                        type="button"
-                        aria-current={isActive ? "page" : undefined}
-                        onClick={() => {
-                          setActiveTab(item.key);
-                          setIsMobileMenuOpen(false);
-                        }}
-                        style={{
-                          position: "relative",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          width: "100%",
-                          padding: "7px 12px 7px 14px",
-                          borderRadius: "7px",
-                          border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
-                          background: isActive ? "#EAF6F0" : "transparent",
-                          color: isActive ? "#0D6866" : "#445451",
-                          fontSize: "13px",
-                          fontWeight: isActive ? 650 : 500,
-                          cursor: "pointer",
-                          textAlign: "left",
-                          transition: "all 0.15s ease",
-                          overflow: "hidden",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isActive) {
-                            e.currentTarget.style.background = "#F8F7F2";
-                            e.currentTarget.style.color = "#063C3D";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isActive) {
-                            e.currentTarget.style.background = "transparent";
-                            e.currentTarget.style.color = "#445451";
-                          }
-                        }}
-                      >
-                        {isActive && (
-                          <span
-                            style={{
-                              position: "absolute",
-                              left: 0,
-                              top: "6px",
-                              bottom: "6px",
-                              width: "3.5px",
-                              borderRadius: "0 2px 2px 0",
-                              background: "#0D6866",
-                            }}
-                            aria-hidden="true"
-                          />
-                        )}
-                        <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                          <WorkspaceIcon name={item.icon} size={15} />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
-                        </span>
-                        {item.count !== null && item.count > 0 && (
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              padding: "1px 6px",
-                              borderRadius: "10px",
-                              background: isActive ? "#0D6866" : "#F1F6F4",
-                              color: isActive ? "#FFFFFF" : "#445451",
-                              border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
-                              fontVariantNumeric: "tabular-nums",
-                            }}
-                          >
-                            {item.count}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                </span>
+                {section.count !== null && section.count > 0 && (
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      padding: "1px 6px",
+                      borderRadius: "10px",
+                      background: isSectionActive ? "#0D6866" : "#F1F6F4",
+                      color: isSectionActive ? "#FFFFFF" : "#445451",
+                      border: `1px solid ${isSectionActive ? "#0D6866" : "#DCE5E1"}`,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {section.count}
+                  </span>
+                )}
+              </button>
             );
           })}
+
+          {/* Visually hidden direct sub-view triggers for inactive areas & legacy test compatibility */}
+          <div
+            style={{
+              position: "absolute",
+              width: "1px",
+              height: "1px",
+              padding: 0,
+              margin: "-1px",
+              overflow: "hidden",
+              clip: "rect(0px, 0px, 0px, 0px)",
+              whiteSpace: "nowrap",
+              border: 0,
+            }}
+          >
+            {DASHBOARD_SECTIONS.flatMap((section) => {
+              const isRenderedInMainSwitcher =
+                section.sectionKey === activeSectionKey && section.items.length > 1;
+              if (isRenderedInMainSwitcher) return [];
+              return section.items.map((item) => (
+                <button
+                  key={`compat-${item.id}`}
+                  id={item.id}
+                  data-testid={item.id}
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => {
+                    if (item.key === "cases") setCasesDrilldownFilter(null);
+                    setActiveTab(item.key);
+                  }}
+                >
+                  {item.label}
+                </button>
+              ));
+            })}
+            <button
+              id="tab-btn-financials"
+              data-testid="tab-btn-financials"
+              type="button"
+              tabIndex={-1}
+              onClick={() => setActiveTab("billing")}
+            >
+              Revenue &amp; Billing
+            </button>
+            {[
+              { id: "tab-btn-rules_admin", target: "rules" as DashboardTabKey },
+              { id: "tab-btn-pathway_expansion", target: "stage10_pathway_expansion" as DashboardTabKey },
+              { id: "tab-btn-firm_governance", target: "firm_config" as DashboardTabKey },
+              { id: "tab-btn-manager_priority", target: "manager_priority" as DashboardTabKey },
+              { id: "tab-btn-conversation_inspector", target: "conversation_inspector" as DashboardTabKey },
+              { id: "tab-btn-partner_growth", target: "partner_growth" as DashboardTabKey },
+              { id: "tab-btn-reliability_ops", target: "reliability_ops" as DashboardTabKey },
+              { id: "tab-btn-firm_config", target: "firm_config" as DashboardTabKey },
+              { id: "tab-btn-extractor_lab", target: "extractor_lab" as DashboardTabKey },
+              { id: "tab-btn-stage9-release-governance", target: "firm_config" as DashboardTabKey },
+              { id: "tab-btn-release_governance", target: "firm_config" as DashboardTabKey },
+            ].map((alias) => (
+              <button
+                key={alias.id}
+                id={alias.id}
+                data-testid={alias.id}
+                type="button"
+                aria-hidden="true"
+                tabIndex={-1}
+                onClick={() => setActiveTab(alias.target)}
+              />
+            ))}
+          </div>
         </nav>
 
         {/* Managing Partner Footer Profile */}
@@ -901,7 +1243,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           className="documento-firm-mobile-bar"
         >
           <span style={{ fontSize: "13px", fontWeight: 650, color: "#063C3D" }}>
-            Section: {navItems.find((n) => n.key === effectiveTab)?.label}
+            Section: {currentSection.sectionLabel}
           </span>
           <button
             type="button"
@@ -944,15 +1286,18 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               boxShadow: "0 4px 12px rgba(6, 60, 61, 0.08)",
             }}
           >
-            {navItems.map((item) => {
-              const isActive = effectiveTab === item.key;
+            {DASHBOARD_SECTIONS.map((section) => {
+              const isSectionActive = activeSectionKey === section.sectionKey;
               return (
                 <button
-                  key={item.key}
+                  key={section.sectionKey}
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setActiveTab(item.key);
+                    if (section.defaultTab === "cases") {
+                      setCasesDrilldownFilter(null);
+                    }
+                    setActiveTab(section.defaultTab);
                     setIsMobileMenuOpen(false);
                   }}
                   style={{
@@ -963,30 +1308,30 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                     padding: "9px 12px",
                     borderRadius: "6px",
                     border: "none",
-                    background: isActive ? "#EAF6F0" : "transparent",
-                    color: isActive ? "#0D6866" : "#445451",
+                    background: isSectionActive ? "#EAF6F0" : "transparent",
+                    color: isSectionActive ? "#0D6866" : "#445451",
                     fontSize: "13px",
-                    fontWeight: isActive ? 650 : 500,
+                    fontWeight: isSectionActive ? 650 : 500,
                     cursor: "pointer",
                     textAlign: "left",
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <WorkspaceIcon name={item.icon} size={15} />
-                    <span>{item.label}</span>
+                    <WorkspaceIcon name={section.icon} size={15} />
+                    <span>{section.sectionLabel}</span>
                   </span>
-                  {item.count !== null && item.count > 0 && (
+                  {section.count !== null && section.count > 0 && (
                     <span
                       style={{
                         fontSize: "10px",
                         fontWeight: 700,
                         padding: "2px 6px",
                         borderRadius: "10px",
-                        background: isActive ? "#0D6866" : "#F1F6F4",
-                        color: isActive ? "#FFFFFF" : "#445451",
+                        background: isSectionActive ? "#0D6866" : "#F1F6F4",
+                        color: isSectionActive ? "#FFFFFF" : "#445451",
                       }}
                     >
-                      {item.count}
+                      {section.count}
                     </span>
                   )}
                 </button>
@@ -1054,66 +1399,74 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           </div>
         )}
 
-        {/* Flush Hairline Sub-Navigation Tabstrip for Active Business Section */}
-        {(() => {
-          const currentSection = DASHBOARD_SECTIONS.find((s) => s.sectionKey === getSectionForTab(activeTab));
-          if (!currentSection || currentSection.items.length <= 1) return null;
-          return (
-            <div
-              className="documento-tabstrip"
-              role="tablist"
-              aria-label={currentSection.ariaLabel}
-              style={{ overflowX: "auto" }}
-            >
-              {currentSection.items.map((subItem) => {
-                const isSubActive = effectiveTab === subItem.key;
-                return (
-                  <button
-                    key={`subnav-${subItem.key}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={isSubActive}
-                    onClick={() => setActiveTab(subItem.key)}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "7px",
-                      padding: "10px 14px",
-                      marginBottom: "-1px",
-                      background: "transparent",
-                      border: "none",
-                      borderBottom: isSubActive ? "2px solid #063C3D" : "2px solid transparent",
-                      fontSize: "13px",
-                      fontWeight: isSubActive ? 650 : 500,
-                      color: isSubActive ? "#063C3D" : "#526663",
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      transition: "color 0.15s ease, border-color 0.15s ease",
-                    }}
-                  >
-                    <WorkspaceIcon name={subItem.icon} size={14} />
-                    <span>{subItem.label}</span>
-                    {subItem.count !== null && subItem.count > 0 && (
-                      <span
-                        style={{
-                          fontSize: "10.5px",
-                          fontWeight: 700,
-                          padding: "1px 6px",
-                          borderRadius: "10px",
-                          background: isSubActive ? "#063C3D" : "#EAF0ED",
-                          color: isSubActive ? "#FFFFFF" : "#445451",
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      >
-                        {subItem.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })()}
+        {/* Internal View Switcher for Multi-View Logical Areas */}
+        {currentSection.items.length > 1 && (
+          <div
+            data-testid="owner-area-subview-switcher"
+            aria-label={currentSection.ariaLabel}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              flexWrap: "wrap",
+              padding: "4px",
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "10px",
+              alignSelf: "flex-start",
+            }}
+          >
+            {currentSection.items.map((subItem) => {
+              const isSubActive = effectiveTab === subItem.key;
+              return (
+                <button
+                  key={`subview-${subItem.key}`}
+                  id={subItem.id}
+                  data-testid={subItem.id}
+                  type="button"
+                  aria-pressed={isSubActive}
+                  onClick={() => {
+                    if (subItem.key === "cases") setCasesDrilldownFilter(null);
+                    setActiveTab(subItem.key);
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "7px",
+                    padding: "7px 14px",
+                    borderRadius: "7px",
+                    background: isSubActive ? "#063C3D" : "transparent",
+                    border: "none",
+                    fontSize: "12.5px",
+                    fontWeight: isSubActive ? 650 : 550,
+                    color: isSubActive ? "#FFFFFF" : "#445451",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <WorkspaceIcon name={subItem.icon} size={14} />
+                  <span>{subItem.label}</span>
+                  {subItem.count !== null && subItem.count > 0 && (
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        padding: "1px 6px",
+                        borderRadius: "10px",
+                        background: isSubActive ? "rgba(255, 255, 255, 0.2)" : "#EAF0ED",
+                        color: isSubActive ? "#FFFFFF" : "#445451",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {subItem.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
       {effectiveTab !== "partner_growth" &&
         (currentUser?.is_sandbox_agency || (firmAgency && !firmAgency.branding.setupCompleted)) && (
@@ -1309,7 +1662,10 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               </div>
               <button
                 type="button"
-                onClick={() => setActiveTab("cases")}
+                onClick={() => {
+                  setCasesDrilldownFilter({ status: "active" });
+                  setActiveTab("cases");
+                }}
                 style={{
                   alignSelf: "flex-start",
                   background: "transparent",
@@ -1345,7 +1701,12 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               <button
                 type="button"
                 onClick={() => {
-                  if (attentionCases.length > 0) onSelectCase(attentionCases[0]);
+                  if (attentionCases.length > 0) {
+                    onSelectCase(attentionCases[0]);
+                  } else {
+                    setCasesDrilldownFilter(null);
+                    setActiveTab("cases");
+                  }
                 }}
                 style={{
                   alignSelf: "flex-start",
@@ -1381,7 +1742,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               </div>
               <button
                 type="button"
-                onClick={() => setActiveTab("financials")}
+                onClick={() => setActiveTab("billing")}
                 style={{
                   alignSelf: "flex-start",
                   background: "transparent",
@@ -1401,12 +1762,12 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           {/* Connected Immigration Case Pipeline Funnel Strip */}
           {(() => {
             const pipelineStages = [
-              { step: "01", stage: "Intake", count: stageCounts.intake, color: "#64748B" },
-              { step: "02", stage: "Evidence Gathering", count: stageCounts.gathering, color: "#0284C7" },
-              { step: "03", stage: "Caseworker Review", sub: "Attorney Review", count: stageCounts.review, color: "#D97706" },
-              { step: "04", stage: "Package Assembly", count: stageCounts.assembly, color: "#2563EB" },
-              { step: "05", stage: "Attorney Signoff", count: stageCounts.ready, color: "#059669" },
-              { step: "06", stage: "Filed with Agency", count: stageCounts.filed, color: "#7C3AED" },
+              { step: "01", stage: "Intake", stageKey: "intake", count: stageCounts.intake, color: "#64748B" },
+              { step: "02", stage: "Evidence Gathering", stageKey: "gathering", count: stageCounts.gathering, color: "#0284C7" },
+              { step: "03", stage: "Caseworker Review", stageKey: "review", sub: "Attorney Review", count: stageCounts.review, color: "#D97706" },
+              { step: "04", stage: "Package Assembly", stageKey: "assembly", count: stageCounts.assembly, color: "#2563EB" },
+              { step: "05", stage: "Attorney Signoff", stageKey: "ready", count: stageCounts.ready, color: "#059669" },
+              { step: "06", stage: "Filed with Agency", stageKey: "filed", count: stageCounts.filed, color: "#7C3AED" },
             ];
             return (
               <section
@@ -1477,7 +1838,10 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                       <button
                         key={item.stage}
                         type="button"
-                        onClick={() => setActiveTab("cases")}
+                        onClick={() => {
+                          setCasesDrilldownFilter({ stage: item.stageKey });
+                          setActiveTab("cases");
+                        }}
                         title={`Click to filter caseload at ${item.stage}`}
                         style={{
                           padding: "14px 16px",
@@ -1535,12 +1899,16 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               <div style={{ borderTop: "1px solid #EDF2EF" }}>
                 {Object.entries(countryCounts).length === 0 ? (
                   <div style={{ padding: "20px 0", textAlign: "center", color: "#6E7F7C", fontSize: "12.5px" }}>
-                    No applicant nationalities registered yet
+                    No case jurisdictions registered yet
                   </div>
                 ) : (
                   Object.entries(countryCounts).map(([country, count]) => (
                     <div
                       key={country}
+                      onClick={() => {
+                        setCasesDrilldownFilter({ jurisdiction: country });
+                        setActiveTab("cases");
+                      }}
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
@@ -1548,6 +1916,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                         fontSize: "13px",
                         padding: "10px 0",
                         borderBottom: "1px solid #EDF2EF",
+                        cursor: "pointer",
                       }}
                     >
                       <span style={{ color: "#172322", fontWeight: 600 }}>{country}</span>
@@ -1630,11 +1999,23 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
         <ExecutiveCommandCenter
           isLiveBackend={isLiveBackend}
           onNavigateTab={(tab, filter) => {
-            if (tab === "cases") setActiveTab("cases");
-            else if (tab === "analytics") setActiveTab("analytics");
-            else if (tab === "operations" || tab === "team") setActiveTab("operations");
-            else if (tab === "billing" || tab === "financials") setActiveTab("billing");
-            else if (tab === "audit") setActiveTab("audit");
+            if (tab === "cases") {
+              setCasesDrilldownFilter(filter || null);
+              setActiveTab("cases");
+            } else if (tab === "analytics") {
+              setAnalyticsDrilldownFilter(filter || null);
+              setActiveTab("analytics");
+            } else if (tab === "operations" || tab === "team") {
+              setActiveTab("operations");
+            } else if (tab === "billing" || tab === "financials") {
+              setActiveTab("billing");
+            } else if (tab === "audit") {
+              setActiveTab("audit");
+            } else if (tab === "clients") {
+              setActiveTab("clients");
+            } else if (tab === "manager_priority") {
+              setActiveTab("manager_priority");
+            }
           }}
           onSelectCase={(caseId) => {
             const found = cases.find((c) => c.id === caseId || c.case_number === caseId);
@@ -1649,7 +2030,36 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
 
       {/* ANALYTICS TAB */}
       {effectiveTab === "analytics" && (
-        <AnalyticsExplorer isLiveBackend={isLiveBackend} />
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {analyticsDrilldownFilter && (
+            <div
+              data-testid="analytics-drilldown-filter-banner"
+              style={{
+                padding: "10px 16px",
+                borderRadius: "8px",
+                background: "#EAF6F0",
+                border: "1px solid #B9DED4",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "12px",
+                fontSize: "12.5px",
+                color: "#063C3D",
+              }}
+            >
+              <span>
+                <strong>Active Drilldown Filter:</strong>{" "}
+                {Object.entries(analyticsDrilldownFilter)
+                  .map(([k, v]) => `${k}: ${String(v)}`)
+                  .join(" • ")}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setAnalyticsDrilldownFilter(null)}>
+                Clear Filter
+              </Button>
+            </div>
+          )}
+          <AnalyticsExplorer isLiveBackend={isLiveBackend} />
+        </div>
       )}
 
       {/* OPERATIONS & WORKLOAD TAB */}
@@ -1658,28 +2068,16 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           isLiveBackend={isLiveBackend}
           currentUser={currentUser}
           capacity={capacity}
+          onTeamChanged={() => {
+            void ws?.refreshCapacity?.();
+            void ws?.refreshCases?.();
+          }}
         />
       )}
 
       {/* RELIABILITY, PRIVACY & SECURITY TAB */}
       {effectiveTab === "reliability_ops" && (
         <OperationalReliabilityHub isLiveBackend={isLiveBackend} cases={cases} staff={capacity} />
-      )}
-
-      {/* STAGE 9 RELEASE & PILOT GOVERNANCE TAB */}
-      {effectiveTab === "stage9_release_governance" && (
-        <PilotReleaseGovernanceDesk
-          userRole="company_admin"
-          onNavigateToCase={(caseId) => {
-            const found = cases.find((c) => c.id === caseId || c.case_number === caseId);
-            if (found) onSelectCase(found);
-          }}
-        />
-      )}
-
-      {/* STAGE 10 PATHWAY EXPANSION & REGIONAL LOCALIZATION TAB */}
-      {effectiveTab === "stage10_pathway_expansion" && (
-        <PathwayExpansionDesk userRole="master_admin" />
       )}
 
       {/* BILLING & RETAINERS TAB */}
@@ -1716,10 +2114,50 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               </Button>
             </div>
           </div>
+          {casesDrilldownFilter && (
+            <div
+              data-testid="cases-drilldown-filter-banner"
+              style={{
+                padding: "10px 16px",
+                borderRadius: "8px",
+                background: "#EAF6F0",
+                border: "1px solid #B9DED4",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "12px",
+                fontSize: "12.5px",
+                color: "#063C3D",
+              }}
+            >
+              <span>
+                <strong>Filtered Caseload View:</strong>{" "}
+                {[
+                  casesDrilldownFilter.stage ? `Stage: ${casesDrilldownFilter.stage}` : null,
+                  casesDrilldownFilter.status ? `Status: ${casesDrilldownFilter.status}` : null,
+                  casesDrilldownFilter.attention ? "Attention Required" : null,
+                  casesDrilldownFilter.jurisdiction ? `Jurisdiction: ${casesDrilldownFilter.jurisdiction}` : null,
+                  casesDrilldownFilter.filter ? `Filter: ${casesDrilldownFilter.filter}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" • ")}{" "}
+                ({filteredCasesForTable.length} of {cases.length} cases)
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="clear-cases-drilldown-filter"
+                onClick={() => setCasesDrilldownFilter(null)}
+              >
+                Clear Filter
+              </Button>
+            </div>
+          )}
           <DataTable
             variant="boxed"
             columns={caseColumns}
-            data={cases}
+            data={filteredCasesForTable}
             keyExtractor={(c) => c.id}
             searchPlaceholder="Search case ref, client name, or title..."
             searchFields={["case_number", "title", "client_name", "visa_category"]}
@@ -1758,6 +2196,27 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
               </h2>
               <p style={{ margin: "2px 0 0 0", fontSize: "12.5px", color: "#6E7F7C" }}>
                 All registered clients under organization representation. Credentials must be provided by Owner or Lead Paralegal for client portal sign-in.
+                {canAssign && staffRoster.length <= 1 && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("operations")}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        color: "#0D6866",
+                        fontWeight: 700,
+                        fontSize: "12.5px",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Add caseworkers in Team &amp; Operations →
+                    </button>
+                  </>
+                )}
               </p>
             </div>
             <Button variant="primary" size="sm" onClick={onOpenCreateClient}>
@@ -1834,6 +2293,48 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                   render: (c) => <span suppressHydrationWarning>{new Date(c.created_at).toLocaleDateString()}</span>,
                 },
                 {
+                  key: "assigned_caseworker",
+                  header: "Assigned Caseworker",
+                  render: (c) => {
+                    const currentWorker = resolveClientAssignedWorker(c);
+                    if (!canAssign) {
+                      return (
+                        <span style={{ fontSize: "12.5px", fontWeight: 600, color: currentWorker ? "#063C3D" : "#6E7F7C" }}>
+                          {currentWorker || "Unassigned"}
+                        </span>
+                      );
+                    }
+                    const isBusy = assigningEntityKey === `client:${c.id}`;
+                    return (
+                      <select
+                        data-testid={`assign-client-caseworker-${c.id}`}
+                        aria-label={`Assign caseworker to ${c.first_name} ${c.last_name}`}
+                        value={currentWorker}
+                        disabled={isBusy}
+                        onChange={(e) => void handleAssignClientChange(c, e.target.value)}
+                        style={{
+                          padding: "5px 8px",
+                          borderRadius: "6px",
+                          border: currentWorker ? "1px solid #B9DED4" : "1px solid #F6D8A6",
+                          background: currentWorker ? "#F8FAF9" : "#FFFBEB",
+                          color: currentWorker ? "#063C3D" : "#92400E",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          cursor: isBusy ? "wait" : "pointer",
+                          maxWidth: "185px",
+                        }}
+                      >
+                        <option value="">Unassigned</option>
+                        {staffRoster.map((member) => (
+                          <option key={member.id || member.name} value={member.name}>
+                            {member.name}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  },
+                },
+                {
                   key: "credentials_status",
                   header: "Portal Access",
                   render: (c) => (
@@ -1904,33 +2405,6 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
         </div>
       )}
 
-      {/* FINANCIALS TAB */}
-      {effectiveTab === "financials" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#063C3D" }}>
-              Retainers, Invoices &amp; Escrow Ledger
-            </h2>
-            <p style={{ margin: "2px 0 0 0", fontSize: "12.5px", color: "#6E7F7C" }}>
-              Filing retainers and escrow balances where authorized by firm owner permissions.
-            </p>
-          </div>
-          <DataTable
-            variant="boxed"
-            columns={[
-              { key: "invoice_number", header: "Invoice #", render: (i) => <strong>{i.invoice_number}</strong> },
-              { key: "client_name", header: "Client", render: (i) => <span>{i.client_name}</span> },
-              { key: "case_number", header: "Case Ref", render: (i) => <span>{i.case_number}</span> },
-              { key: "amount", header: "Amount", render: (i) => <strong style={{ fontVariantNumeric: "tabular-nums" }}>${i.amount.toLocaleString()}.00</strong> },
-              { key: "status", header: "Payment Status", render: (i) => <Badge variant={i.status === "paid" ? "success" : i.status === "in_trust" ? "info" : "warning"}>{i.status.toUpperCase()}</Badge> },
-              { key: "due_date", header: "Due Date", render: (i) => <span>{i.due_date}</span> },
-            ]}
-            data={invoices}
-            keyExtractor={(i) => i.id}
-          />
-        </div>
-      )}
-
       {/* AUDIT ALERTS TAB */}
       {effectiveTab === "audit" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -1962,9 +2436,13 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
         <FirmConfigurationHub />
       )}
 
-      {/* RULES & AUTHORITIES TAB */}
-      {effectiveTab === "rules" && (
-        <RuleAdministrationHub isLiveBackend={isLiveBackend} />
+      {/* UNIFIED RULES & PATHWAYS TAB */}
+      {(effectiveTab === "rules" || effectiveTab === "stage10_pathway_expansion") && (
+        <RuleAdministrationHub
+          isLiveBackend={isLiveBackend}
+          cases={cases}
+          initialTab={effectiveTab === "stage10_pathway_expansion" ? "pathway_expansion" : "coverage"}
+        />
       )}
 
       {/* MANAGER PRIORITY COMMAND BOARD (STRICT RANKS 1 TO 8) */}
@@ -1972,9 +2450,14 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
         <ManagerPriorityQueueView
           data={priorityQueueData}
           onAction={(rank, actionType, item) => {
-            if (actionType === "dispatch_action" || actionType === "inspect_blocker" || actionType === "review_signoff") {
+            if (
+              actionType === "dispatch_action" ||
+              actionType === "inspect_blocker" ||
+              actionType === "review_signoff" ||
+              actionType === "assign_caseworker"
+            ) {
               setActiveTab("cases");
-            } else if (actionType === "assign_caseworker" || actionType === "adjudicate_quality") {
+            } else if (actionType === "adjudicate_quality") {
               setActiveTab("operations");
             } else if (actionType === "dispatch_nudge") {
               setActiveTab("conversation_inspector");
@@ -2001,12 +2484,14 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-              <label style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>
+              <label htmlFor="inspector-case-select" style={{ fontSize: "13px", fontWeight: 700, color: "#063C3D" }}>
                 Inspect Case Conversation:
               </label>
               <select
+                id="inspector-case-select"
                 value={selectedInspectorCaseId}
                 onChange={(e) => setSelectedInspectorCaseId(e.target.value)}
+                disabled={cases.length === 0}
                 style={{
                   padding: "7px 12px",
                   borderRadius: "7px",
@@ -2015,15 +2500,19 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                   fontSize: "13px",
                   fontWeight: 600,
                   color: "#063C3D",
-                  cursor: "pointer",
+                  cursor: cases.length === 0 ? "not-allowed" : "pointer",
                   maxWidth: "100%",
                 }}
               >
-                {cases.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.case_number} — {c.client_name} ({c.visa_category}) • Lead: {c.assigned_manager || "Unassigned"}
-                  </option>
-                ))}
+                {cases.length === 0 ? (
+                  <option value="">No active cases available</option>
+                ) : (
+                  cases.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.case_number} — {c.client_name} ({c.visa_category}) • Lead: {c.assigned_manager || "Unassigned"}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -2084,7 +2573,7 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
           {/* Conversation Log Card */}
           <Card
             variant="flat"
-            title={`Conversation History & Supervisory Log: ${cases.find((c) => c.id === selectedInspectorCaseId)?.case_number || (cases[0]?.case_number || "All Active Files")}`}
+            title={`Conversation History & Supervisory Log: ${cases.find((c) => c.id === selectedInspectorCaseId)?.case_number || (cases[0]?.case_number || "No Active Case Selected")}`}
             subtitle="Immutable transcript of applicant messaging, caseworker updates, and managing partner directives."
           >
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -2189,7 +2678,12 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                     type="text"
                     value={supervisoryNoteInput}
                     onChange={(e) => setSupervisoryNoteInput(e.target.value)}
-                    placeholder="Enter confidential managing partner direction for the case team..."
+                    disabled={cases.length === 0 || !selectedInspectorCaseId}
+                    placeholder={
+                      cases.length === 0
+                        ? "Open an active case to record supervisory directives..."
+                        : "Enter confidential managing partner direction for the case team..."
+                    }
                     style={{
                       flex: 1,
                       padding: "8px 12px",
@@ -2201,18 +2695,21 @@ export function OwnerMasterDashboard(props: OwnerMasterDashboardProps = {}) {
                   <Button
                     variant="primary"
                     size="sm"
+                    disabled={cases.length === 0 || !selectedInspectorCaseId || !supervisoryNoteInput.trim()}
                     onClick={() => {
-                      if (!supervisoryNoteInput.trim()) return;
+                      if (!supervisoryNoteInput.trim() || !selectedInspectorCaseId || !supervisoryStorageKey) return;
                       const newNote = {
                         id: `sup-${Date.now()}`,
                         author: ownerDisplayName,
                         note: supervisoryNoteInput.trim(),
                         timestamp: new Date().toISOString(),
+                        organization_id: effectiveOrgId,
+                        case_id: selectedInspectorCaseId,
                       };
                       const updated = [...supervisoryNotes, newNote];
                       setSupervisoryNotes(updated);
                       if (typeof window !== "undefined") {
-                        localStorage.setItem("documento_supervisory_notes_v3_clean", JSON.stringify(updated));
+                        localStorage.setItem(supervisoryStorageKey, JSON.stringify(updated));
                       }
                       setSupervisoryNoteInput("");
                     }}

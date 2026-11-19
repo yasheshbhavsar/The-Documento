@@ -3,8 +3,9 @@ import { Modal } from "../common/Modal";
 import { TextInput, SelectInput } from "../common/FormControls";
 import { Button } from "../common/Button";
 import { Badge } from "../common/Badge";
-import { ClientProfile, DocumentCategory, DocumentItem, DuplicateCandidate, ImmigrationCase, RoleCode } from "../../lib/types";
+import { ClientProfile, DocumentCategory, DocumentItem, DuplicateCandidate, ImmigrationCase, RoleCode, TeamMemberCapacity, UserContext } from "../../lib/types";
 import { api, createDocumentRequest } from "../../lib/api";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
 import { JURISDICTION_OPTIONS, JURISDICTION_PATHWAYS } from "./CreateCaseModal";
 import { getJurisdictionRepresentationInfo } from "../../lib/jurisdictionForms";
 import { extractProfileFromDocument, persistAndBroadcastAutoFill } from "../../lib/documentAutoFillEngine";
@@ -39,11 +40,14 @@ interface CreateClientModalProps {
     }
   ) => void;
   clients?: ClientProfile[];
+  teamCapacity?: TeamMemberCapacity[];
+  currentUser?: UserContext | null;
   activeRole?: RoleCode;
   initialPrefill?: ClientModalPrefill | null;
 }
 
 const EMPTY_CLIENTS: ClientProfile[] = [];
+const EMPTY_CAPACITY: TeamMemberCapacity[] = [];
 
 export function CreateClientModal({
   isOpen,
@@ -51,10 +55,47 @@ export function CreateClientModal({
   onClientCreated,
   onCaseCreated,
   clients = EMPTY_CLIENTS,
+  teamCapacity,
+  currentUser,
   activeRole = "master_admin",
   initialPrefill = null,
 }: CreateClientModalProps) {
+  const ws = useWorkspaceSafe();
   const isUnifiedFlow = Boolean(onCaseCreated);
+  const effectiveTeam = teamCapacity ?? ws?.capacity ?? EMPTY_CAPACITY;
+  const effectiveUser = currentUser ?? ws?.currentUser ?? null;
+
+  const caseworkerRoster = useMemo(() => {
+    const map = new Map<string, { id?: string; name: string; role?: string }>();
+    for (const tm of effectiveTeam) {
+      if (tm.name) {
+        map.set(tm.name.trim().toLowerCase(), { id: tm.id, name: tm.name.trim(), role: tm.role });
+      }
+    }
+    if (effectiveUser?.full_name && !map.has(effectiveUser.full_name.trim().toLowerCase())) {
+      map.set(effectiveUser.full_name.trim().toLowerCase(), {
+        id: effectiveUser.id,
+        name: effectiveUser.full_name.trim(),
+        role: effectiveUser.role === "master_admin" ? "Managing Partner" : "Case Manager",
+      });
+    }
+    return Array.from(map.values());
+  }, [effectiveTeam, effectiveUser?.full_name, effectiveUser?.id, effectiveUser?.role]);
+
+  const caseworkerOptions = useMemo(
+    () => [
+      { label: "Unassigned (Assign later)", value: "" },
+      ...caseworkerRoster.map((m) => ({
+        label: m.role ? `${m.name} (${m.role})` : m.name,
+        value: m.name,
+      })),
+    ],
+    [caseworkerRoster]
+  );
+
+  const [assignedCaseworker, setAssignedCaseworker] = useState<string>(
+    effectiveUser?.full_name || ""
+  );
 
   const [activeStep, setActiveStep] = useState<1 | 2>(1);
   const [intakeMode, setIntakeMode] = useState<"new_client" | "existing_client">("new_client");
@@ -325,6 +366,7 @@ export function CreateClientModal({
       setDroppedOnboardingFiles([]);
       setDetectedSponsor(null);
       setExtractedDocBanner(null);
+      setAssignedCaseworker(effectiveUser?.full_name || caseworkerRoster[0]?.name || "");
       if (initialPrefill) {
         setIntakeMode("new_client");
         setFirstName(initialPrefill.firstName || "");
@@ -456,6 +498,9 @@ export function CreateClientModal({
         : visaCategory;
       const effectiveTitle = caseTitle.trim() || fallbackTitle;
 
+      const selectedWorkerRecord = caseworkerRoster.find(
+        (m) => m.name === assignedCaseworker
+      );
       setIsSubmitting(true);
       setError(null);
       try {
@@ -466,6 +511,8 @@ export function CreateClientModal({
             case_number: caseNumber,
             jurisdiction,
             visa_category: visaCategory,
+            assigned_manager: assignedCaseworker || undefined,
+            case_manager_id: selectedWorkerRecord?.id,
           },
           activeRole
         );
@@ -497,6 +544,10 @@ export function CreateClientModal({
     setIsSubmitting(true);
     setError(null);
 
+    const selectedWorkerRecord = caseworkerRoster.find(
+      (m) => m.name === assignedCaseworker
+    );
+
     try {
       const res = await api.createClient(
         {
@@ -509,6 +560,8 @@ export function CreateClientModal({
           portal_credentials_provided: grantPortalAccess,
           portal_access_enabled: grantPortalAccess,
           temporary_password: grantPortalAccess ? portalPassword : undefined,
+          assigned_caseworker: assignedCaseworker || undefined,
+          assigned_caseworker_id: selectedWorkerRecord?.id,
         },
         activeRole
       );
@@ -544,6 +597,8 @@ export function CreateClientModal({
               case_number: caseNumber,
               jurisdiction,
               visa_category: visaCategory,
+              assigned_manager: assignedCaseworker || undefined,
+              case_manager_id: selectedWorkerRecord?.id,
             },
             activeRole
           );
@@ -952,6 +1007,13 @@ export function CreateClientModal({
                 required
               />
             </div>
+
+            <SelectInput
+              label="Assigned Caseworker"
+              value={assignedCaseworker}
+              onChange={(e) => setAssignedCaseworker(e.target.value)}
+              options={caseworkerOptions}
+            />
           </div>
         ) : activeStep === 1 ? (
           /* STEP 1: CLIENT DETAILS & PETITION SCOPE */
@@ -1280,9 +1342,25 @@ export function CreateClientModal({
                         required
                       />
                     </div>
+
+                    <SelectInput
+                      label="Assigned Caseworker"
+                      value={assignedCaseworker}
+                      onChange={(e) => setAssignedCaseworker(e.target.value)}
+                      options={caseworkerOptions}
+                    />
                   </div>
                 )}
               </div>
+            )}
+
+            {(!isUnifiedFlow || !openInitialCase) && (
+              <SelectInput
+                label="Assigned Caseworker"
+                value={assignedCaseworker}
+                onChange={(e) => setAssignedCaseworker(e.target.value)}
+                options={caseworkerOptions}
+              />
             )}
 
             {/* Dynamic Statutory Consent Checkboxes */}

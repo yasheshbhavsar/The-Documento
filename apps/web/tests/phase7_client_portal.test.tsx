@@ -10,7 +10,6 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { WaitingStateBanner } from "../components/portal/WaitingStateBanner";
 import { DocumentRequestManager } from "../components/portal/DocumentRequestManager";
 import { SecureMessagingHub } from "../components/portal/SecureMessagingHub";
-import { ClientOnboardingWizard } from "../components/portal/ClientOnboardingWizard";
 import { ClientPortal } from "../components/dashboards/ClientPortal";
 import {
   FIXTURE_CASES,
@@ -183,59 +182,6 @@ describe("Phase 7 — Client Portal, Requests, Messaging, and Notifications", ()
 
       // Testimonial thread matches
       expect(screen.getByText(/IEEE Expert Testimonial Guidance/i)).toBeDefined();
-    });
-  });
-
-  describe("ClientOnboardingWizard Component", () => {
-    it("navigates through all 5 guided intake steps", async () => {
-      render(<ClientOnboardingWizard />);
-
-      // Step 1: Consents
-      expect(screen.getByText(/Legal Notice & Representation Disclosures/i)).toBeDefined();
-      expect(screen.getByText(/Form G-28 Notice of Entry of Appearance/i)).toBeDefined();
-      expect(screen.getByText(/Data Processing, Privacy & Cryptographic Verification Consent/i)).toBeDefined();
-
-      // Continue to Step 2: Biodata
-      const nextBtn1 = screen.getByText(/Continue to Step 2 →/i);
-      fireEvent.click(nextBtn1);
-
-      expect(screen.getByText(/Legal First Name \(Given Name\)/i)).toBeDefined();
-      expect(screen.getByText(/Current Passport Number/i)).toBeDefined();
-
-      // Continue to Step 3: Dependants
-      const nextBtn2 = screen.getByText(/Continue to Step 3 →/i);
-      fireEvent.click(nextBtn2);
-
-      expect(screen.getByText(/Authorized Family Dependants/i)).toBeDefined();
-      expect(await screen.findByText(/Authorized to View Case/i)).toBeDefined();
-
-      // Continue to Step 4: Questionnaire
-      const nextBtn3 = screen.getByText(/Continue to Step 4 →/i);
-      fireEvent.click(nextBtn3);
-
-      expect(await screen.findByText(/Statutory Criteria & Extraordinary Ability Intake/i)).toBeDefined();
-      expect(screen.getByText(/Current Employer or Institutional Affiliation \*/i)).toBeDefined();
-
-      // Continue to Step 5: Review
-      const nextBtn4 = screen.getByText(/Continue to Step 5 →/i);
-      fireEvent.click(nextBtn4);
-
-      expect(screen.getByText(/Onboarding Summary Verification/i)).toBeDefined();
-      expect(screen.getByText(/Complete Onboarding & Activate Portal/i)).toBeDefined();
-    });
-
-    it("allows toggling dependant case viewing authorization", async () => {
-      render(<ClientOnboardingWizard />);
-
-      // Jump to Step 3 (Family & Dependants)
-      const step3Tab = screen.getByText(/Family & Dependants/i);
-      fireEvent.click(step3Tab);
-
-      expect(await screen.findByText(/Authorized to View Case/i)).toBeDefined();
-      const authCheckbox = screen.getAllByRole("checkbox")[0];
-      fireEvent.click(authCheckbox);
-      // Toggle state updated
-      expect(authCheckbox).toBeDefined();
     });
   });
 

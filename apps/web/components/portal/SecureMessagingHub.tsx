@@ -17,6 +17,8 @@ import {
   ClientLanguage,
   CLIENT_TRANSLATIONS,
 } from "../../lib/clientLocalization";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
+import { CANONICAL_MESSAGING_SYNC_EVENT } from "./ClientDirectChatWidget";
 
 interface SecureMessagingHubProps {
   caseId?: string;
@@ -35,6 +37,7 @@ export function SecureMessagingHub({
   initialReplyText,
   language = "en",
 }: SecureMessagingHubProps) {
+  const ws = useWorkspaceSafe();
   const t = CLIENT_TRANSLATIONS[language];
   const isTestEnv = typeof process !== "undefined" && Boolean(process.env.VITEST);
   const hasStoredUser =
@@ -86,13 +89,51 @@ export function SecureMessagingHub({
     loadThreads();
   }, [caseId]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleCanonicalSync = () => {
+      void loadThreads();
+      if (activeThreadId) {
+        void loadMessages(activeThreadId);
+      }
+    };
+    window.addEventListener(CANONICAL_MESSAGING_SYNC_EVENT, handleCanonicalSync);
+    return () => {
+      window.removeEventListener(CANONICAL_MESSAGING_SYNC_EVENT, handleCanonicalSync);
+    };
+  }, [caseId, activeThreadId, isStaffMode]);
+
   async function loadThreads() {
     setLoading(true);
     try {
       const data = await fetchMessageThreads(caseId);
-      setThreads(data);
-      if (data.length > 0 && !activeThreadId) {
-        setActiveThreadId(data[0].id);
+      let merged = Array.isArray(data) ? [...data] : [];
+      if (typeof window !== "undefined") {
+        try {
+          const rawStored = window.localStorage.getItem("documento_msg_threads_v3_clean");
+          if (rawStored) {
+            const storedThreads: MessageThreadItem[] = JSON.parse(rawStored);
+            if (Array.isArray(storedThreads)) {
+              const seenIds = new Set(merged.map((th) => th.id));
+              for (const st of storedThreads) {
+                if (!caseId || !st.case_id || st.case_id === caseId) {
+                  if (!seenIds.has(st.id)) {
+                    merged.unshift(st);
+                    seenIds.add(st.id);
+                  } else {
+                    merged = merged.map((th) => (th.id === st.id ? { ...th, ...st } : th));
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+          // ignore localStorage parse issues
+        }
+      }
+      setThreads(merged);
+      if (merged.length > 0 && !activeThreadId) {
+        setActiveThreadId(merged[0].id);
       }
     } catch (err) {
       console.error("Failed to load message threads:", err);
@@ -107,14 +148,55 @@ export function SecureMessagingHub({
     } else {
       setMessages([]);
     }
-  }, [activeThreadId]);
+  }, [activeThreadId, ws?.messages?.length]);
 
   async function loadMessages(threadId: string) {
     setMessagesLoading(true);
     try {
       const data = await fetchThreadMessages(threadId);
+      let merged = Array.isArray(data) ? [...data] : [];
+      if (typeof window !== "undefined") {
+        try {
+          const rawStoredMsgs = window.localStorage.getItem("documento_thread_msgs_v3_clean");
+          if (rawStoredMsgs) {
+            const storedMsgs: ThreadMessageItem[] = JSON.parse(rawStoredMsgs);
+            if (Array.isArray(storedMsgs)) {
+              const seenIds = new Set(merged.map((m) => m.id));
+              for (const sm of storedMsgs) {
+                if (sm.thread_id === threadId && !seenIds.has(sm.id)) {
+                  merged.push(sm);
+                  seenIds.add(sm.id);
+                }
+              }
+            }
+          }
+        } catch {
+          // ignore localStorage parse issues
+        }
+      }
+      // Also synchronize any direct workspace messages into the primary active thread
+      if (ws?.messages && ws.messages.length > 0 && threads[0]?.id === threadId) {
+        const seenContents = new Set(merged.map((m) => m.content.trim()));
+        for (const wm of ws.messages) {
+          if (wm.content && !seenContents.has(wm.content.trim())) {
+            seenContents.add(wm.content.trim());
+            merged.push({
+              id: `ws-sync-${wm.id}`,
+              thread_id: threadId,
+              sender_id: wm.sender_role === "client" ? "client-applicant" : "staff-counsel",
+              sender_name: wm.sender,
+              sender_role: wm.sender_role === "client" ? "client" : "lawyer",
+              content: wm.content,
+              is_internal: (wm.sender_role as string) === "system",
+              attachment_document_ids: [],
+              delivery_status: "delivered",
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
+      }
       // Filter out internal messages if viewing as client
-      const visible = isStaffMode ? data : data.filter((m) => !m.is_internal);
+      const visible = isStaffMode ? merged : merged.filter((m) => !m.is_internal);
       setMessages(visible);
     } catch (err) {
       console.error("Failed to load thread messages:", err);
@@ -144,13 +226,19 @@ export function SecureMessagingHub({
     if (!activeThreadId || !replyText.trim() || sending) return;
 
     const sentContent = replyText.trim();
+    const internalFlag = isStaffMode ? isInternalNote : false;
     setSending(true);
     try {
-      onSendMessage?.(sentContent, activeThreadId);
+      if (!internalFlag) {
+        onSendMessage?.(sentContent, activeThreadId);
+        if (!onSendMessage && ws?.handleSendMessage) {
+          void ws.handleSendMessage(sentContent);
+        }
+      }
       const newMsg = await postThreadMessage(
         activeThreadId,
         sentContent,
-        isStaffMode ? isInternalNote : false,
+        internalFlag,
         attachmentIds
       );
       setMessages((prev) => [...prev, newMsg]);
@@ -159,19 +247,40 @@ export function SecureMessagingHub({
       setAttachmentIds([]);
       setNewAttachmentInput("");
 
-      // Update thread last message preview
-      setThreads((prev) =>
-        prev.map((t) =>
+      const nowIso = new Date().toISOString();
+      // Update thread last message preview in state & localStorage
+      setThreads((prev) => {
+        const nextThreads = prev.map((t) =>
           t.id === activeThreadId
             ? {
                 ...t,
                 messages_count: t.messages_count + 1,
                 last_message_preview: sentContent,
-                updated_at: new Date().toISOString(),
+                updated_at: nowIso,
               }
             : t
-        )
-      );
+        );
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem("documento_msg_threads_v3_clean", JSON.stringify(nextThreads));
+          } catch {
+            // ignore storage errors
+          }
+        }
+        return nextThreads;
+      });
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(CANONICAL_MESSAGING_SYNC_EVENT, {
+            detail: {
+              caseId,
+              threadId: activeThreadId,
+              message: newMsg,
+            },
+          })
+        );
+      }
     } catch (err) {
       console.error("Failed to send message:", err);
     } finally {
@@ -224,6 +333,7 @@ export function SecureMessagingHub({
 
     const nowIso = new Date().toISOString();
     const mockId = `thread-${Date.now()}`;
+    const trimmedOpening = newThreadInitialMessage.trim();
     const newThread: MessageThreadItem = {
       id: mockId,
       case_id: caseId || "",
@@ -235,7 +345,7 @@ export function SecureMessagingHub({
       updated_at: nowIso,
       messages_count: 1,
       unread_count: 0,
-      last_message_preview: newThreadInitialMessage.trim(),
+      last_message_preview: trimmedOpening,
     };
 
     const updatedThreads = [newThread, ...threads];
@@ -248,7 +358,7 @@ export function SecureMessagingHub({
       sender_id: resolvedSenderId,
       sender_name: resolvedSenderName,
       sender_role: isStaffMode ? "lawyer" : "client",
-      content: newThreadInitialMessage.trim(),
+      content: trimmedOpening,
       is_internal: false,
       attachment_document_ids: [],
       delivery_status: "delivered",
@@ -256,7 +366,12 @@ export function SecureMessagingHub({
     };
     setMessages([initialMsg]);
 
-    if (typeof window !== "undefined" && !useDemoFallbacks) {
+    onSendMessage?.(trimmedOpening, mockId);
+    if (!onSendMessage && ws?.handleSendMessage) {
+      void ws.handleSendMessage(trimmedOpening);
+    }
+
+    if (typeof window !== "undefined") {
       try {
         const storedThreads = JSON.parse(window.localStorage.getItem("documento_msg_threads_v3_clean") || "[]");
         window.localStorage.setItem(
@@ -271,6 +386,15 @@ export function SecureMessagingHub({
       } catch {
         // Ignore storage write errors
       }
+      window.dispatchEvent(
+        new CustomEvent(CANONICAL_MESSAGING_SYNC_EVENT, {
+          detail: {
+            caseId,
+            threadId: mockId,
+            message: initialMsg,
+          },
+        })
+      );
     }
 
     setIsCreatingThread(false);

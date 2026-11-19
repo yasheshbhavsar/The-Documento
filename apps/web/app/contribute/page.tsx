@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import {
   SPONSOR_UPDATED_EVENT,
   SponsorInviteRecord,
+  fetchSponsorInviteByTokenFromBackend,
   getSponsorInviteByToken,
   recordSponsorContributionUpload,
   updateSponsorInvitePrivacyShield,
@@ -12,6 +13,7 @@ import {
 import { SmartDropzone, SmartIntakeSummary } from "../../components/common/SmartDropzone";
 
 type PortalLang = "en" | "gu" | "hi";
+type SponsorJurisdiction = "CA" | "UK" | "AU";
 
 const PORTAL_STRINGS: Record<
   PortalLang,
@@ -19,10 +21,12 @@ const PORTAL_STRINGS: Record<
     badge: string;
     supportingFor: (firstName: string, pathway: string) => string;
     sponsorGreeting: (sponsorName: string, caseNumber: string) => string;
-    privacyActiveNotice: string;
+    privacyActiveNotice: (jurisdiction: SponsorJurisdiction) => string;
     privacyInactiveNotice: string;
     privacyToggleLabel: string;
+    statutoryExamplesLabel: (jurisdiction: SponsorJurisdiction) => string;
     checklistTitle: string;
+    receivedPendingTag: string;
     verifiedTag: string;
     pendingTag: string;
     uploadSectionTitle: string;
@@ -38,16 +42,27 @@ const PORTAL_STRINGS: Record<
       `Supporting Documents for ${firstName}'s ${pathway} Application`,
     sponsorGreeting: (sponsorName, caseNumber) =>
       `Requested from ${sponsorName} • Case Reference ${caseNumber}`,
-    privacyActiveNotice:
-      "🔒 Privacy Shield Active: Your raw CRA NOA, tax slips, and bank statements are encrypted for licensed legal counsel only. Family members see only '✓ Verified'.",
+    privacyActiveNotice: (jurisdiction) =>
+      jurisdiction === "UK"
+        ? "🔒 Privacy Shield Active: Your raw HMRC Tax & Employment Records / P60 and bank statements are encrypted for licensed legal counsel only. Family members see only '✓ Verified'."
+        : jurisdiction === "AU"
+          ? "🔒 Privacy Shield Active: Your raw ATO Notice of Assessment / Payslips and bank statements are encrypted for licensed legal counsel only. Family members see only '✓ Verified'."
+          : "🔒 Privacy Shield Active: Your raw CRA NOA, tax slips, and bank statements are encrypted for licensed legal counsel only. Family members see only '✓ Verified'. (CRA NOA / T4)",
     privacyInactiveNotice:
       "🔓 Privacy Shield Off: Uploaded documents will be visible to both licensed legal counsel and the applicant family.",
     privacyToggleLabel: "Privacy Shield (Counsel-Only Encryption)",
+    statutoryExamplesLabel: (jurisdiction) =>
+      jurisdiction === "UK"
+        ? "Statutory sponsor examples: British Passport / UKVI eVisa Share Code • HMRC Tax & Employment Records / P60 • 28-Day Bank Statements • Council Tax / Tenancy"
+        : jurisdiction === "AU"
+          ? "Statutory sponsor examples: Australian Passport / VEVO Check • ATO Notice of Assessment / Payslips • Council Rates / Utility Bill • Form 1149"
+          : "Statutory sponsor examples: Canadian PR Card / Passport • CRA NOA (Line 15000) / T4 • Employment Letter • $100,000 CAD Super Visa Medical Insurance",
     checklistTitle: "Requested Sponsor & Statutory Evidence",
+    receivedPendingTag: "Received (Pending Review)",
     verifiedTag: "✓ Verified",
     pendingTag: "Pending",
     uploadSectionTitle: "Upload Single Files or Merged Sponsor Packet",
-    receiptsTitle: "Cryptographic Submission Receipts",
+    receiptsTitle: "Uploaded Sponsor Documents — Received (Pending Review)",
     privateCounselBadge: "🔒 Counsel-Only Encrypted",
     invalidTokenTitle: "Sponsor Upload Link Not Found or Expired",
     invalidTokenBody:
@@ -59,16 +74,27 @@ const PORTAL_STRINGS: Record<
       `${firstName} ની ${pathway} અરજી માટે આધારભૂત દસ્તાવેજો`,
     sponsorGreeting: (sponsorName, caseNumber) =>
       `સ્પોન્સર: ${sponsorName} • કેસ નંબર ${caseNumber}`,
-    privacyActiveNotice:
-      "🔒 પ્રાઇવસી શિલ્ડ સક્રિય: તમારા CRA NOA, ટેક્સ સ્લિપ અને બેંક સ્ટેટમેન્ટ માત્ર લાયસન્સ પ્રાપ્ત વકીલ માટે જ એન્ક્રિપ્ટેડ છે. પરિવારના સભ્યોને માત્ર '✓ ચકાસાયેલ' દેખાશે.",
+    privacyActiveNotice: (jurisdiction) =>
+      jurisdiction === "UK"
+        ? "🔒 પ્રાઇવસી શિલ્ડ સક્રિય: તમારા HMRC Tax & Employment Records / P60 અને બેંક સ્ટેટમેન્ટ માત્ર લાયસન્સ પ્રાપ્ત વકીલ માટે જ એન્ક્રિપ્ટેડ છે. પરિવારના સભ્યોને માત્ર '✓ ચકાસાયેલ' દેખાશે."
+        : jurisdiction === "AU"
+          ? "🔒 પ્રાઇવસી શિલ્ડ સક્રિય: તમારા ATO Notice of Assessment / Payslips અને બેંક સ્ટેટમેન્ટ માત્ર લાયસન્સ પ્રાપ્ત વકીલ માટે જ એન્ક્રિપ્ટેડ છે. પરિવારના સભ્યોને માત્ર '✓ ચકાસાયેલ' દેખાશે."
+          : "🔒 પ્રાઇવસી શિલ્ડ સક્રિય: તમારા CRA NOA / T4, ટેક્સ સ્લિપ અને બેંક સ્ટેટમેન્ટ માત્ર લાયસન્સ પ્રાપ્ત વકીલ માટે જ એન્ક્રિપ્ટેડ છે. પરિવારના સભ્યોને માત્ર '✓ ચકાસાયેલ' દેખાશે.",
     privacyInactiveNotice:
       "🔓 પ્રાઇવસી શિલ્ડ બંધ: અપલોડ કરેલા દસ્તાવેજો વકીલ અને અરજદાર પરિવાર બંને જોઈ શકશે.",
     privacyToggleLabel: "પ્રાઇવસી શિલ્ડ (માત્ર વકીલ માટે ગોપનીય)",
+    statutoryExamplesLabel: (jurisdiction) =>
+      jurisdiction === "UK"
+        ? "માન્ય સ્પોન્સર દસ્તાવેજો: બ્રિટિશ પાસપોર્ટ / eVisa શેર કોડ • HMRC Tax & Employment Records / P60 • કાઉન્સિલ ટેક્સ બિલ"
+        : jurisdiction === "AU"
+          ? "માન્ય સ્પોન્સર દસ્તાવેજો: ઓસ્ટ્રેલિયન પાસપોર્ટ / VEVO • ATO Notice of Assessment / Payslips • Form 1149"
+          : "માન્ય સ્પોન્સર દસ્તાવેજો: કેનેડિયન PR કાર્ડ / પાસપોર્ટ • CRA NOA / T4 • રોજગાર પત્ર • સુપર વિઝા મેડિકલ ઇન્શ્યોરન્સ",
     checklistTitle: "જરૂરી સ્પોન્સર દસ્તાવેજોની યાદી",
+    receivedPendingTag: "મળેલ (સમીક્ષા બાકી)",
     verifiedTag: "✓ ચકાસાયેલ",
     pendingTag: "બાકી",
     uploadSectionTitle: "દસ્તાવેજો અથવા PDF પેકેટ અપલોડ કરો",
-    receiptsTitle: "અપલોડ કરેલા દસ્તાવેજોની રસીદ",
+    receiptsTitle: "અપલોડ કરેલા સ્પોન્સર દસ્તાવેજો — મળેલ (સમીક્ષા બાકી)",
     privateCounselBadge: "🔒 માત્ર વકીલ માટે એન્ક્રિપ્ટેડ",
     invalidTokenTitle: "સ્પોન્સર અપલોડ લિંક મળી નથી",
     invalidTokenBody:
@@ -80,16 +106,27 @@ const PORTAL_STRINGS: Record<
       `${firstName} के ${pathway} आवेदन हेतु सहायक दस्तावेज़`,
     sponsorGreeting: (sponsorName, caseNumber) =>
       `स्पॉन्सर: ${sponsorName} • केस संदर्भ ${caseNumber}`,
-    privacyActiveNotice:
-      "🔒 प्राइवेसी शील्ड सक्रिय: आपके मूल CRA NOA, टैक्स स्लिप और बैंक स्टेटमेंट केवल लाइसेंस प्राप्त कानूनी वकील के लिए एन्क्रिप्टेड हैं। परिवार के सदस्यों को केवल '✓ सत्यापित' दिखाई देगा।",
+    privacyActiveNotice: (jurisdiction) =>
+      jurisdiction === "UK"
+        ? "🔒 प्राइवेसी शील्ड सक्रिय: आपके मूल HMRC Tax & Employment Records / P60 और बैंक स्टेटमेंट केवल लाइसेंस प्राप्त कानूनी वकील के लिए एन्क्रिप्टेड हैं। परिवार के सदस्यों को केवल '✓ सत्यापित' दिखाई देगा।"
+        : jurisdiction === "AU"
+          ? "🔒 प्राइवेसी शील्ड सक्रिय: आपके मूल ATO Notice of Assessment / Payslips और बैंक स्टेटमेंट केवल लाइसेंस प्राप्त कानूनी वकील के लिए एन्क्रिप्टेड हैं। परिवार के सदस्यों को केवल '✓ सत्यापित' दिखाई देगा।"
+          : "🔒 प्राइवेसी शील्ड सक्रिय: आपके मूल CRA NOA / T4, टैक्स स्लिप और बैंक स्टेटमेंट केवल लाइसेंस प्राप्त कानूनी वकील के लिए एन्क्रिप्टेड हैं। परिवार के सदस्यों को केवल '✓ सत्यापित' दिखाई देगा।",
     privacyInactiveNotice:
       "🔓 प्राइवेसी शील्ड बंद: अपलोड किए गए दस्तावेज़ वकील और आवेदक परिवार दोनों को दिखाई देंगे।",
     privacyToggleLabel: "प्राइवेसी शील्ड (केवल वकील हेतु गोपनीय)",
+    statutoryExamplesLabel: (jurisdiction) =>
+      jurisdiction === "UK"
+        ? "स्वीकार्य स्पॉन्सर दस्तावेज़: ब्रिटिश पासपोर्ट / eVisa शेयर कोड • HMRC Tax & Employment Records / P60 • काउंसिल टैक्स बिल"
+        : jurisdiction === "AU"
+          ? "स्वीकार्य स्पॉन्सर दस्तावेज़: ऑस्ट्रेलियाई पासपोर्ट / VEVO • ATO Notice of Assessment / Payslips • Form 1149"
+          : "स्वीकार्य स्पॉन्सर दस्तावेज़: कनाडाई PR कार्ड / पासपोर्ट • CRA NOA / T4 • रोज़गार पत्र • सुपर वीज़ा मेडिकल बीमा",
     checklistTitle: "अनुरोधित स्पॉन्सर और वैधानिक दस्तावेज़",
+    receivedPendingTag: "प्राप्त (समीक्षा लंबित)",
     verifiedTag: "✓ सत्यापित",
     pendingTag: "लंबित",
     uploadSectionTitle: "एकल फ़ाइलें या संयुक्त स्पॉन्सर पैकेट अपलोड करें",
-    receiptsTitle: "क्रिप्टोग्राफ़िक सबमिशन रसीदें",
+    receiptsTitle: "अपलोड किए गए स्पॉन्सर दस्तावेज़ — प्राप्त (समीक्षा लंबित)",
     privateCounselBadge: "🔒 केवल वकील हेतु एन्क्रिप्टेड",
     invalidTokenTitle: "स्पॉन्सर अपलोड लिंक नहीं मिला",
     invalidTokenBody:
@@ -114,10 +151,17 @@ function SponsorContributeInner() {
     setResolvedToken(token);
 
     if (token) {
-      const record = getSponsorInviteByToken(token);
-      if (record) {
-        setInvite(record);
-        setPrivacyShield(record.privacyShield);
+      const localRecord = getSponsorInviteByToken(token);
+      if (localRecord) {
+        setInvite(localRecord);
+        setPrivacyShield(localRecord.privacyShield);
+      } else {
+        void fetchSponsorInviteByTokenFromBackend(token).then((remoteRecord) => {
+          if (remoteRecord) {
+            setInvite(remoteRecord);
+            setPrivacyShield(remoteRecord.privacyShield);
+          }
+        });
       }
     }
   }, [searchParams]);
@@ -153,7 +197,9 @@ function SponsorContributeInner() {
       latestRecord = recordSponsorContributionUpload(invite.token, {
         subtypeLabel: doc.subtypeLabel,
         category: doc.category,
-        verified: true,
+        verified: false,
+        received: true,
+        status: "received_pending_review",
         sha256: doc.sha256,
         filename: doc.filename,
         statutoryBadge: doc.statutoryBadges[0],
@@ -387,7 +433,20 @@ function SponsorContributeInner() {
                     fontWeight: 500,
                   }}
                 >
-                  {privacyShield ? copy.privacyActiveNotice : copy.privacyInactiveNotice}
+                  {privacyShield
+                    ? copy.privacyActiveNotice(invite.jurisdiction)
+                    : copy.privacyInactiveNotice}
+                </div>
+
+                <div
+                  data-testid="sponsor-statutory-examples-notice"
+                  style={{
+                    fontSize: "11.5px",
+                    lineHeight: 1.4,
+                    color: "#4B5E5B",
+                  }}
+                >
+                  {copy.statutoryExamplesLabel(invite.jurisdiction)}
                 </div>
               </div>
             </section>
@@ -430,51 +489,59 @@ function SponsorContributeInner() {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {invite.requestedItems.map((item) => (
-                  <div
-                    key={item.id}
-                    data-testid={`sponsor-checklist-item-${item.id}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      padding: "11px 14px",
-                      borderRadius: "8px",
-                      backgroundColor: item.satisfied ? "#EAF6F0" : "#F8F7F2",
-                      border: item.satisfied ? "1px solid #C6E7D8" : "1px solid #DCE5E1",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "13.5px", fontWeight: 600, color: "#063C3D" }}>
-                        {item.satisfied ? "✓ " : "○ "}
-                        {item.label}
-                      </div>
-                      <div style={{ marginTop: "3px", fontSize: "12px", color: "#4B5E5B", lineHeight: 1.4 }}>
-                        {item.hint}
-                      </div>
-                    </div>
-
-                    <span
+                {invite.requestedItems.map((item) => {
+                  const isVerified = Boolean(item.verified);
+                  const isReceived = Boolean(item.satisfied || item.received || item.uploaded);
+                  return (
+                    <div
+                      key={item.id}
+                      data-testid={`sponsor-checklist-item-${item.id}`}
                       style={{
-                        flexShrink: 0,
-                        padding: "3px 9px",
-                        borderRadius: "999px",
-                        fontSize: "11.5px",
-                        fontWeight: 600,
-                        backgroundColor: item.satisfied ? "#FFFFFF" : "transparent",
-                        color: item.satisfied ? "#176B50" : "#526663",
-                        border: item.satisfied ? "1px solid #C6E7D8" : "1px solid #DCE5E1",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        padding: "11px 14px",
+                        borderRadius: "8px",
+                        backgroundColor: isReceived ? "#EAF6F0" : "#F8F7F2",
+                        border: isReceived ? "1px solid #C6E7D8" : "1px solid #DCE5E1",
                       }}
                     >
-                      {item.satisfied ? copy.verifiedTag : copy.pendingTag}
-                    </span>
-                  </div>
-                ))}
+                      <div>
+                        <div style={{ fontSize: "13.5px", fontWeight: 600, color: "#063C3D" }}>
+                          {isVerified ? "✓ " : isReceived ? "● " : "○ "}
+                          {item.label}
+                        </div>
+                        <div style={{ marginTop: "3px", fontSize: "12px", color: "#4B5E5B", lineHeight: 1.4 }}>
+                          {item.hint}
+                        </div>
+                      </div>
+
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          padding: "3px 9px",
+                          borderRadius: "999px",
+                          fontSize: "11.5px",
+                          fontWeight: 600,
+                          backgroundColor: isReceived ? "#FFFFFF" : "transparent",
+                          color: isReceived ? "#176B50" : "#526663",
+                          border: isReceived ? "1px solid #C6E7D8" : "1px solid #DCE5E1",
+                        }}
+                      >
+                        {isVerified
+                          ? copy.verifiedTag
+                          : isReceived
+                            ? copy.receivedPendingTag
+                            : copy.pendingTag}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
-            {/* Embedded Unified SmartDropzone */}
+            {/* Embedded Unified SmartDropzone & Consolidated Uploaded Sponsor Documents List */}
             <section
               style={{
                 backgroundColor: "#FFFFFF",
@@ -497,83 +564,96 @@ function SponsorContributeInner() {
                 privacyShield={privacyShield}
                 onIntakeComplete={handleIntakeComplete}
               />
-            </section>
 
-            {/* Uploaded Cryptographic Receipts */}
-            {invite.uploadedItems.length > 0 && (
-              <section
-                data-testid="sponsor-uploaded-receipts"
-                style={{
-                  backgroundColor: "#FFFFFF",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "10px",
-                  padding: "20px 24px",
-                }}
-              >
-                <h2 style={{ margin: "0 0 12px", fontSize: "15.5px", fontWeight: 700, color: "#063C3D" }}>
-                  {copy.receiptsTitle} ({invite.uploadedItems.length})
-                </h2>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {invite.uploadedItems.map((up) => (
-                    <div
-                      key={up.id}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: "8px",
-                        backgroundColor: "#F8F7F2",
-                        border: "1px solid #DCE5E1",
-                        display: "flex",
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "8px",
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: "13px", fontWeight: 600, color: "#063C3D" }}>
-                          ✓ {up.subtypeLabel}
+              {invite.uploadedItems.length > 0 && (
+                <div
+                  data-testid="sponsor-uploaded-receipts"
+                  style={{
+                    marginTop: "18px",
+                    paddingTop: "16px",
+                    borderTop: "1px solid #DCE5E1",
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 10px", fontSize: "14px", fontWeight: 700, color: "#063C3D" }}>
+                    {copy.receiptsTitle} ({invite.uploadedItems.length})
+                  </h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {invite.uploadedItems.map((up) => (
+                      <div
+                        key={up.id}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: "8px",
+                          backgroundColor: "#F8F7F2",
+                          border: "1px solid #DCE5E1",
+                          display: "flex",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "8px",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "13px", fontWeight: 600, color: "#063C3D" }}>
+                            {up.subtypeLabel}
+                          </div>
+                          <div style={{ fontSize: "11.5px", color: "#526663", marginTop: "2px" }}>
+                            {up.filename || "Sponsor_Evidence.pdf"}
+                          </div>
+                          {up.statutoryBadge && (
+                            <div
+                              style={{
+                                marginTop: "5px",
+                                display: "inline-block",
+                                padding: "2px 8px",
+                                borderRadius: "999px",
+                                backgroundColor: "#EAF6F0",
+                                color: "#176B50",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {up.statutoryBadge}
+                            </div>
+                          )}
                         </div>
-                        <div style={{ fontSize: "11.5px", color: "#526663", marginTop: "2px" }}>
-                          {up.filename || "Sponsor_Evidence.pdf"} • SHA-256: {up.sha256.slice(0, 14)}…
-                        </div>
-                        {up.statutoryBadge && (
-                          <div
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                          <span
                             style={{
-                              marginTop: "5px",
-                              display: "inline-block",
-                              padding: "2px 8px",
+                              padding: "3px 9px",
                               borderRadius: "999px",
-                              backgroundColor: "#EAF6F0",
+                              backgroundColor: "#FFFFFF",
+                              border: "1px solid #C6E7D8",
                               color: "#176B50",
                               fontSize: "11px",
                               fontWeight: 600,
                             }}
                           >
-                            {up.statutoryBadge}
-                          </div>
-                        )}
+                            {up.verified ? copy.verifiedTag : copy.receivedPendingTag}
+                          </span>
+                          {up.isPrivateToFirm && (
+                            <span
+                              style={{
+                                padding: "3px 9px",
+                                borderRadius: "999px",
+                                backgroundColor: "#EAF6F0",
+                                border: "1px solid #C6E7D8",
+                                color: "#176B50",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {copy.privateCounselBadge}
+                            </span>
+                          )}
+                        </div>
                       </div>
-
-                      {up.isPrivateToFirm && (
-                        <span
-                          style={{
-                            padding: "3px 9px",
-                            borderRadius: "999px",
-                            backgroundColor: "#EAF6F0",
-                            border: "1px solid #C6E7D8",
-                            color: "#176B50",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {copy.privateCounselBadge}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </section>
-            )}
+              )}
+            </section>
           </>
         )}
       </div>

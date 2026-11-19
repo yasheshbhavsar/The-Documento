@@ -59,7 +59,7 @@ export const VERIFIED_PATHWAYS: ImmigrationPathway[] = [
   {
     id: "ca-study-permit",
     code: "Study Permit",
-    title: "Canada Study Permit (DLI & SDS Stream)",
+    title: "Canada Study Permit (DLI & PAL Stream)",
     country: "Canada",
     countryCode: "CA",
     flag: "🇨🇦",
@@ -184,17 +184,17 @@ export const VERIFIED_PATHWAYS: ImmigrationPathway[] = [
   {
     id: "ca-ee",
     code: "Express Entry",
-    title: "Canada Express Entry (FSWP & PNP)",
+    title: "Canada Express Entry (FSWP, CEC & PNP)",
     country: "Canada",
     countryCode: "CA",
     flag: "🇨🇦",
     governingBody: "IRCC (Immigration, Refugees and Citizenship Canada)",
     category: "Permanent Residence",
     status: "Available",
-    applicantProfile: "Skilled professionals seeking Canadian permanent residence through the Federal Skilled Worker Program (FSWP) or Provincial Nominee Programs (PNP).",
+    applicantProfile: "Skilled professionals seeking Canadian permanent residence through the Federal Skilled Worker Program (FSWP), Canadian Experience Class (CEC), or Provincial Nominee Programs (PNP).",
     statutoryBasis: "IRPA s. 12(2); IRPR ss. 75-87; NOC 2021 TEER Matrix.",
-    formSupport: "Express Entry Profile & Post-ITA e-APR (electronic Application for PR).",
-    summary: "CRS point scoring simulator, NOC/TEER classification validation, and post-ITA 60-day evidence checklist.",
+    formSupport: "Express Entry Profile, Post-ITA e-APR, IMM 5669, IMM 5406 & IMM 5476.",
+    summary: "CRS & PNP scoring calculators, NOC 2021 TEER lead-statement validation, WES ECA audit, and post-ITA 60-day e-APR packaging.",
     caseNeeds: [
       "Comprehensive Ranking System (CRS) score optimization across human capital factors",
       "Language test benchmarks (IELTS / CELPIP / TEF / TCF meeting CLB 7+ requirements)",
@@ -211,6 +211,70 @@ export const VERIFIED_PATHWAYS: ImmigrationPathway[] = [
       "Automated NOC/TEER job duty cross-examination against reference letter texts",
       "Post-ITA 60-day filing clock with countdown notifications for urgent police certificates",
       "Settlement funds currency exchange rate converter and financial compliance flags",
+    ],
+  },
+  {
+    id: "ca-family-sponsorship",
+    code: "Family Class",
+    title: "Canada Spousal & Family Class Sponsorship (PR)",
+    country: "Canada",
+    countryCode: "CA",
+    flag: "🇨🇦",
+    governingBody: "IRCC (Immigration, Refugees and Citizenship Canada)",
+    category: "Family & Sponsorship",
+    status: "Available",
+    applicantProfile: "Canadian citizens and permanent residents sponsoring a spouse, common-law partner, or dependent child under Inland or Outland Family Class.",
+    statutoryBasis: "IRPA s. 12(1); IRPR Part 7, ss. 116-137 (Family Class Sponsorship).",
+    formSupport: "IMM 1344 (Sponsor Undertaking), IMM 0008, IMM 5532 (Relationship Evaluation), IMM 5669.",
+    summary: "Bona fide relationship evidence indexing, sponsor undertaking & CRA NOA checks, and concurrent Inland Open Work Permit tracking.",
+    caseNeeds: [
+      "Verified Canadian citizen or permanent resident sponsor eligibility and undertaking",
+      "Comprehensive proof of genuine marriage or 12-month continuous common-law cohabitation",
+      "Sponsor CRA Notice of Assessment (NOA) & Canadian employment or income proof",
+      "Complete 10-year personal history and police clearance certificates with zero timeline gaps",
+    ],
+    documentWorkflows: [
+      "Relationship photo timeline, joint lease, joint accounts, and communication logs",
+      "Privacy-shielded sponsor CRA NOA and Option C income validation",
+      "Certified marriage certificates, divorce decrees, and notarized translations",
+      "Inland spousal open work permit eligibility and AOR milestone tracking",
+    ],
+    documentoFeatures: [
+      "IMM 5532 relationship consistency cross-checker across sponsor and applicant answers",
+      "Privacy-shielded Canadian sponsor upload link with SHA-256 verification",
+      "10-year IMM 5669 gap detector preventing R10 completeness returns",
+    ],
+  },
+  {
+    id: "ca-work-permit",
+    code: "LMIA / Work",
+    title: "Canada LMIA & Employer Work Permit (TFWP / IMP)",
+    country: "Canada",
+    countryCode: "CA",
+    flag: "🇨🇦",
+    governingBody: "IRCC & ESDC / Service Canada",
+    category: "Employment & Skilled Worker",
+    status: "Available",
+    applicantProfile: "Foreign skilled workers with a Canadian employer job offer backed by a positive ESDC LMIA or LMIA-exempt Employer Portal offer (IMP / ICT / GTS).",
+    statutoryBasis: "IRPR ss. 200-205; TFWP LMIA Guidelines & International Mobility Program (IMP).",
+    formSupport: "IMM 1295 / IMM 5710, ESDC Positive LMIA Confirmation, Offer of Employment # (IMM 5802).",
+    summary: "Positive LMIA / IMP compliance verification, NOC 2021 wage & duty alignment, and Global Talent Stream or ICT work permit assembly.",
+    caseNeeds: [
+      "Positive ESDC LMIA confirmation letter or LMIA-exempt Offer of Employment number",
+      "Employment contract matching NOC 2021 TEER duties and provincial median wage",
+      "Proof applicant meets exact educational, licensing, and prior work experience requirements",
+      "Valid passport, biometrics, and maintained status verification for inside-Canada extensions",
+    ],
+    documentWorkflows: [
+      "ESDC LMIA approval letter, expiry window, and employer compliance fee receipt audit",
+      "Prior employer reference letters cross-checked against NOC 2021 lead statements",
+      "Canadian corporate documentation for Intra-Company Transferee (ICT) exemptions",
+      "Accompanying spouse SOWP and dependent study/visitor permit family bundle linking",
+    ],
+    documentoFeatures: [
+      "LMIA expiry and work permit duration alignment tracker",
+      "NOC 2021 wage and experience qualification verifier",
+      "CIC/IRCC 5-folder work permit package compilation with IMM 5476 sign-off",
     ],
   },
 
@@ -564,19 +628,24 @@ export function DocumentoCoverageExplorer() {
   const stats = useMemo(() => {
     const available = VERIFIED_PATHWAYS.filter((p) => p.status === "Available");
     const planned = VERIFIED_PATHWAYS.filter((p) => p.status === "Planned");
+    const canadaAvailable = available.filter((p) => p.countryCode === "CA");
     const countries = new Set(available.map((p) => p.country));
     return {
       availableCount: available.length,
       plannedCount: planned.length,
+      canadaCount: canadaAvailable.length,
       activeJurisdictionsCount: countries.size,
     };
   }, []);
 
   const featuredPathways = useMemo(() => {
     return [
+      VERIFIED_PATHWAYS.find((p) => p.id === "ca-ee")!,
       VERIFIED_PATHWAYS.find((p) => p.id === "ca-super-visa")!,
-      VERIFIED_PATHWAYS.find((p) => p.id === "us-eb1a")!,
-      VERIFIED_PATHWAYS.find((p) => p.id === "uk-gtv")!,
+      VERIFIED_PATHWAYS.find((p) => p.id === "ca-study-permit")!,
+      VERIFIED_PATHWAYS.find((p) => p.id === "ca-pgwp")!,
+      VERIFIED_PATHWAYS.find((p) => p.id === "ca-sowp")!,
+      VERIFIED_PATHWAYS.find((p) => p.id === "ca-family-sponsorship")!,
     ].filter(Boolean);
   }, []);
 
@@ -637,7 +706,7 @@ export function DocumentoCoverageExplorer() {
               marginBottom: "12px",
             }}
           >
-            Jurisdictional Coverage
+            Canada IRCC Visa Services &amp; Cross-Border Coverage
           </div>
 
           <h2
@@ -660,12 +729,12 @@ export function DocumentoCoverageExplorer() {
               color: "#475955",
               lineHeight: 1.6,
               margin: "0 0 24px 0",
-              maxWidth: "680px",
+              maxWidth: "700px",
               marginLeft: "auto",
               marginRight: "auto",
             }}
           >
-            Operational, code-verified immigration workflows distinguished from planned expansion jurisdictions.
+            Engineered first for Canadian IRCC immigration — covering {stats.canadaCount} end-to-end Canadian visa streams alongside cross-border US &amp; UK workflows and planned expansion jurisdictions.
           </p>
 
           {/* Sovereign Metric Scope Bar */}
@@ -687,11 +756,11 @@ export function DocumentoCoverageExplorer() {
             }}
           >
             <span style={{ fontWeight: 700, color: "#063C3D" }}>
-              3 Active Jurisdictions
+              🇨🇦 {stats.canadaCount} Canada IRCC Visa Services
             </span>
             <span style={{ color: "#BDCDC7" }}>•</span>
             <span style={{ fontWeight: 650, color: "#07594F" }}>
-              6 Operational Pathways &amp; Dedicated Visa Suites ({stats.availableCount} Available Workflows)
+              3 Active Jurisdictions ({stats.availableCount} Available Workflows)
             </span>
             <span style={{ color: "#BDCDC7" }}>•</span>
             <span style={{ fontWeight: 650, color: "#8A5A10" }}>
@@ -772,11 +841,12 @@ export function DocumentoCoverageExplorer() {
             )}
           </div>
 
-          {/* Status Filter Buttons */}
+          {/* Status & Jurisdiction Filter Buttons */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <button
               type="button"
               onClick={() => {
+                setSelectedCountry(selectedCountry === "CA" ? "ALL" : "CA");
                 setStatusFilter("ALL");
                 if (selectedPathwayId) setSelectedPathwayId(null);
               }}
@@ -784,11 +854,33 @@ export function DocumentoCoverageExplorer() {
                 padding: "6px 14px",
                 borderRadius: "6px",
                 border: "1px solid",
-                borderColor: statusFilter === "ALL" ? "#07594F" : "#DCE5E1",
-                background: statusFilter === "ALL" ? "#07594F" : "#FFFFFF",
-                color: statusFilter === "ALL" ? "#FFFFFF" : "#445451",
+                borderColor: selectedCountry === "CA" ? "#07594F" : "#B9DED4",
+                background: selectedCountry === "CA" ? "#07594F" : "#EAF5EF",
+                color: selectedCountry === "CA" ? "#FFFFFF" : "#07594F",
                 fontSize: "12.5px",
-                fontWeight: statusFilter === "ALL" ? 650 : 500,
+                fontWeight: 650,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              🇨🇦 Canada IRCC ({stats.canadaCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCountry("ALL");
+                setStatusFilter("ALL");
+                if (selectedPathwayId) setSelectedPathwayId(null);
+              }}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "6px",
+                border: "1px solid",
+                borderColor: statusFilter === "ALL" && selectedCountry === "ALL" ? "#07594F" : "#DCE5E1",
+                background: statusFilter === "ALL" && selectedCountry === "ALL" ? "#07594F" : "#FFFFFF",
+                color: statusFilter === "ALL" && selectedCountry === "ALL" ? "#FFFFFF" : "#445451",
+                fontSize: "12.5px",
+                fontWeight: statusFilter === "ALL" && selectedCountry === "ALL" ? 650 : 500,
                 cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
@@ -798,6 +890,7 @@ export function DocumentoCoverageExplorer() {
             <button
               type="button"
               onClick={() => {
+                setSelectedCountry("ALL");
                 setStatusFilter("Available");
                 if (selectedPathwayId) setSelectedPathwayId(null);
               }}
@@ -819,6 +912,7 @@ export function DocumentoCoverageExplorer() {
             <button
               type="button"
               onClick={() => {
+                setSelectedCountry("ALL");
                 setStatusFilter("Planned");
                 if (selectedPathwayId) setSelectedPathwayId(null);
               }}
@@ -859,7 +953,7 @@ export function DocumentoCoverageExplorer() {
                 transition: "all 0.15s ease",
               }}
             >
-              {isBrowsingAll ? "Show Featured 3" : `Browse All ${VERIFIED_PATHWAYS.length} Pathways`}
+              {isBrowsingAll ? "Show Canada Core 6" : `Browse All ${VERIFIED_PATHWAYS.length} Pathways`}
             </button>
           </div>
         </div>
@@ -1186,7 +1280,7 @@ export function DocumentoCoverageExplorer() {
               })}
             </div>
 
-            {/* Restrained Roadmap Strip for Australia & Germany */}
+            {/* Restrained Cross-Border & Roadmap Strip */}
             <div
               className="animate-on-scroll spotlight-card"
               data-motion="up"
@@ -1209,35 +1303,51 @@ export function DocumentoCoverageExplorer() {
                     fontWeight: 650,
                     padding: "3px 10px",
                     borderRadius: "999px",
-                    background: "#FEF7EA",
-                    color: "#8A5A10",
+                    background: "#EAF5EF",
+                    color: "#07594F",
                   }}
                 >
-                  Expansion Watchlist
+                  Cross-Border &amp; Roadmap
                 </span>
                 <span style={{ fontSize: "13.5px", color: "#4F6360" }}>
-                  In Active Development: <strong style={{ color: "#063C3D" }}>Australia Global Talent Visa (Subclass 858)</strong> and <strong style={{ color: "#063C3D" }}>Germany EU Blue Card &amp; Chancenkarte</strong>.
+                  Also operational: <strong style={{ color: "#063C3D" }}>Canada TRV &amp; LMIA Work Permits</strong>, plus <strong style={{ color: "#063C3D" }}>US (USCIS)</strong> &amp; <strong style={{ color: "#063C3D" }}>UK (UKVI)</strong>. Roadmap Pilot: <strong style={{ color: "#063C3D" }}>Australia &amp; Germany</strong>.
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setStatusFilter("Planned")}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#0D6866",
-                  fontSize: "13px",
-                  fontWeight: 650,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <span>View Roadmap</span>
-                <span>→</span>
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setIsBrowsingAll(true)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#063C3D",
+                    fontSize: "13px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                  }}
+                >
+                  All {VERIFIED_PATHWAYS.length} Pathways
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter("Planned")}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#0D6866",
+                    fontSize: "13px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <span>View Roadmap</span>
+                  <span>→</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

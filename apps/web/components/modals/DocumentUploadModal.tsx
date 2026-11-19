@@ -24,6 +24,8 @@ interface DocumentUploadModalProps {
   parentDocumentId?: string;
   onDocumentUploaded: (doc: DocumentItem) => void;
   activeRole?: RoleCode;
+  rawOnly?: boolean;
+  raw_only?: boolean;
 }
 
 function normalizeDetectedCategory(raw: string): DocumentCategory {
@@ -38,8 +40,13 @@ export function DocumentUploadModal({
   cases = [],
   parentDocumentId,
   onDocumentUploaded,
-  activeRole = "retained_client",
+  activeRole,
+  rawOnly = false,
+  raw_only = false,
 }: DocumentUploadModalProps) {
+  const isRawClientUpload = Boolean(
+    rawOnly || raw_only || activeRole === "retained_client" || activeRole === "applicant"
+  );
   const [selectedCaseId, setSelectedCaseId] = useState<string>(caseId || cases[0]?.id || "");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [category, setCategory] = useState<DocumentCategory>("identity_passport");
@@ -81,7 +88,7 @@ export function DocumentUploadModal({
   const validateAndLoadFiles = async (incoming: File[]) => {
     if (!incoming.length) return;
     setError(null);
-    setStatusMessage("Validating file signature & calculating SHA-256 integrity hash...");
+    setStatusMessage("Checking file format and preparing upload...");
 
     try {
       for (const file of incoming) {
@@ -95,7 +102,7 @@ export function DocumentUploadModal({
         const isWebp = header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46;
 
         if (!isPdf && !isJpg && !isPng && !isTiff && !isWebp) {
-          setError("File signature rejected: Only PDF and standard image formats (JPEG, PNG, TIFF, WebP) are authorized.");
+          setError("Unsupported file format: Only PDF and standard image formats (JPEG, PNG, TIFF, WebP) are accepted.");
           setSelectedFiles([]);
           setComputedHash(null);
           setStatusMessage(null);
@@ -140,11 +147,11 @@ export function DocumentUploadModal({
       setComputedHash(hash);
       setStatusMessage(
         incoming.length === 1
-          ? `File format authorized. SHA-256 fingerprint: ${hash.slice(0, 16)}...`
-          : `${incoming.length} files authorized. Primary SHA-256 fingerprint: ${hash.slice(0, 16)}...`
+          ? "File format verified and ready for upload."
+          : `${incoming.length} files verified and ready for upload.`
       );
     } catch {
-      setError("Failed to process file signature in browser.");
+      setError("Failed to read file in browser.");
     }
   };
 
@@ -160,16 +167,15 @@ export function DocumentUploadModal({
       return;
     }
     if (!computedHash) {
-      setError("Waiting for SHA-256 fingerprint verification to complete.");
+      setError("Waiting for file verification to complete.");
       return;
     }
 
-    const isRawClientUpload = activeRole === "retained_client";
     setIsProcessing(true);
     setStatusMessage(
       isRawClientUpload
-        ? "Transmitting your untouched file directly to your Assigned Paralegal..."
-        : "Transmitting to private storage, running antivirus scan & single-pass OCR pipeline..."
+        ? "Uploading your document(s) to your legal team for review..."
+        : "Uploading to case file and running document text extraction..."
     );
 
     try {
@@ -291,8 +297,8 @@ export function DocumentUploadModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Secure Evidence Upload & OCR Intake"
-      subtitle="Encrypted object storage with magic-byte validation, malware scanning, SHA-256 integrity, and automated OCR extraction."
+      title={isRawClientUpload ? "Upload Document(s)" : "Secure Evidence Upload & OCR Intake"}
+      subtitle="Upload clear, readable PDFs or photos (JPEG, PNG, TIFF, WebP). Multi-page files are supported automatically."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={isProcessing}>
@@ -303,7 +309,13 @@ export function DocumentUploadModal({
             onClick={handleUpload}
             disabled={!selectedFile || !computedHash || isProcessing}
           >
-            {isProcessing ? "Processing & Extracting..." : "Upload & Run Extraction"}
+            {isProcessing
+              ? isRawClientUpload
+                ? "Uploading..."
+                : "Processing & Extracting..."
+              : isRawClientUpload
+                ? "Upload Document(s)"
+                : "Upload & Run Extraction"}
           </Button>
         </>
       }
@@ -519,21 +531,6 @@ export function DocumentUploadModal({
               <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#176B50" }} />
               {statusMessage}
             </div>
-            {computedHash && (
-              <div
-                style={{
-                  fontSize: "11px",
-                  fontFamily: "monospace",
-                  color: "#445451",
-                  wordBreak: "break-all",
-                  paddingTop: "6px",
-                  marginTop: "6px",
-                  borderTop: "1px solid #B9DED4",
-                }}
-              >
-                SHA-256: {computedHash}
-              </div>
-            )}
           </div>
         )}
 
@@ -549,12 +546,11 @@ export function DocumentUploadModal({
           }}
         >
           <div style={{ fontWeight: 650, color: "#063C3D", marginBottom: "4px" }}>
-            Security &amp; Integrity Assurance:
+            Upload Standards &amp; Privacy:
           </div>
-          <div>• Magic-byte verification ensures zero executable disguises.</div>
-          <div>• Heuristic malware scan prevents corrupted or infected payloads.</div>
-          <div>• Automated PyMuPDF &amp; OCR extraction records full data provenance.</div>
-          <div>• Documents remain isolated to your organization's private cryptographic vault.</div>
+          <div>• Upload clear, readable PDFs or photos; multi-page files are supported automatically.</div>
+          <div>• Automatic format verification ensures only valid PDF and image documents are accepted.</div>
+          <div>• Uploaded documents are securely stored in your private case file for review by your legal team.</div>
         </div>
       </div>
     </Modal>

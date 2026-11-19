@@ -58,43 +58,12 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
   const manifest = packageItem.manifest || packageItem.manifest_json;
   const items: PackageManifestItem[] = manifest?.items || [];
 
-  // Excluded candidate items with reason codes
-  const fallbackExclusions: PackageExclusionItem[] = [
-    {
-      document_id: "doc-anom-01",
-      title: "Suspicious Employment Certification",
-      filename: "Employment_Cert_Tampered.pdf",
-      category: "employment_record",
-      reason_code: "UNRESOLVED_ANOMALY",
-      exclusion_reasons: [
-        "Unresolved anomaly: High probability of digital alteration or OCR discrepancy detected in employer letterhead.",
-      ],
-      blockers: ["UNRESOLVED_ANOMALY", "TAMPERING_SUSPECTED"],
-    },
-    {
-      document_id: "doc-unassigned-02",
-      title: "Unlinked Secondary Dependant Passport",
-      filename: "Dependant_Passport_Draft.pdf",
-      category: "identity_passport",
-      reason_code: "APPLICANT_UNASSIGNED",
-      exclusion_reasons: ["Applicant assignment unconfirmed. Document not associated with a verified case client profile."],
-      blockers: ["APPLICANT_UNASSIGNED"],
-    },
-    {
-      document_id: "doc-human-03",
-      title: "Unsigned Reference Letter (Prof. Zhao)",
-      filename: "Reference_Letter_Zhao_Unsigned.pdf",
-      category: "supporting_evidence",
-      reason_code: "HUMAN_VERIFICATION_REQUIRED",
-      exclusion_reasons: ["Human verification sign-off is required before inclusion in final petition bundle."],
-      blockers: ["HUMAN_VERIFICATION_REQUIRED"],
-    },
-  ];
-
-  const excludedItems: PackageExclusionItem[] =
-    manifest?.excluded_items && manifest.excluded_items.length > 0
-      ? manifest.excluded_items
-      : fallbackExclusions;
+  // Derive excluded items strictly from the package manifest (never fabricate exclusions)
+  const excludedItems: PackageExclusionItem[] = Array.isArray(manifest?.excluded_items)
+    ? manifest.excluded_items
+    : Array.isArray((packageItem as any).excluded_documents)
+    ? (packageItem as any).excluded_documents
+    : [];
 
   // Canada vs USCIS folder structures
   const canadaFolders = [
@@ -267,9 +236,15 @@ export const PackageBuilderView: React.FC<PackageBuilderViewProps> = ({
   // Full package ZIP download
   const handleDownloadZip = async () => {
     setIsDownloading(true);
+    setOverrideFeedback(null);
     try {
       const cleanName = packageItem.name.replace(/[^a-zA-Z0-9_-]/g, "_");
       await downloadPackageZip(packageItem.id, `${cleanName}_Local_Package.zip`);
+    } catch (err: any) {
+      setOverrideFeedback({
+        type: "error",
+        message: err?.message || "Cannot download filing package ZIP: package or parent case is held or rejected.",
+      });
     } finally {
       setIsDownloading(false);
     }

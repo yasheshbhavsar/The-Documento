@@ -324,6 +324,7 @@ def validate_case_status_transition(
     target_status: str,
     ctx: AuthContext,
     is_pathway_override: bool = False,
+    case: ImmigrationCase | None = None,
 ) -> None:
     """Validates whether a case status transition is allowed under the state machine and user permissions."""
     if ctx.is_retained_client():
@@ -358,31 +359,97 @@ def validate_case_status_transition(
         if not any(r in STAFF_ROLES for r in ctx.roles):
             raise PermissionDeniedError("Only staff case managers or administrators can reopen a closed or archived case")
 
+    # Enforce decoupled lifecycle guards when case entity is provided
+    if case is not None:
+        from backend.app.domain.case_lifecycle import CaseLifecycleService
+        CaseLifecycleService.enforce_legacy_status_transition_guards(
+            case=case,
+            target_status=tgt,
+            ctx=ctx,
+            is_pathway_override=is_pathway_override,
+        )
+
 
 def sync_legacy_to_decoupled_lifecycle(case: ImmigrationCase, target_legacy_status: str) -> None:
-    """Synchronizes decoupled lifecycle fields when legacy status transition occurs."""
+    """
+    Synchronizes decoupled lifecycle fields when legacy status transition occurs,
+    preserving existing downstream review and preparation states rather than blindly clobbering them.
+    """
     tgt = target_legacy_status.lower().strip()
+    curr_rev = (getattr(case, "review_status", None) or "NOT_STARTED").upper().strip()
+    curr_prep = (getattr(case, "preparation_status", None) or "CLEARANCE_PENDING").upper().strip()
+    curr_op = (getattr(case, "operational_state", None) or "ACTIVE").upper().strip()
+
+    review_progression = [
+        "NOT_STARTED",
+        "INTERNAL_REVIEW",
+        "OFFICER_INITIAL_REVIEW",
+        "SENIOR_REVIEW",
+        "LAWYER_REVIEW",
+        "CLIENT_CONFIRMATION",
+        "APPROVED",
+    ]
+    prep_progression = [
+        "CONSULTATION_ONLY",
+        "PRELIMINARY_ASSESSMENT",
+        "CLEARANCE_PENDING",
+        "AUTHORIZED_FOR_PREPARATION",
+        "PREPARATION_IN_PROGRESS",
+        "READY_FOR_FINAL_REVIEW",
+        "READY_TO_SUBMIT",
+        "SUBMITTED",
+    ]
+
+    def _advance_review_if_earlier(min_review_status: str) -> None:
+        if curr_rev in review_progression and min_review_status in review_progression:
+            if review_progression.index(curr_rev) < review_progression.index(min_review_status):
+                case.review_status = min_review_status
+        elif curr_rev == "CHANGES_REQUESTED":
+            case.review_status = min_review_status
+        else:
+            case.review_status = min_review_status
+
+    def _advance_prep_if_earlier(min_prep_status: str) -> None:
+        if curr_prep in prep_progression and min_prep_status in prep_progression:
+            if prep_progression.index(curr_prep) < prep_progression.index(min_prep_status):
+                case.preparation_status = min_prep_status
+        else:
+            case.preparation_status = min_prep_status
+
     if tgt in ("inquiry", "intake"):
-        case.preparation_status = "AUTHORIZED_FOR_PREPARATION" if tgt == "intake" else "CLEARANCE_PENDING"
-        case.operational_state = "ACTIVE"
+        desired_prep = "AUTHORIZED_FOR_PREPARATION" if tgt == "intake" else "CLEARANCE_PENDING"
+        _advance_prep_if_earlier(desired_prep)
+        if curr_op != "ON_HOLD":
+            case.operational_state = "ACTIVE"
     elif tgt in ("awaiting_documents", "processing", "awaiting_client"):
-        case.preparation_status = "PREPARATION_IN_PROGRESS"
-        case.operational_state = "ACTIVE"
-    elif tgt in ("internal_review", "ready_for_approval"):
-        case.preparation_status = "READY_FOR_FINAL_REVIEW"
-        case.review_status = "SENIOR_REVIEW"
-        case.operational_state = "ACTIVE"
+        _advance_prep_if_earlier("PREPARATION_IN_PROGRESS")
+        if curr_op != "ON_HOLD":
+            case.operational_state = "ACTIVE"
+    elif tgt == "internal_review":
+        _advance_prep_if_earlier("READY_FOR_FINAL_REVIEW")
+        _advance_review_if_earlier("INTERNAL_REVIEW")
+        if curr_op != "ON_HOLD":
+            case.operational_state = "ACTIVE"
+    elif tgt == "ready_for_approval":
+        _advance_prep_if_earlier("READY_FOR_FINAL_REVIEW")
+        _advance_review_if_earlier("SENIOR_REVIEW")
+        if curr_op != "ON_HOLD":
+            case.operational_state = "ACTIVE"
     elif tgt == "approved_for_submission":
-        case.preparation_status = "READY_TO_SUBMIT"
-        case.review_status = "APPROVED"
-        case.operational_state = "ACTIVE"
+        _advance_prep_if_earlier("READY_TO_SUBMIT")
+        _advance_review_if_earlier("APPROVED")
+        if curr_op != "ON_HOLD":
+            case.operational_state = "ACTIVE"
     elif tgt == "submitted":
         case.preparation_status = "SUBMITTED"
-        case.outcome_status = "PENDING_ADJUDICATION"
-        case.operational_state = "ACTIVE"
+        if not getattr(case, "outcome_status", None):
+            case.outcome_status = "PENDING_ADJUDICATION"
+        if curr_op != "ON_HOLD":
+            case.operational_state = "ACTIVE"
     elif tgt == "decision_received":
         case.preparation_status = "SUBMITTED"
-        case.outcome_status = "APPROVED"
+        if not getattr(case, "outcome_status", None) or getattr(case, "outcome_status", None) == "PENDING_ADJUDICATION":
+            case.outcome_status = "APPROVED"
         case.operational_state = "COMPLETED"
     elif tgt == "closed":
         case.operational_state = "COMPLETED"
@@ -390,5 +457,10 @@ def sync_legacy_to_decoupled_lifecycle(case: ImmigrationCase, target_legacy_stat
         case.operational_state = "ARCHIVED"
     elif tgt == "reopened":
         case.operational_state = "ACTIVE"
-        case.preparation_status = "PREPARATION_IN_PROGRESS"
+        case.hold_reason = None
+        case.hold_applied_at = None
+        case.hold_applied_by_id = None
+        if curr_prep in ("SUBMITTED", "CLEARANCE_PENDING", "CONSULTATION_ONLY", "PRELIMINARY_ASSESSMENT") or not curr_prep:
+            case.preparation_status = "PREPARATION_IN_PROGRESS"
+
 

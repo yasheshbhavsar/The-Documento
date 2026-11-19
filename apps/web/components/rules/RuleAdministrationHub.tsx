@@ -22,6 +22,7 @@ import {
   GeneratedChecklistResponse,
   PinnedChecklistSnapshotResponse,
   CaseMigrationResponse,
+  ImmigrationCase,
 } from "../../lib/types";
 import {
   api,
@@ -40,13 +41,32 @@ import {
   getCasePinnedChecklist,
   migrateCaseRuleVersion,
 } from "../../lib/api";
+import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
+import { PathwayExpansionDesk } from "../pathways/PathwayExpansionDesk";
 
+function formatRegressionSuiteLabel(suite?: string | null): string {
+  if (!suite) return "Automated Statutory Validation Suite";
+  if (/\.py|test_phase|test_stage|backend\/tests|::/i.test(suite)) {
+    return "Automated Statutory Validation Suite";
+  }
+  return suite;
+}
+
+export type RuleHubTabKey =
+  | "coverage"
+  | "pathway_expansion"
+  | "checklist_engine"
+  | "sources"
+  | "rulesets"
+  | "requirements"
+  | "regression";
 
 interface RuleAdministrationHubProps {
   userRole?: RoleCode;
   isLiveBackend?: boolean;
   onNotification?: (msg: string, type: "success" | "error" | "info") => void;
-  initialTab?: "coverage" | "checklist_engine" | "sources" | "rulesets" | "requirements" | "regression";
+  initialTab?: RuleHubTabKey;
+  cases?: ImmigrationCase[];
 }
 
 export function RuleAdministrationHub({
@@ -54,12 +74,27 @@ export function RuleAdministrationHub({
   isLiveBackend = false,
   onNotification,
   initialTab = "coverage",
+  cases: propCases,
 }: RuleAdministrationHubProps) {
-  const [activeTab, setActiveTab] = useState<
-    "coverage" | "checklist_engine" | "sources" | "rulesets" | "requirements" | "regression"
-  >(initialTab);
+  const ws = useWorkspaceSafe();
+  const availableCases = propCases ?? ws?.cases ?? [];
+
+  const [activeTab, setActiveTab] = useState<RuleHubTabKey>(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [feedbackBanner, setFeedbackBanner] = useState<{
+    message: string;
+    type: "success" | "error" | "info";
+  } | null>(null);
+
+  const notify = (msg: string, type: "success" | "error" | "info") => {
+    setFeedbackBanner({ message: msg, type });
+    onNotification?.(msg, type);
+  };
 
   // Sources State
   const [sources, setSources] = useState<OfficialSource[]>(FALLBACK_OFFICIAL_SOURCES);
@@ -70,6 +105,7 @@ export function RuleAdministrationHub({
   const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
   const [diffResult, setDiffResult] = useState<SnapshotCompareResult | null>(null);
+  const [inspectedSnapshot, setInspectedSnapshot] = useState<SourceSnapshot | null>(null);
 
   // New Source Form
   const [newSourceJurisdiction, setNewSourceJurisdiction] = useState("US");
@@ -135,12 +171,19 @@ export function RuleAdministrationHub({
   const [isGeneratingChecklist, setIsGeneratingChecklist] = useState<boolean>(false);
   const [activeJsonRule, setActiveJsonRule] = useState<Phase6RuleRequirementItem | null>(null);
 
-  // Phase 6 State: Case Migration & Pinned Snapshot
-  const [pinnedCaseId, setPinnedCaseId] = useState<string>("CAS-CA-001");
+  // Case Migration & Pinned Snapshot State
+  const defaultCaseRef = availableCases[0]?.case_number || availableCases[0]?.id || "";
+  const [pinnedCaseId, setPinnedCaseId] = useState<string>(defaultCaseRef);
   const [pinnedSnapshot, setPinnedSnapshot] = useState<PinnedChecklistSnapshotResponse | null>(null);
   const [migrationReason, setMigrationReason] = useState<string>("Client approval of upgraded 2026 digital standards");
   const [migrationResult, setMigrationResult] = useState<CaseMigrationResponse | null>(null);
   const [isMigrating, setIsMigrating] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!pinnedCaseId && availableCases.length > 0) {
+      setPinnedCaseId(availableCases[0].case_number || availableCases[0].id);
+    }
+  }, [availableCases, pinnedCaseId]);
 
   const loadPhase6Data = async () => {
     try {
@@ -153,7 +196,7 @@ export function RuleAdministrationHub({
       setTaxonomies(tList);
       setCoverageMatrix(cMatrix);
     } catch (e) {
-      console.error("Failed to load Phase 6/12 data", e);
+      console.error("Failed to load country registry and taxonomy data", e);
     }
   };
 
@@ -168,7 +211,7 @@ export function RuleAdministrationHub({
       const dossier = await getPathwayDossier(pathwayKey, userRole);
       setSelectedDossier(dossier);
     } catch {
-      onNotification?.("Failed to retrieve pathway validation dossier", "error");
+      notify("Failed to retrieve pathway validation dossier", "error");
     } finally {
       setIsLoadingDossier(false);
     }
@@ -178,7 +221,7 @@ export function RuleAdministrationHub({
     setIsSeedingPacks(true);
     try {
       const res = await seedProductionRulePacks(userRole);
-      onNotification?.(
+      notify(
         `Production rule packs provisioned: ${res.jurisdictions_covered?.join(", ")} (Total: ${res.seeded_packs_count || 5})`,
         "success"
       );
@@ -187,7 +230,7 @@ export function RuleAdministrationHub({
         await loadRuleSets();
       }
     } catch {
-      onNotification?.("Failed to seed production rule packs", "error");
+      notify("Failed to seed production rule packs", "error");
     } finally {
       setIsSeedingPacks(false);
     }
@@ -213,38 +256,42 @@ export function RuleAdministrationHub({
       );
       setSimChecklistResponse(res);
       if (!res.is_supported) {
-        onNotification?.(
+        notify(
           `Safe stop triggered: ${res.status}. No unrelated fallback checklist presented.`,
           "info"
         );
       } else {
-        onNotification?.(
+        notify(
           `Fact-tailored checklist generated: ${res.applicable_count} applicable of ${res.total_rules_count} statutory rules.`,
           "success"
         );
       }
     } catch {
-      onNotification?.("Checklist generation failed", "error");
+      notify("Checklist generation failed", "error");
     } finally {
       setIsGeneratingChecklist(false);
     }
   };
 
   const handleFetchPinnedCase = async () => {
+    const targetCaseId =
+      pinnedCaseId.trim() || availableCases[0]?.case_number || availableCases[0]?.id || "CASE-ACTIVE";
     try {
-      const res = await getCasePinnedChecklist(pinnedCaseId, userRole);
+      const res = await getCasePinnedChecklist(targetCaseId, userRole);
       setPinnedSnapshot(res);
-      onNotification?.(`Loaded pinned checklist for case ${pinnedCaseId}`, "info");
+      notify(`Loaded pinned checklist for case ${targetCaseId}`, "info");
     } catch {
-      onNotification?.("Failed to retrieve pinned case checklist", "error");
+      notify("Failed to retrieve pinned case checklist", "error");
     }
   };
 
   const handleExecuteCaseMigration = async () => {
+    const targetCaseId =
+      pinnedCaseId.trim() || availableCases[0]?.case_number || availableCases[0]?.id || "CASE-ACTIVE";
     setIsMigrating(true);
     try {
       const res = await migrateCaseRuleVersion(
-        pinnedCaseId,
+        targetCaseId,
         {
           to_version_id: "2.0.0",
           migration_reason: migrationReason,
@@ -252,12 +299,12 @@ export function RuleAdministrationHub({
         userRole
       );
       setMigrationResult(res);
-      onNotification?.(
+      notify(
         `Case migrated from v${res.from_version_number} to v${res.to_version_number}. Pinned snapshot updated.`,
         "success"
       );
     } catch {
-      onNotification?.("Case migration failed", "error");
+      notify("Case migration failed", "error");
     } finally {
       setIsMigrating(false);
     }
@@ -281,151 +328,193 @@ export function RuleAdministrationHub({
         setSelectedSource(res.data[0]);
         loadSnapshots(res.data[0].id);
       }
+    } catch (err: any) {
+      notify(err?.message || "Failed to load official sources.", "error");
     } finally {
       setIsLoading(false);
     }
   };
 
   const loadSnapshots = async (sourceId: string) => {
-    const res = await api.getSourceSnapshots(sourceId, userRole);
-    setSnapshots(res.data);
+    try {
+      const res = await api.getSourceSnapshots(sourceId, userRole);
+      setSnapshots(res.data);
+    } catch (err: any) {
+      notify(err?.message || "Failed to load source snapshots.", "error");
+    }
   };
 
   const loadRuleSets = async () => {
-    const res = await api.getRuleSets(undefined, undefined, userRole);
-    setRuleSets(res.data);
-    if (res.data.length > 0 && !selectedRuleSet) {
-      const defaultSet = res.data[0];
-      setSelectedRuleSet(defaultSet);
-      loadVersions(defaultSet.id);
+    try {
+      const res = await api.getRuleSets(undefined, undefined, userRole);
+      setRuleSets(res.data);
+      if (res.data.length > 0 && !selectedRuleSet) {
+        const defaultSet = res.data[0];
+        setSelectedRuleSet(defaultSet);
+        loadVersions(defaultSet.id);
+      }
+    } catch (err: any) {
+      notify(err?.message || "Failed to load rule sets.", "error");
     }
   };
 
   const loadVersions = async (setId: string) => {
-    const res = await api.getRuleSetVersions(setId, userRole);
-    setVersions(res.data);
-    if (res.data.length > 0) {
-      const topV = res.data[0];
-      setSelectedVersion(topV);
-      loadRequirements(topV.id);
+    try {
+      const res = await api.getRuleSetVersions(setId, userRole);
+      setVersions(res.data);
+      if (res.data.length > 0) {
+        const topV = res.data[0];
+        setSelectedVersion(topV);
+        loadRequirements(topV.id);
+      }
+    } catch (err: any) {
+      notify(err?.message || "Failed to load rule versions.", "error");
     }
   };
 
   const loadRequirements = async (versionId: string) => {
-    const res = await api.getVersionRequirements(versionId, userRole);
-    setRequirements(res.data);
+    try {
+      const res = await api.getVersionRequirements(versionId, userRole);
+      setRequirements(res.data);
+    } catch (err: any) {
+      notify(err?.message || "Failed to load version requirements.", "error");
+    }
   };
 
   const handleRegisterSource = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSourceTitle || !newSourceUrl || !newSourceScope) {
-      onNotification?.("Please complete all required fields for the official source registration.", "error");
+      notify("Please complete all required fields for the official source registration.", "error");
       return;
     }
-    const res = await api.createOfficialSource({
-      jurisdiction: newSourceJurisdiction,
-      authority: newSourceAuthority,
-      title: newSourceTitle,
-      url: newSourceUrl,
-      scope_limitations: newSourceScope,
-    }, userRole);
-    if (res.data) {
-      setSources([res.data, ...sources]);
-      setSelectedSource(res.data);
-      setIsRegisterSourceModalOpen(false);
-      onNotification?.(`Registered official government source: ${res.data.title}`, "success");
-      setNewSourceTitle("");
-      setNewSourceUrl("");
-      setNewSourceScope("");
+    try {
+      const res = await api.createOfficialSource({
+        jurisdiction: newSourceJurisdiction,
+        authority: newSourceAuthority,
+        title: newSourceTitle,
+        url: newSourceUrl,
+        scope_limitations: newSourceScope,
+      }, userRole);
+      if (res.data) {
+        setSources([res.data, ...sources]);
+        setSelectedSource(res.data);
+        setIsRegisterSourceModalOpen(false);
+        notify(`Registered official government source: ${res.data.title}`, "success");
+        setNewSourceTitle("");
+        setNewSourceUrl("");
+        setNewSourceScope("");
+      }
+    } catch (err: any) {
+      notify(err?.message || "Failed to register official source.", "error");
     }
   };
 
   const handleCaptureSnapshot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSource || !newSnapshotContent) return;
-    const res = await api.captureSourceSnapshot(selectedSource.id, {
-      raw_content: newSnapshotContent,
-      publication_date: newSnapshotPubDate || undefined,
-      effective_date: newSnapshotEffDate || undefined,
-    }, userRole);
-    if (res.data) {
-      setSnapshots([res.data, ...snapshots]);
-      setIsSnapshotModalOpen(false);
-      onNotification?.("Cryptographic SHA-256 source content snapshot recorded.", "success");
-      setNewSnapshotContent("");
-      setNewSnapshotPubDate("");
-      setNewSnapshotEffDate("");
+    try {
+      const res = await api.captureSourceSnapshot(selectedSource.id, {
+        raw_content: newSnapshotContent,
+        publication_date: newSnapshotPubDate || undefined,
+        effective_date: newSnapshotEffDate || undefined,
+      }, userRole);
+      if (res.data) {
+        setSnapshots([res.data, ...snapshots]);
+        setIsSnapshotModalOpen(false);
+        notify("Cryptographic SHA-256 source content snapshot recorded.", "success");
+        setNewSnapshotContent("");
+        setNewSnapshotPubDate("");
+        setNewSnapshotEffDate("");
+      }
+    } catch (err: any) {
+      notify(err?.message || "Failed to capture source snapshot.", "error");
     }
   };
 
   const handleCompareSnapshots = async () => {
     if (snapshots.length < 2) {
-      onNotification?.("At least 2 snapshots are required to compute a cryptographic diff.", "info");
+      notify("At least 2 snapshots are required to compute a cryptographic diff.", "info");
       return;
     }
-    const res = await api.compareSourceSnapshots(selectedSource?.id || snapshots[0].source_id, snapshots[1].id, snapshots[0].id, userRole);
-    setDiffResult(res.data);
-    setIsDiffModalOpen(true);
+    try {
+      const res = await api.compareSourceSnapshots(selectedSource?.id || snapshots[0].source_id, snapshots[1].id, snapshots[0].id, userRole);
+      setDiffResult(res.data);
+      setIsDiffModalOpen(true);
+    } catch (err: any) {
+      notify(err?.message || "Failed to compare source snapshots.", "error");
+    }
   };
 
   const handleCreateNewVersion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRuleSet || !newVersionNumber) return;
-    const res = await api.createRuleSetVersion(selectedRuleSet.id, {
-      version_number: newVersionNumber,
-      change_summary: newVersionSummary,
-    }, userRole);
-    if (res.data) {
-      setVersions([res.data, ...versions]);
-      setSelectedVersion(res.data);
-      setIsNewVersionModalOpen(false);
-      onNotification?.(`Drafted new rule version v${res.data.version_number}`, "success");
-      setNewVersionNumber("");
-      setNewVersionSummary("");
+    try {
+      const res = await api.createRuleSetVersion(selectedRuleSet.id, {
+        version_number: newVersionNumber,
+        change_summary: newVersionSummary,
+      }, userRole);
+      if (res.data) {
+        setVersions([res.data, ...versions]);
+        setSelectedVersion(res.data);
+        setIsNewVersionModalOpen(false);
+        notify(`Drafted new rule version v${res.data.version_number}`, "success");
+        setNewVersionNumber("");
+        setNewVersionSummary("");
+      }
+    } catch (err: any) {
+      notify(err?.message || "Failed to draft new rule version.", "error");
     }
   };
 
   const handleTransitionVersion = async (targetStatus: string) => {
     if (!selectedVersion) return;
-    const res = await api.transitionVersionStatus(
-      selectedVersion.id,
-      targetStatus,
-      `Administrative transition to ${targetStatus}`,
-      userRole
-    );
-    if (res.data) {
-      setSelectedVersion(res.data);
-      setVersions(versions.map(v => (v.id === res.data.id ? res.data : v)));
-      onNotification?.(`Version v${res.data.version_number} transition: ${targetStatus.toUpperCase()}`, "success");
+    try {
+      const res = await api.transitionVersionStatus(
+        selectedVersion.id,
+        targetStatus,
+        `Administrative transition to ${targetStatus}`,
+        userRole
+      );
+      if (res.data) {
+        setSelectedVersion(res.data);
+        setVersions(versions.map(v => (v.id === res.data.id ? res.data : v)));
+        notify(`Version v${res.data.version_number} transition: ${targetStatus.toUpperCase()}`, "success");
+      }
+    } catch (err: any) {
+      notify(err?.message || `Failed to transition version to ${targetStatus}.`, "error");
     }
   };
 
   const handleAddRequirement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVersion || !newReqCode || !newReqTitle) return;
-    const res = await api.createVersionRequirement(selectedVersion.id, {
-      code: newReqCode,
-      title: newReqTitle,
-      description: newReqDesc,
-      category: newReqCategory,
-      statutory_citation: newReqCitation,
-      is_mandatory: newReqMandatory,
-      requires_human_review: newReqHumanReview,
-      review_guidance: newReqGuidance,
-      accepted_evidence_types: [newReqEvidenceCategory],
-      validation_rules: [{ check: "doc_present", field_name: newReqEvidenceCategory }],
-      blocking_dependencies: [],
-      priority: 1,
-    }, userRole);
-    if (res.data) {
-      setRequirements([...requirements, res.data]);
-      setIsAddRequirementModalOpen(false);
-      onNotification?.(`Added declarative requirement: ${res.data.code}`, "success");
-      setNewReqCode("");
-      setNewReqTitle("");
-      setNewReqDesc("");
-      setNewReqCitation("");
-      setNewReqGuidance("");
+    try {
+      const res = await api.createVersionRequirement(selectedVersion.id, {
+        code: newReqCode,
+        title: newReqTitle,
+        description: newReqDesc,
+        category: newReqCategory,
+        statutory_citation: newReqCitation,
+        is_mandatory: newReqMandatory,
+        requires_human_review: newReqHumanReview,
+        review_guidance: newReqGuidance,
+        accepted_evidence_types: [newReqEvidenceCategory],
+        validation_rules: [{ check: "doc_present", field_name: newReqEvidenceCategory }],
+        blocking_dependencies: [],
+        priority: 1,
+      }, userRole);
+      if (res.data) {
+        setRequirements([...requirements, res.data]);
+        setIsAddRequirementModalOpen(false);
+        notify(`Added declarative requirement: ${res.data.code}`, "success");
+        setNewReqCode("");
+        setNewReqTitle("");
+        setNewReqDesc("");
+        setNewReqCitation("");
+        setNewReqGuidance("");
+      }
+    } catch (err: any) {
+      notify(err?.message || "Failed to add declarative requirement.", "error");
     }
   };
 
@@ -435,7 +524,9 @@ export function RuleAdministrationHub({
     try {
       const res = await api.testVersionRegression(selectedVersion.id, userRole);
       setRegressionResult(res.data);
-      onNotification?.("Automated Regression Suite execution completed.", "success");
+      notify("Automated Regression Suite execution completed.", "success");
+    } catch (err: any) {
+      notify(err?.message || "Automated Regression Suite execution failed.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -447,7 +538,9 @@ export function RuleAdministrationHub({
     try {
       const res = await api.identifyAffectedCases(selectedVersion.id, true, userRole);
       setImpactResult(res.data);
-      onNotification?.(`Impact Analysis complete: ${res.data.affected_cases_count} open cases queued for caseworker review.`, "info");
+      notify(`Impact Analysis complete: ${res.data.affected_cases_count} open cases queued for caseworker review.`, "info");
+    } catch (err: any) {
+      notify(err?.message || "Failed to identify affected open cases.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -457,9 +550,11 @@ export function RuleAdministrationHub({
     setIsLoading(true);
     try {
       const res = await api.seedEB1APilot(userRole);
-      onNotification?.(res.data.message, "success");
+      notify(res.data.message, "success");
       await loadSources();
       await loadRuleSets();
+    } catch (err: any) {
+      notify(err?.message || "Failed to re-seed US EB-1A pilot rules.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -504,7 +599,7 @@ export function RuleAdministrationHub({
                 border: "1px solid rgba(185, 222, 212, 0.35)",
               }}
             >
-              Phase 6 Subsystem
+              Statutory Rule Governance
             </span>
             <span
               style={{
@@ -565,6 +660,57 @@ export function RuleAdministrationHub({
         </div>
       </div>
 
+      {/* Inline Feedback Banner */}
+      {feedbackBanner && (
+        <div
+          role="alert"
+          data-testid="rules-feedback-banner"
+          style={{
+            padding: "12px 16px",
+            borderRadius: "10px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            fontSize: "12.5px",
+            fontWeight: 600,
+            background:
+              feedbackBanner.type === "error"
+                ? "#FEF2F2"
+                : feedbackBanner.type === "success"
+                ? "#ECFDF5"
+                : "#EFF6FF",
+            color:
+              feedbackBanner.type === "error"
+                ? "#991B1B"
+                : feedbackBanner.type === "success"
+                ? "#065F46"
+                : "#1E40AF",
+            border:
+              feedbackBanner.type === "error"
+                ? "1px solid #FCA5A5"
+                : feedbackBanner.type === "success"
+                ? "1px solid #A7F3D0"
+                : "1px solid #BFDBFE",
+          }}
+        >
+          <span>{feedbackBanner.message}</span>
+          <button
+            type="button"
+            onClick={() => setFeedbackBanner(null)}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+              color: "inherit",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Navigation Tabs */}
       <div
         style={{
@@ -595,6 +741,28 @@ export function RuleAdministrationHub({
           }}
         >
           <span>🌐</span> Country Registry & Coverage Matrix ({countries.length || 7})
+        </button>
+        <button
+          type="button"
+          data-testid="rules-tab-pathway-expansion"
+          onClick={() => setActiveTab("pathway_expansion")}
+          style={{
+            padding: "9px 16px",
+            fontSize: "13px",
+            fontWeight: activeTab === "pathway_expansion" ? 700 : 500,
+            borderRadius: "8px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: activeTab === "pathway_expansion" ? "#EAF6F0" : "transparent",
+            color: activeTab === "pathway_expansion" ? "#063C3D" : "#6E7F7C",
+            border: activeTab === "pathway_expansion" ? "1.5px solid #0D6866" : "1.5px solid transparent",
+            boxShadow: activeTab === "pathway_expansion" ? "0 2px 6px rgba(13, 104, 102, 0.08)" : "none",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <span>🧭</span> Pathway Coverage & Expansion
         </button>
         <button
           type="button"
@@ -705,7 +873,14 @@ export function RuleAdministrationHub({
       </div>
 
       {/* ============================================================== */}
-      {/* TAB: COUNTRY REGISTRY & COVERAGE MATRIX (PHASE 12) */}
+      {/* TAB: PATHWAY COVERAGE & EXPANSION (CONSOLIDATED)               */}
+      {/* ============================================================== */}
+      {activeTab === "pathway_expansion" && (
+        <PathwayExpansionDesk userRole={userRole} />
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB: COUNTRY REGISTRY & COVERAGE MATRIX                        */}
       {/* ============================================================== */}
       {activeTab === "coverage" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
@@ -728,7 +903,7 @@ export function RuleAdministrationHub({
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
                 <span style={{ fontSize: "20px" }}>🌐</span>
                 <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700, letterSpacing: "-0.01em" }}>
-                  Phase 12: Country and Pathway Expansion Architecture
+                  Global Country &amp; Pathway Coverage Registry
                 </h3>
                 <span
                   style={{
@@ -741,7 +916,7 @@ export function RuleAdministrationHub({
                     letterSpacing: "0.05em",
                   }}
                 >
-                  Phase 12 Expansion
+                  Multi-Jurisdiction Coverage
                 </span>
               </div>
               <p style={{ margin: "0 0 8px 0", fontSize: "13px", lineHeight: "1.5", opacity: 0.95 }}>
@@ -1239,8 +1414,8 @@ export function RuleAdministrationHub({
                               {item.professional_reviewer || "Pending Legal Sign-off"}
                             </div>
                             {item.regression_test_suite && (
-                              <div style={{ fontSize: "10px", color: "#6E7F7C", marginTop: "2px", fontFamily: "monospace" }}>
-                                🧪 {item.regression_test_suite}
+                              <div style={{ fontSize: "10px", color: "#6E7F7C", marginTop: "2px" }}>
+                                🧪 {formatRegressionSuiteLabel(item.regression_test_suite)}
                               </div>
                             )}
                           </td>
@@ -1736,7 +1911,7 @@ export function RuleAdministrationHub({
                                     onClick={() => setActiveJsonRule(rule)}
                                     style={{ fontSize: "11px", padding: "2px 8px" }}
                                   >
-                                    View Phase 6 JSON
+                                    View Rule Definition
                                   </Button>
                                 </div>
                               </div>
@@ -1771,21 +1946,48 @@ export function RuleAdministrationHub({
                 </p>
 
                 <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
-                  <input
-                    type="text"
-                    value={pinnedCaseId}
-                    onChange={(e) => setPinnedCaseId(e.target.value)}
-                    placeholder="Enter Case ID e.g. CAS-CA-001"
-                    style={{
-                      flex: 1,
-                      padding: "8px 12px",
-                      background: "#FAFAF8",
-                      border: "1.5px solid #DCE5E1",
-                      borderRadius: "8px",
-                      fontSize: "13px",
-                      color: "#172322",
-                    }}
-                  />
+                  {availableCases.length > 0 ? (
+                    <select
+                      aria-label="Select Case for Pinned Snapshot Inspection"
+                      value={pinnedCaseId}
+                      onChange={(e) => setPinnedCaseId(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: "8px 12px",
+                        background: "#FAFAF8",
+                        border: "1.5px solid #DCE5E1",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        color: "#172322",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {availableCases.map((c) => {
+                        const val = c.case_number || c.id;
+                        return (
+                          <option key={c.id} value={val}>
+                            {c.case_number} — {c.client_name || c.title} ({c.visa_category})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={pinnedCaseId}
+                      onChange={(e) => setPinnedCaseId(e.target.value)}
+                      placeholder="Enter active Case Reference"
+                      style={{
+                        flex: 1,
+                        padding: "8px 12px",
+                        background: "#FAFAF8",
+                        border: "1.5px solid #DCE5E1",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        color: "#172322",
+                      }}
+                    />
+                  )}
                   <Button variant="outline" type="button" onClick={handleFetchPinnedCase}>
                     Inspect Pinned Case
                   </Button>
@@ -2215,9 +2417,7 @@ export function RuleAdministrationHub({
                             <td style={{ padding: "12px 14px" }}>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  alert(`Full Snapshot Content:\n\n${snap.raw_content}`);
-                                }}
+                                onClick={() => setInspectedSnapshot(snap)}
                                 style={{
                                   padding: "4px 10px",
                                   fontSize: "11px",
@@ -2475,7 +2675,7 @@ export function RuleAdministrationHub({
                 )}
               </h3>
               <p style={{ fontSize: "12px", color: "#6E7F7C", margin: 0 }}>
-                Purely declarative rules evaluated by constrained AST engine. No arbitrary database code execution.
+                Declarative statutory requirements and evidentiary criteria evaluated against applicant case facts.
               </p>
             </div>
             <Button
@@ -2632,7 +2832,7 @@ export function RuleAdministrationHub({
             </div>
             <p style={{ fontSize: "12px", color: "#6E7F7C", margin: "0 0 16px 0", lineHeight: "1.5" }}>
               Validates structural integrity of the declarative rules: checks for circular blocking deadlocks,
-              verifies operator AST safety, and validates linked official source snapshots.
+              verifies rule evaluation consistency, and validates linked official source snapshots.
             </p>
 
             <Button
@@ -3083,7 +3283,64 @@ export function RuleAdministrationHub({
         </form>
       </Modal>
 
-      {/* PHASE 6 RULE REQUIREMENT JSON MODAL */}
+      {/* SNAPSHOT CONTENT VIEWER MODAL */}
+      <Modal
+        isOpen={!!inspectedSnapshot}
+        onClose={() => setInspectedSnapshot(null)}
+        title="Official Source Snapshot Content"
+      >
+        {inspectedSnapshot && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div
+              style={{
+                padding: "12px 14px",
+                background: "#F8FAF9",
+                border: "1px solid #DCE5E1",
+                borderRadius: "8px",
+                fontSize: "12px",
+                color: "#172322",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "8px",
+              }}
+            >
+              <div>
+                <span style={{ color: "#6E7F7C", display: "block" }}>Retrieval Timestamp:</span>
+                <strong>{new Date(inspectedSnapshot.retrieval_timestamp).toLocaleString()}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#6E7F7C", display: "block" }}>SHA-256 Content Hash:</span>
+                <code style={{ fontSize: "11px" }}>{inspectedSnapshot.content_hash}</code>
+              </div>
+            </div>
+            <pre
+              data-testid="snapshot-content-viewer-pre"
+              style={{
+                background: "#1E293B",
+                color: "#E2E8F0",
+                padding: "14px",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontFamily: "ui-monospace, monospace",
+                whiteSpace: "pre-wrap",
+                maxHeight: "380px",
+                overflowY: "auto",
+                margin: 0,
+                lineHeight: "1.5",
+              }}
+            >
+              {inspectedSnapshot.raw_content}
+            </pre>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button variant="primary" type="button" onClick={() => setInspectedSnapshot(null)}>
+                Close Snapshot
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* RULE REQUIREMENT SPECIFICATION MODAL */}
       <Modal
         isOpen={!!activeJsonRule}
         onClose={() => setActiveJsonRule(null)}
@@ -3103,7 +3360,7 @@ export function RuleAdministrationHub({
               }}
             >
               <div style={{ fontWeight: 700, marginBottom: "4px" }}>
-                ✓ Official Statutory Rule Provenance (Phase 6 Compliant)
+                ✓ Official Statutory Rule Provenance
               </div>
               <div>
                 Requirements belong in versioned configuration, not scattered conditionals.
@@ -3115,7 +3372,7 @@ export function RuleAdministrationHub({
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                 <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6E7F7C" }}>
-                  Phase 6 Canonical JSON Schema
+                  Canonical Rule Schema
                 </span>
                 <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 600 }}>
                   Version {activeJsonRule.version} • Status: {activeJsonRule.status}
@@ -3196,10 +3453,10 @@ export function RuleAdministrationHub({
                       2
                     )
                   );
-                  onNotification?.("Phase 6 Rule JSON copied to clipboard", "success");
+                  notify("Rule definition copied to clipboard", "success");
                 }}
               >
-                📋 Copy Phase 6 JSON
+                📋 Copy Rule JSON
               </Button>
               <Button variant="primary" type="button" onClick={() => setActiveJsonRule(null)}>
                 Close
@@ -3398,7 +3655,7 @@ export function RuleAdministrationHub({
                 <div>
                   <span style={{ color: "#6E7F7C", display: "block" }}>Automated Regression Suite:</span>
                   <code style={{ fontSize: "11px", background: "#F3F4F6", padding: "2px 6px", borderRadius: "4px" }}>
-                    {selectedDossier.pathway.regression_test_suite || "backend/tests/test_phase12_country_pathway_expansion.py"}
+                    {formatRegressionSuiteLabel(selectedDossier.pathway.regression_test_suite)}
                   </code>
                 </div>
               </div>

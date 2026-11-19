@@ -13,6 +13,7 @@ import {
   REGULATORY_BODIES,
   SOVEREIGN_CORRIDORS,
   buildKybUploadedDocMeta,
+  getAgencyApplications,
   lookupAgencyDossier,
   normalizeAgencySlug,
   resubmitAgencyKybClarification,
@@ -37,7 +38,19 @@ export function AgencyOnboardingWizard() {
   const [submittedDossier, setSubmittedDossier] = useState<AgencyKybApplication | null>(null);
 
   // Returning Applicant Status Lookup & Clarification Drawer
-  const [showLookupDrawer, setShowLookupDrawer] = useState<boolean>(false);
+  const [showLookupDrawer, setShowLookupDrawer] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("lookup") || params.get("dossier") || params.get("status")) {
+          return true;
+        }
+      } catch {
+        // ignore search param parse failure
+      }
+    }
+    return getAgencyApplications().some((a) => a.kybStatus === "clarification_requested");
+  });
   const [lookupQuery, setLookupQuery] = useState<string>("");
   const [matchedDossier, setMatchedDossier] = useState<AgencyKybApplication | null>(null);
   const [lookupAttempted, setLookupAttempted] = useState<boolean>(false);
@@ -194,6 +207,7 @@ export function AgencyOnboardingWizard() {
 
   const handleDossierLookup = (e: React.FormEvent) => {
     e.preventDefault();
+    setShowLookupDrawer(true);
     setClarificationFeedback(null);
     setClarificationError(null);
     const found = lookupAgencyDossier(lookupQuery);
@@ -381,6 +395,8 @@ export function AgencyOnboardingWizard() {
           <nav style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
             <button
               type="button"
+              data-testid="toggle-kyb-lookup-drawer-btn"
+              aria-expanded={showLookupDrawer}
               onClick={() => setShowLookupDrawer((prev) => !prev)}
               style={{
                 fontSize: "13px",
@@ -426,16 +442,17 @@ export function AgencyOnboardingWizard() {
 
       <main style={{ maxWidth: "1280px", margin: "0 auto", padding: "32px 24px 72px 24px" }}>
         {/* Returning Agency Status Lookup & Clarification Uploader */}
-        <section
-          aria-label="Track Existing KYB Dossier"
-          style={{
-            background: "#FFFFFF",
-            border: "1px solid #DCE5E1",
-            borderRadius: "8px",
-            padding: "14px 18px",
-            marginBottom: "24px",
-          }}
-        >
+        {showLookupDrawer && (
+          <section
+            aria-label="Track Existing KYB Dossier"
+            style={{
+              background: "#FFFFFF",
+              border: "1px solid #DCE5E1",
+              borderRadius: "8px",
+              padding: "14px 18px",
+              marginBottom: "24px",
+            }}
+          >
           <form
             onSubmit={handleDossierLookup}
             style={{
@@ -720,7 +737,8 @@ export function AgencyOnboardingWizard() {
               )}
             </div>
           )}
-        </section>
+          </section>
+        )}
 
         {/* Practical Editorial Header */}
         <div style={{ maxWidth: "780px", marginBottom: "26px" }}>
@@ -1093,7 +1111,7 @@ export function AgencyOnboardingWizard() {
                       <input
                         id="onb-legal-name"
                         type="text"
-                        placeholder="Registered Legal Entity Name"
+                        placeholder="Practice Legal Entity Name (e.g. Apex Global Immigration LLP)"
                         value={legalEntityName}
                         onChange={(e) => setLegalEntityName(e.target.value)}
                         style={inputStyle}

@@ -20,7 +20,7 @@ describe("Adversarial Stress & Regression Test Suite — Landing Page Middle Sec
       // Whitespace search
       fireEvent.change(searchInput, { target: { value: "    " } });
       expect(screen.getByText(/3 Active Jurisdictions/i)).toBeDefined();
-      expect(screen.getAllByText(/EB-1A Extraordinary Ability/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Canada Express Entry/i).length).toBeGreaterThan(0);
 
       // Regex special characters that could break unescaped RegExp
       fireEvent.change(searchInput, { target: { value: "[.*+?^${}()|[\\]\\]" } });
@@ -30,7 +30,7 @@ describe("Adversarial Stress & Regression Test Suite — Landing Page Middle Sec
       // Reset button should restore items
       const resetBtn = screen.getByRole("button", { name: /Reset Filters/i });
       fireEvent.click(resetBtn);
-      expect(screen.getAllByText(/EB-1A Extraordinary Ability/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Canada Express Entry/i).length).toBeGreaterThan(0);
     });
 
     it("survives rapid filter toggling across countries and statuses", () => {
@@ -48,7 +48,7 @@ describe("Adversarial Stress & Regression Test Suite — Landing Page Middle Sec
       }
 
       expect(screen.getByText(/3 Active Jurisdictions/i)).toBeDefined();
-      expect(screen.getAllByText(/EB-1A Extraordinary Ability/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Canada Express Entry/i).length).toBeGreaterThan(0);
     });
   });
 
@@ -118,16 +118,16 @@ describe("Adversarial Stress & Regression Test Suite — Landing Page Middle Sec
       const handleOpenLogin = vi.fn();
       render(<DocumentoInteractiveTools onOpenLogin={handleOpenLogin} />);
 
-      const ukBtn = screen.getByRole("button", { name: /UK Global Talent/i });
-      const caBtn = screen.getByRole("button", { name: /Canada \(Express Entry & Super Visa\)/i });
-      const deBtn = screen.getByRole("button", { name: /Germany \(Planned\)/i });
-      const usBtn = screen.getByRole("button", { name: /EB-1A & O-1A \(US\)/i });
+      const superVisaBtn = screen.getByRole("button", { name: /Canada Super Visa & TRV/i });
+      const caPrBtn = screen.getByRole("button", { name: /Canada Express Entry & PNP/i });
+      const deBtn = screen.getByRole("button", { name: /Germany & Australia \(Planned\)/i });
+      const usUkBtn = screen.getByRole("button", { name: /US \(USCIS\) & UK \(UKVI\)/i });
 
       for (let i = 0; i < 5; i++) {
-        fireEvent.click(ukBtn);
-        fireEvent.click(caBtn);
+        fireEvent.click(superVisaBtn);
+        fireEvent.click(caPrBtn);
         fireEvent.click(deBtn);
-        fireEvent.click(usBtn);
+        fireEvent.click(usUkBtn);
       }
 
       // Persona toggling
@@ -239,7 +239,7 @@ describe("Adversarial Stress & Regression Test Suite — Landing Page Middle Sec
       const { container: c4 } = render(<DocumentoCoverageExplorer />);
       expect(c4.querySelectorAll(".animate-on-scroll").length).toBeGreaterThan(0);
 
-      const { container: c5 } = render(<DocumentoInteractiveTools onOpenLogin={() => {}} />);
+      const { container: c5 } = render(<DocumentoInteractiveTools onOpenLogin={() => { }} />);
       expect(c5.querySelectorAll(".animate-on-scroll").length).toBeGreaterThan(0);
 
       const { container: c6 } = render(<DocumentoTrust />);

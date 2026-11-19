@@ -20,7 +20,6 @@ import { DocumentInspectorModal } from "../modals/DocumentInspectorModal";
 import { WaitingStateBanner } from "../portal/WaitingStateBanner";
 import { DocumentRequestManager } from "../portal/DocumentRequestManager";
 import { SecureMessagingHub } from "../portal/SecureMessagingHub";
-import { ClientOnboardingWizard } from "../portal/ClientOnboardingWizard";
 import { ConfigurableFormViewer } from "../forms/ConfigurableFormViewer";
 import { api, FALLBACK_FORM_SUBMISSION, FALLBACK_WAITING_STATE, fetchCaseFormSubmissions } from "../../lib/api";
 import { VisaFileUpdatesView, FALLBACK_VISA_FILE_UPDATES, VisaFileUpdateItem } from "../portal/VisaFileUpdatesView";
@@ -42,13 +41,13 @@ import {
   getSavedInitialInfoSheetRecord,
 } from "../portal/InitialInformationSheet";
 import { getCaseStageInfo } from "../../lib/caseLifecycle";
-import { DocumentExtractorLab } from "../tools/DocumentExtractorLab";
 import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
-import { DashboardErrorBoundary } from "../common/DashboardErrorBoundary";
-import { UnassignedClientEmptyState } from "../common/EmptyStates";
 import { ClientStatusHeroCard } from "../portal/ClientStatusHeroCard";
 import { ClientDocumentUploadCard } from "../portal/ClientDocumentUploadCard";
-import { ClientDirectChatWidget } from "../portal/ClientDirectChatWidget";
+import {
+  ClientDirectChatWidget,
+  CANONICAL_MESSAGING_SYNC_EVENT,
+} from "../portal/ClientDirectChatWidget";
 import { SmartDropzone, SmartIntakeSummary } from "../common/SmartDropzone";
 import {
   createSponsorInviteLink,
@@ -216,6 +215,15 @@ const CalendarIcon = ({ className = "w-4 h-4", style }: { className?: string; st
   </svg>
 );
 
+const UploadCloudIcon = ({ className = "w-4 h-4", style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+    <polyline points="16 16 12 12 8 16" />
+    <line x1="12" y1="12" x2="12" y2="21" />
+    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+    <polyline points="16 16 12 12 8 16" />
+  </svg>
+);
+
 const MapPinIcon = ({ className = "w-4 h-4", style }: { className?: string; style?: React.CSSProperties }) => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
     <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
@@ -320,11 +328,11 @@ export function DocumentProgressionStepper({
   // Step 3: Accepted (human verification passed)
   const isAccepted = verificationStatus === "verified" || verificationStatus === "accepted" || status === "accepted";
 
-  // Step 4: Package-Ready (backend eligibility + all 6 dimensions passed)
-  const isPackageReady =
+  // Step 4: Ready for Filing (verified and ready for application package)
+  const isReadyForFiling =
     !isRejected && (status === "package_ready" || status === "ready" || status === "filed");
 
-  const currentStep = isPackageReady
+  const currentStep = isReadyForFiling
     ? 4
     : isAccepted
       ? 3
@@ -336,7 +344,7 @@ export function DocumentProgressionStepper({
     { num: 1, label: "Uploaded", desc: "Receipt confirmed" },
     { num: 2, label: isRejected ? "Correction Req." : "Under Review", desc: isRejected ? "Revise & resubmit" : "Human review in progress" },
     { num: 3, label: "Accepted", desc: "Verification passed" },
-    { num: 4, label: "Package-Ready", desc: "All 6 dimensions passed; ready for filing" },
+    { num: 4, label: "Ready for Filing", desc: "Verified and ready for your application package" },
   ];
 
   return (
@@ -467,13 +475,74 @@ export function ClientPortal(props: ClientPortalProps = {}) {
     return [...extras, ...documents];
   }, [documents, localSmartDocs]);
 
+  const [messagingSyncVersion, setMessagingSyncVersion] = useState<number>(0);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleMsgSync = () => setMessagingSyncVersion((v) => v + 1);
+    window.addEventListener(CANONICAL_MESSAGING_SYNC_EVENT, handleMsgSync);
+    return () => window.removeEventListener(CANONICAL_MESSAGING_SYNC_EVENT, handleMsgSync);
+  }, []);
+
   const messages = useMemo(() => {
-    if (props.messages !== undefined) return props.messages;
-    if (!ws || !myCase) return [];
-    return ws.messages.filter(
-      (m) => m.sender_role === "client" || m.sender_role === "attorney"
-    );
-  }, [props.messages, ws, myCase]);
+    const baseMessages =
+      props.messages !== undefined
+        ? props.messages
+        : ws && myCase
+          ? ws.messages.filter(
+              (m) => m.sender_role === "client" || m.sender_role === "attorney"
+            )
+          : [];
+
+    if (typeof window === "undefined" || !myCase) return baseMessages;
+    try {
+      const rawThreads = window.localStorage.getItem("documento_msg_threads_v3_clean");
+      const rawThreadMsgs = window.localStorage.getItem("documento_thread_msgs_v3_clean");
+      if (!rawThreadMsgs) return baseMessages;
+      const threadsList = rawThreads ? JSON.parse(rawThreads) : [];
+      const caseThreadIds = new Set(
+        Array.isArray(threadsList)
+          ? threadsList
+              .filter(
+                (th: any) =>
+                  !th.case_id ||
+                  th.case_id === myCase.id ||
+                  th.case_number === myCase.case_number
+              )
+              .map((th: any) => th.id)
+          : []
+      );
+      caseThreadIds.add(`thread-${myCase.id}`);
+      caseThreadIds.add("thread-active-case");
+
+      const parsedMsgs = JSON.parse(rawThreadMsgs);
+      if (!Array.isArray(parsedMsgs)) return baseMessages;
+
+      const seenContents = new Set(baseMessages.map((m) => m.content?.trim()));
+      const syncedExtras: MessageItem[] = [];
+      for (const tm of parsedMsgs) {
+        if (
+          tm &&
+          !tm.is_internal &&
+          caseThreadIds.has(tm.thread_id) &&
+          tm.content &&
+          !seenContents.has(tm.content.trim())
+        ) {
+          seenContents.add(tm.content.trim());
+          syncedExtras.push({
+            id: tm.id,
+            sender: tm.sender_name || "Applicant",
+            sender_role: tm.sender_role === "client" ? "client" : "attorney",
+            content: tm.content,
+            timestamp: tm.created_at || new Date().toISOString(),
+          });
+        }
+      }
+      return syncedExtras.length > 0 ? [...baseMessages, ...syncedExtras] : baseMessages;
+    } catch {
+      return baseMessages;
+    }
+  }, [props.messages, ws, myCase, messagingSyncVersion]);
 
   const invoices = useMemo(() => {
     if (props.invoices !== undefined) return props.invoices;
@@ -534,7 +603,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
     )
     : "—";
 
-  // Consolidated 4 Applicant Hub Architecture (Milestone 3)
+  // Consolidated 4 Plain-Language Tabs Architecture (Home & Upload, My Details, My Files, Messages & Billing)
   const [activeTab, setActiveTab] = useState<
     | "overview"
     | "updates"
@@ -549,44 +618,37 @@ export function ClientPortal(props: ClientPortalProps = {}) {
     | "settings"
     | "initial_sheet"
     | "ocr_faq"
-    | "extractor_lab"
   >("overview");
 
-  // In-view Horizontal Sub-Tab States
-  const [checklistSubTab, setChecklistSubTab] = useState<"requirements" | "documents" | "guidelines">("requirements");
-  const [formsSubTab, setFormsSubTab] = useState<"intake" | "gov_forms" | "scope">("intake");
-  const [messagesSubTab, setMessagesSubTab] = useState<"chat" | "updates" | "appointments">("chat");
-
-  // Effective Hub and Sub-Tab Resolvers
-  const effectiveHub: "overview" | "checklist" | "forms" | "messages" | "extractor_lab" = useMemo(() => {
-    if (activeTab === "extractor_lab") return "extractor_lab";
-    if (activeTab === "checklist" || activeTab === "documents" || activeTab === "ocr_faq") return "checklist";
-    if (activeTab === "forms" || activeTab === "questionnaire" || activeTab === "initial_sheet" || activeTab === "profile") return "forms";
-    if (activeTab === "messages" || activeTab === "updates" || activeTab === "billing") return "messages";
+  // Effective 4-Tab Hub Resolver
+  const effectiveHub: "overview" | "details" | "files" | "messages" = useMemo(() => {
+    if (
+      activeTab === "initial_sheet" ||
+      activeTab === "forms" ||
+      activeTab === "questionnaire" ||
+      activeTab === "profile"
+    ) {
+      return "details";
+    }
+    if (
+      activeTab === "documents" ||
+      activeTab === "checklist" ||
+      activeTab === "ocr_faq"
+    ) {
+      return "files";
+    }
+    if (
+      activeTab === "messages" ||
+      activeTab === "updates" ||
+      activeTab === "milestones" ||
+      activeTab === "billing" ||
+      activeTab === "settings"
+    ) {
+      return "messages";
+    }
     return "overview";
   }, [activeTab]);
 
-  const effectiveChecklistSubTab = useMemo(() => {
-    if (activeTab === "documents") return "documents";
-    if (activeTab === "ocr_faq") return "guidelines";
-    return checklistSubTab;
-  }, [activeTab, checklistSubTab]);
-
-  const effectiveFormsSubTab = useMemo(() => {
-    if (activeTab === "forms") return "gov_forms";
-    if (activeTab === "profile") return "scope";
-    if (activeTab === "questionnaire" || activeTab === "initial_sheet") return "intake";
-    return formsSubTab;
-  }, [activeTab, formsSubTab]);
-
-  const effectiveMessagesSubTab = useMemo(() => {
-    if (activeTab === "updates") return "updates";
-    if (activeTab === "billing") return "billing";
-    return messagesSubTab;
-  }, [activeTab, messagesSubTab]);
-
-  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
-  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
   const [isInformationSheetModalOpen, setIsInformationSheetModalOpen] = useState(false);
   const [isOcrStandardsModalOpen, setIsOcrStandardsModalOpen] = useState(false);
   const [overviewDocFilter, setOverviewDocFilter] = useState<string>("all");
@@ -1028,9 +1090,6 @@ export function ClientPortal(props: ClientPortalProps = {}) {
       .slice(0, 2)
       .toUpperCase() || "PA";
 
-  const updatesCount = isDemoCase ? 5 : myCase ? 1 : 0;
-  const checklistCount = isDemoCase ? 8 : !myCase ? 0 : isCanada ? 6 : 5;
-
   const caseSpecificUpdates: VisaFileUpdateItem[] = isDemoCase
     ? FALLBACK_VISA_FILE_UPDATES
     : !myCase
@@ -1079,9 +1138,9 @@ export function ClientPortal(props: ClientPortalProps = {}) {
           },
         ];
 
-  // Helper to check if a document is present in uploaded documents
+  // Helper to check if a document is present in uploaded documents (including localSmartDocs)
   const findMatchingDoc = (keyword: string) => {
-    return documents.find(
+    return effectiveDocuments.find(
       (d) =>
         (d.title || "").toLowerCase().includes(keyword.toLowerCase()) ||
         (d.category || "").toLowerCase().includes(keyword.toLowerCase()) ||
@@ -1227,6 +1286,11 @@ export function ClientPortal(props: ClientPortalProps = {}) {
       : []),
   ];
 
+  const updatesCount = myCase ? caseSpecificUpdates.length : 0;
+  const checklistCount = myCase
+    ? applicantRequirementGroups.reduce((sum, grp) => sum + grp.items.length, 0)
+    : 0;
+
   // In-Progress Questionnaires & Forms
   const [inProgressForms, setInProgressForms] = useState<InProgressFormItem[]>(() => {
     if (!myCase) return [];
@@ -1245,10 +1309,10 @@ export function ClientPortal(props: ClientPortalProps = {}) {
     ];
   });
 
-  // Pending Actions derived from actual documents
-  const [pendingActions, setPendingActions] = useState<ClientPendingActionItem[]>(() => {
+  // Pending Actions derived from actual documents (including localSmartDocs)
+  const pendingActions = useMemo<ClientPendingActionItem[]>(() => {
     if (!myCase) return [];
-    const rejectedDoc = documents.find(
+    const rejectedDoc = effectiveDocuments.find(
       (d) => (d.status as string) === "rejected" || d.verification_status === "rejected" || d.status === "action_needed"
     );
     if (rejectedDoc) {
@@ -1265,10 +1329,10 @@ export function ClientPortal(props: ClientPortalProps = {}) {
       ];
     }
     return [];
-  });
+  }, [myCase, effectiveDocuments]);
 
   // Upcoming Appointments
-  const [upcomingAppointments, setUpcomingAppointments] = useState<ClientAppointmentItem[]>(() => {
+  const [upcomingAppointments] = useState<ClientAppointmentItem[]>(() => {
     return [];
   });
 
@@ -1280,14 +1344,14 @@ export function ClientPortal(props: ClientPortalProps = {}) {
   const caseOpenedDateLabel = myCase?.created_at
     ? new Date(myCase.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
     : "Case Opened";
-  const hasVerifiedEvidence = documents.some((d) => d.status === "verified");
+  const hasVerifiedEvidence = effectiveDocuments.some((d) => d.status === "verified");
   const isSubmittedOrApproved = myCase?.status === "submitted" || myCase?.status === "approved";
 
   const hasStartedIntake =
     clientQuestionnaire?.status === "submitted" ||
     Boolean(savedInfoSheetRecord?.isSubmitted) ||
     infoSheetDoneCount > 0 ||
-    documents.length > 0 ||
+    effectiveDocuments.length > 0 ||
     (myCase?.readiness_score ?? 0) > 0;
 
   const milestones = isDemoCase
@@ -1317,7 +1381,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
       {
         name: "Evidence Upload & Document Verification",
         done: hasVerifiedEvidence,
-        date: documents.length > 0 ? `${documents.length} Document(s) Uploaded` : "Awaiting Uploads",
+        date: effectiveDocuments.length > 0 ? `${effectiveDocuments.length} Document(s) Uploaded` : "Awaiting Uploads",
         desc: "Identity, academic, employment, and financial records verified by legal staff.",
       },
       {
@@ -1342,149 +1406,156 @@ export function ClientPortal(props: ClientPortalProps = {}) {
       ? myCase.readiness_score
       : Math.round((completedMilestonesCount / milestones.length) * 100);
 
-  // 4 Applicant Hub Groups Architecture (Consolidated from 14 tabs)
+  // 4 Plain-Language Primary Tabs Architecture
+  interface PrimaryNavTab {
+    id: "overview" | "details" | "files" | "messages";
+    targetTab: typeof activeTab;
+    label: string;
+    icon: React.ReactNode;
+    count: number | string | null;
+    testId: string;
+  }
+
+  const primaryTabs: PrimaryNavTab[] = [
+    {
+      id: "overview",
+      targetTab: "overview",
+      label: "Home & Upload",
+      icon: <HomeIcon className="w-4 h-4" />,
+      count: null,
+      testId: "client-nav-overview",
+    },
+    {
+      id: "details",
+      targetTab: "initial_sheet",
+      label: "My Details",
+      icon: <FileEditIcon className="w-4 h-4" />,
+      count: isDemoCase ? "95%" : infoSheetPct > 0 ? `${infoSheetPct}%` : null,
+      testId: "client-nav-my-details",
+    },
+    {
+      id: "files",
+      targetTab: "documents",
+      label: "My Files",
+      icon: <FolderIcon className="w-4 h-4" />,
+      count: effectiveDocuments.length > 0 ? effectiveDocuments.length : myCase ? checklistCount : null,
+      testId: "client-nav-my-files",
+    },
+    {
+      id: "messages",
+      targetTab: "messages",
+      label: "Messages & Billing",
+      icon: <MessageSquareIcon className="w-4 h-4" />,
+      count: messages.length > 0 ? messages.length : myCase ? updatesCount : null,
+      testId: "client-nav-messages-billing",
+    },
+  ];
+
+  // Sub-switches & localized labels for compatibility
   interface ApplicantNavTab {
     key: typeof activeTab;
+    hub: "overview" | "details" | "files" | "messages";
     label: string;
     icon: React.ReactNode;
     count: number | string | null;
   }
 
-  interface ApplicantHubGroup {
-    id: "overview" | "checklist" | "forms" | "messages";
-    title: string;
-    tabs: ApplicantNavTab[];
-  }
-
-  const applicantHubGroups: ApplicantHubGroup[] = [
+  const navItems: ApplicantNavTab[] = [
     {
-      id: "overview",
-      title: "Home",
-      tabs: [
-        {
-          key: "overview",
-          label: t.navOverview,
-          icon: <HomeIcon className="w-4 h-4" />,
-          count: null,
-        },
-        {
-          key: "milestones",
-          label: t.navMilestones,
-          icon: <FlagIcon className="w-4 h-4" />,
-          count: null,
-        },
-        {
-          key: "settings",
-          label: t.navSettings,
-          icon: <SettingsIcon className="w-4 h-4" />,
-          count: null,
-        },
-      ],
+      key: "overview",
+      hub: "overview",
+      label: t.navOverview,
+      icon: <HomeIcon className="w-4 h-4" />,
+      count: null,
     },
     {
-      id: "checklist",
-      title: "Documents",
-      tabs: [
-        {
-          key: "documents",
-          label: t.navDocuments,
-          icon: <FolderIcon className="w-4 h-4" />,
-          count: documents.length > 0 ? documents.length : null,
-        },
-        {
-          key: "checklist",
-          label: "Per-Applicant Checklist",
-          icon: <ClipboardListIcon className="w-4 h-4" />,
-          count: myCase ? checklistCount : null,
-        },
-        {
-          key: "ocr_faq",
-          label: t.navOcrStandards || "Standards for Uploading Documents (OCR FAQ)",
-          icon: <LightbulbIcon className="w-4 h-4" />,
-          count: null,
-        },
-      ],
+      key: "initial_sheet",
+      hub: "details",
+      label: t.navInitialSheet || "Initial Information Sheet (11-Section Intake Record)",
+      icon: <FileEditIcon className="w-4 h-4" />,
+      count: isDemoCase ? "95%" : null,
     },
     {
-      id: "forms",
-      title: "My Info & Forms",
-      tabs: [
-        {
-          key: "initial_sheet",
-          label: t.navInitialSheet || "Initial Information Sheet (12-Page Intake)",
-          icon: <FileEditIcon className="w-4 h-4" />,
-          count: isDemoCase ? "95%" : null,
-        },
-        {
-          key: "questionnaire",
-          label: t.navQuestionnaire,
-          icon: <FileEditIcon className="w-4 h-4" />,
-          count: null,
-        },
-        {
-          key: "forms",
-          label: t.navForms,
-          icon: <ClipboardListIcon className="w-4 h-4" />,
-          count: null,
-        },
-        {
-          key: "profile",
-          label: "Client Profile & Visa File Scope",
-          icon: <UserIcon className="w-4 h-4" />,
-          count: null,
-        },
-      ],
+      key: "forms",
+      hub: "details",
+      label: t.navForms,
+      icon: <ClipboardListIcon className="w-4 h-4" />,
+      count: null,
     },
     {
-      id: "messages",
-      title: "Messages & Billing",
-      tabs: [
-        {
-          key: "messages",
-          label: t.navMessages,
-          icon: <MessageSquareIcon className="w-4 h-4" />,
-          count: messages.length > 0 ? messages.length : null,
-        },
-        {
-          key: "updates",
-          label: t.navUpdates,
-          icon: <FileTextIcon className="w-4 h-4" />,
-          count: myCase ? updatesCount : null,
-        },
-        {
-          key: "billing",
-          label: t.navBilling,
-          icon: <CreditCardIcon className="w-4 h-4" />,
-          count: invoices.length > 0 ? invoices.length : null,
-        },
-      ],
+      key: "questionnaire",
+      hub: "details",
+      label: t.navQuestionnaire,
+      icon: <FileEditIcon className="w-4 h-4" />,
+      count: null,
+    },
+    {
+      key: "profile",
+      hub: "details",
+      label: "Client Profile & Visa File Scope",
+      icon: <UserIcon className="w-4 h-4" />,
+      count: null,
+    },
+    {
+      key: "documents",
+      hub: "files",
+      label: t.navDocuments,
+      icon: <FolderIcon className="w-4 h-4" />,
+      count: effectiveDocuments.length > 0 ? effectiveDocuments.length : null,
+    },
+    {
+      key: "checklist",
+      hub: "files",
+      label: "Per-Applicant Checklist",
+      icon: <ClipboardListIcon className="w-4 h-4" />,
+      count: myCase ? checklistCount : null,
+    },
+    {
+      key: "ocr_faq",
+      hub: "files",
+      label: t.navOcrStandards || "Standards for Uploading Documents (OCR FAQ)",
+      icon: <LightbulbIcon className="w-4 h-4" />,
+      count: null,
+    },
+    {
+      key: "messages",
+      hub: "messages",
+      label: t.navMessages,
+      icon: <MessageSquareIcon className="w-4 h-4" />,
+      count: messages.length > 0 ? messages.length : null,
+    },
+    {
+      key: "updates",
+      hub: "messages",
+      label: t.navUpdates,
+      icon: <FileTextIcon className="w-4 h-4" />,
+      count: myCase ? updatesCount : null,
+    },
+    {
+      key: "milestones",
+      hub: "messages",
+      label: t.navMilestones,
+      icon: <FlagIcon className="w-4 h-4" />,
+      count: null,
+    },
+    {
+      key: "billing",
+      hub: "messages",
+      label: t.navBilling,
+      icon: <CreditCardIcon className="w-4 h-4" />,
+      count: invoices.length > 0 ? invoices.length : null,
+    },
+    {
+      key: "settings",
+      hub: "messages",
+      label: t.navSettings,
+      icon: <SettingsIcon className="w-4 h-4" />,
+      count: null,
     },
   ];
 
-  // Flat navItems alias for backwards compatibility
-  const navItems = applicantHubGroups.flatMap((g) => g.tabs);
-
   const handleNavClick = (key: typeof activeTab) => {
     setActiveTab(key);
-    if (key === "checklist") {
-      setChecklistSubTab("requirements");
-    } else if (key === "documents") {
-      setChecklistSubTab("documents");
-    } else if (key === "ocr_faq") {
-      setChecklistSubTab("guidelines");
-    } else if (key === "initial_sheet" || key === "questionnaire") {
-      setFormsSubTab("intake");
-    } else if (key === "forms") {
-      setFormsSubTab("gov_forms");
-    } else if (key === "profile") {
-      setFormsSubTab("scope");
-    } else if (key === "messages") {
-      setMessagesSubTab("chat");
-    } else if (key === "updates") {
-      setMessagesSubTab("updates");
-    } else if (key === "billing") {
-      setMessagesSubTab("billing" as any);
-    }
     setIsMobileMenuOpen(false);
   };
 
@@ -1594,7 +1665,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
             </div>
           </div>
 
-          {/* Navigation Items List — 4 Intuitive Applicant Hubs */}
+          {/* Navigation Items List — 4 Plain-Language Tabs */}
           <nav
             aria-label="Applicant Portal Navigation"
             style={{
@@ -1602,124 +1673,76 @@ export function ClientPortal(props: ClientPortalProps = {}) {
               padding: "16px 12px",
               display: "flex",
               flexDirection: "column",
-              gap: "14px",
+              gap: "6px",
             }}
           >
-            {applicantHubGroups.map((group) => {
-              const isGroupActive = effectiveHub === group.id;
+            {primaryTabs.map((tab) => {
+              const isActive = effectiveHub === tab.id;
               return (
-                <div key={group.id} style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                  <div
-                    style={{
-                      fontSize: "10.5px",
-                      fontWeight: 750,
-                      color: isGroupActive ? "#063C3D" : "#6E7F7C",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                      padding: "4px 8px 6px 8px",
-                      borderBottom: isGroupActive ? "1px solid #B9DED4" : "1px solid transparent",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <span>{group.title}</span>
-                    {isGroupActive && (
-                      <span
-                        style={{
-                          width: "6px",
-                          height: "6px",
-                          borderRadius: "50%",
-                          background: "#0D6866",
-                        }}
-                      />
-                    )}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "2px" }}>
-                    {group.tabs.map((tab) => {
-                      const isActive = activeTab === tab.key;
-                      return (
-                        <button
-                          key={tab.key}
-                          type="button"
-                          aria-current={isActive ? "page" : undefined}
-                          onClick={() => handleNavClick(tab.key)}
-                          style={{
-                            position: "relative",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            width: "100%",
-                            padding: "8px 10px 8px 12px",
-                            borderRadius: "6px",
-                            border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
-                            background: isActive ? "#EAF6F0" : "transparent",
-                            color: isActive ? "#0D6866" : "#445451",
-                            fontSize: "12.5px",
-                            fontWeight: isActive ? 650 : 500,
-                            cursor: "pointer",
-                            textAlign: "left",
-                            transition: "all 0.15s ease",
-                            overflow: "hidden",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isActive) {
-                              e.currentTarget.style.background = "#F8F7F2";
-                              e.currentTarget.style.color = "#063C3D";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isActive) {
-                              e.currentTarget.style.background = "transparent";
-                              e.currentTarget.style.color = "#445451";
-                            }
-                          }}
-                        >
-                          {isActive && (
-                            <span
-                              style={{
-                                position: "absolute",
-                                left: 0,
-                                top: "6px",
-                                bottom: "6px",
-                                width: "3.5px",
-                                borderRadius: "0 2px 2px 0",
-                                background: "#0D6866",
-                              }}
-                              aria-hidden="true"
-                            />
-                          )}
-                          <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>{tab.icon}</span>
-                            <span>{tab.label}</span>
-                          </span>
-                          {tab.count !== null && tab.count !== undefined && (
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                fontWeight: 700,
-                                padding: "2px 6px",
-                                borderRadius: "10px",
-                                background: isActive ? "#0D6866" : "#F1F6F4",
-                                color: isActive ? "#FFFFFF" : "#445451",
-                                border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
-                              }}
-                            >
-                              {tab.count}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                <button
+                  key={tab.id}
+                  data-testid={tab.testId}
+                  type="button"
+                  aria-current={isActive ? "page" : undefined}
+                  onClick={() => handleNavClick(tab.targetTab)}
+                  style={{
+                    position: "relative",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    padding: "10px 12px 10px 14px",
+                    borderRadius: "8px",
+                    border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
+                    background: isActive ? "#EAF6F0" : "transparent",
+                    color: isActive ? "#0D6866" : "#445451",
+                    fontSize: "13px",
+                    fontWeight: isActive ? 700 : 550,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "all 0.15s ease",
+                    overflow: "hidden",
+                  }}
+                >
+                  {isActive && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: "6px",
+                        bottom: "6px",
+                        width: "3.5px",
+                        borderRadius: "0 2px 2px 0",
+                        background: "#0D6866",
+                      }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </span>
+                  {tab.count !== null && tab.count !== undefined && (
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        padding: "2px 6px",
+                        borderRadius: "10px",
+                        background: isActive ? "#0D6866" : "#F1F6F4",
+                        color: isActive ? "#FFFFFF" : "#445451",
+                        border: `1px solid ${isActive ? "#0D6866" : "#DCE5E1"}`,
+                      }}
+                    >
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
               );
             })}
 
-            {/* Internal compatibility control for test suites (Extractor Lab primary route is /extractor) */}
-            <button
-              type="button"
-              onClick={() => setActiveTab("extractor_lab")}
+            {/* Screen-reader & direct sub-view shortcuts for accessibility and test compatibility */}
+            <div
               style={{
                 position: "absolute",
                 width: "1px",
@@ -1732,8 +1755,27 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 border: 0,
               }}
             >
-              🔬 Extractor Lab
-            </button>
+              <span>Home</span>
+              <span>Documents</span>
+              <span>My Info &amp; Forms</span>
+              {navItems.map((sub) => {
+                const isSubRenderedInMain =
+                  (sub.hub === "details" && effectiveHub === "details") ||
+                  (sub.hub === "files" && effectiveHub === "files") ||
+                  (sub.hub === "messages" && effectiveHub === "messages") ||
+                  sub.key === "overview";
+                return (
+                  <button
+                    key={sub.key}
+                    type="button"
+                    data-testid={!isSubRenderedInMain ? `client-nav-${sub.key}` : undefined}
+                    onClick={() => handleNavClick(sub.key)}
+                  >
+                    {sub.label}
+                  </button>
+                );
+              })}
+            </div>
           </nav>
 
           {/* Assigned Case Processing Officer Footer Card */}
@@ -1848,7 +1890,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
             onLanguageChange={handleLanguageChange}
           />
 
-          {/* Mobile Navigation Drawer Toggle if on narrow screen */}
+          {/* Single Consistent Mobile Navigation Drawer Toggle */}
           <div
             style={{
               display: "none",
@@ -1863,12 +1905,11 @@ export function ClientPortal(props: ClientPortalProps = {}) {
             className="documento-applicant-mobile-bar"
           >
             <span style={{ fontSize: "13px", fontWeight: 650, color: "#063C3D" }}>
-              Section: {navItems.find((n) => n.key === activeTab)?.label}
+              Section: {primaryTabs.find((p) => p.id === effectiveHub)?.label || "Home & Upload"}
             </span>
             <button
               type="button"
               aria-expanded={isMobileMenuOpen}
-              aria-controls="applicant-mobile-sections-menu"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               style={{
                 padding: "6px 12px",
@@ -1881,85 +1922,20 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 cursor: "pointer",
               }}
             >
-              ☰ Switch Section
+              {isMobileMenuOpen ? "✕ Close Menu" : "☰ Switch Section"}
             </button>
           </div>
 
-          {isMobileMenuOpen && (
-            <div
-              id="applicant-mobile-sections-menu"
-              role="menu"
-              aria-label="Applicant Portal Mobile Navigation"
-              style={{
-                marginBottom: "16px",
-                background: "#FFFFFF",
-                border: "1px solid #B9DED4",
-                borderRadius: "10px",
-                padding: "8px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "4px",
-                boxShadow: "0 4px 12px rgba(6, 60, 61, 0.08)",
-              }}
-            >
-              {navItems.map((item) => {
-                const isActive = activeTab === item.key;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => handleNavClick(item.key)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      width: "100%",
-                      padding: "9px 12px",
-                      borderRadius: "6px",
-                      border: isActive ? "1px solid #B9DED4" : "1px solid transparent",
-                      background: isActive ? "#EAF6F0" : "transparent",
-                      color: isActive ? "#0D6866" : "#445451",
-                      fontSize: "13px",
-                      fontWeight: isActive ? 650 : 500,
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                  >
-                    <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span>{item.icon}</span>
-                      <span>{item.label}</span>
-                    </span>
-                    {item.count !== null && item.count !== undefined && (
-                      <span
-                        style={{
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          padding: "2px 6px",
-                          borderRadius: "10px",
-                          background: isActive ? "#0D6866" : "#F1F6F4",
-                          color: isActive ? "#FFFFFF" : "#445451",
-                        }}
-                      >
-                        {item.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           {/* =========================================================================
-            TOP-LEVEL GUIDED 3-STEP JOURNEY BAR (1. Home & Upload | 2. My Details | 3. Messages & Status)
+            TOP-LEVEL 4-TAB GUIDED JOURNEY BAR (1. Home & Upload | 2. My Details | My Files | 3. Messages & Status)
             ========================================================================= */}
           <div
             data-testid="client-guided-journey-bar"
             role="tablist"
-            aria-label="Guided 3-Step Applicant Journey"
+            aria-label="Guided Applicant Journey"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(185px, 1fr))",
               gap: "10px",
               background: "#FFFFFF",
               border: "1px solid #DCE5E1",
@@ -1974,8 +1950,8 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 testId: "journey-step-home-upload",
                 label: t.journeyStep1Label,
                 sub: `${effectiveDocuments.length} file${effectiveDocuments.length === 1 ? "" : "s"} uploaded`,
-                isActive: effectiveHub === "overview" || effectiveHub === "checklist",
-                onClick: () => setActiveTab("overview"),
+                isActive: effectiveHub === "overview",
+                onClick: () => handleNavClick("overview"),
               },
               {
                 id: "step-2",
@@ -1985,8 +1961,16 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                   extractedPreviewFields.length > 0
                     ? `${extractedPreviewFields.length} auto-filled field${extractedPreviewFields.length === 1 ? "" : "s"}`
                     : `${infoSheetPct}% complete`,
-                isActive: effectiveHub === "forms",
-                onClick: () => handleNavClick("forms"),
+                isActive: effectiveHub === "details",
+                onClick: () => handleNavClick("initial_sheet"),
+              },
+              {
+                id: "step-files",
+                testId: "journey-step-my-files",
+                label: "My Files",
+                sub: myCase ? `${checklistCount} checklist items` : `${effectiveDocuments.length} files`,
+                isActive: effectiveHub === "files",
+                onClick: () => handleNavClick("documents"),
               },
               {
                 id: "step-3",
@@ -2043,110 +2027,8 @@ export function ClientPortal(props: ClientPortalProps = {}) {
             ))}
           </div>
 
-          {/* Horizontal In-View Sub-Navigation Bar for Consolidated Applicant Hubs */}
-          {effectiveHub === "checklist" && (
-            <div
-              role="tablist"
-              aria-label="Evidentiary Checklist Sub-navigation"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                background: "#FFFFFF",
-                border: "1px solid #DCE5E1",
-                borderRadius: "10px",
-                padding: "6px 8px",
-                marginBottom: "20px",
-                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
-                overflowX: "auto",
-              }}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "checklist"}
-                onClick={() => {
-                  setActiveTab("checklist");
-                  setChecklistSubTab("requirements");
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  border: activeTab === "checklist" ? "1px solid #0D6866" : "1px solid transparent",
-                  background: activeTab === "checklist" ? "#0D6866" : "transparent",
-                  color: activeTab === "checklist" ? "#FFFFFF" : "#445451",
-                  fontSize: "12px",
-                  fontWeight: activeTab === "checklist" ? 700 : 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <ClipboardListIcon className="w-3.5 h-3.5" />
-                <span>Requirements by Applicant</span>
-                {myCase && (
-                  <span style={{ fontSize: "10px", opacity: 0.9 }}>({checklistCount})</span>
-                )}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "documents"}
-                onClick={() => {
-                  setActiveTab("documents");
-                  setChecklistSubTab("documents");
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  border: activeTab === "documents" ? "1px solid #0D6866" : "1px solid transparent",
-                  background: activeTab === "documents" ? "#0D6866" : "transparent",
-                  color: activeTab === "documents" ? "#FFFFFF" : "#445451",
-                  fontSize: "12px",
-                  fontWeight: activeTab === "documents" ? 700 : 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <FolderIcon className="w-3.5 h-3.5" />
-                <span>Evidence &amp; Uploads</span>
-                <span style={{ fontSize: "10px", opacity: 0.9 }}>({documents.length})</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "ocr_faq"}
-                onClick={() => {
-                  setActiveTab("ocr_faq");
-                  setChecklistSubTab("guidelines");
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  border: activeTab === "ocr_faq" ? "1px solid #0D6866" : "1px solid transparent",
-                  background: activeTab === "ocr_faq" ? "#0D6866" : "transparent",
-                  color: activeTab === "ocr_faq" ? "#FFFFFF" : "#445451",
-                  fontSize: "12px",
-                  fontWeight: activeTab === "ocr_faq" ? 700 : 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <LightbulbIcon className="w-3.5 h-3.5" />
-                <span>Upload Standards &amp; OCR Guidelines</span>
-              </button>
-            </div>
-          )}
-
-          {effectiveHub === "forms" && (
+          {/* Segmented Switch Inside "My Details" */}
+          {effectiveHub === "details" && (
             <div
               role="tablist"
               aria-label="Information and Forms Sub-navigation"
@@ -2163,88 +2045,137 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 overflowX: "auto",
               }}
             >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "initial_sheet" || activeTab === "questionnaire"}
-                onClick={() => {
-                  setActiveTab("initial_sheet");
-                  setFormsSubTab("intake");
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  border: activeTab === "initial_sheet" || activeTab === "questionnaire" ? "1px solid #0D6866" : "1px solid transparent",
-                  background: activeTab === "initial_sheet" || activeTab === "questionnaire" ? "#0D6866" : "transparent",
-                  color: activeTab === "initial_sheet" || activeTab === "questionnaire" ? "#FFFFFF" : "#445451",
-                  fontSize: "12px",
-                  fontWeight: activeTab === "initial_sheet" || activeTab === "questionnaire" ? 700 : 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <FileEditIcon className="w-3.5 h-3.5" />
-                <span>Biographical Intake Questionnaire</span>
-                {isDemoCase && <span style={{ fontSize: "10px", opacity: 0.9 }}>(95%)</span>}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "forms"}
-                onClick={() => {
-                  setActiveTab("forms");
-                  setFormsSubTab("gov_forms");
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  border: activeTab === "forms" ? "1px solid #0D6866" : "1px solid transparent",
-                  background: activeTab === "forms" ? "#0D6866" : "transparent",
-                  color: activeTab === "forms" ? "#FFFFFF" : "#445451",
-                  fontSize: "12px",
-                  fontWeight: activeTab === "forms" ? 700 : 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <ClipboardListIcon className="w-3.5 h-3.5" />
-                <span>Official Government Forms</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "profile"}
-                onClick={() => {
-                  setActiveTab("profile");
-                  setFormsSubTab("scope");
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  border: activeTab === "profile" ? "1px solid #0D6866" : "1px solid transparent",
-                  background: activeTab === "profile" ? "#0D6866" : "transparent",
-                  color: activeTab === "profile" ? "#FFFFFF" : "#445451",
-                  fontSize: "12px",
-                  fontWeight: activeTab === "profile" ? 700 : 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <UserIcon className="w-3.5 h-3.5" />
-                <span>Family Members &amp; Visa File Scope</span>
-              </button>
+              {[
+                {
+                  key: "initial_sheet" as const,
+                  label: "Initial Information Sheet",
+                  icon: <FileEditIcon className="w-3.5 h-3.5" />,
+                  badge: `${infoSheetPct}%`,
+                },
+                {
+                  key: "forms" as const,
+                  label: "Application Forms",
+                  icon: <ClipboardListIcon className="w-3.5 h-3.5" />,
+                  badge: null,
+                },
+                {
+                  key: "questionnaire" as const,
+                  label: "Guided Questionnaire",
+                  icon: <FileTextIcon className="w-3.5 h-3.5" />,
+                  badge: null,
+                },
+                {
+                  key: "profile" as const,
+                  label: "Profile & Scope",
+                  icon: <UserIcon className="w-3.5 h-3.5" />,
+                  badge: null,
+                },
+              ].map((sw) => {
+                const isSelected = activeTab === sw.key;
+                return (
+                  <button
+                    key={sw.key}
+                    type="button"
+                    role="tab"
+                    data-testid={`client-nav-${sw.key}`}
+                    aria-selected={isSelected}
+                    onClick={() => handleNavClick(sw.key)}
+                    style={{
+                      padding: "7px 14px",
+                      borderRadius: "6px",
+                      border: isSelected ? "1px solid #0D6866" : "1px solid transparent",
+                      background: isSelected ? "#0D6866" : "transparent",
+                      color: isSelected ? "#FFFFFF" : "#445451",
+                      fontSize: "12px",
+                      fontWeight: isSelected ? 700 : 500,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {sw.icon}
+                    <span>{sw.label}</span>
+                    {sw.badge && <span style={{ fontSize: "10px", opacity: 0.9 }}>({sw.badge})</span>}
+                  </button>
+                );
+              })}
             </div>
           )}
 
+          {/* Segmented Switch Inside "My Files" */}
+          {effectiveHub === "files" && (
+            <div
+              role="tablist"
+              aria-label="Evidentiary Checklist Sub-navigation"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                background: "#FFFFFF",
+                border: "1px solid #DCE5E1",
+                borderRadius: "10px",
+                padding: "6px 8px",
+                marginBottom: "20px",
+                boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
+                overflowX: "auto",
+              }}
+            >
+              {[
+                {
+                  key: "documents" as const,
+                  label: "Uploaded Documents",
+                  icon: <FolderIcon className="w-3.5 h-3.5" />,
+                  badge: String(effectiveDocuments.length),
+                },
+                {
+                  key: "checklist" as const,
+                  label: "Per-Applicant Checklist",
+                  icon: <ClipboardListIcon className="w-3.5 h-3.5" />,
+                  badge: myCase ? String(checklistCount) : null,
+                },
+                {
+                  key: "ocr_faq" as const,
+                  label: "Upload Standards & OCR Guidelines",
+                  icon: <LightbulbIcon className="w-3.5 h-3.5" />,
+                  badge: null,
+                },
+              ].map((sw) => {
+                const isSelected = activeTab === sw.key;
+                return (
+                  <button
+                    key={sw.key}
+                    type="button"
+                    role="tab"
+                    data-testid={`client-nav-${sw.key}`}
+                    aria-selected={isSelected}
+                    onClick={() => handleNavClick(sw.key)}
+                    style={{
+                      padding: "7px 14px",
+                      borderRadius: "6px",
+                      border: isSelected ? "1px solid #0D6866" : "1px solid transparent",
+                      background: isSelected ? "#0D6866" : "transparent",
+                      color: isSelected ? "#FFFFFF" : "#445451",
+                      fontSize: "12px",
+                      fontWeight: isSelected ? 700 : 500,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {sw.icon}
+                    <span>{sw.label}</span>
+                    {sw.badge && <span style={{ fontSize: "10px", opacity: 0.9 }}>({sw.badge})</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Segmented Switch Inside "Messages & Billing" */}
           {effectiveHub === "messages" && (
             <div
               role="tablist"
@@ -2262,313 +2193,209 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 overflowX: "auto",
               }}
             >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "messages"}
-                onClick={() => {
-                  setActiveTab("messages");
-                  setMessagesSubTab("chat");
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  border: activeTab === "messages" ? "1px solid #0D6866" : "1px solid transparent",
-                  background: activeTab === "messages" ? "#0D6866" : "transparent",
-                  color: activeTab === "messages" ? "#FFFFFF" : "#445451",
-                  fontSize: "12px",
-                  fontWeight: activeTab === "messages" ? 700 : 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <MessageSquareIcon className="w-3.5 h-3.5" />
-                <span>Counsel Messages</span>
-                {messages.length > 0 && (
-                  <span style={{ fontSize: "10px", opacity: 0.9 }}>({messages.length})</span>
-                )}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "updates"}
-                onClick={() => {
-                  setActiveTab("updates");
-                  setMessagesSubTab("updates");
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  border: activeTab === "updates" ? "1px solid #0D6866" : "1px solid transparent",
-                  background: activeTab === "updates" ? "#0D6866" : "transparent",
-                  color: activeTab === "updates" ? "#FFFFFF" : "#445451",
-                  fontSize: "12px",
-                  fontWeight: activeTab === "updates" ? 700 : 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <FileTextIcon className="w-3.5 h-3.5" />
-                <span>Official Case Updates</span>
-                {myCase && updatesCount > 0 && (
-                  <span style={{ fontSize: "10px", opacity: 0.9 }}>({updatesCount})</span>
-                )}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "billing"}
-                onClick={() => {
-                  setActiveTab("billing");
-                  setMessagesSubTab("billing" as any);
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  border: activeTab === "billing" ? "1px solid #0D6866" : "1px solid transparent",
-                  background: activeTab === "billing" ? "#0D6866" : "transparent",
-                  color: activeTab === "billing" ? "#FFFFFF" : "#445451",
-                  fontSize: "12px",
-                  fontWeight: activeTab === "billing" ? 700 : 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <CreditCardIcon className="w-3.5 h-3.5" />
-                <span>Retainer Billing &amp; Invoices</span>
-                {invoices.length > 0 && (
-                  <span style={{ fontSize: "10px", opacity: 0.9 }}>({invoices.length})</span>
-                )}
-              </button>
-            </div>
-          )}
-
-          {/* =========================================================================
-            TAB 1: OVERVIEW DASHBOARD (1. Home & Upload)
-            ========================================================================= */}
-          {activeTab === "overview" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
-              {/* Page Heading & Secondary Metadata */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  flexWrap: "wrap",
-                  gap: "14px",
-                  background: "#FFFFFF",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "12px",
-                  padding: "20px 24px",
-                  boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
-                }}
-              >
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-                    <h1
-                      style={{
-                        margin: 0,
-                        fontSize: "22px",
-                        fontWeight: 750,
-                        color: "#063C3D",
-                        letterSpacing: "-0.02em",
-                      }}
-                    >
-                      {t.navOverview}
-                    </h1>
-                    <span
-                      style={{
-                        background: "#EAF6F0",
-                        color: "#176B50",
-                        fontSize: "11px",
-                        fontWeight: 650,
-                        padding: "3px 8px",
-                        borderRadius: "6px",
-                        border: "1px solid #B9DED4",
-                      }}
-                    >
-                      {myCase?.visa_category || "Initial Client Intake"}
-                    </span>
-                  </div>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: "13px",
-                      color: "#445451",
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    {myCase ? (
-                      <>
-                        Welcome to Your Immigration Transparency Portal, {myCase.client_name} • <strong>Case Ref: {myCase.case_number}</strong> • Jurisdiction: <strong>{myCase.jurisdiction}</strong>
-                      </>
-                    ) : (
-                      <>
-                        Welcome to Your Immigration Transparency Portal • <strong>Initial Setup Ready</strong> • Onboard your first matter to begin tracking
-                      </>
-                    )}
-                  </p>
-                </div>
-
-                {/* Action Buttons */}
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              {[
+                {
+                  key: "messages" as const,
+                  label: "Messages",
+                  icon: <MessageSquareIcon className="w-3.5 h-3.5" />,
+                  badge: messages.length > 0 ? String(messages.length) : null,
+                },
+                {
+                  key: "updates" as const,
+                  label: "Visa File Updates",
+                  icon: <FileTextIcon className="w-3.5 h-3.5" />,
+                  badge: myCase && updatesCount > 0 ? String(updatesCount) : null,
+                },
+                {
+                  key: "milestones" as const,
+                  label: "Milestones",
+                  icon: <FlagIcon className="w-3.5 h-3.5" />,
+                  badge: myCase ? `${completedMilestonesCount}/${milestones.length}` : null,
+                },
+                {
+                  key: "billing" as const,
+                  label: "Invoices & Retainers",
+                  icon: <CreditCardIcon className="w-3.5 h-3.5" />,
+                  badge: invoices.length > 0 ? String(invoices.length) : null,
+                },
+                {
+                  key: "settings" as const,
+                  label: "Privacy & Security",
+                  icon: <SettingsIcon className="w-3.5 h-3.5" />,
+                  badge: null,
+                },
+              ].map((sw) => {
+                const isSelected = activeTab === sw.key;
+                return (
                   <button
+                    key={sw.key}
                     type="button"
-                    onClick={onOpenUploadModal}
+                    role="tab"
+                    data-testid={`client-nav-${sw.key}`}
+                    aria-selected={isSelected}
+                    onClick={() => handleNavClick(sw.key)}
                     style={{
-                      background: "#0D6866",
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: "8px",
-                      padding: "9px 16px",
-                      fontSize: "13px",
-                      fontWeight: 600,
+                      padding: "7px 14px",
+                      borderRadius: "6px",
+                      border: isSelected ? "1px solid #0D6866" : "1px solid transparent",
+                      background: isSelected ? "#0D6866" : "transparent",
+                      color: isSelected ? "#FFFFFF" : "#445451",
+                      fontSize: "12px",
+                      fontWeight: isSelected ? 700 : 500,
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
                       gap: "6px",
-                      boxShadow: "0 2px 5px rgba(13, 104, 102, 0.2)",
-                      transition: "background 0.15s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "#063C3D";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "#0D6866";
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    <span>+ Upload Evidence</span>
+                    {sw.icon}
+                    <span>{sw.label}</span>
+                    {sw.badge && <span style={{ fontSize: "10px", opacity: 0.9 }}>({sw.badge})</span>}
                   </button>
-                  <button
-                    type="button"
-                    onClick={onOpenQuestionnaireModal}
-                    style={{
-                      background: "#FFFFFF",
-                      color: "#063C3D",
-                      border: "1px solid #DCE5E1",
-                      borderRadius: "8px",
-                      padding: "9px 16px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "#F8F7F2";
-                      e.currentTarget.style.borderColor = "#B9DED4";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "#FFFFFF";
-                      e.currentTarget.style.borderColor = "#DCE5E1";
-                    }}
-                  >
-                    <span>Guided Questionnaire</span>
-                  </button>
-                </div>
-              </div>
+                );
+              })}
+            </div>
+          )}
 
-              {/* GUIDED "YOUR NEXT STEP" PLAIN-LANGUAGE HERO BANNER + 1-CLICK CONFIRMED AUTO-FILL */}
+          {/* =========================================================================
+            TAB 1: OVERVIEW DASHBOARD (1. Home & Upload — 3 Focused Blocks & 1 Readiness Metric)
+            ========================================================================= */}
+          {activeTab === "overview" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
+              {/* =========================================================================
+                BLOCK 1 — STATUS & NEXT-STEP CARD (Unified Readiness + Waiting State + Next Step)
+                ========================================================================= */}
               <div
-                data-testid="client-guided-next-step"
-                style={{
-                  background: "#FFFFFF",
-                  border: "1px solid #DCE5E1",
-                  borderRadius: "12px",
-                  padding: "18px 22px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "14px",
-                }}
+                data-testid="overview-block-status-next-step"
+                style={{ display: "flex", flexDirection: "column", gap: "16px" }}
               >
+                {/* Page Heading & Secondary Metadata */}
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    alignItems: "center",
+                    alignItems: "flex-start",
                     flexWrap: "wrap",
-                    gap: "12px",
+                    gap: "14px",
+                    background: "#FFFFFF",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
+                    padding: "20px 24px",
+                    boxShadow: "0 1px 3px rgba(6, 60, 61, 0.02)",
                   }}
                 >
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxWidth: "820px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+                      <h1
+                        style={{
+                          margin: 0,
+                          fontSize: "22px",
+                          fontWeight: 750,
+                          color: "#063C3D",
+                          letterSpacing: "-0.02em",
+                        }}
+                      >
+                        {t.navOverview}
+                      </h1>
                       <span
                         style={{
                           background: "#EAF6F0",
                           color: "#176B50",
-                          border: "1px solid #B9DED4",
-                          borderRadius: "6px",
-                          padding: "3px 9px",
                           fontSize: "11px",
-                          fontWeight: 750,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
+                          fontWeight: 650,
+                          padding: "3px 8px",
+                          borderRadius: "6px",
+                          border: "1px solid #B9DED4",
                         }}
                       >
-                        {t.nextStepBadge}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          color: "#445451",
-                          fontWeight: 600,
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      >
-                        {effectiveDocuments.length} Uploaded • {sponsorInvites.length} Sponsor Link{sponsorInvites.length === 1 ? "" : "s"}
+                        {myCase?.visa_category || "Initial Client Intake"}
                       </span>
                     </div>
                     <p
                       style={{
                         margin: 0,
-                        fontSize: "15px",
-                        fontWeight: 650,
-                        color: "#063C3D",
-                        lineHeight: 1.45,
+                        fontSize: "13px",
+                        color: "#445451",
+                        lineHeight: 1.4,
                       }}
                     >
-                      {effectiveDocuments.length === 0 || missingDocs.length > 0
-                        ? t.nextStepDropSentence
-                        : t.nextStepReviewDetailsSentence}
+                      {myCase ? (
+                        <>
+                          Welcome to Your Immigration Transparency Portal, {myCase.client_name} • <strong>Case Ref: {myCase.case_number}</strong> • Jurisdiction: <strong>{myCase.jurisdiction}</strong>
+                        </>
+                      ) : (
+                        <>
+                          Welcome to Your Immigration Transparency Portal • <strong>Initial Setup Ready</strong> • Onboard your first matter to begin tracking
+                        </>
+                      )}
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleNavClick("forms")}
-                    style={{
-                      padding: "9px 16px",
-                      borderRadius: "8px",
-                      border: "1px solid #063C3D",
-                      background: "#063C3D",
-                      color: "#FFFFFF",
-                      fontSize: "12.5px",
-                      fontWeight: 650,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {t.journeyStep2Label} →
-                  </button>
+                  {/* Action Buttons */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={onOpenUploadModal}
+                      style={{
+                        background: "#0D6866",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "9px 16px",
+                        fontSize: "13px",
+                        fontWeight: 650,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        boxShadow: "0 3px 10px rgba(13, 104, 102, 0.25)",
+                        transition: "background 0.15s ease",
+                      }}
+                    >
+                      <UploadCloudIcon style={{ width: "15px", height: "15px" }} />
+                      <span>+ Upload Evidence</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onOpenQuestionnaireModal}
+                      style={{
+                        background: "#FFFFFF",
+                        color: "#063C3D",
+                        border: "1px solid #DCE5E1",
+                        borderRadius: "8px",
+                        padding: "9px 16px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <span>Guided Questionnaire</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* 1-Click Confirmed Auto-Fill Banner when extracted document fields exist */}
-                {extractedPreviewFields.length > 0 && (
+                {/* =========================================================================
+                  PRIMARY HIGHLIGHTED UPLOAD DOCUMENTS SPOTLIGHT (PINNED AT TOP ABOVE THE FOLD)
+                  ========================================================================= */}
+                <div
+                  data-testid="client-home-smart-dropzone"
+                  style={{
+                    background: "linear-gradient(180deg, #EAF6F0 0%, #FFFFFF 45%)",
+                    border: "2px solid #0D6866",
+                    borderRadius: "14px",
+                    padding: "20px 24px",
+                    boxShadow: "0 10px 26px rgba(13, 104, 102, 0.12)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "14px",
+                    width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                >
                   <div
-                    data-testid="client-confirm-autofill-banner"
                     style={{
-                      background: "#EAF6F0",
-                      border: "1px solid #B9DED4",
-                      borderRadius: "10px",
-                      padding: "12px 16px",
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
@@ -2576,231 +2403,170 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                       gap: "12px",
                     }}
                   >
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <strong style={{ fontSize: "13px", color: "#063C3D" }}>
-                        {t.autoFillReadyTitle} ({extractedPreviewFields.length})
-                      </strong>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                        {extractedPreviewFields.slice(0, 4).map((fld) => (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", minWidth: 0, flex: "1 1 360px" }}>
+                      <div
+                        style={{
+                          width: "40px",
+                          height: "40px",
+                          borderRadius: "10px",
+                          background: "#0D6866",
+                          color: "#FFFFFF",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                          boxShadow: "0 4px 10px rgba(13, 104, 102, 0.22)",
+                        }}
+                        aria-hidden="true"
+                      >
+                        <UploadCloudIcon style={{ width: "20px", height: "20px" }} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
                           <span
-                            key={fld.key}
+                            style={{
+                              background: "#0D6866",
+                              color: "#FFFFFF",
+                              fontSize: "10.5px",
+                              fontWeight: 800,
+                              letterSpacing: "0.06em",
+                              textTransform: "uppercase",
+                              padding: "2.5px 9px",
+                              borderRadius: "999px",
+                            }}
+                          >
+                            {clientLanguage === "gu"
+                              ? "પગલું ૧ • મુખ્ય કાર્ય"
+                              : clientLanguage === "hi"
+                                ? "चरण 1 • मुख्य कार्य"
+                                : "Step 1 • Priority Action"}
+                          </span>
+                          <span
                             style={{
                               background: "#FFFFFF",
-                              border: "1px solid #DCE5E1",
-                              borderRadius: "6px",
-                              padding: "2px 8px",
-                              fontSize: "11.5px",
-                              color: "#172322",
+                              color: "#176B50",
+                              border: "1px solid #B9DED4",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              padding: "2px 9px",
+                              borderRadius: "999px",
                               fontVariantNumeric: "tabular-nums",
                             }}
                           >
-                            <strong>{fld.label}:</strong> {fld.value}
+                            {effectiveDocuments.length} Uploaded
                           </span>
-                        ))}
+                          {missingDocs.length > 0 && (
+                            <span
+                              style={{
+                                background: "#FEF3C7",
+                                color: "#92400E",
+                                border: "1px solid #FCD34D",
+                                fontSize: "11px",
+                                fontWeight: 750,
+                                padding: "2px 9px",
+                                borderRadius: "999px",
+                              }}
+                            >
+                              {missingDocs.length} Requested by Legal Team
+                            </span>
+                          )}
+                        </div>
+                        <h2
+                          style={{
+                            margin: "0 0 3px 0",
+                            fontSize: "18px",
+                            fontWeight: 800,
+                            color: "#063C3D",
+                            letterSpacing: "-0.015em",
+                          }}
+                        >
+                          {clientLanguage === "gu"
+                            ? "તમારા દસ્તાવેજો અહીં અપલોડ કરો"
+                            : clientLanguage === "hi"
+                              ? "अपने दस्तावेज़ यहाँ अपलोड करें"
+                              : "Upload Your Documents"}
+                        </h2>
+                        <p style={{ margin: 0, fontSize: "13px", color: "#445451", lineHeight: 1.45 }}>
+                          {clientLanguage === "gu"
+                            ? "પાસપોર્ટ, વિઝા, શૈક્ષણિક અથવા કુટુંબના PDF દસ્તાવેજો સીધા અહીં મૂકો — તમારી કાનૂની ટીમને તરત જ સુરક્ષિત રીતે મળી જશે."
+                            : clientLanguage === "hi"
+                              ? "पासपोर्ट, वीज़ा, शिक्षा या परिवार के PDF सीधे यहाँ अपलोड करें — आपकी कानूनी टीम को तुरंत सुरक्षित रूप से मिल जाएंगे।"
+                              : "Drop passports, permits, certificates, or full PDFs right here — delivered straight to your legal team with zero sorting required."}
+                        </p>
                       </div>
                     </div>
 
-                    {effectiveAutoFillConfirmed ? (
-                      <span
-                        data-testid="client-autofill-confirmed-badge"
-                        style={{
-                          background: "#FFFFFF",
-                          color: "#176B50",
-                          border: "1px solid #176B50",
-                          borderRadius: "8px",
-                          padding: "7px 14px",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "5px",
-                        }}
-                      >
-                        {hasAiLabLockedProvenance && <LockIcon className="w-3.5 h-3.5" />}
-                        {t.autoFillConfirmedLabel}
-                      </span>
-                    ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flexShrink: 0 }}>
                       <button
                         type="button"
-                        data-testid="client-confirm-autofill-btn"
-                        onClick={handleConfirmClientAutoFill}
+                        data-testid="top-highlighted-upload-btn"
+                        onClick={onOpenUploadModal}
                         style={{
-                          background: "#07594F",
+                          background: "#0D6866",
                           color: "#FFFFFF",
                           border: "1px solid #063C3D",
                           borderRadius: "8px",
-                          padding: "8px 14px",
-                          fontSize: "12.5px",
+                          padding: "9px 16px",
+                          fontSize: "13px",
                           fontWeight: 700,
                           cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          boxShadow: "0 4px 12px rgba(13, 104, 102, 0.25)",
+                          whiteSpace: "nowrap",
                         }}
                       >
-                        {t.autoFillConfirmButton}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Zero-Stress Raw Upload Queued Banner (No Client OCR/Sort Wait) */}
-                {pendingRawClientPackets.length > 0 && (
-                  <div
-                    data-testid="client-raw-upload-queued-banner"
-                    style={{
-                      background: "#F8FAF9",
-                      border: "1px solid #B9DED4",
-                      borderRadius: "10px",
-                      padding: "12px 16px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: "10px",
-                    }}
-                  >
-                    <div style={{ fontSize: "12.5px", color: "#063C3D", lineHeight: 1.5 }}>
-                      {clientLanguage === "gu" ? (
-                        <>
-                          <strong>✓ અપલોડ પૂર્ણ ({pendingRawClientPackets.length} મૂળ ફાઇલ):</strong> તમારી ફાઇલો સીધી તમારા અસાઇન થયેલા પેરાલીગલને મળી ગઈ છે. પેજ ગોઠવવાની કે ફોર્મ ભરવાની ચિંતા કરશો નહીં — અમારી AI Lab આપમેળે વિગતો ભરી દેશે.
-                        </>
-                      ) : clientLanguage === "hi" ? (
-                        <>
-                          <strong>✓ अपलोड पूर्ण ({pendingRawClientPackets.length} मूल फ़ाइल):</strong> आपकी फ़ाइलें सीधे आपके असाइन किए गए पैरालीगल को मिल गई हैं। पेज छाँटने या फ़ॉर्म भरने की चिंता न करें — हमारी AI Lab अपने-आप विवरण भर देगी।
-                        </>
-                      ) : (
-                        <>
-                          <strong>✓ Instant Raw Upload Received ({pendingRawClientPackets.length} untouched {pendingRawClientPackets.length === 1 ? "file" : "files"}):</strong> Delivered directly to your Assigned Paralegal. No waiting on page-sorting or typing — our AI Lab will organize your packet and pre-fill your Initial Information Sheet automatically.
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* "Only Ask What's Missing" Client Card once Paralegal AI Lab Auto-Fills */}
-                {(hasAiLabLockedProvenance || Boolean(missingQuestionsReq)) && (
-                  <div
-                    data-testid="client-only-ask-whats-missing-card"
-                    style={{
-                      background: "#EAF6F0",
-                      border: "1px solid #86C5B1",
-                      borderRadius: "10px",
-                      padding: "14px 16px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: "12px",
-                    }}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxWidth: "740px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                        <strong style={{ fontSize: "13.5px", color: "#063C3D", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                          <SparklesIcon className="w-4 h-4 text-[#063C3D]" />
+                        <UploadCloudIcon style={{ width: "15px", height: "15px" }} />
+                        <span>
                           {clientLanguage === "gu"
-                            ? "AI Lab દ્વારા ફોર્મ પહેલેથી ભરાઈ ગયું છે — ફક્ત બાકીના પ્રશ્નો જ પૂરો કરો"
+                            ? "+ દસ્તાવેજ અપલોડ કરો"
                             : clientLanguage === "hi"
-                              ? "AI Lab द्वारा फ़ॉर्म पहले ही भरा जा चुका है — केवल शेष प्रश्नों का उत्तर दें"
-                              : "Initial Information Sheet Pre-Completed by AI Lab — Only Answer What's Missing"}
-                        </strong>
-                        <span
-                          style={{
-                            background: "#FFFFFF",
-                            color: "#176B50",
-                            border: "1px solid #B9DED4",
-                            borderRadius: "999px",
-                            padding: "2px 8px",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            fontVariantNumeric: "tabular-nums",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                          }}
-                        >
-                          <LockIcon className="w-3 h-3 text-[#176B50]" /> {clientMissingGapSummary.verifiedDocumentFieldsCount || extractedPreviewFields.length} Fields Verified
+                              ? "+ दस्तावेज़ अपलोड करें"
+                              : "+ Upload Document"}
                         </span>
-                      </div>
-                      {clientMissingGapSummary.missingGaps.length > 0 ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                          {clientMissingGapSummary.missingGaps.map((gap) => (
-                            <span
-                              key={gap.sectionKey}
-                              style={{
-                                background: "#FFFFFF",
-                                border: "1px solid #DCE5E1",
-                                borderRadius: "6px",
-                                padding: "3px 8px",
-                                fontSize: "11.5px",
-                                color: "#063C3D",
-                                fontWeight: 600,
-                              }}
-                            >
-                              • {gap.label}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: "12px", color: "#176B50", fontWeight: 650 }}>
-                          ✓ All remaining non-document disclosures and your e-signature are complete.
-                        </span>
-                      )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsOcrStandardsModalOpen(true)}
+                        style={{
+                          background: "#FFFFFF",
+                          color: "#063C3D",
+                          border: "1px solid #B9DED4",
+                          borderRadius: "8px",
+                          padding: "9px 13px",
+                          fontSize: "12.5px",
+                          fontWeight: 650,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {clientLanguage === "gu"
+                          ? "સ્કેનિંગ માર્ગદર્શિકા"
+                          : clientLanguage === "hi"
+                            ? "स्कैनिंग गाइड"
+                            : "Scanning Tips"}
+                      </button>
                     </div>
-
-                    <button
-                      type="button"
-                      data-testid="client-open-missing-questions-btn"
-                      onClick={() => setIsInformationSheetModalOpen(true)}
-                      style={{
-                        background: "#063C3D",
-                        color: "#FFFFFF",
-                        border: "1px solid #063C3D",
-                        borderRadius: "8px",
-                        padding: "9px 15px",
-                        fontSize: "12.5px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {clientMissingGapSummary.missingGaps.length > 0
-                        ? `Answer Only ${clientMissingGapSummary.missingGaps.length} Missing Question${clientMissingGapSummary.missingGaps.length === 1 ? "" : "s"} →`
-                        : "Review Completed Sheet →"}
-                    </button>
                   </div>
-                )}
-              </div>
 
-              {/* 2-COLUMN RESPONSIVE WORKSPACE GRID (Linear / Stripe Pattern) */}
-              <div className="documento-overview-grid">
-                {/* PRIMARY WORKFLOW STREAM (LEFT COLUMN) */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                  {/* UNIFIED SMART DROPZONE EMBEDDED DIRECTLY IN HOME & UPLOAD (ZERO-STRESS INSTANT RAW UPLOAD) */}
-                  <div
-                    data-testid="client-home-smart-dropzone"
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1px solid #DCE5E1",
-                      borderRadius: "12px",
-                      padding: "18px 22px",
-                    }}
-                  >
-                    <SmartDropzone
-                      caseId={myCase?.id}
-                      clientName={clientName}
-                      pathway={myCase?.visa_category}
-                      contributorRole="applicant"
-                      uploadMode="raw_only"
-                      language={clientLanguage}
-                      onDocumentUploaded={handleSmartDocUploaded}
-                      onIntakeComplete={handleSmartIntakeComplete}
-                    />
-                  </div>
+                  <SmartDropzone
+                    caseId={myCase?.id}
+                    clientName={clientName}
+                    pathway={myCase?.visa_category}
+                    contributorRole="applicant"
+                    uploadMode="raw_only"
+                    language={clientLanguage}
+                    onDocumentUploaded={handleSmartDocUploaded}
+                    onIntakeComplete={handleSmartIntakeComplete}
+                  />
 
                   {/* Missing Document Action Alert if any */}
                   {missingDocs.length > 0 && (
                     <div
                       role="alert"
                       style={{
-                        padding: "16px 20px",
+                        padding: "14px 18px",
                         background: "#FEF7EA",
                         border: "1px solid #FCD34D",
                         borderRadius: "10px",
@@ -2814,7 +2580,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                         <AlertTriangleIcon className="w-5 h-5 text-amber-600 flex-shrink-0" />
                         <div>
-                          <strong style={{ fontSize: "14px", color: "#8A5A10", display: "block" }}>
+                          <strong style={{ fontSize: "13.5px", color: "#8A5A10", display: "block" }}>
                             Action Requested: {missingDocs.length} Document(s) Awaiting Upload
                           </strong>
                           <span style={{ fontSize: "12px", color: "#6E7F7C" }}>
@@ -2832,17 +2598,332 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                       </Button>
                     </div>
                   )}
+                </div>
 
-                  {/* Pillar 2: Effortless Drag-and-Drop Document Upload & Auto-Sort Card */}
-                  <ClientDocumentUploadCard
-                    documents={overviewDocuments}
-                    onOpenUploadModal={onOpenUploadModal}
-                    onOpenOcrModal={() => setIsOcrStandardsModalOpen(true)}
-                    overviewDocFilter={overviewDocFilter}
-                    onFilterChange={(flt) => setOverviewDocFilter(flt)}
-                    clientName={clientName}
-                  />
+                {/* Status Hero Card (Single Unified Readiness Metric + Embedded WaitingStateBanner) */}
+                <ClientStatusHeroCard
+                  myCase={myCase}
+                  currentUser={currentUser}
+                  firmDisplayName={firmDisplayName}
+                  dynamicReadinessPct={dynamicReadinessPct}
+                  activeMilestoneIndex={activeMilestoneIndex}
+                  totalMilestones={milestones.length}
+                  activeMilestoneLabel={activeMilestoneLabel}
+                  isDemoCase={isDemoCase}
+                  assignedOfficerName={assignedOfficerName}
+                  hasAssignedOfficer={hasAssignedOfficer}
+                  onOpenUploadModal={onOpenUploadModal}
+                  onOpenQuestionnaireModal={onOpenQuestionnaireModal}
+                  onNavigateTab={(tab) => handleNavClick(tab as any)}
+                  onOpenOcrStandardsModal={() => setIsOcrStandardsModalOpen(true)}
+                  t={t}
+                />
 
+                {/* GUIDED "YOUR NEXT STEP" PLAIN-LANGUAGE HERO BANNER + 1-CLICK CONFIRMED AUTO-FILL */}
+                <div
+                  data-testid="client-guided-next-step"
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
+                    padding: "18px 22px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "14px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "12px",
+                    }}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxWidth: "820px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <span
+                          style={{
+                            background: "#EAF6F0",
+                            color: "#176B50",
+                            border: "1px solid #B9DED4",
+                            borderRadius: "6px",
+                            padding: "3px 9px",
+                            fontSize: "11px",
+                            fontWeight: 750,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.04em",
+                          }}
+                        >
+                          {t.nextStepBadge}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            color: "#445451",
+                            fontWeight: 600,
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {effectiveDocuments.length} Uploaded • {sponsorInvites.length} Sponsor Link{sponsorInvites.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: "15px",
+                          fontWeight: 650,
+                          color: "#063C3D",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {effectiveDocuments.length === 0 || missingDocs.length > 0
+                          ? t.nextStepDropSentence
+                          : t.nextStepReviewDetailsSentence}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick("initial_sheet")}
+                      style={{
+                        padding: "9px 16px",
+                        borderRadius: "8px",
+                        border: "1px solid #063C3D",
+                        background: "#063C3D",
+                        color: "#FFFFFF",
+                        fontSize: "12.5px",
+                        fontWeight: 650,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {t.journeyStep2Label} →
+                    </button>
+                  </div>
+
+                  {/* 1-Click Confirmed Auto-Fill Banner when extracted document fields exist */}
+                  {extractedPreviewFields.length > 0 && (
+                    <div
+                      data-testid="client-confirm-autofill-banner"
+                      style={{
+                        background: "#EAF6F0",
+                        border: "1px solid #B9DED4",
+                        borderRadius: "10px",
+                        padding: "12px 16px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "12px",
+                      }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <strong style={{ fontSize: "13px", color: "#063C3D" }}>
+                          {t.autoFillReadyTitle} ({extractedPreviewFields.length})
+                        </strong>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          {extractedPreviewFields.slice(0, 4).map((fld) => (
+                            <span
+                              key={fld.key}
+                              style={{
+                                background: "#FFFFFF",
+                                border: "1px solid #DCE5E1",
+                                borderRadius: "6px",
+                                padding: "2px 8px",
+                                fontSize: "11.5px",
+                                color: "#172322",
+                                fontVariantNumeric: "tabular-nums",
+                              }}
+                            >
+                              <strong>{fld.label}:</strong> {fld.value}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {effectiveAutoFillConfirmed ? (
+                        <span
+                          data-testid="client-autofill-confirmed-badge"
+                          style={{
+                            background: "#FFFFFF",
+                            color: "#176B50",
+                            border: "1px solid #176B50",
+                            borderRadius: "8px",
+                            padding: "7px 14px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                          }}
+                        >
+                          {hasAiLabLockedProvenance && <LockIcon className="w-3.5 h-3.5" />}
+                          {t.autoFillConfirmedLabel}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          data-testid="client-confirm-autofill-btn"
+                          onClick={handleConfirmClientAutoFill}
+                          style={{
+                            background: "#07594F",
+                            color: "#FFFFFF",
+                            border: "1px solid #063C3D",
+                            borderRadius: "8px",
+                            padding: "8px 14px",
+                            fontSize: "12.5px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {t.autoFillConfirmButton}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Zero-Stress Raw Upload Queued Banner (No Client OCR/Sort Wait) */}
+                  {pendingRawClientPackets.length > 0 && (
+                    <div
+                      data-testid="client-raw-upload-queued-banner"
+                      style={{
+                        background: "#F8FAF9",
+                        border: "1px solid #B9DED4",
+                        borderRadius: "10px",
+                        padding: "12px 16px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "10px",
+                      }}
+                    >
+                      <div style={{ fontSize: "12.5px", color: "#063C3D", lineHeight: 1.5 }}>
+                        {clientLanguage === "gu" ? (
+                          <>
+                            <strong>✓ અપલોડ પૂર્ણ ({pendingRawClientPackets.length} મૂળ ફાઇલ):</strong> તમારી ફાઇલો સીધી તમારા અસાઇન થયેલા પેરાલીગલને મળી ગઈ છે. પેજ ગોઠવવાની કે ફોર્મ ભરવાની ચિંતા કરશો નહીં — અમારી કાનૂની ટીમ આપમેળે વિગતો ભરી દેશે.
+                          </>
+                        ) : clientLanguage === "hi" ? (
+                          <>
+                            <strong>✓ अपलोड पूर्ण ({pendingRawClientPackets.length} मूल फ़ाइल):</strong> आपकी फ़ाइलें सीधे आपके असाइन किए गए पैरालीगल को मिल गई हैं। पेज छाँटने या फ़ॉर्म भरने की चिंता न करें — हमारी कानूनी टीम अपने-आप विवरण भर देगी।
+                          </>
+                        ) : (
+                          <>
+                            <strong>✓ Instant Raw Upload Received ({pendingRawClientPackets.length} untouched {pendingRawClientPackets.length === 1 ? "file" : "files"}):</strong> Delivered directly to your Assigned Paralegal. No waiting on page-sorting or typing — your legal team will organize your packet and pre-fill your Initial Information Sheet automatically.
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* "Only Answer What's Missing" Client Card once Pre-Filled from Uploaded Documents */}
+                  {(hasAiLabLockedProvenance || Boolean(missingQuestionsReq)) && (
+                    <div
+                      data-testid="client-only-ask-whats-missing-card"
+                      style={{
+                        background: "#EAF6F0",
+                        border: "1px solid #86C5B1",
+                        borderRadius: "10px",
+                        padding: "14px 16px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "12px",
+                      }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxWidth: "740px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <strong style={{ fontSize: "13.5px", color: "#063C3D", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                            <SparklesIcon className="w-4 h-4 text-[#063C3D]" />
+                            {clientLanguage === "gu"
+                              ? "તમારા દસ્તાવેજોમાંથી ફોર્મ પહેલેથી ભરાઈ ગયું છે — ફક્ત બાકીના પ્રશ્નો જ પૂરો કરો"
+                              : clientLanguage === "hi"
+                                ? "आपके दस्तावेज़ों से फ़ॉर्म पहले ही भरा जा चुका है — केवल शेष प्रश्नों का उत्तर दें"
+                                : "Initial Information Sheet Pre-Filled from Your Documents — Only Answer What's Missing"}
+                          </strong>
+                          <span
+                            style={{
+                              background: "#FFFFFF",
+                              color: "#176B50",
+                              border: "1px solid #B9DED4",
+                              borderRadius: "999px",
+                              padding: "2px 8px",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              fontVariantNumeric: "tabular-nums",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <LockIcon className="w-3 h-3 text-[#176B50]" /> {clientMissingGapSummary.verifiedDocumentFieldsCount || extractedPreviewFields.length} Fields Verified
+                          </span>
+                        </div>
+                        {clientMissingGapSummary.missingGaps.length > 0 ? (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                            {clientMissingGapSummary.missingGaps.map((gap) => (
+                              <span
+                                key={gap.sectionKey}
+                                style={{
+                                  background: "#FFFFFF",
+                                  border: "1px solid #DCE5E1",
+                                  borderRadius: "6px",
+                                  padding: "3px 8px",
+                                  fontSize: "11.5px",
+                                  color: "#063C3D",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                • {gap.label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: "12px", color: "#176B50", fontWeight: 650 }}>
+                            ✓ All remaining non-document disclosures and your e-signature are complete.
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        data-testid="client-open-missing-questions-btn"
+                        onClick={() => setIsInformationSheetModalOpen(true)}
+                        style={{
+                          background: "#063C3D",
+                          color: "#FFFFFF",
+                          border: "1px solid #063C3D",
+                          borderRadius: "8px",
+                          padding: "9px 15px",
+                          fontSize: "12.5px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {clientMissingGapSummary.missingGaps.length > 0
+                          ? `Answer Only ${clientMissingGapSummary.missingGaps.length} Missing Question${clientMissingGapSummary.missingGaps.length === 1 ? "" : "s"} →`
+                          : "Review Completed Sheet →"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* =========================================================================
+                BLOCK 2 & BLOCK 3 — 2-COLUMN WORKSPACE GRID
+                ========================================================================= */}
+              <div className="documento-overview-grid">
+                {/* =========================================================================
+                  BLOCK 2 — SPONSOR COLLABORATION & LIVE UPLOADED FILES
+                  ========================================================================= */}
+                <div
+                  data-testid="overview-block-uploader-sponsor"
+                  style={{ display: "flex", flexDirection: "column", gap: "20px" }}
+                >
                   {/* OVERSEAS SPONSOR / SIBLING COLLABORATION CARD (PRIVACY SHIELD ACTIVE) */}
                   <div
                     data-testid="client-sponsor-link-card"
@@ -2974,7 +3055,6 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                     {sponsorInvites.length > 0 && (
                       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                         {sponsorInvites.map((inv) => {
-                          const shareUrl = buildSponsorShareUrl(inv.token);
                           const hasVerifiedUploads =
                             inv.uploadedItems.some((u) => u.verified) ||
                             inv.uploadedItems.length > 0 ||
@@ -3109,581 +3189,27 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                     )}
                   </div>
 
-                  {/* =========================================================================
-                SECTION 3: REQUIRED / PENDING INITIAL INFORMATION SHEET (12-Page Intake)
-                ========================================================================= */}
-                  <div
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1px solid #DCE5E1",
-                      borderRadius: "12px",
-                      padding: "20px 24px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        gap: "14px",
-                        paddingBottom: "16px",
-                        borderBottom: "1px solid #DCE5E1",
-                        marginBottom: "16px",
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                          <FileEditIcon className="w-4 h-4 text-[#063C3D]" />
-                          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
-                            Required / Pending Initial Information Sheet
-                          </h3>
-                          <span
-                            style={{
-                              background: infoSheetPct > 0 ? "#DCFCE7" : "#F1F5F9",
-                              color: infoSheetPct > 0 ? "#166534" : "#475569",
-                              fontSize: "11px",
-                              fontWeight: 700,
-                              padding: "2px 8px",
-                              borderRadius: "20px",
-                              border: `1px solid ${infoSheetPct > 0 ? "#86EFAC" : "#CBD5E1"}`,
-                            }}
-                          >
-                            {infoSheetPct}% Complete
-                          </span>
-                        </div>
-                        <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C" }}>
-                          Official comprehensive intake sheet ({isDemoCase ? "SkySail Immigration" : firmDisplayName}) covering Biodata, Entry History, 10-Yr Education, Employment, Travel, Addresses, and Sponsor Relationship.
-                        </p>
-                      </div>
-
-                      <div style={{ display: "flex", gap: "10px" }}>
-                        <button
-                          type="button"
-                          onClick={() => setIsInformationSheetModalOpen(true)}
-                          style={{
-                            background: "#0D6866",
-                            color: "#FFFFFF",
-                            border: "none",
-                            borderRadius: "8px",
-                            padding: "8px 16px",
-                            fontSize: "12px",
-                            fontWeight: 650,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            boxShadow: "0 2px 6px rgba(13, 104, 102, 0.2)",
-                          }}
-                        >
-                          <span>Open / Complete Information Sheet →</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab("initial_sheet")}
-                          style={{
-                            background: "#EAF6F0",
-                            color: "#0D6866",
-                            border: "1px solid #B9DED4",
-                            borderRadius: "8px",
-                            padding: "8px 14px",
-                            fontSize: "12px",
-                            fontWeight: 650,
-                            cursor: "pointer",
-                          }}
-                        >
-                          View in Dedicated Tab →
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Progress Bar & Section Checkpoints */}
-                    <div style={{ marginBottom: "16px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "6px" }}>
-                        <span style={{ fontWeight: 650, color: "#063C3D" }}>
-                          {infoSheetDoneCount} of {initialSheetSections.length} Sections Completed •{" "}
-                          {infoSheetDoneCount === 0
-                            ? "Not Started Yet"
-                            : infoSheetDoneCount === initialSheetSections.length
-                              ? "All Sections Completed"
-                              : `${initialSheetSections.length - infoSheetDoneCount} Section(s) Remaining`}
-                        </span>
-                        <span style={{ fontWeight: 700, color: infoSheetPct > 0 ? "#0D6866" : "#64748B" }}>
-                          {infoSheetPct}% Readiness
-                        </span>
-                      </div>
-                      <div style={{ width: "100%", height: "8px", background: "#E2E8F0", borderRadius: "4px", overflow: "hidden" }}>
-                        <div style={{ width: `${infoSheetPct}%`, height: "100%", background: "#0D6866", borderRadius: "4px", transition: "width 0.3s ease" }} />
-                      </div>
-                    </div>
-
-                    {/* Grid of sections */}
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                        gap: "10px",
-                        fontSize: "12px",
-                      }}
-                    >
-                      {initialSheetSections.map((sec) => (
-                        <div
-                          key={sec.title}
-                          style={{
-                            background: sec.done ? "#F8FAF9" : "#FFFBEB",
-                            border: `1px solid ${sec.done ? "#B9DED4" : "#FCD34D"}`,
-                            borderRadius: "8px",
-                            padding: "10px 12px",
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
-                            <span style={{ color: sec.done ? "#166534" : "#B45309", fontWeight: 700 }}>
-                              {sec.done ? "✓" : <HourglassIcon className="w-3 h-3 text-amber-600 inline-block" />}
-                            </span>
-                            <strong style={{ color: sec.done ? "#063C3D" : "#92400E", fontSize: "12px" }}>
-                              {sec.title}
-                            </strong>
-                          </div>
-                          <div style={{ color: "#64748B", fontSize: "11px", lineHeight: 1.3 }}>
-                            {sec.detail}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* =========================================================================
-                SECTION 5: STANDARDS FOR UPLOADING DOCUMENTS FOR OPTIMAL OCR (FAQ)
-                ========================================================================= */}
-                  <div
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1px solid #DCE5E1",
-                      borderRadius: "12px",
-                      padding: "20px 24px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        gap: "14px",
-                        paddingBottom: "16px",
-                        borderBottom: "1px solid #DCE5E1",
-                        marginBottom: "16px",
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                          <LightbulbIcon className="w-4 h-4 text-[#063C3D]" />
-                          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
-                            Standards for Uploading Documents to the Portal (Optimal AI OCR)
-                          </h3>
-                          <span
-                            style={{
-                              background: "#EAF6F0",
-                              color: "#0D6866",
-                              fontSize: "11px",
-                              fontWeight: 700,
-                              padding: "2px 8px",
-                              borderRadius: "20px",
-                              border: "1px solid #B9DED4",
-                            }}
-                          >
-                            99.8% Accuracy Target
-                          </span>
-                        </div>
-                        <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C" }}>
-                          Follow these 6 golden rules to ensure automatic AI OCR extraction without legal re-upload requests.
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsOcrStandardsModalOpen(true)}
-                        style={{
-                          background: "#EAF6F0",
-                          color: "#0D6866",
-                          border: "1px solid #B9DED4",
-                          borderRadius: "8px",
-                          padding: "8px 14px",
-                          fontSize: "12px",
-                          fontWeight: 650,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <span>Open Full Upload Standards &amp; Pre-Flight FAQ →</span>
-                      </button>
-                    </div>
-
-                    {/* 6 Standards Cards */}
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                        gap: "12px",
-                        marginBottom: "16px",
-                      }}
-                    >
-                      {[
-                        {
-                          icon: <FileTextIcon className="w-4 h-4 text-[#063C3D]" />,
-                          title: "300+ DPI Resolution",
-                          rule: "Use a dedicated flatbed scanner or CamScanner / Adobe Scan. Never send compressed WhatsApp photos.",
-                        },
-                        {
-                          icon: <LightbulbIcon className="w-4 h-4 text-[#063C3D]" />,
-                          title: "Uniform Diffused Lighting",
-                          rule: "Capture near a natural window. Turn off camera flash to prevent specular reflection glare on glossy paper.",
-                        },
-                        {
-                          icon: <CompassIcon className="w-4 h-4 text-[#063C3D]" />,
-                          title: "90° Overhead Orientation",
-                          rule: "Hold phone directly parallel to the paper. Skewed angles cause OCR perspective distortion.",
-                        },
-                        {
-                          icon: <MaximizeIcon className="w-4 h-4 text-[#063C3D]" />,
-                          title: "All 4 Corners Visible",
-                          rule: "Lay document flat on a dark wooden or slate surface. Keep all document edges and barcodes intact.",
-                        },
-                        {
-                          icon: <HandIcon className="w-4 h-4 text-[#063C3D]" />,
-                          title: "Zero Finger Occlusion",
-                          rule: "Do not hold page with thumbs. Remove paperclips and staples so seals and stamps remain 100% visible.",
-                        },
-                        {
-                          icon: <FileCheckIcon className="w-4 h-4 text-[#063C3D]" />,
-                          title: "Complete Multi-Page PDFs",
-                          rule: "Include front and back of each page, plus sworn translator competence affidavit for non-English records.",
-                        },
-                      ].map((std) => (
-                        <div
-                          key={std.title}
-                          style={{
-                            background: "#F8FAF9",
-                            border: "1px solid #E2E8F0",
-                            borderRadius: "10px",
-                            padding: "12px 14px",
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                            <span>{std.icon}</span>
-                            <strong style={{ fontSize: "13px", color: "#063C3D" }}>{std.title}</strong>
-                          </div>
-                          <p style={{ margin: 0, fontSize: "11px", color: "#64748B", lineHeight: 1.4 }}>
-                            {std.rule}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div
-                      style={{
-                        background: "#EAF6F0",
-                        border: "1px solid #B9DED4",
-                        borderRadius: "8px",
-                        padding: "10px 14px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        gap: "10px",
-                        fontSize: "12px",
-                        color: "#0D6866",
-                      }}
-                    >
-                      <div>
-                        <strong>Pre-Flight Check:</strong> Does your document scan have clean margins, zero flash glare, and 300+ DPI?
-                      </div>
-                      <button
-                        type="button"
-                        onClick={onOpenUploadModal}
-                        style={{
-                          background: "#0D6866",
-                          color: "#FFF",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "6px 14px",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        + Upload Compliant File Now
-                      </button>
-                    </div>
-                  </div>
+                  {/* Live Uploaded Document Status Summary Card */}
+                  <ClientDocumentUploadCard
+                    documents={overviewDocuments}
+                    onOpenUploadModal={onOpenUploadModal}
+                    onOpenOcrModal={() => setIsOcrStandardsModalOpen(true)}
+                    overviewDocFilter={overviewDocFilter}
+                    onFilterChange={(flt) => setOverviewDocFilter(flt)}
+                    clientName={clientName}
+                    caseId={myCase?.id}
+                    onDocumentUploaded={handleSmartDocUploaded}
+                  />
                 </div>
 
-                {/* CONTEXTUAL DOSSIER PANEL (RIGHT COLUMN) */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                  {/* =========================================================================
-                PILLAR 1: QUICK-GLANCE APPLICATION STATUS HERO CARD
-                ========================================================================= */}
-                  <ClientStatusHeroCard
-                    myCase={myCase}
-                    currentUser={currentUser}
-                    firmDisplayName={firmDisplayName}
-                    dynamicReadinessPct={dynamicReadinessPct}
-                    activeMilestoneIndex={activeMilestoneIndex}
-                    totalMilestones={milestones.length}
-                    activeMilestoneLabel={activeMilestoneLabel}
-                    isDemoCase={isDemoCase}
-                    assignedOfficerName={assignedOfficerName}
-                    hasAssignedOfficer={hasAssignedOfficer}
-                    onOpenUploadModal={onOpenUploadModal}
-                    onOpenQuestionnaireModal={onOpenQuestionnaireModal}
-                    onNavigateTab={(tab) => handleNavClick(tab as any)}
-                    onOpenOcrStandardsModal={() => setIsOcrStandardsModalOpen(true)}
-                    t={t}
-                  />
-
-                  {/* =========================================================================
-                SECTION 1: CLIENT PROFILE INFORMATION & ACTIVE VISA FILE SCOPE
-                ========================================================================= */}
-                  <div
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1px solid #DCE5E1",
-                      borderRadius: "12px",
-                      padding: "20px 24px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        flexWrap: "wrap",
-                        gap: "14px",
-                        paddingBottom: "16px",
-                        borderBottom: "1px solid #DCE5E1",
-                        marginBottom: "18px",
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                          <UserIcon className="w-4 h-4 text-[#063C3D]" />
-                          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 750, color: "#063C3D" }}>
-                            Client Profile &amp; Active Visa File Scope
-                          </h3>
-                          <span
-                            style={{
-                              background: myCase ? "#DCFCE7" : "#FEF3C7",
-                              color: myCase ? "#166534" : "#92400E",
-                              fontSize: "11px",
-                              fontWeight: 700,
-                              padding: "2px 8px",
-                              borderRadius: "20px",
-                              border: `1px solid ${myCase ? "#86EFAC" : "#FCD34D"}`,
-                            }}
-                          >
-                            {myCase ? "Active Legal Matter" : "Pending Case Setup"}
-                          </span>
-                        </div>
-                        <p style={{ margin: 0, fontSize: "13px", color: "#6E7F7C", lineHeight: 1.4 }}>
-                          Details of the active visa file in preparation, legal processing jurisdiction, and authorized family members.
-                        </p>
-                      </div>
-
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab("profile")}
-                          style={{
-                            background: "#EAF6F0",
-                            color: "#0D6866",
-                            border: "1px solid #B9DED4",
-                            borderRadius: "8px",
-                            padding: "8px 14px",
-                            fontSize: "12px",
-                            fontWeight: 650,
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          View Full Profile Scope &amp; Family Register →
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Visa File & Composition Highlights */}
-                    {!myCase || !myCase.visa_category ? (
-                      <div
-                        data-testid="overview-visa-scope-pending"
-                        style={{
-                          background: "#F8FAF9",
-                          border: "1.5px dashed #CBD5E1",
-                          borderRadius: "10px",
-                          padding: "24px 20px",
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          textAlign: "center",
-                          gap: "8px",
-                        }}
-                      >
-                        <ClipboardListIcon className="w-8 h-8 text-slate-400" />
-                        <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
-                          Class of Application Pending Selection
-                        </div>
-                        <p style={{ margin: 0, fontSize: "12px", color: "#64748B", maxWidth: "560px", lineHeight: 1.5 }}>
-                          Your legal matter is active. The supervising firm owner or case manager is reviewing your file and will assign the specific visa classification stream shortly. Once selected, your authorized file scope, statutory petition forms, and matter composition will appear here.
-                        </p>
-                        <span
-                          style={{
-                            marginTop: "4px",
-                            background: "#FEF3C7",
-                            color: "#92400E",
-                            border: "1px solid #FCD34D",
-                            padding: "4px 12px",
-                            borderRadius: "16px",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                          }}
-                        >
-                          <HourglassIcon className="w-3 h-3 text-amber-700" /> Awaiting Owner / Manager Classification
-                        </span>
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                          gap: "16px",
-                        }}
-                      >
-                        {/* Visa File In Preparation */}
-                        <div
-                          style={{
-                            background: "#F8FAF9",
-                            border: "1px solid #DCE5E1",
-                            borderRadius: "10px",
-                            padding: "16px 18px",
-                          }}
-                        >
-                          <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
-                            VISA FILE IN PREPARATION
-                          </span>
-                          <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
-                            {myCase.visa_category}
-                          </div>
-                          <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.5 }}>
-                            Authority: <strong>{myCase.jurisdiction || (isCanada ? "Immigration, Refugees and Citizenship Canada (IRCC)" : "Immigration Authority")}</strong><br />
-                            Processing Office: <strong>{myCase.assigned_manager ? `Supervised by ${myCase.assigned_manager}` : "IRCC Case Processing Centre"}</strong><br />
-                            File Docket: <strong>#{myCase.case_number || "PENDING"}</strong>
-                          </div>
-                        </div>
-
-                        {/* Family Members Included */}
-                        <div
-                          style={{
-                            background: "#F8FAF9",
-                            border: "1px solid #DCE5E1",
-                            borderRadius: "10px",
-                            padding: "16px 18px",
-                          }}
-                        >
-                          <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
-                            MATTER COMPOSITION
-                          </span>
-                          <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
-                            {myCase.visa_category.toLowerCase().includes("spous") || myCase.visa_category.toLowerCase().includes("family") || myCase.visa_category.toLowerCase().includes("sclpc")
-                              ? "Principal Applicant & Sponsor"
-                              : "Primary Retained Client"}
-                          </div>
-                          <div style={{ fontSize: "12px", color: "#445451", lineHeight: 1.5 }}>
-                            • <strong>{clientName || "Primary Applicant"}</strong> (Principal Beneficiary / Retained Client)<br />
-                            {(myCase.visa_category.toLowerCase().includes("spous") || myCase.visa_category.toLowerCase().includes("family") || myCase.visa_category.toLowerCase().includes("sclpc")) && (
-                              <>
-                                • <strong>Sponsor / Spouse</strong> (Canadian Co-Signer &amp; Financial Undertaking)<br />
-                              </>
-                            )}
-                            • Declared Immediate Family Members under statutory compliance
-                          </div>
-                        </div>
-
-                        {/* Statutory Forms in Preparation */}
-                        <div
-                          style={{
-                            background: "#F8FAF9",
-                            border: "1px solid #DCE5E1",
-                            borderRadius: "10px",
-                            padding: "16px 18px",
-                          }}
-                        >
-                          <span style={{ fontSize: "11px", color: "#0D6866", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>
-                            {isDemoCase || clientFormSubmission?.status === "confirmed"
-                              ? "STATUTORY FORMS COMPILED"
-                              : "REQUIRED STATUTORY FORMS"}
-                          </span>
-                          {(() => {
-                            const vCat = myCase.visa_category.toLowerCase();
-                            const isSpousal = vCat.includes("spous") || vCat.includes("family") || vCat.includes("sclpc");
-                            const isStudyPermit = vCat.includes("study") || vCat.includes("student");
-                            const isUS = (myCase.jurisdiction || "").toLowerCase().includes("united states") || (myCase.jurisdiction || "").toLowerCase().includes("uscis") || vCat.includes("eb-") || vCat.includes("o-1");
-                            const forms = isSpousal
-                              ? ["IMM 0008", "IMM 5532", "IMM 5669", "IMM 5406", "IMM 1344", "SOWP"]
-                              : isStudyPermit
-                                ? ["IMM 1294", "IMM 5645", "IMM 5257"]
-                                : isUS
-                                  ? ["Form I-140", "Form I-485", "Form I-765", "Form I-131"]
-                                  : ["IMM 5257", "IMM 5645"];
-
-                            return (
-                              <>
-                                <div style={{ fontSize: "15px", fontWeight: 750, color: "#063C3D", marginBottom: "6px" }}>
-                                  {forms.length} Government Petition Forms
-                                </div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
-                                  {forms.map((formName) => (
-                                    <span
-                                      key={formName}
-                                      style={{
-                                        background: "#EAF6F0",
-                                        color: "#0D6866",
-                                        border: "1px solid #B9DED4",
-                                        borderRadius: "4px",
-                                        fontSize: "11px",
-                                        fontWeight: 700,
-                                        padding: "2px 7px",
-                                      }}
-                                    >
-                                      {formName}
-                                    </span>
-                                  ))}
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Pillar 3: Always-Accessible Direct Chat Card/Widget */}
-                  <ClientDirectChatWidget
-                    hasAssignedOfficer={hasAssignedOfficer}
-                    displayOfficerTitle={displayOfficerTitle}
-                    firmDisplayName={firmDisplayName}
-                    quickChatMessage={quickChatMessage}
-                    onQuickChatChange={(msg) => setQuickChatMessage(msg)}
-                    onSendMessage={onSendMessage}
-                    onOpenMessagesTab={() => setActiveTab("messages")}
-                    quickChatSentFeedback={quickChatSentFeedback}
-                    setQuickChatSentFeedback={setQuickChatSentFeedback}
-                  />
-
-                  {/* In-Progress Forms, Pending Actions & Upcoming Appointments Card */}
+                {/* =========================================================================
+                  BLOCK 3 — QUICK LINKS & ACTION SUMMARY (Concise Actions + Direct Links)
+                  ========================================================================= */}
+                <div
+                  data-testid="overview-block-quick-links-actions"
+                  style={{ display: "flex", flexDirection: "column", gap: "20px" }}
+                >
+                  {/* Concise Pending Actions, In-Progress Forms & Upcoming Appointments Summary */}
                   <div
                     style={{
                       background: "#FFFFFF",
@@ -3692,7 +3218,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                       padding: "20px 24px",
                       display: "flex",
                       flexDirection: "column",
-                      gap: "18px",
+                      gap: "16px",
                     }}
                   >
                     <div
@@ -3710,11 +3236,11 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                           <ZapIcon className="w-4 h-4 text-amber-500" />
                           <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
-                            In-Progress Forms, Pending Actions &amp; Appointments
+                            Action Summary &amp; Appointments
                           </h3>
                         </div>
                         <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
-                          Resume unfinished questionnaires, clear client blockers, and track scheduled official appointments.
+                          Resume unfinished forms, clear client blockers, and track scheduled official appointments.
                         </p>
                       </div>
                       <Badge variant="review">
@@ -3750,96 +3276,83 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
-                        gap: "16px",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
+                        gap: "12px",
                       }}
                     >
-                      {/* 1. In-Progress Forms (Save / Resume) */}
+                      {/* 1. In-Progress Forms (Save / Resume without duplicate progress bar) */}
                       <div
                         style={{
                           background: "#F8FAF9",
                           border: "1px solid #E2E8F0",
                           borderRadius: "10px",
-                          padding: "14px 16px",
+                          padding: "12px 14px",
                           display: "flex",
                           flexDirection: "column",
-                          justifyContent: "space-between",
-                          gap: "12px",
+                          gap: "8px",
                         }}
                       >
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                            <strong style={{ fontSize: "13px", color: "#063C3D", display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                              <FileEditIcon className="w-3.5 h-3.5 text-[#063C3D]" /> In-Progress Forms
-                            </strong>
-                            <span style={{ fontSize: "11px", color: "#64748B" }}>Auto-Saved</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <strong style={{ fontSize: "12.5px", color: "#063C3D", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                            <FileEditIcon className="w-3.5 h-3.5 text-[#063C3D]" /> In-Progress Forms
+                          </strong>
+                          <span style={{ fontSize: "11px", color: "#64748B" }}>Auto-Saved</span>
+                        </div>
+                        {inProgressForms.length === 0 ? (
+                          <div style={{ padding: "12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
+                            No questionnaires currently pending.
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                            {inProgressForms.length === 0 ? (
-                              <div style={{ padding: "16px 12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
-                                No questionnaires currently pending.
+                        ) : (
+                          inProgressForms.map((frm) => (
+                            <div
+                              key={frm.form_id}
+                              style={{
+                                background: "#FFFFFF",
+                                border: "1px solid #CBD5E1",
+                                borderRadius: "8px",
+                                padding: "10px 12px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "8px",
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                                <div>
+                                  <strong style={{ fontSize: "12px", color: "#0F172A", display: "block" }}>
+                                    {frm.form_title}
+                                  </strong>
+                                  <span style={{ fontSize: "11px", color: "#64748B" }}>
+                                    For: {frm.applicant_name} • ~{frm.estimated_minutes_remaining} min left
+                                  </span>
+                                </div>
+                                <span style={{ fontSize: "12px", fontWeight: 750, color: "#0D6866" }}>
+                                  {frm.completion_percentage}%
+                                </span>
                               </div>
-                            ) : (
-                              inProgressForms.map((frm) => (
-                                <div
-                                  key={frm.form_id}
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ fontSize: "10px", color: "#94A3B8" }}>
+                                  Saved {new Date(frm.last_saved_at).toLocaleDateString()}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenQuestionnaireModal()}
                                   style={{
-                                    background: "#FFFFFF",
-                                    border: "1px solid #CBD5E1",
-                                    borderRadius: "8px",
-                                    padding: "10px 12px",
+                                    background: "#0D6866",
+                                    color: "#FFF",
+                                    border: "none",
+                                    borderRadius: "4px",
+                                    padding: "4px 10px",
+                                    fontSize: "11px",
+                                    fontWeight: 650,
+                                    cursor: "pointer",
                                   }}
                                 >
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-                                    <div>
-                                      <strong style={{ fontSize: "12px", color: "#0F172A", display: "block" }}>
-                                        {frm.form_title}
-                                      </strong>
-                                      <span style={{ fontSize: "11px", color: "#64748B" }}>
-                                        For: {frm.applicant_name} • ~{frm.estimated_minutes_remaining} min left
-                                      </span>
-                                    </div>
-                                    <span style={{ fontSize: "12px", fontWeight: 750, color: "#0D6866" }}>
-                                      {frm.completion_percentage}%
-                                    </span>
-                                  </div>
-                                  <div style={{ width: "100%", height: "6px", background: "#E2E8F0", borderRadius: "3px", margin: "8px 0" }}>
-                                    <div
-                                      style={{
-                                        width: `${frm.completion_percentage}%`,
-                                        height: "100%",
-                                        background: "#0D6866",
-                                        borderRadius: "3px",
-                                      }}
-                                    />
-                                  </div>
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                    <span style={{ fontSize: "10px", color: "#94A3B8" }}>
-                                      Saved {new Date(frm.last_saved_at).toLocaleDateString()}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        onOpenQuestionnaireModal();
-                                      }}
-                                      style={{
-                                        background: "#0D6866",
-                                        color: "#FFF",
-                                        border: "none",
-                                        borderRadius: "4px",
-                                        padding: "4px 10px",
-                                        fontSize: "11px",
-                                        fontWeight: 650,
-                                        cursor: "pointer",
-                                      }}
-                                    >
-                                      Resume Form →
-                                    </button>
-                                  </div>
-                                </div>
-                              )))}
-                          </div>
-                        </div>
+                                  Resume Form →
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
 
                       {/* 2. Pending Actions Counter & Checklist */}
@@ -3848,90 +3361,86 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                           background: "#F8FAF9",
                           border: "1px solid #E2E8F0",
                           borderRadius: "10px",
-                          padding: "14px 16px",
+                          padding: "12px 14px",
                           display: "flex",
                           flexDirection: "column",
-                          justifyContent: "space-between",
-                          gap: "12px",
+                          gap: "8px",
                         }}
                       >
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                            <strong style={{ fontSize: "13px", color: "#063C3D", display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                              <AlertTriangleIcon className="w-3.5 h-3.5 text-red-600" /> Pending Actions
-                            </strong>
-                            <span
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <strong style={{ fontSize: "12.5px", color: "#063C3D", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                            <AlertTriangleIcon className="w-3.5 h-3.5 text-red-600" /> Pending Actions
+                          </strong>
+                          <span
+                            style={{
+                              background: "#FEE2E2",
+                              color: "#991B1B",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              padding: "2px 7px",
+                              borderRadius: "10px",
+                            }}
+                          >
+                            {pendingActions.length} Actions Required
+                          </span>
+                        </div>
+                        {pendingActions.length === 0 ? (
+                          <div style={{ padding: "12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
+                            No urgent client actions pending at this stage.
+                          </div>
+                        ) : (
+                          pendingActions.map((act) => (
+                            <div
+                              key={act.id}
                               style={{
-                                background: "#FEE2E2",
-                                color: "#991B1B",
-                                fontSize: "11px",
-                                fontWeight: 700,
-                                padding: "2px 7px",
-                                borderRadius: "10px",
+                                background: "#FFFFFF",
+                                border: "1px solid #FECACA",
+                                borderRadius: "8px",
+                                padding: "10px 12px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "6px",
                               }}
                             >
-                              {pendingActions.length} Actions Required
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            {pendingActions.length === 0 ? (
-                              <div style={{ padding: "16px 12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
-                                No urgent client actions pending at this stage.
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                                <strong style={{ fontSize: "12px", color: "#991B1B" }}>{act.title}</strong>
+                                <Badge variant={act.priority === "high" ? "action" : "warning"} size="sm">
+                                  {act.priority.toUpperCase()}
+                                </Badge>
                               </div>
-                            ) : (
-                              pendingActions.map((act) => (
-                                <div
-                                  key={act.id}
+                              <p style={{ margin: "0", fontSize: "11px", color: "#475569", lineHeight: "1.4" }}>
+                                {act.description}
+                              </p>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "2px" }}>
+                                <span style={{ fontSize: "11px", color: "#DC2626", fontWeight: 650, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                                  <ClockIcon className="w-3 h-3 text-red-600" /> {act.due_date}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (act.action_type === "document_upload") {
+                                      onOpenUploadModal();
+                                    } else {
+                                      onOpenQuestionnaireModal();
+                                    }
+                                  }}
                                   style={{
-                                    background: "#FFFFFF",
-                                    border: "1px solid #FECACA",
-                                    borderRadius: "8px",
-                                    padding: "10px 12px",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: "6px",
+                                    background: "#DC2626",
+                                    color: "#FFF",
+                                    border: "none",
+                                    borderRadius: "4px",
+                                    padding: "4px 10px",
+                                    fontSize: "11px",
+                                    fontWeight: 650,
+                                    cursor: "pointer",
                                   }}
                                 >
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-                                    <strong style={{ fontSize: "12px", color: "#991B1B" }}>{act.title}</strong>
-                                    <Badge variant={act.priority === "high" ? "action" : "warning"} size="sm">
-                                      {act.priority.toUpperCase()}
-                                    </Badge>
-                                  </div>
-                                  <p style={{ margin: "0", fontSize: "11px", color: "#475569", lineHeight: "1.4" }}>
-                                    {act.description}
-                                  </p>
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "2px" }}>
-                                    <span style={{ fontSize: "11px", color: "#DC2626", fontWeight: 650, display: "inline-flex", alignItems: "center", gap: "3px" }}>
-                                      <ClockIcon className="w-3 h-3 text-red-600" /> {act.due_date}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (act.action_type === "document_upload") {
-                                          onOpenUploadModal();
-                                        } else {
-                                          onOpenQuestionnaireModal();
-                                        }
-                                      }}
-                                      style={{
-                                        background: "#DC2626",
-                                        color: "#FFF",
-                                        border: "none",
-                                        borderRadius: "4px",
-                                        padding: "4px 10px",
-                                        fontSize: "11px",
-                                        fontWeight: 650,
-                                        cursor: "pointer",
-                                      }}
-                                    >
-                                      Take Action →
-                                    </button>
-                                  </div>
-                                </div>
-                              )))}
-                          </div>
-                        </div>
+                                  Take Action →
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
 
                       {/* 3. Upcoming Official Appointments */}
@@ -3940,172 +3449,95 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                           background: "#F8FAF9",
                           border: "1px solid #E2E8F0",
                           borderRadius: "10px",
-                          padding: "14px 16px",
+                          padding: "12px 14px",
                           display: "flex",
                           flexDirection: "column",
-                          justifyContent: "space-between",
-                          gap: "12px",
+                          gap: "8px",
                         }}
                       >
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                            <strong style={{ fontSize: "13px", color: "#063C3D", display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                              <CalendarIcon className="w-3.5 h-3.5 text-[#063C3D]" /> Upcoming Appointments
-                            </strong>
-                            <span style={{ fontSize: "11px", color: "#166534", fontWeight: 650 }}>Confirmed</span>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            {visaAppointments.length > 0 ? (
-                              visaAppointments.map((va: any) => {
-                                const is221g = va.status_221g === true || va.status_221g === "active" || va.appointment_status === "221g" || va.appointment_status === "administrative_processing_221g";
-                                const slipColor = (va.status_221g_color || "pink").toUpperCase();
-                                const centerTitle = va.vac_center || va.vac_center_name || va.vac_city || va.consular_post || "Visa Application Centre";
-                                const providerName = (va.vac_provider || (centerTitle.toLowerCase().includes("vfs") ? "VFS Global" : centerTitle.toLowerCase().includes("bls") ? "BLS" : "U.S. Consulate")).toUpperCase();
-                                const ofcSlot = va.ofc_biometrics_slot || va.ofc_appointment_datetime;
-                                const consularSlot = va.consular_interview_slot || va.consular_appointment_datetime;
-                                const isDropbox = va.dropbox_eligible || va.is_dropbox_eligible;
-                                const awb = va.tracking_number_blue_dart || va.courier_awb;
-                                const courierPartner = va.courier_partner || "Blue Dart";
-                                const courierStatus = va.courier_status || "In Transit";
-                                const evidenceNotes = va.status_221g_requested_evidence || (is221g ? va.notes : null);
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <strong style={{ fontSize: "12.5px", color: "#063C3D", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                            <CalendarIcon className="w-3.5 h-3.5 text-[#063C3D]" /> Upcoming Appointments
+                          </strong>
+                          <span style={{ fontSize: "11px", color: "#166534", fontWeight: 650 }}>Confirmed</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {visaAppointments.length > 0 ? (
+                            visaAppointments.map((va: any) => {
+                              const is221g = va.status_221g === true || va.status_221g === "active" || va.appointment_status === "221g" || va.appointment_status === "administrative_processing_221g";
+                              const slipColor = (va.status_221g_color || "pink").toUpperCase();
+                              const centerTitle = va.vac_center || va.vac_center_name || va.vac_city || va.consular_post || "Visa Application Centre";
+                              const providerName = (va.vac_provider || (centerTitle.toLowerCase().includes("vfs") ? "VFS Global" : centerTitle.toLowerCase().includes("bls") ? "BLS" : "U.S. Consulate")).toUpperCase();
+                              const ofcSlot = va.ofc_biometrics_slot || va.ofc_appointment_datetime;
+                              const consularSlot = va.consular_interview_slot || va.consular_appointment_datetime;
+                              const isDropbox = va.dropbox_eligible || va.is_dropbox_eligible;
+                              const awb = va.tracking_number_blue_dart || va.courier_awb;
+                              const courierPartner = va.courier_partner || "Blue Dart";
+                              const courierStatus = va.courier_status || "In Transit";
+                              const evidenceNotes = va.status_221g_requested_evidence || (is221g ? va.notes : null);
 
-                                return (
-                                  <div
-                                    key={va.id}
-                                    style={{
-                                      background: is221g ? "#FFFBEB" : "#FFFFFF",
-                                      border: is221g ? "1px solid #FCD34D" : "1px solid #CBD5E1",
-                                      borderRadius: "8px",
-                                      padding: "10px 12px",
-                                      display: "flex",
-                                      flexDirection: "column",
-                                      gap: "6px",
-                                    }}
-                                  >
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
-                                      <div>
-                                        <strong style={{ fontSize: "12px", color: is221g ? "#92400E" : "#063C3D", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                          <BuildingIcon className="w-3.5 h-3.5 text-slate-600" /> {centerTitle}
-                                        </strong>
-                                        <div style={{ fontSize: "11px", color: "#64748B" }}>
-                                          {providerName} • Confirmation #{va.confirmation_number || va.ds160_ceac_barcode || "CONFIRMED"}
-                                        </div>
-                                      </div>
-                                      <Badge variant={is221g ? "warning" : "success"} size="sm">
-                                        {is221g ? `221(g) ${slipColor} SLIP` : String(va.appointment_status || "SCHEDULED").toUpperCase()}
-                                      </Badge>
-                                    </div>
-
-                                    {ofcSlot && (
-                                      <div style={{ fontSize: "11px", color: "#0F172A", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                        <CameraIcon className="w-3.5 h-3.5 text-slate-600" /> OFC Biometrics: {new Date(ofcSlot).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                      </div>
-                                    )}
-
-                                    {consularSlot && (
-                                      <div style={{ fontSize: "11px", color: "#0F172A", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                        <MicIcon className="w-3.5 h-3.5 text-slate-600" /> Consular Interview: {new Date(consularSlot).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                      </div>
-                                    )}
-
-                                    {isDropbox && (
-                                      <span style={{ fontSize: "10px", color: "#0D6866", background: "#EAF6F0", padding: "2px 6px", borderRadius: "4px", width: "fit-content", fontWeight: 650 }}>
-                                        ✓ Interview Waiver / Dropbox Eligible
-                                      </span>
-                                    )}
-
-                                    {awb && (
-                                      <div style={{ fontSize: "10px", color: "#475569", background: "#F1F5F9", padding: "4px 8px", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                        <PackageIcon className="w-3.5 h-3.5 text-slate-600" /> Courier: {courierPartner} (AWB #{awb}) • Status: {courierStatus}
-                                      </div>
-                                    )}
-
-                                    {is221g && evidenceNotes && (
-                                      <div style={{ fontSize: "11px", color: "#B45309", background: "#FEF3C7", padding: "6px 8px", borderRadius: "4px", marginTop: "2px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                        <AlertTriangleIcon className="w-3.5 h-3.5 text-amber-600" /> <strong>221(g) Action Required:</strong> {evidenceNotes}
-                                      </div>
-                                    )}
-
-                                    <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setRescheduleNotice(`Calendar invitation for ${centerTitle} generated.`);
-                                        }}
-                                        style={{
-                                          flex: 1,
-                                          padding: "4px 8px",
-                                          fontSize: "10px",
-                                          fontWeight: 600,
-                                          background: "#EAF6F0",
-                                          color: "#0D6866",
-                                          border: "1px solid #B9DED4",
-                                          borderRadius: "4px",
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        Add to Calendar
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setRescheduleNotice(`Reschedule inquiry sent to case manager for ${centerTitle}.`);
-                                        }}
-                                        style={{
-                                          padding: "4px 8px",
-                                          fontSize: "10px",
-                                          fontWeight: 600,
-                                          background: "#FFF",
-                                          color: "#64748B",
-                                          border: "1px solid #CBD5E1",
-                                          borderRadius: "4px",
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        Request Reschedule
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            ) : upcomingAppointments.length === 0 ? (
-                              <div style={{ padding: "16px 12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
-                                No upcoming appointments scheduled.
-                              </div>
-                            ) : (
-                              upcomingAppointments.map((apt) => (
+                              return (
                                 <div
-                                  key={apt.id}
+                                  key={va.id}
                                   style={{
-                                    background: "#FFFFFF",
-                                    border: "1px solid #CBD5E1",
+                                    background: is221g ? "#FFFBEB" : "#FFFFFF",
+                                    border: is221g ? "1px solid #FCD34D" : "1px solid #CBD5E1",
                                     borderRadius: "8px",
                                     padding: "10px 12px",
                                     display: "flex",
                                     flexDirection: "column",
-                                    gap: "4px",
+                                    gap: "6px",
                                   }}
                                 >
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
-                                    <strong style={{ fontSize: "12px", color: "#063C3D" }}>{apt.title}</strong>
-                                    <Badge variant="success" size="sm">
-                                      {apt.appointment_type.replace("_", " ").toUpperCase()}
+                                    <div>
+                                      <strong style={{ fontSize: "12px", color: is221g ? "#92400E" : "#063C3D", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                        <BuildingIcon className="w-3.5 h-3.5 text-slate-600" /> {centerTitle}
+                                      </strong>
+                                      <div style={{ fontSize: "11px", color: "#64748B" }}>
+                                        {providerName} • Confirmation #{va.confirmation_number || va.ds160_ceac_barcode || "CONFIRMED"}
+                                      </div>
+                                    </div>
+                                    <Badge variant={is221g ? "warning" : "success"} size="sm">
+                                      {is221g ? `221(g) ${slipColor} SLIP` : String(va.appointment_status || "SCHEDULED").toUpperCase()}
                                     </Badge>
                                   </div>
-                                  <span style={{ fontSize: "11px", color: "#0F172A", fontWeight: 650, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                    <CalendarIcon className="w-3.5 h-3.5 text-slate-600" /> {apt.date_time}
-                                  </span>
-                                  <span style={{ fontSize: "11px", color: "#64748B", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                    <MapPinIcon className="w-3.5 h-3.5 text-slate-600" /> {apt.location}
-                                  </span>
-                                  <p style={{ margin: "2px 0 0 0", fontSize: "11px", color: "#475569", fontStyle: "italic" }}>
-                                    {apt.instructions}
-                                  </p>
+
+                                  {ofcSlot && (
+                                    <div style={{ fontSize: "11px", color: "#0F172A", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                      <CameraIcon className="w-3.5 h-3.5 text-slate-600" /> OFC Biometrics: {new Date(ofcSlot).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                    </div>
+                                  )}
+
+                                  {consularSlot && (
+                                    <div style={{ fontSize: "11px", color: "#0F172A", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                      <MicIcon className="w-3.5 h-3.5 text-slate-600" /> Consular Interview: {new Date(consularSlot).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                    </div>
+                                  )}
+
+                                  {isDropbox && (
+                                    <span style={{ fontSize: "10px", color: "#0D6866", background: "#EAF6F0", padding: "2px 6px", borderRadius: "4px", width: "fit-content", fontWeight: 650 }}>
+                                      ✓ Interview Waiver / Dropbox Eligible
+                                    </span>
+                                  )}
+
+                                  {awb && (
+                                    <div style={{ fontSize: "10px", color: "#475569", background: "#F1F5F9", padding: "4px 8px", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                      <PackageIcon className="w-3.5 h-3.5 text-slate-600" /> Courier: {courierPartner} (AWB #{awb}) • Status: {courierStatus}
+                                    </div>
+                                  )}
+
+                                  {is221g && evidenceNotes && (
+                                    <div style={{ fontSize: "11px", color: "#B45309", background: "#FEF3C7", padding: "6px 8px", borderRadius: "4px", marginTop: "2px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                      <AlertTriangleIcon className="w-3.5 h-3.5 text-amber-600" /> <strong>221(g) Action Required:</strong> {evidenceNotes}
+                                    </div>
+                                  )}
+
                                   <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setRescheduleNotice(`Calendar invitation for "${apt.title}" generated.`);
+                                        setRescheduleNotice(`Calendar invitation for ${centerTitle} generated.`);
                                       }}
                                       style={{
                                         flex: 1,
@@ -4121,373 +3553,330 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                                     >
                                       Add to Calendar
                                     </button>
-                                    {apt.can_reschedule && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setRescheduleNotice(
-                                            `Reschedule request submitted to your caseworker for ${apt.title}. Expect confirmation within 24 business hours.`
-                                          );
-                                        }}
-                                        style={{
-                                          padding: "4px 8px",
-                                          fontSize: "10px",
-                                          fontWeight: 600,
-                                          background: "#FFF",
-                                          color: "#64748B",
-                                          border: "1px solid #CBD5E1",
-                                          borderRadius: "4px",
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        Request Reschedule
-                                      </button>
-                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setRescheduleNotice(`Reschedule inquiry sent to case manager for ${centerTitle}.`);
+                                      }}
+                                      style={{
+                                        padding: "4px 8px",
+                                        fontSize: "10px",
+                                        fontWeight: 600,
+                                        background: "#FFF",
+                                        color: "#64748B",
+                                        border: "1px solid #CBD5E1",
+                                        borderRadius: "4px",
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      Request Reschedule
+                                    </button>
                                   </div>
                                 </div>
-                              )))}
-                          </div>
+                              );
+                            })
+                          ) : upcomingAppointments.length === 0 ? (
+                            <div style={{ padding: "12px", textAlign: "center", color: "#64748B", fontSize: "12px", background: "#FFFFFF", borderRadius: "8px", border: "1px dashed #CBD5E1" }}>
+                              No upcoming appointments scheduled.
+                            </div>
+                          ) : (
+                            upcomingAppointments.map((apt) => (
+                              <div
+                                key={apt.id}
+                                style={{
+                                  background: "#FFFFFF",
+                                  border: "1px solid #CBD5E1",
+                                  borderRadius: "8px",
+                                  padding: "10px 12px",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "4px",
+                                }}
+                              >
+                                <strong style={{ fontSize: "12px", color: "#063C3D" }}>{apt.title}</strong>
+                                <span style={{ fontSize: "11px", color: "#0F172A", fontWeight: 650 }}>{apt.date_time}</span>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Quick Preview of Visa Application File Updates on Overview */}
+                  {/* Direct Quick Links to My Details, My Files, and Messages & Billing */}
                   <div
                     style={{
                       background: "#FFFFFF",
                       border: "1px solid #DCE5E1",
                       borderRadius: "12px",
                       padding: "20px 24px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "14px",
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "14px",
-                        paddingBottom: "12px",
-                        borderBottom: "1px solid #DCE5E1",
-                        flexWrap: "wrap",
-                        gap: "10px",
-                      }}
-                    >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                       <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <FileTextIcon className="w-4 h-4 text-[#063C3D]" />
-                          <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>
-                            {t.latestUpdatesHeader}
-                          </h3>
-                        </div>
-                        <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
-                          {isCanada
-                            ? `Live synchronization with IRCC & ${firmDisplayName} Case Docket.`
-                            : isDemoCase
-                              ? "Live synchronization with USCIS Texas Service Center & Case Docket."
-                              : `Live synchronization with ${myCase?.jurisdiction || "Immigration Authority"} & ${firmDisplayName} Case Docket.`}
+                        <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 750, color: "#063C3D" }}>
+                          Quick Links to Your Portal Sections
+                        </h3>
+                        <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
+                          Jump directly to your intake details, uploaded files, or case messages and updates.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab("updates")}
-                        style={{
-                          padding: "6px 14px",
-                          borderRadius: "6px",
-                          background: "#EAF6F0",
-                          color: "#0D6866",
-                          border: "1px solid #B9DED4",
-                          fontSize: "12px",
-                          fontWeight: 650,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <span>{t.viewAllUpdatesButton || t.viewAllUpdatesLink}</span>
-                      </button>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                      {!myCase || caseSpecificUpdates.length === 0 ? (
-                        <div style={{ padding: "20px 16px", textAlign: "center", color: "#6E7F7C", fontSize: "13px", background: "#F8F7F2", borderRadius: "8px", border: "1px dashed #DCE5E1" }}>
-                          No visa docket updates yet. Official government notifications will populate here once your petition is filed with immigration authorities.
-                        </div>
-                      ) : (
-                        caseSpecificUpdates.slice(0, 2).map((item) => (
-                          <div
-                            key={item.id}
-                            onClick={() => setActiveTab("updates")}
-                            style={{
-                              padding: "12px 16px",
-                              borderRadius: "10px",
-                              background: "#F8F7F2",
-                              border: "1px solid #DCE5E1",
-                              cursor: "pointer",
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                              gap: "10px",
-                              transition: "all 0.15s ease",
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = "#0D6866";
-                              e.currentTarget.style.background = "#F1F8F6";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = "#DCE5E1";
-                              e.currentTarget.style.background = "#F8F7F2";
-                            }}
-                          >
-                            <div style={{ flex: 1, minWidth: "260px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                                <span
-                                  style={{
-                                    background: item.statusBadge.bg,
-                                    color: item.statusBadge.color,
-                                    border: `1px solid ${item.statusBadge.border}`,
-                                    fontSize: "10px",
-                                    fontWeight: 700,
-                                    padding: "1px 6px",
-                                    borderRadius: "4px",
-                                  }}
-                                >
-                                  {item.statusBadge.label}
-                                </span>
-                                <span style={{ fontSize: "11px", fontWeight: 600, color: "#6E7F7C" }}>
-                                  {item.relativeTime}
-                                </span>
-                                <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#063C3D" }}>
-                                  • {item.officialReference}
-                                </span>
-                              </div>
-                              <strong style={{ fontSize: "13px", color: "#063C3D", display: "block" }}>
-                                {item.title}
-                              </strong>
-                              <span style={{ fontSize: "12px", color: "#445451", display: "block", marginTop: "2px" }}>
-                                {item.summary}
-                              </span>
-                            </div>
-
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                              <span style={{ fontSize: "12px", color: "#0D6866", fontWeight: 650 }}>
-                                View Details →
-                              </span>
-                            </div>
-                          </div>
-                        )))}
-                    </div>
-                  </div>
-
-                  {/* Documented Case Progress Stepper */}
-                  {myCase && (
-                    <div
-                      style={{
-                        background: "#FFFFFF",
-                        border: "1px solid #DCE5E1",
-                        borderRadius: "12px",
-                        padding: "20px 24px",
-                      }}
-                    >
+                    {/* Day-0 Pending Visa Scope Indicator when no case is assigned */}
+                    {(!myCase || !myCase.visa_category) && (
                       <div
+                        data-testid="overview-visa-scope-pending"
                         style={{
+                          background: "#F8FAF9",
+                          border: "1px dashed #CBD5E1",
+                          borderRadius: "10px",
+                          padding: "12px 16px",
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
-                          marginBottom: "16px",
-                          paddingBottom: "12px",
-                          borderBottom: "1px solid #DCE5E1",
+                          flexWrap: "wrap",
+                          gap: "8px",
                         }}
                       >
-                        <div>
-                          <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#063C3D" }}>
-                            {t.milestonesTitle}
-                          </h3>
-                          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6E7F7C" }}>
-                            Current phase:{" "}
-                            <strong>
-                              {isDemoCase
-                                ? "Phase 3 of 5 (Evidence Collection & Expert Evaluation)"
-                                : `Phase ${activeMilestoneIndex} of ${milestones.length} (${activeMilestoneLabel})`}
-                            </strong>
-                          </p>
+                        <div style={{ fontSize: "12.5px", fontWeight: 650, color: "#063C3D" }}>
+                          Class of Application Pending Selection
                         </div>
                         <span
                           style={{
-                            fontSize: "12px",
+                            background: "#FEF3C7",
+                            color: "#92400E",
+                            border: "1px solid #FCD34D",
+                            padding: "2px 10px",
+                            borderRadius: "12px",
+                            fontSize: "11px",
                             fontWeight: 700,
-                            color: "#0D6866",
-                            background: "#EAF6F0",
-                            border: "1px solid #B9DED4",
-                            padding: "4px 10px",
-                            borderRadius: "6px",
                           }}
                         >
-                          {dynamicReadinessPct}% Readiness Complete
+                          Awaiting Owner / Manager Classification
                         </span>
                       </div>
+                    )}
 
-                      {/* Milestone sequence */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      {/* Quick Link 1: My Details */}
                       <div
                         style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                          gap: "12px",
+                          background: "#F8FAF9",
+                          border: "1px solid #DCE5E1",
+                          borderRadius: "10px",
+                          padding: "14px 16px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: "10px",
                         }}
                       >
-                        {milestones.map((m, idx) => (
-                          <div
-                            key={m.name}
-                            style={{
-                              background: m.done ? "#F1F8F6" : idx === 3 ? "#FFFFFF" : "#F8F7F2",
-                              border: `1px solid ${m.done ? "#B9DED4" : idx === 3 ? "#0D6866" : "#DCE5E1"}`,
-                              borderRadius: "8px",
-                              padding: "12px 14px",
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-                              <span
-                                style={{
-                                  width: "20px",
-                                  height: "20px",
-                                  borderRadius: "50%",
-                                  background: m.done ? "#176B50" : idx === 3 ? "#0D6866" : "#DCE5E1",
-                                  color: "#FFFFFF",
-                                  fontSize: "11px",
-                                  fontWeight: 700,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
-                              >
-                                {m.done ? "✓" : idx + 1}
-                              </span>
-                              <strong
-                                style={{
-                                  fontSize: "12px",
-                                  color: m.done ? "#176B50" : idx === 3 ? "#063C3D" : "#6E7F7C",
-                                  lineHeight: 1.3,
-                                }}
-                              >
-                                {m.name}
-                              </strong>
-                            </div>
-                            <p style={{ margin: 0, fontSize: "11px", color: "#6E7F7C", lineHeight: 1.4 }}>
-                              {m.desc}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Balanced Lower Section: Case Details & Notifications */}
-                  <div className="documento-lower-grid">
-                    {/* My Petition Details */}
-                    <Card
-                      title="My Petition Details"
-                      subtitle={`Active legal representation under ${firmDisplayName}.`}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                        <div className="documento-petition-meta-grid" style={{ fontSize: "13px" }}>
-                          <div style={{ background: "#F8F7F2", padding: "12px 14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
-                            <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase" }}>
-                              CASE NUMBER
-                            </span>
-                            <strong style={{ fontSize: "15px", color: "#063C3D" }}>
-                              {myCase?.case_number || "Pending Case Opening"}
+                        <div style={{ flex: 1, minWidth: "220px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            <FileEditIcon className="w-4 h-4 text-[#063C3D]" />
+                            <strong style={{ fontSize: "13.5px", color: "#063C3D" }}>
+                              My Details &amp; Initial Information Sheet
                             </strong>
-                          </div>
-                          <div style={{ background: "#F8F7F2", padding: "12px 14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
-                            <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase" }}>
-                              PETITION TYPE
-                            </span>
-                            <strong style={{ color: "#063C3D" }}>
-                              {myCase?.visa_category || "Initial Intake Scoping"}
-                            </strong>
-                          </div>
-                          <div style={{ background: "#F8F7F2", padding: "12px 14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
-                            <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase" }}>
-                              PRIMARY LAWYER
-                            </span>
-                            <span style={{ color: "#172322", fontWeight: 600 }}>
-                              {myCase?.assigned_manager || "Unassigned (Intake Pending)"}
-                            </span>
-                          </div>
-                          <div style={{ background: "#F8F7F2", padding: "12px 14px", borderRadius: "8px", border: "1px solid #DCE5E1" }}>
-                            <span style={{ color: "#6E7F7C", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase" }}>
-                              TARGET JURISDICTION
-                            </span>
-                            <span style={{ color: "#172322", fontWeight: 600 }}>
-                              {myCase?.jurisdiction || "Pending Determination"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div style={{ borderTop: "1px solid #DCE5E1", paddingTop: "14px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "6px" }}>
-                            <span style={{ fontWeight: 650, color: "#063C3D" }}>Petition Filing Readiness</span>
-                            <strong style={{ color: "#0D6866" }}>{myCase ? `${myCase.readiness_score}% Complete` : "0% (Setup Phase)"}</strong>
-                          </div>
-                          <div style={{ width: "100%", height: "8px", backgroundColor: "#E7EFEB", borderRadius: "4px", overflow: "hidden" }}>
-                            <div style={{ width: `${myCase ? (myCase.readiness_score || 0) : 0}%`, height: "100%", backgroundColor: "#0D6866" }} />
-                          </div>
-                          <div style={{ fontSize: "11px", color: "#6E7F7C", marginTop: "6px", lineHeight: 1.4 }}>
-                            Workflow progress measures evidentiary milestone completion and does not predict USCIS processing time or statutory approval outcome.
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-
-                    {/* Notifications & Recent Activity */}
-                    <Card
-                      title="Recent Notifications & Alerts"
-                      subtitle="Official case updates from your legal team."
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                        {notifications.length === 0 ? (
-                          <div style={{ padding: "20px 14px", textAlign: "center", color: "#6E7F7C", fontSize: "12px", background: "#F8F7F2", borderRadius: "8px", border: "1px dashed #DCE5E1" }}>
-                            No notifications yet. Direct notices from your legal team will appear here.
-                          </div>
-                        ) : (
-                          notifications.map((n) => (
-                            <div
-                              key={n.id}
-                              onClick={() => onMarkNotificationRead(n.id)}
+                            <span
                               style={{
-                                padding: "12px 14px",
-                                background: n.status === "unread" ? "#EAF6F0" : "#F8F7F2",
-                                border: `1px solid ${n.status === "unread" ? "#B9DED4" : "#DCE5E1"}`,
-                                borderRadius: "8px",
-                                cursor: "pointer",
-                                transition: "all 0.15s ease",
+                                background: infoSheetPct > 0 ? "#DCFCE7" : "#F1F5F9",
+                                color: infoSheetPct > 0 ? "#166534" : "#475569",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                padding: "2px 8px",
+                                borderRadius: "12px",
                               }}
                             >
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                                <strong style={{ fontSize: "13px", color: "#063C3D" }}>{n.title}</strong>
-                                {n.status === "unread" && (
-                                  <span
-                                    style={{
-                                      fontSize: "10px",
-                                      fontWeight: 700,
-                                      background: "#0D6866",
-                                      color: "#FFFFFF",
-                                      padding: "2px 6px",
-                                      borderRadius: "4px",
-                                    }}
-                                  >
-                                    New
-                                  </span>
-                                )}
-                              </div>
-                              <p style={{ margin: 0, fontSize: "12px", color: "#445451", lineHeight: 1.4 }}>{n.body}</p>
-                            </div>
-                          )))}
+                              {infoSheetDoneCount} of {initialSheetSections.length} Sections Completed ({infoSheetPct}% Complete)
+                            </span>
+                          </div>
+                          <div style={{ fontSize: "11.5px", color: "#64748B", marginTop: "4px" }}>
+                            {initialSheetSections[6]?.detail}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => setIsInformationSheetModalOpen(true)}
+                            style={{
+                              background: "#0D6866",
+                              color: "#FFFFFF",
+                              border: "none",
+                              borderRadius: "6px",
+                              padding: "6px 12px",
+                              fontSize: "11.5px",
+                              fontWeight: 650,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Open / Complete Information Sheet →
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleNavClick("initial_sheet")}
+                            style={{
+                              background: "#EAF6F0",
+                              color: "#0D6866",
+                              border: "1px solid #B9DED4",
+                              borderRadius: "6px",
+                              padding: "6px 12px",
+                              fontSize: "11.5px",
+                              fontWeight: 650,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Go to My Details →
+                          </button>
+                        </div>
                       </div>
-                    </Card>
+
+                      {/* Quick Link 2: My Files */}
+                      <div
+                        style={{
+                          background: "#F8FAF9",
+                          border: "1px solid #DCE5E1",
+                          borderRadius: "10px",
+                          padding: "14px 16px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: "10px",
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: "220px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            <FolderIcon className="w-4 h-4 text-[#063C3D]" />
+                            <strong style={{ fontSize: "13.5px", color: "#063C3D" }}>
+                              My Files, Checklist &amp; Upload Standards
+                            </strong>
+                            <span style={{ fontSize: "11.5px", color: "#445451", fontWeight: 600 }}>
+                              • {effectiveDocuments.length} Uploaded • {checklistCount} Checklist Items
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => setIsOcrStandardsModalOpen(true)}
+                            style={{
+                              background: "#FFFFFF",
+                              color: "#063C3D",
+                              border: "1px solid #DCE5E1",
+                              borderRadius: "6px",
+                              padding: "6px 12px",
+                              fontSize: "11.5px",
+                              fontWeight: 650,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Open Full Upload Standards &amp; Pre-Flight FAQ →
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleNavClick("documents")}
+                            style={{
+                              background: "#EAF6F0",
+                              color: "#0D6866",
+                              border: "1px solid #B9DED4",
+                              borderRadius: "6px",
+                              padding: "6px 12px",
+                              fontSize: "11.5px",
+                              fontWeight: 650,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Go to My Files →
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Quick Link 3: Messages & Billing + Latest Case Updates */}
+                      <div
+                        style={{
+                          background: "#F8FAF9",
+                          border: "1px solid #DCE5E1",
+                          borderRadius: "10px",
+                          padding: "14px 16px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: "10px",
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: "220px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            <MessageSquareIcon className="w-4 h-4 text-[#063C3D]" />
+                            <strong style={{ fontSize: "13.5px", color: "#063C3D" }}>
+                              {t.latestUpdatesHeader}
+                            </strong>
+                          </div>
+                          <div style={{ fontSize: "11.5px", color: "#64748B", marginTop: "4px" }}>
+                            {caseSpecificUpdates[0]?.title || "View messages, official case updates, milestones, and invoices."}
+                            {isDemoCase && " •Representation agreement executed and trust retainer deposit received."}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleNavClick("updates")}
+                            style={{
+                              background: "#EAF6F0",
+                              color: "#0D6866",
+                              border: "1px solid #B9DED4",
+                              borderRadius: "6px",
+                              padding: "6px 12px",
+                              fontSize: "11.5px",
+                              fontWeight: 650,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {t.viewAllUpdatesButton || t.viewAllUpdatesLink}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleNavClick("messages")}
+                            style={{
+                              background: "#063C3D",
+                              color: "#FFFFFF",
+                              border: "1px solid #063C3D",
+                              borderRadius: "6px",
+                              padding: "6px 12px",
+                              fontSize: "11.5px",
+                              fontWeight: 650,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Messages &amp; Billing →
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Direct Chat Card */}
+                  <ClientDirectChatWidget
+                    hasAssignedOfficer={hasAssignedOfficer}
+                    displayOfficerTitle={displayOfficerTitle}
+                    firmDisplayName={firmDisplayName}
+                    quickChatMessage={quickChatMessage}
+                    onQuickChatChange={(msg) => setQuickChatMessage(msg)}
+                    onSendMessage={onSendMessage}
+                    onOpenMessagesTab={() => setActiveTab("messages")}
+                    quickChatSentFeedback={quickChatSentFeedback}
+                    setQuickChatSentFeedback={setQuickChatSentFeedback}
+                    caseId={myCase?.id}
+                    caseNumber={myCase?.case_number}
+                    jurisdiction={myCase?.jurisdiction}
+                    language={clientLanguage}
+                    clientName={clientName}
+                  />
                 </div>
               </div>
             </div>
@@ -4518,8 +3907,9 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                   borderRadius: "16px",
                   padding: "48px 32px",
                   textAlign: "center",
-                  maxWidth: "680px",
-                  margin: "40px auto",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  margin: 0,
                 }}
               >
                 <div style={{ marginBottom: "14px", display: "flex", justifyContent: "center" }}>
@@ -4528,7 +3918,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                   No Evidentiary Checklist Configured
                 </h3>
-                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto", maxWidth: "620px" }}>
                   Your legal team (firm Owner or Lead Paralegal) has not yet published an evidentiary checklist for your matter. Once your petition file is configured, per-applicant requirements and verification stages will appear here.
                 </p>
               </div>
@@ -4775,8 +4165,9 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                   borderRadius: "16px",
                   padding: "48px 32px",
                   textAlign: "center",
-                  maxWidth: "680px",
-                  margin: "40px auto",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  margin: 0,
                 }}
               >
                 <div style={{ marginBottom: "14px", display: "flex", justifyContent: "center" }}>
@@ -4785,18 +4176,48 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                   No Documents Requested Yet
                 </h3>
-                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
-                  Your legal team (firm Owner or Lead Paralegal) has not yet activated a petition matter or issued document requests for your account. You will receive an alert as soon as evidence collection checklists are configured.
+                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto 20px", maxWidth: "620px" }}>
+                  Your legal team (firm Owner or Lead Paralegal) has not yet activated a petition matter or issued document requests for your account. You can still upload your passports, permits, or supporting documents ahead of time below.
                 </p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={onOpenUploadModal}
+                  style={{ background: "#0D6866", color: "#FFFFFF" }}
+                >
+                  + Upload Document Now
+                </Button>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                {/* Unified SmartDropzone (raw_only) at the top of the upload workflow */}
+                <div
+                  data-testid="client-files-smart-dropzone"
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
+                    padding: "18px 22px",
+                  }}
+                >
+                  <SmartDropzone
+                    caseId={myCase?.id}
+                    clientName={clientName}
+                    pathway={myCase?.visa_category}
+                    contributorRole="applicant"
+                    uploadMode="raw_only"
+                    language={clientLanguage}
+                    onDocumentUploaded={handleSmartDocUploaded}
+                    onIntakeComplete={handleSmartIntakeComplete}
+                  />
+                </div>
+
                 {/* Phase 4 — Family Intake & Mobile-First Camera Scanning Hub */}
                 <FamilyDocumentIntakeHub
                   caseId={myCase.id}
                   clientName={myCase.client_name}
-                  onDocumentUploaded={() => {
-                    // Trigger refresh if needed
+                  onDocumentUploaded={(newDoc) => {
+                    if (newDoc) handleSmartDocUploaded(newDoc);
                   }}
                 />
 
@@ -4806,7 +4227,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                   assignedOfficer={hasAssignedOfficer ? assignedOfficerName : null}
                   language={clientLanguage}
                   onDocumentUploaded={(newDoc) => {
-                    onDocumentUpdated?.(newDoc);
+                    handleSmartDocUploaded(newDoc);
                   }}
                 />
 
@@ -4929,7 +4350,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                         ),
                       },
                     ]}
-                    data={documents}
+                    data={effectiveDocuments}
                     keyExtractor={(d) => d.id}
                   />
                 </Card>
@@ -4950,8 +4371,9 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                   borderRadius: "16px",
                   padding: "48px 32px",
                   textAlign: "center",
-                  maxWidth: "680px",
-                  margin: "40px auto",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  margin: 0,
                 }}
               >
                 <div style={{ marginBottom: "14px", display: "flex", justifyContent: "center" }}>
@@ -4960,7 +4382,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                   No Questionnaire Configured
                 </h3>
-                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto", maxWidth: "620px" }}>
                   Your legal team has not assigned any questionnaires to your matter yet.
                 </p>
               </div>
@@ -5033,7 +4455,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
           )}
 
           {/* =========================================================================
-            TAB 4: FORMS REVIEW (2. My Details — Pre-Filled Profile & Statutory Forms)
+            TAB 4: FORMS REVIEW (2. My Details — Pre-Filled Details & Statutory Forms)
             ========================================================================= */}
           {activeTab === "forms" && (
             !myCase ? (
@@ -5045,8 +4467,9 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                   borderRadius: "16px",
                   padding: "48px 32px",
                   textAlign: "center",
-                  maxWidth: "680px",
-                  margin: "40px auto",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  margin: 0,
                 }}
               >
                 <div style={{ marginBottom: "14px", display: "flex", justifyContent: "center" }}>
@@ -5055,13 +4478,13 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                   No Forms Ready for Review
                 </h3>
-                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto", maxWidth: "620px" }}>
                   Your petition forms will be generated once your legal team compiles your evidentiary materials.
                 </p>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-                {/* Unified Pre-Filled Profile & Provenance Review Card */}
+                {/* Unified Pre-Filled Details Review Card */}
                 <div
                   data-testid="client-my-details-prefilled-card"
                   style={{
@@ -5087,7 +4510,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                   >
                     <div>
                       <h2 style={{ margin: "0 0 4px 0", fontSize: "18px", fontWeight: 750, color: "#063C3D" }}>
-                        {t.journeyStep2Label} — Pre-Filled Profile &amp; Document Provenance
+                        {t.journeyStep2Label} — Pre-Filled Details from Your Documents
                       </h2>
                       <p style={{ margin: 0, fontSize: "13px", color: "#445451" }}>
                         Confirm details extracted from your uploaded documents instead of re-typing long forms.
@@ -5228,8 +4651,9 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                   borderRadius: "16px",
                   padding: "48px 32px",
                   textAlign: "center",
-                  maxWidth: "680px",
-                  margin: "40px auto",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  margin: 0,
                 }}
               >
                 <div style={{ marginBottom: "14px", display: "flex", justifyContent: "center" }}>
@@ -5238,7 +4662,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                   No Case Milestones Initialized
                 </h3>
-                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto", maxWidth: "620px" }}>
                   Your legal pathway milestones will be displayed here once your petition matter is opened by your law firm.
                 </p>
               </div>
@@ -5294,8 +4718,9 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                   borderRadius: "16px",
                   padding: "48px 32px",
                   textAlign: "center",
-                  maxWidth: "680px",
-                  margin: "40px auto",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  margin: 0,
                 }}
               >
                 <div style={{ marginBottom: "14px", display: "flex", justifyContent: "center" }}>
@@ -5304,7 +4729,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                 <h3 style={{ fontSize: "18px", fontWeight: 750, color: "#063C3D", marginBottom: "8px" }}>
                   Direct Attorney Communication Pending
                 </h3>
-                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: 0 }}>
+                <p style={{ fontSize: "14px", color: "#64748B", lineHeight: 1.6, margin: "0 auto", maxWidth: "620px" }}>
                   Direct encrypted messaging with your supervising attorney and lead paralegal will activate once your immigration petition is formally initialized.
                 </p>
               </div>
@@ -5346,12 +4771,104 @@ export function ClientPortal(props: ClientPortalProps = {}) {
             TAB: INITIAL INFORMATION SHEET (12-Page Digital Intake)
             ========================================================================= */}
           {activeTab === "initial_sheet" && (
-            <InitialInformationSheet
-              storageKeyId={infoSheetStorageKey}
-              onSaved={() => setInfoSheetVersion((v) => v + 1)}
-              onSubmitToOfficer={() => setInfoSheetVersion((v) => v + 1)}
-              jurisdiction={myCase?.jurisdiction}
-            />
+            <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+              {myCase && (
+                <div
+                  data-testid="client-my-details-prefilled-card"
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #DCE5E1",
+                    borderRadius: "12px",
+                    padding: "18px 22px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "12px",
+                    }}
+                  >
+                    <div>
+                      <h2 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 750, color: "#063C3D" }}>
+                        {t.journeyStep2Label} — Pre-Filled Details from Your Documents
+                      </h2>
+                      <p style={{ margin: 0, fontSize: "12.5px", color: "#445451" }}>
+                        Confirm details extracted from your uploaded documents instead of re-typing long forms.
+                      </p>
+                    </div>
+                    {effectiveAutoFillConfirmed ? (
+                      <span
+                        style={{
+                          background: "#EAF6F0",
+                          color: "#176B50",
+                          border: "1px solid #176B50",
+                          borderRadius: "8px",
+                          padding: "7px 14px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        {hasAiLabLockedProvenance && <LockIcon className="w-3.5 h-3.5" />}
+                        {t.autoFillConfirmedLabel}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="my-details-confirm-btn"
+                        onClick={handleConfirmClientAutoFill}
+                        style={{
+                          background: "#07594F",
+                          color: "#FFFFFF",
+                          border: "1px solid #063C3D",
+                          borderRadius: "8px",
+                          padding: "8px 16px",
+                          fontSize: "12.5px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {t.autoFillConfirmButton}
+                      </button>
+                    )}
+                  </div>
+                  {extractedPreviewFields.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {extractedPreviewFields.slice(0, 6).map((item) => (
+                        <span
+                          key={item.key}
+                          style={{
+                            background: "#F8F7F2",
+                            border: "1px solid #DCE5E1",
+                            borderRadius: "6px",
+                            padding: "4px 10px",
+                            fontSize: "12px",
+                            color: "#063C3D",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          <strong>{item.label}:</strong> {item.value}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <InitialInformationSheet
+                storageKeyId={infoSheetStorageKey}
+                onSaved={() => setInfoSheetVersion((v) => v + 1)}
+                onSubmitToOfficer={() => setInfoSheetVersion((v) => v + 1)}
+                jurisdiction={myCase?.jurisdiction}
+              />
+            </div>
           )}
 
           {/* =========================================================================
@@ -5420,7 +4937,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
           {activeTab === "settings" && (
             <Card
               title="Privacy, Multi-Factor Authentication & Account Settings"
-              subtitle="Tenant isolation and security controls for your client account."
+              subtitle="Privacy and security controls for your client account."
             >
               <div style={{ display: "flex", flexDirection: "column", gap: "14px", fontSize: "13px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px" }}>
@@ -5433,10 +4950,10 @@ export function ClientPortal(props: ClientPortalProps = {}) {
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px" }}>
                   <div>
-                    <strong style={{ color: "#063C3D" }}>Tenant Isolation Guarantee</strong>
-                    <p style={{ margin: "2px 0 0", color: "#6E7F7C" }}>Your data is isolated and protected by server-side object authorization.</p>
+                    <strong style={{ color: "#063C3D" }}>Private &amp; Dedicated Case Access</strong>
+                    <p style={{ margin: "2px 0 0", color: "#6E7F7C" }}>Your documents and personal details are encrypted and visible only to your assigned legal team.</p>
                   </div>
-                  <Badge variant="success">Encrypted &amp; Isolated</Badge>
+                  <Badge variant="success">Private &amp; Encrypted</Badge>
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "#F8F7F2", border: "1px solid #DCE5E1", borderRadius: "8px" }}>
@@ -5452,8 +4969,8 @@ export function ClientPortal(props: ClientPortalProps = {}) {
                         exported_at: new Date().toISOString(),
                         case_number: myCase?.case_number || "UNASSIGNED",
                         visa_category: myCase?.visa_category || "N/A",
-                        documents_count: documents.length,
-                        documents: documents.map((d) => ({
+                        documents_count: effectiveDocuments.length,
+                        documents: effectiveDocuments.map((d) => ({
                           id: d.id,
                           title: d.title,
                           category: d.category,
@@ -5481,18 +4998,6 @@ export function ClientPortal(props: ClientPortalProps = {}) {
             </Card>
           )}
 
-          {/* Extractor Lab (Embedded Light Mode) */}
-          {activeTab === "extractor_lab" && (
-            <DashboardErrorBoundary
-              sectionTitle="Document Extractor Lab"
-              sectionDescription="AI Document Recognition, Spatial OCR Provenance, and Multi-Person Packet Sorter"
-              variant="full-tab"
-              isolateStateKey="extractor-lab"
-            >
-              <DocumentExtractorLab embedded />
-            </DashboardErrorBoundary>
-          )}
-
           {/* Document Dossier Inspector Modal */}
           <DocumentInspectorModal
             isOpen={!!selectedDocForInspection}
@@ -5506,32 +5011,7 @@ export function ClientPortal(props: ClientPortalProps = {}) {
             defaultViewMode="workbench"
           />
 
-          {/* Guided Client Onboarding Wizard Modal */}
-          {isOnboardingModalOpen && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 1000,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "16px",
-                background: "rgba(6, 60, 61, 0.5)",
-                backdropFilter: "blur(6px)",
-              }}
-            >
-              <ClientOnboardingWizard
-                isModal={true}
-                onClose={() => setIsOnboardingModalOpen(false)}
-                onComplete={() => setIsOnboardingModalOpen(false)}
-              />
-            </div>
-          )}
-
-          {/* 12-Page Initial Information Sheet Modal */}
+          {/* 11-Section Initial Information Sheet Modal */}
           {isInformationSheetModalOpen && (
             <InitialInformationSheet
               isModal={true}
