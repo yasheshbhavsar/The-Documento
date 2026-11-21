@@ -2346,7 +2346,28 @@ def sort_and_split_document_packet(
     """
     Main entrypoint for Multi-Person Document Packet Sorting & Splitting.
     Opens the PDF once and reuses `preopened_doc` across OCR and PDF splitting.
+    Single image uploads (PNG/JPG/WEBP/TIFF/BMP/GIF) are wrapped in-memory into
+    a 1-page PDF so packet sorting never crashes on non-PDF uploads.
     """
+    if pdf_bytes and not pdf_bytes[:5].startswith(b"%PDF-"):
+        try:
+            from PIL import Image, ImageOps
+
+            with Image.open(io.BytesIO(pdf_bytes)) as raw_im:
+                im = ImageOps.exif_transpose(raw_im)
+                if im.mode not in ("RGB", "L"):
+                    im = im.convert("RGB")
+                png_buf = io.BytesIO()
+                im.save(png_buf, format="PNG")
+                img_w, img_h = float(im.width), float(im.height)
+            tmp_pdf = fitz.open()
+            pg = tmp_pdf.new_page(width=img_w, height=img_h)
+            pg.insert_image(pg.rect, stream=png_buf.getvalue())
+            pdf_bytes = tmp_pdf.tobytes()
+            tmp_pdf.close()
+        except Exception:
+            pass
+
     src_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
         pages = OCREngine.extract_document(

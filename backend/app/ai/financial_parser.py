@@ -32,14 +32,14 @@ class TransactionRecord:
 @dataclass
 class BankStatementSummary:
     financial_institution: str
-    account_number_masked: str
+    account_number_masked: Optional[str]
     statement_period_start: Optional[str]
     statement_period_end: Optional[str]
-    opening_balance: float
-    closing_balance: float
+    opening_balance: Optional[float]
+    closing_balance: Optional[float]
     currency: str
-    minimum_balance_observed: float
-    average_monthly_credits: float
+    minimum_balance_observed: Optional[float]
+    average_monthly_credits: Optional[float]
     suspicious_lump_sums: List[TransactionRecord] = field(default_factory=list)
     risk_findings: List[str] = field(default_factory=list)
 
@@ -112,21 +112,52 @@ class FinancialIntelligenceEngine:
         if b_m:
             bank = b_m.group(1).strip().title()
 
-        # Account number
-        acc = "XXXX-0000"
+        # Account number (honest None if not stated)
+        acc: Optional[str] = None
         acc_m = re.search(r"(?:Account\s*(?:No\.?|Number)|Account ending in)[\s:]+([X\*\d-]{4,20})", text, re.IGNORECASE)
         if acc_m:
             acc = acc_m.group(1).strip()
 
-        # Closing balance
-        closing = 0.0
-        bal_m = re.search(r"(?:Closing Balance|Ending Balance|Available Balance|Total Available Funds)[\s:]+([₹\$£€]?\s*[0-9,]+(?:\.[0-9]{2})?)", text, re.IGNORECASE)
+        # Statement period
+        period_start: Optional[str] = None
+        period_end: Optional[str] = None
+        period_m = re.search(
+            r"(?:Statement\s*Period|Period)[\s:]+([0-9A-Za-z][0-9A-Za-z/\.-]{5,20})\s+(?:to|-|–|—)\s+([0-9A-Za-z][0-9A-Za-z/\.-]{5,20})",
+            text,
+            re.IGNORECASE,
+        )
+        if period_m:
+            period_start = period_m.group(1).strip()
+            period_end = period_m.group(2).strip()
+
+        _curr_prefix = r"(?:(?:INR|USD|CAD|GBP|AUD|EUR|Rs\.?|C\$|A\$|US\$)\s*)?[₹\$£€]?"
+
+        # Explicit Opening Balance (honest None when absent)
+        opening: Optional[float] = None
+        open_m = re.search(
+            rf"(?:Opening Balance|Beginning Balance|Previous Balance)[\s:]+{_curr_prefix}\s*([0-9,]+(?:\.[0-9]{{2}})?)",
+            text,
+            re.IGNORECASE,
+        )
+        if open_m:
+            try:
+                opening = float(re.sub(r"[^\d\.]", "", open_m.group(1)))
+            except ValueError:
+                opening = None
+
+        # Closing balance (honest None when absent)
+        closing: Optional[float] = None
+        bal_m = re.search(
+            rf"(?:Closing Balance|Ending Balance|Available Balance|Total Available Funds|Total Balance)[\s:]+{_curr_prefix}\s*([0-9,]+(?:\.[0-9]{{2}})?)",
+            text,
+            re.IGNORECASE,
+        )
         if bal_m:
             clean_bal = re.sub(r"[^\d\.]", "", bal_m.group(1))
             try:
                 closing = float(clean_bal)
             except ValueError:
-                closing = 0.0
+                closing = None
 
         # Currency
         curr = default_currency
@@ -153,6 +184,7 @@ class FinancialIntelligenceEngine:
 
         total_credits = 0.0
         credit_amounts: List[float] = []
+        closing_val = closing or 0.0
 
         for date_str, desc, amt_str in credit_matches:
             val = float(amt_str.replace(",", ""))
@@ -163,9 +195,9 @@ class FinancialIntelligenceEngine:
             # If a single deposit is >35% of total closing balance or >$5,000 (INR 3,00,000)
             # and doesn't state SALARY / PAYROLL / PENSION / EMPLOYER
             is_payroll = bool(re.search(r"\b(SALARY|PAYROLL|ACH CREDIT|DIRECT DEP|EMPLOYER|WAGES)\b", desc, re.IGNORECASE))
-            threshold = max(closing * 0.35, 5000.0 if curr != "INR" else 300000.0)
+            threshold = max(closing_val * 0.35, 5000.0 if curr != "INR" else 300000.0)
 
-            if val >= threshold and not is_payroll and closing > 0:
+            if val >= threshold and not is_payroll and closing_val > 0:
                 rec = TransactionRecord(
                     transaction_date=date_str,
                     description=desc.strip(),
@@ -180,18 +212,20 @@ class FinancialIntelligenceEngine:
                     "Risk of visa refusal under funds seasoning guidelines unless source proof is submitted."
                 )
 
-        min_observed = closing if not credit_amounts else min(closing, min(credit_amounts))
+        observed_candidates = [v for v in (opening, closing) if v is not None]
+        min_observed: Optional[float] = min(observed_candidates) if observed_candidates else None
+        avg_monthly_credits: Optional[float] = (total_credits / 3.0) if total_credits > 0 else None
 
         return BankStatementSummary(
             financial_institution=bank,
             account_number_masked=acc,
-            statement_period_start=None,
-            statement_period_end=None,
-            opening_balance=closing * 0.85,
+            statement_period_start=period_start,
+            statement_period_end=period_end,
+            opening_balance=opening,
             closing_balance=closing,
             currency=curr,
             minimum_balance_observed=min_observed,
-            average_monthly_credits=total_credits / 3.0 if total_credits > 0 else closing / 2.0,
+            average_monthly_credits=avg_monthly_credits,
             suspicious_lump_sums=suspicious_lump_sums,
             risk_findings=risk_findings,
         )

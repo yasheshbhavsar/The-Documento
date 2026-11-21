@@ -43,6 +43,12 @@ import {
 import { getSavedInitialInfoSheetRecord } from "../portal/InitialInformationSheet";
 import { getJurisdictionRepresentationInfo } from "../../lib/jurisdictionForms";
 import { DocumentInspectorModal } from "../modals/DocumentInspectorModal";
+import {
+  ExtractionNotificationToastPayload,
+  notifyExtractionComplete,
+  primeExtractionNotifications,
+} from "../../lib/notifications";
+import { ExtractionCompletionToast } from "../common/ExtractionCompletionToast";
 
 export interface SplitScreenCaseStudioProps {
   caseItem: ImmigrationCase | null;
@@ -214,6 +220,8 @@ export function SplitScreenCaseStudio({
     fieldsAutoFilled: number;
   } | null>(null);
   const [missingGapsPromptSent, setMissingGapsPromptSent] = useState<boolean>(false);
+  const [aiLabCompletionToast, setAiLabCompletionToast] =
+    useState<ExtractionNotificationToastPayload | null>(null);
 
   const storageKey = caseItem?.id || "default_studio_case";
 
@@ -241,11 +249,11 @@ export function SplitScreenCaseStudio({
   const caseDocs = useMemo(() => {
     const filtered = caseItem
       ? documents.filter(
-          (d) =>
-            !d.case_id ||
-            d.case_id === caseItem.id ||
-            d.case_number === caseItem.case_number
-        )
+        (d) =>
+          !d.case_id ||
+          d.case_id === caseItem.id ||
+          d.case_number === caseItem.case_number
+      )
       : documents;
 
     // Local overrides/additions take precedence when AI Lab marks an original packet completed
@@ -281,9 +289,11 @@ export function SplitScreenCaseStudio({
           byte_size: pkt.fileSizeBytes,
           mime_type: pkt.mimeType,
           sha256_hash: pkt.sha256,
-          status: pkt.aiLabStatus === "completed" ? "verified" : "under_review",
+          status: "under_review",
           processing_status: pkt.aiLabStatus === "completed" ? "completed" : "pending",
-          verification_status: pkt.aiLabStatus === "completed" ? "verified" : "unverified",
+          verification_status: (pkt.aiLabStatus === "completed"
+            ? "pending_review"
+            : "unverified") as unknown as DocumentItem["verification_status"],
           uploaded_at: pkt.uploadedAt,
           page_count: pkt.pageCountEstimate,
           ocr_applied: pkt.aiLabStatus === "completed",
@@ -770,10 +780,12 @@ export function SplitScreenCaseStudio({
   const handleRunAiLabOnRawUploads = async () => {
     if (isRunningAiLab || pendingRawTargets.length === 0) return;
 
+    // Prime Web Audio + Windows/macOS desktop notification permission inside click gesture
+    primeExtractionNotifications();
+
     setIsRunningAiLab(true);
     setAiLabProgressText(
-      `Running local workstation AI Lab on ${pendingRawTargets.length} untouched ${
-        pendingRawTargets.length === 1 ? "packet" : "packets"
+      `Running local workstation AI Lab on ${pendingRawTargets.length} untouched ${pendingRawTargets.length === 1 ? "packet" : "packets"
       }…`
     );
 
@@ -792,13 +804,52 @@ export function SplitScreenCaseStudio({
       let profilePatch: Partial<ClientProfile> = {};
 
       for (const target of pendingRawTargets) {
-        const rawFile = target.storePacket
+        let rawFile: File | null = target.storePacket
           ? await loadRawPacketFileAsync(target.storePacket)
           : new File(
-              [target.docItem?.extracted_text || `%PDF-1.4\n% ${target.filename}\n%%EOF`],
-              target.filename,
-              { type: target.docItem?.mime_type || "application/pdf" }
+            [target.docItem?.extracted_text || `%PDF-1.4\n% ${target.filename}\n%%EOF`],
+            target.filename,
+            { type: target.docItem?.mime_type || "application/pdf" }
+          );
+
+        // If binary file was not in local session/IndexedDB cache, retrieve real bytes from backend Vault
+        if (!rawFile && target.vaultDocId && typeof fetch === "function") {
+          try {
+            const headers: Record<string, string> = {};
+            if (typeof window !== "undefined") {
+              const token = window.localStorage.getItem("documento_auth_token");
+              if (token) {
+                headers["Authorization"] = `Bearer ${token}`;
+              }
+            }
+            const dlRes = await fetch(
+              `/api/backend/documents/${encodeURIComponent(target.vaultDocId)}/download`,
+              { headers }
             );
+            if (dlRes.ok) {
+              const blob = await dlRes.blob();
+              if (blob.size > 0) {
+                rawFile = new File([blob], target.filename, {
+                  type:
+                    blob.type ||
+                    target.docItem?.mime_type ||
+                    target.storePacket?.mimeType ||
+                    "application/pdf",
+                });
+              }
+            }
+          } catch {
+            // Backend download unavailable
+          }
+        }
+
+        if (!rawFile) {
+          markRawPacketProcessedByAiLab(target.packetId, {
+            sortedChildren: [],
+            autoFilledFieldsCount: 0,
+          });
+          continue;
+        }
 
         const pipelineRes = await runSmartIntakePipeline([rawFile], {
           caseId: caseItem?.id,
@@ -831,49 +882,49 @@ export function SplitScreenCaseStudio({
           const extractedFieldsForVault =
             rawFieldsFromAnalysis.length > 0
               ? rawFieldsFromAnalysis.map((ef, fIdx) => ({
-                  id: `${childDocId}-fld-${fIdx}`,
-                  field_name: ef.field_name,
-                  field_label: ef.field_label,
-                  original_value: ef.original_value,
-                  normalized_value: ef.normalized_value,
-                  field_value: ef.normalized_value || ef.original_value,
-                  source_page: ef.source_page || 1,
-                  page_number: ef.source_page || 1,
-                  extraction_method: ef.extraction_method || "paralegal_ai_lab",
-                  confidence: ef.calibrated_confidence || sdoc.confidence,
-                  ocr_confidence: ef.ocr_confidence || sdoc.confidence,
-                  extraction_confidence: ef.extraction_confidence || sdoc.confidence,
-                  bounding_box: ef.bounding_box,
-                  validation_status: "validated" as const,
-                  is_manually_corrected: false,
-                  is_confirmed: true,
-                }))
+                id: `${childDocId}-fld-${fIdx}`,
+                field_name: ef.field_name,
+                field_label: ef.field_label,
+                original_value: ef.original_value,
+                normalized_value: ef.normalized_value,
+                field_value: ef.normalized_value || ef.original_value,
+                source_page: ef.source_page || 1,
+                page_number: ef.source_page || 1,
+                extraction_method: ef.extraction_method || "paralegal_ai_lab",
+                confidence: ef.calibrated_confidence || sdoc.confidence,
+                ocr_confidence: ef.ocr_confidence || sdoc.confidence,
+                extraction_confidence: ef.extraction_confidence || sdoc.confidence,
+                bounding_box: ef.bounding_box,
+                validation_status: "needs_review" as const,
+                is_manually_corrected: false,
+                is_confirmed: false,
+              }))
               : Object.entries(sdoc.extractedFields).map(([k, v], fIdx) => {
-                  const rowTop = 16 + (fIdx % 6) * 12;
-                  return {
-                    id: `${childDocId}-fld-${fIdx}`,
-                    field_name: k,
-                    field_label: k.replace(/_/g, " ").toUpperCase(),
-                    original_value: v,
-                    normalized_value: v,
-                    field_value: v,
-                    source_page: sdoc.pageNumbers?.[0] || 1,
-                    page_number: sdoc.pageNumbers?.[0] || 1,
-                    extraction_method: "paralegal_ai_lab",
-                    confidence: sdoc.confidence,
-                    ocr_confidence: sdoc.confidence,
-                    extraction_confidence: sdoc.confidence,
-                    bounding_box: [rowTop, 8, rowTop + 9, 90] as [
-                      number,
-                      number,
-                      number,
-                      number,
-                    ],
-                    validation_status: "validated" as const,
-                    is_manually_corrected: false,
-                    is_confirmed: true,
-                  };
-                });
+                const rowTop = 16 + (fIdx % 6) * 12;
+                return {
+                  id: `${childDocId}-fld-${fIdx}`,
+                  field_name: k,
+                  field_label: k.replace(/_/g, " ").toUpperCase(),
+                  original_value: v,
+                  normalized_value: v,
+                  field_value: v,
+                  source_page: sdoc.pageNumbers?.[0] || 1,
+                  page_number: sdoc.pageNumbers?.[0] || 1,
+                  extraction_method: "paralegal_ai_lab",
+                  confidence: sdoc.confidence,
+                  ocr_confidence: sdoc.confidence,
+                  extraction_confidence: sdoc.confidence,
+                  bounding_box: [rowTop, 8, rowTop + 9, 90] as [
+                    number,
+                    number,
+                    number,
+                    number,
+                  ],
+                  validation_status: "needs_review" as const,
+                  is_manually_corrected: false,
+                  is_confirmed: false,
+                };
+              });
 
           // Map child document into InitialInformationSheet & Client Profile
           const analysisForMapping: ExtractorAnalysisResult =
@@ -912,7 +963,7 @@ export function SplitScreenCaseStudio({
                   0.25,
                   0.9,
                 ],
-                review_status: "VERIFIED",
+                review_status: "NEEDS_HUMAN_REVIEW",
               })),
               quality_findings: [],
               specialized_intelligence: {},
@@ -965,9 +1016,9 @@ export function SplitScreenCaseStudio({
             category: mapToVaultCategory(sdoc.category),
             file_size: target.fileSizeLabel || "PDF",
             sha256_hash: sdoc.sha256,
-            status: "verified",
+            status: "under_review",
             processing_status: "completed",
-            verification_status: "verified",
+            verification_status: "pending_review" as unknown as DocumentItem["verification_status"],
             uploaded_at: nowIso,
             page_count: sdoc.pageCount,
             page_range: pageRangeLabel,
@@ -999,8 +1050,8 @@ export function SplitScreenCaseStudio({
               confidence: ef.confidence || 0.96,
               bounding_box: ef.bounding_box as [number, number, number, number],
               extracted_at: nowIso,
-              is_confirmed: true,
-              locked_by_ai_lab: true,
+              is_confirmed: false,
+              locked_by_ai_lab: false,
             };
           });
 
@@ -1044,9 +1095,9 @@ export function SplitScreenCaseStudio({
           category: existingOriginal?.category || "supporting_evidence",
           file_size: target.fileSizeLabel,
           sha256_hash: target.sha256,
-          status: "verified",
+          status: "under_review",
           processing_status: "completed",
-          verification_status: "verified",
+          verification_status: "pending_review" as unknown as DocumentItem["verification_status"],
           uploaded_at: existingOriginal?.uploaded_at || nowIso,
           page_count: Math.max(
             pipelineRes.totalPagesProcessed,
@@ -1068,12 +1119,12 @@ export function SplitScreenCaseStudio({
         });
       }
 
-      // Mark all provenance fields confirmed & locked by AI Lab so Client Portal pre-completes them
+      // Stage AI-extracted provenance as pending human paralegal review (never auto-confirm without review)
       Object.keys(mergedProvenance).forEach((k) => {
         mergedProvenance[k] = {
           ...mergedProvenance[k],
-          is_confirmed: true,
-          locked_by_ai_lab: true,
+          is_confirmed: false,
+          locked_by_ai_lab: false,
         };
       });
 
@@ -1130,6 +1181,21 @@ export function SplitScreenCaseStudio({
       });
       setSheetSyncVersion((v) => v + 1);
       onPushToForms?.(flatConfirmed);
+
+      if (createdSubDocs.length > 0 || totalFilled > 0) {
+        const primaryFilename =
+          pendingRawTargets.length === 1
+            ? pendingRawTargets[0].filename
+            : `${pendingRawTargets.length} raw packets`;
+        setAiLabCompletionToast(
+          notifyExtractionComplete({
+            filename: primaryFilename,
+            fieldsCount: totalFilled,
+            documentsCount: createdSubDocs.length,
+            source: "paralegal_studio",
+          })
+        );
+      }
     } finally {
       setIsRunningAiLab(false);
       setAiLabProgressText("");
@@ -1391,14 +1457,11 @@ export function SplitScreenCaseStudio({
                 </span>
                 <strong style={{ fontSize: "14px", color: "#063C3D", fontVariantNumeric: "tabular-nums" }}>
                   {pendingRawTargets.length > 0
-                    ? `${pendingRawTargets.length} Untouched Client / Sponsor ${
-                        pendingRawTargets.length === 1 ? "File" : "Files"
-                      } Ready for Workstation OCR, Sort & Auto-Fill`
-                    : `✓ Processed ${aiLabLastRunSummary?.packetsProcessed || 1} Original ${
-                        (aiLabLastRunSummary?.packetsProcessed || 1) === 1 ? "Packet" : "Packets"
-                      } → ${aiLabLastRunSummary?.subDocsCreated || 1} Sorted Sub-Documents & ${
-                        aiLabLastRunSummary?.fieldsAutoFilled || 0
-                      } Sheet Fields Auto-Filled`}
+                    ? `${pendingRawTargets.length} Untouched Client / Sponsor ${pendingRawTargets.length === 1 ? "File" : "Files"
+                    } Ready for Workstation OCR, Sort & Auto-Fill`
+                    : `✓ Processed ${aiLabLastRunSummary?.packetsProcessed || 1} Original ${(aiLabLastRunSummary?.packetsProcessed || 1) === 1 ? "Packet" : "Packets"
+                    } → ${aiLabLastRunSummary?.subDocsCreated || 1} Sorted Sub-Documents & ${aiLabLastRunSummary?.fieldsAutoFilled || 0
+                    } Sheet Fields Auto-Filled`}
                 </strong>
               </div>
               <span style={{ fontSize: "12px", color: "#445451" }}>
@@ -1991,7 +2054,7 @@ export function SplitScreenCaseStudio({
                   (selectedDoc as any).page_image_data_url ||
                   (selectedDoc as any).preview_url ||
                   ((selectedDoc as any).file_url &&
-                  /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test((selectedDoc as any).file_url)
+                    /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test((selectedDoc as any).file_url)
                     ? (selectedDoc as any).file_url
                     : null);
                 const pdfPreviewUrl =
@@ -2662,32 +2725,32 @@ export function SplitScreenCaseStudio({
             const manifestRows =
               caseDocs.length > 0
                 ? [
-                    {
-                      index: "1",
-                      doc: repInfo.formsListEntry,
-                      status: "Recorded",
-                    },
-                    ...caseDocs.map((d, idx) => ({
-                      index: String(idx + 2),
-                      doc: d.title || d.filename || "Case Evidence Document",
-                      status:
-                        d.verification_status === "verified" || d.status === "verified"
-                          ? "Validated"
-                          : "Pending Review",
-                    })),
-                  ]
+                  {
+                    index: "1",
+                    doc: repInfo.formsListEntry,
+                    status: "Recorded",
+                  },
+                  ...caseDocs.map((d, idx) => ({
+                    index: String(idx + 2),
+                    doc: d.title || d.filename || "Case Evidence Document",
+                    status:
+                      d.verification_status === "verified" || d.status === "verified"
+                        ? "Validated"
+                        : "Pending Review",
+                  })),
+                ]
                 : [
-                    {
-                      index: "1",
-                      doc: repInfo.formsListEntry,
-                      status: "Pending Intake",
-                    },
-                    {
-                      index: "2",
-                      doc: `${caseItem?.visa_category || "Primary Pathway"} Core Petition & Supporting Evidence`,
-                      status: "Awaiting Upload",
-                    },
-                  ];
+                  {
+                    index: "1",
+                    doc: repInfo.formsListEntry,
+                    status: "Pending Intake",
+                  },
+                  {
+                    index: "2",
+                    doc: `${caseItem?.visa_category || "Primary Pathway"} Core Petition & Supporting Evidence`,
+                    status: "Awaiting Upload",
+                  },
+                ];
 
             return (
               <>
@@ -2998,6 +3061,11 @@ export function SplitScreenCaseStudio({
         }}
         activeRole="case_manager"
         defaultViewMode="workbench"
+      />
+
+      <ExtractionCompletionToast
+        toast={aiLabCompletionToast}
+        onDismiss={() => setAiLabCompletionToast(null)}
       />
     </section>
   );

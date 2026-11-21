@@ -1583,7 +1583,11 @@ def extract_structured_fields(
                 raw_reg_d = re.sub(r"\s+", "", reg_d.group(1))
                 add_field("marriage_registration_date", "Date of Registration", raw_reg_d, normalize_date(raw_reg_d) or raw_reg_d, 1, 0.97)
 
-            groom_label_m = re.search(r"(?:FULL\s+NAME\s+OF\s+THE\s+BRIDEGROOM|BRIDEGROOM\s+NAME|GROOM\s+NAME)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            groom_label_m = re.search(
+                r"(?:(?:FULL\s+)?NAME\s+OF\s+(?:THE\s+)?BRIDEGROOM|BRIDEGROOM(?:'S)?\s+NAME|GROOM(?:'S)?\s+NAME|HUSBAND(?:'S)?\s*(?:FULL\s+)?NAME|\bHUSBAND)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,45})",
+                full_text,
+                re.IGNORECASE,
+            )
             if groom_label_m and "groom_name" not in added_keys:
                 raw_g = groom_label_m.group(1).splitlines()[0].strip()
                 if not any(k in raw_g.lower() for k in ("religion", "age", "occupation", "status", "address")):
@@ -1591,7 +1595,11 @@ def extract_structured_fields(
                     if "full_name" not in added_keys:
                         add_field("full_name", "Full Name", raw_g, raw_g.title(), 1, 0.98)
 
-            bride_label_m = re.search(r"(?:FULL\s+NAME\s+OF\s+THE\s+BRIDE|BRIDE\s+NAME)[\s:]+([A-Za-z\s\.-]{3,45})", full_text, re.IGNORECASE)
+            bride_label_m = re.search(
+                r"(?:(?:FULL\s+)?NAME\s+OF\s+(?:THE\s+)?BRIDE(?!GROOM)|BRIDE(?:'S)?\s+NAME|WIFE(?:'S)?\s*(?:FULL\s+)?NAME|\bWIFE)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,45})",
+                full_text,
+                re.IGNORECASE,
+            )
             if bride_label_m and "bride_name" not in added_keys:
                 raw_b = bride_label_m.group(1).splitlines()[0].strip()
                 if not any(k in raw_b.lower() for k in ("religion", "age", "occupation", "status", "address")):
@@ -2113,11 +2121,31 @@ def extract_structured_fields(
             raw_bank = bank_m.group(1).strip()
             add_field("financial_institution", "Financial Institution", raw_bank, raw_bank.title(), 1, 0.92)
 
-        open_bal_m = re.search(r"(?:Opening Balance|Beginning Balance|Previous Balance)[\s:]+([₹\$£€]?\s*[0-9,]+(?:\.[0-9]{2})?(?:\s*[A-Z]{3})?)", full_text, re.IGNORECASE)
+        holder_m = re.search(
+            r"(?:Account\s*Holder(?:\s*Name)?|Customer\s*Name|Depositor\s*Name)[\s:]+([A-Za-z][A-Za-z\s\.-]{2,50})",
+            full_text,
+            re.IGNORECASE,
+        )
+        if holder_m:
+            raw_holder = holder_m.group(1).splitlines()[0].strip(" .:-_")
+            if raw_holder and "account_holder_name" not in added_keys:
+                add_field("account_holder_name", "Account Holder Name", raw_holder, raw_holder.title(), 1, 0.94)
+            if raw_holder and "full_name" not in added_keys:
+                add_field("full_name", "Full Name", raw_holder, raw_holder.title(), 1, 0.93)
+
+        open_bal_m = re.search(
+            r"(?:Opening Balance|Beginning Balance|Previous Balance)[\s:]+((?:(?:INR|USD|CAD|GBP|AUD|EUR|Rs\.?|C\$|A\$|US\$)\s*)?[₹\$£€]?\s*[0-9,]+(?:\.[0-9]{2})?(?:\s*(?:INR|USD|CAD|GBP|AUD|EUR))?)",
+            full_text,
+            re.IGNORECASE,
+        )
         if open_bal_m and "opening_balance" not in added_keys:
             add_field("opening_balance", "Opening Balance", open_bal_m.group(1).strip(), normalize_currency_amount(open_bal_m.group(1).strip()), 1, 0.94)
 
-        bal_m = re.search(r"(?:Closing Balance|Ending Balance|Total Balance|Available Funds)[\s:]+([₹\$£€]?\s*[0-9,]+(?:\.[0-9]{2})?(?:\s*[A-Z]{3})?)", full_text, re.IGNORECASE)
+        bal_m = re.search(
+            r"(?:Closing Balance|Ending Balance|Total Balance|Available Balance|Available Funds)[\s:]+((?:(?:INR|USD|CAD|GBP|AUD|EUR|Rs\.?|C\$|A\$|US\$)\s*)?[₹\$£€]?\s*[0-9,]+(?:\.[0-9]{2})?(?:\s*(?:INR|USD|CAD|GBP|AUD|EUR))?)",
+            full_text,
+            re.IGNORECASE,
+        )
         if bal_m and "closing_balance" not in added_keys:
             add_field("closing_balance", "Closing Balance", bal_m.group(1).strip(), normalize_currency_amount(bal_m.group(1).strip()), 1, 0.95)
 
@@ -2150,7 +2178,11 @@ def extract_structured_fields(
                 0.95,
                 method="financial_forensics_engine",
             )
-        if stmt_summary.minimum_balance_observed > 0 and "minimum_monthly_balance" not in added_keys:
+        if (
+            stmt_summary.minimum_balance_observed is not None
+            and stmt_summary.minimum_balance_observed > 0
+            and "minimum_monthly_balance" not in added_keys
+        ):
             add_field(
                 "minimum_monthly_balance",
                 "Observed Minimum Balance",

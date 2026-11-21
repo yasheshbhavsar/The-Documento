@@ -8,8 +8,57 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
+import logging
 import uuid
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_upload_mime_type(
+    content: bytes, declared_mime: Optional[str], filename: str = ""
+) -> str:
+    """Resolve true MIME type via magic bytes first, then filename extension, then declared header.
+
+    Prevents images/PDFs sent with `application/octet-stream` or blank Content-Type
+    from being misrouted to UTF-8 text decoding and skipping OCR.
+    """
+    head = bytes(content[:16]) if content else b""
+    if head.startswith(b"%PDF-"):
+        return "application/pdf"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    if head.startswith((b"II*\x00", b"MM\x00*")):
+        return "image/tiff"
+    if head.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if head.startswith(b"BM"):
+        return "image/bmp"
+
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    ext_map = {
+        "pdf": "application/pdf",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "webp": "image/webp",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
+        "bmp": "image/bmp",
+        "gif": "image/gif",
+        "txt": "text/plain",
+    }
+    if ext in ext_map:
+        return ext_map[ext]
+
+    if declared_mime and declared_mime.strip() and declared_mime.strip() != "application/octet-stream":
+        return declared_mime.strip().lower()
+    return "application/octet-stream"
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
@@ -62,10 +111,11 @@ def _render_pdf_thumbnails_single_open(
     page_images: dict[int, str] = {}
     if not document_bytes:
         return page_images
+    resolved_mime = _resolve_upload_mime_type(document_bytes, mime_type)
     try:
         import fitz
 
-        if mime_type == "application/pdf" or document_bytes.startswith(b"%PDF"):
+        if resolved_mime == "application/pdf" or document_bytes.startswith(b"%PDF"):
             mat = fitz.Matrix(1.6, 1.6)
             with fitz.open(stream=document_bytes, filetype="pdf") as pdf_doc:
                 limit = min(len(pdf_doc), max_pages)
@@ -73,11 +123,23 @@ def _render_pdf_thumbnails_single_open(
                     pix = pdf_doc[idx].get_pixmap(matrix=mat, alpha=False)
                     img_b64 = base64.b64encode(pix.tobytes("jpeg", jpg_quality=85)).decode("ascii")
                     page_images[idx + 1] = f"data:image/jpeg;base64,{img_b64}"
-        elif mime_type.startswith("image/"):
-            img_b64 = base64.b64encode(document_bytes).decode("ascii")
-            page_images[1] = f"data:{mime_type};base64,{img_b64}"
+        elif resolved_mime.startswith("image/"):
+            if resolved_mime in ("image/tiff", "image/bmp"):
+                from PIL import Image, ImageOps
+
+                with Image.open(io.BytesIO(document_bytes)) as raw_im:
+                    im = ImageOps.exif_transpose(raw_im)
+                    if im.mode not in ("RGB", "L"):
+                        im = im.convert("RGB")
+                    buf = io.BytesIO()
+                    im.save(buf, format="PNG")
+                    img_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+                    page_images[1] = f"data:image/png;base64,{img_b64}"
+            else:
+                img_b64 = base64.b64encode(document_bytes).decode("ascii")
+                page_images[1] = f"data:{resolved_mime};base64,{img_b64}"
     except Exception:
-        pass
+        logger.exception("Failed rendering preview thumbnails for mime=%s", resolved_mime)
     return page_images
 
 router = APIRouter(prefix="/extractor", tags=["extractor"])
@@ -146,7 +208,7 @@ async def analyze_document_standalone(
                     detail=f"Uploaded file exceeds maximum limit of {MAX_ALLOWED_FILE_SIZE // (1024 * 1024)}MB.",
                 )
         document_bytes = bytes(doc_bytes_acc)
-        mime_type = file.content_type or "application/octet-stream"
+        mime_type = _resolve_upload_mime_type(document_bytes, file.content_type, content_filename)
     elif clean_raw_text:
         document_bytes = clean_raw_text.encode("utf-8")
         mime_type = "text/plain"
@@ -161,7 +223,7 @@ async def analyze_document_standalone(
 
     # 1. OCR Extraction & Geometries
     pages: list[PageExtractionResult] = []
-    if mime_type == "text/plain" or (mime_type == "application/octet-stream" and not document_bytes.startswith(b"%PDF")):
+    if mime_type == "text/plain":
         # Pure text input - filter strictly to English, Gujarati, and Hindi characters and strip dotted leader lines
         raw_text_str = document_bytes.decode("utf-8", errors="replace")
         text_str = clean_ocr_text(raw_text_str)
@@ -199,20 +261,19 @@ async def analyze_document_standalone(
         try:
             pages = await run_in_threadpool(OCREngine.extract_document, document_bytes, mime_type=mime_type)
         except Exception:
-            # Fallback text representation
-            text_str = document_bytes.decode("latin1", errors="ignore")
+            logger.exception("OCREngine.extract_document failed for %s (%s)", content_filename, mime_type)
             pages = [
                 PageExtractionResult(
                     page_number=1,
-                    text=text_str,
+                    text="",
                     ocr_applied=True,
-                    ocr_confidence=0.85,
+                    ocr_confidence=0.0,
                     blocks=[],
                     width=612.0,
                     height=792.0,
                     detected_rotation=0,
                     is_rotation_corrected=False,
-                    raw_unfiltered_text=text_str,
+                    raw_unfiltered_text="",
                 )
             ]
 
@@ -547,6 +608,17 @@ async def analyze_document_standalone(
     if file is not None and document_bytes and mime_type != "text/plain":
         decoded_barcodes = await run_in_threadpool(_safe_decode_barcodes, document_bytes, mime_type)
     specialized_intelligence["barcodes"] = decoded_barcodes
+    specialized_intelligence["barcode_qr_payloads"] = [
+        {
+            "format": bc.get("format") or bc.get("type") or "QR_CODE",
+            "payload_type": bc.get("payload_type") or bc.get("category") or "Verified Credential",
+            "decoded_summary": bc.get("decoded_summary") or bc.get("summary") or str(bc.get("raw_data") or ""),
+            "verified": bool(bc.get("verified", True)),
+            "fields": bc.get("fields") or {},
+        }
+        for bc in decoded_barcodes
+        if isinstance(bc, dict)
+    ]
 
     try:
         single_doc_payload = {
@@ -558,9 +630,15 @@ async def analyze_document_standalone(
             "extracted_fields": formatted_fields,
             "barcodes": decoded_barcodes,
         }
-        specialized_intelligence["role_attribution"] = SponsorIntelligenceEngine.infer_role_for_document(
-            single_doc_payload
-        )
+        inferred_role = SponsorIntelligenceEngine.infer_role_for_document(single_doc_payload)
+        if isinstance(inferred_role, dict):
+            inferred_role = {
+                **inferred_role,
+                "person_name": inferred_role.get("person_name") or inferred_role.get("holder_name"),
+                "subtype_label": inferred_role.get("subtype_label") or category_label,
+                "statutory_badges": inferred_role.get("statutory_badges") or [],
+            }
+        specialized_intelligence["role_attribution"] = inferred_role
         specialized_intelligence["sponsor_statutory_intelligence"] = (
             SponsorIntelligenceEngine.evaluate_packet_or_case_intelligence([single_doc_payload])
         )
@@ -570,6 +648,9 @@ async def analyze_document_standalone(
             "role_label": "Principal Applicant",
             "confidence": 0.85,
             "holder_name": None,
+            "person_name": None,
+            "subtype_label": category_label,
+            "statutory_badges": [],
             "association_note": "Attributed to Principal Applicant",
         }
         specialized_intelligence["sponsor_statutory_intelligence"] = {}

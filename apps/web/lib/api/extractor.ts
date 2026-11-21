@@ -21,17 +21,20 @@ export interface BarcodeQrPayload {
 }
 
 export interface RoleAttributionSummary {
-  person_name: string;
+  person_name?: string;
+  holder_name?: string | null;
   person_role: DetectedPersonRole;
+  role_label?: string;
   sponsor_jurisdiction?: "CA" | "UK" | "AU" | null;
   confidence: number;
-  subtype_label: string;
-  statutory_badges: string[];
+  subtype_label?: string;
+  association_note?: string;
+  statutory_badges?: string[];
 }
 
 export interface SponsorStatutoryIntelligence {
-  jurisdiction: "CA" | "UK" | "AU";
-  document_subtype: string;
+  jurisdiction?: "CA" | "UK" | "AU";
+  document_subtype?: string;
   sponsor_name?: string;
   status_verified?: boolean;
   status_type?: string;
@@ -51,7 +54,30 @@ export interface SponsorStatutoryIntelligence {
   uk_appendix_v_compliant?: boolean;
   au_vevo_entitlement?: string;
   au_ato_taxable_income_aud?: number;
-  statutory_badges: string[];
+  statutory_badges?: string[];
+  // Backend SponsorIntelligenceEngine nested structure fields
+  pathway?: string;
+  super_visa_lico?: {
+    total_sponsor_income_cad?: number;
+    required_lico_cad?: number;
+    meets_lico?: boolean;
+    family_size?: number;
+    insurance_compliant?: boolean | null;
+    insurance_coverage_cad?: number | null;
+  };
+  crs_sibling_points?: {
+    points_awarded?: number;
+    eligible?: boolean;
+    shared_parent?: string | null;
+  };
+  uk_sponsor_check?: {
+    share_code?: string | null;
+    uk_hmrc_gross_pay_gbp?: number | null;
+  };
+  au_sponsor_check?: {
+    vevo_status?: string | null;
+    ato_taxable_income_aud?: number | null;
+  };
 }
 
 export interface ExtractorSampleItem {
@@ -140,12 +166,12 @@ export interface ExtractorAnalysisResult {
     };
     financial_forensics?: {
       institution: string;
-      account_number_masked: string;
+      account_number_masked?: string | null;
       statement_period: string;
-      opening_balance: number;
-      closing_balance: number;
-      minimum_balance_observed: number;
-      average_monthly_credits: number;
+      opening_balance?: number | null;
+      closing_balance?: number | null;
+      minimum_balance_observed?: number | null;
+      average_monthly_credits?: number | null;
       currency: string;
       suspicious_lump_sums: Array<{
         date: string;
@@ -1042,13 +1068,13 @@ export async function generateClientFallbackAnalysis(
       original_value: orig.trim(),
       normalized_value: (norm || orig).trim(),
       source_page: 1,
-      ocr_confidence: 0.96,
-      extraction_confidence: 0.95,
-      calibrated_confidence: 0.95,
+      ocr_confidence: 0,
+      extraction_confidence: 0,
+      calibrated_confidence: 0,
       extraction_method: method,
-      model_version: "doc-intel-v5.0-client",
+      model_version: "doc-intel-v5.0-client-offline",
       bounding_box: bbox,
-      review_status: "VERIFIED",
+      review_status: "NEEDS_HUMAN_REVIEW",
     });
   };
 
@@ -1056,7 +1082,7 @@ export async function generateClientFallbackAnalysis(
   const barcodes: BarcodeQrPayload[] = [];
   const statutoryBadges: string[] = [];
 
-  // Only parse fields genuinely present in readable text — never fabricate defaults or demo PII.
+  // Only parse fields genuinely present in readable text — never fabricate defaults, barcodes, or demo PII.
   if (hasReadableContent && subtypeLabel.includes("CRA Notice of Assessment")) {
     const sponsorMatch = contentText.match(/(?:Taxpayer\s*Name|Sponsor\s*Name|Name):\s*([^\n\r]+)/i)?.[1]?.trim();
     const line15000Match = contentText.match(/Line\s*15000[^\d$]*\$?([\d,]+(?:\.\d{2})?)/i)?.[1];
@@ -1082,19 +1108,11 @@ export async function generateClientFallbackAnalysis(
       addFallbackField("super_visa_lico_threshold", `IRCC LICO Threshold (${householdSize} Persons)`, `$${licoThreshold.toLocaleString("en-US")} CAD`, String(licoThreshold), "ircc_lico_engine", [0.42, 0.1, 0.47, 0.68]);
       addFallbackField("super_visa_lico_status", "Super Visa Income Assessment", badge2, licoMet ? "MET" : "SHORTFALL", "ircc_lico_engine", [0.49, 0.1, 0.54, 0.75]);
 
-      barcodes.push({
-        format: "QR_CODE",
-        payload_type: "CRA_NOA_CONTROL_CODE",
-        decoded_summary: `CRA Notice of Assessment — Line 15000 $${incomeCad.toLocaleString("en-US")} CAD`,
-        verified: true,
-        fields: { line_15000_cad: String(incomeCad) },
-      });
-
       specialized.sponsor_statutory_intelligence = {
         jurisdiction: "CA",
         document_subtype: subtypeLabel,
         sponsor_name: sponsorMatch,
-        status_verified: true,
+        status_verified: false,
         cra_noa_line_15000_cad: incomeCad,
         ircc_lico_threshold_cad: licoThreshold,
         ircc_lico_household_size: householdSize,
@@ -1118,28 +1136,19 @@ export async function generateClientFallbackAnalysis(
       detectedPersonName = holderMatch;
       addFallbackField("sponsor_full_name", personRole === "canadian_crs_sibling" ? "Canadian Sibling Full Name" : "Canadian Host Full Name", holderMatch, holderMatch.toUpperCase(), "ircc_pr_card_ocr");
     }
-    if (uciMatch) addFallbackField("ircc_uci_number", "IRCC UCI Number", uciMatch, uciMatch, "pdf417_2d_barcode");
+    if (uciMatch) addFallbackField("ircc_uci_number", "IRCC UCI Number", uciMatch, uciMatch, "client_text_parser");
     if (sharedParent) addFallbackField("father_name", "Shared Parent Legal Name", sharedParent);
     if (holderMatch || uciMatch) {
-      statutoryBadges.push("Canadian PR Card Verified");
+      statutoryBadges.push("Canadian PR Card Detected (Needs Human Review)");
       if (personRole === "canadian_crs_sibling") {
         statutoryBadges.push("+15 CRS Canadian Sibling Verified");
       }
-      addFallbackField("canadian_status", "Canadian Immigration Status", subtypeLabel.includes("Citizenship") ? "Canadian Citizen" : "Permanent Resident of Canada", "VERIFIED_PR_CITIZEN");
-      if (holderMatch && uciMatch) {
-        barcodes.push({
-          format: "PDF417",
-          payload_type: "IRCC_PR_CARD_2D_BARCODE",
-          decoded_summary: `CANPR<<${holderMatch.toUpperCase().replace(/\s+/g, "<<")}<<${uciMatch.replace(/-/g, "")}`,
-          verified: true,
-          fields: { uci: uciMatch, holder: holderMatch },
-        });
-      }
+      addFallbackField("canadian_status", "Canadian Immigration Status", subtypeLabel.includes("Citizenship") ? "Canadian Citizen" : "Permanent Resident of Canada", "PENDING_HUMAN_REVIEW");
       specialized.sponsor_statutory_intelligence = {
         jurisdiction: "CA",
         document_subtype: subtypeLabel,
         sponsor_name: holderMatch,
-        status_verified: true,
+        status_verified: false,
         status_type: subtypeLabel,
         crs_sibling_points_awarded: personRole === "canadian_crs_sibling" ? 15 : undefined,
         crs_sibling_shared_parent: sharedParent,
@@ -1321,12 +1330,6 @@ export async function generateClientFallbackAnalysis(
 
     if (mrz) {
       addFallbackField("mrz_code", "Machine Readable Zone (MRZ)", mrz, mrz, "icao_mrz_engine", [0.82, 0.06, 0.94, 0.94]);
-      barcodes.push({
-        format: "ICAO_MRZ_TD3",
-        payload_type: "PASSPORT_MRZ_CHECKDIGIT",
-        decoded_summary: detectedPersonName ? `TD3 MRZ Parsed (${detectedPersonName})` : "TD3 MRZ Parsed",
-        verified: true,
-      });
     }
     if (aadhaarRaw) {
       const masked = `XXXX-XXXX-${aadhaarRaw[2]}`;
@@ -1462,15 +1465,13 @@ export async function generateClientFallbackAnalysis(
     }
   }
 
-  if (barcodes.length > 0) {
-    specialized.barcode_qr_payloads = barcodes;
-  }
+  specialized.barcode_qr_payloads = barcodes;
 
   specialized.role_attribution = {
     person_name: detectedPersonName,
     person_role: personRole,
     sponsor_jurisdiction: sponsorJurisdiction,
-    confidence: fields.length > 0 ? 0.95 : 0.0,
+    confidence: 0,
     subtype_label: subtypeLabel,
     statutory_badges: statutoryBadges,
   };
@@ -1479,7 +1480,7 @@ export async function generateClientFallbackAnalysis(
   const blocks = lines.slice(0, 25).map((l, idx) => ({
     block_idx: idx,
     text: l.trim(),
-    confidence: 0.95,
+    confidence: 0,
     coordinates: [50.0, 40.0 + idx * 22.0, 550.0, 58.0 + idx * 22.0] as [number, number, number, number],
   }));
 
@@ -1509,13 +1510,13 @@ export async function generateClientFallbackAnalysis(
       page_count: 1,
       detected_language: "en",
       total_blocks_detected: blocks.length,
-      overall_health_score: fields.length > 0 ? 95 : 0,
+      overall_health_score: 0,
       backend_offline: Boolean(errorContext && !/^HTTP 4(?:00|13|15|22)/.test(errorContext) && !/^Analysis failed with HTTP 4(?:00|13|15|22)/.test(errorContext)),
     },
     recognition: {
       category,
       category_label: categoryLabel,
-      confidence: fields.length > 0 ? 0.95 : 0.25,
+      confidence: fields.length > 0 ? 0.5 : 0.0,
       matched_keywords: ["PASSPORT", "CRA", "NOA", "PR CARD", "RESUME", "EXPERIENCE", "EMPLOYMENT", "EDUCATION", "MARRIAGE"]
         .filter((k) => lower.includes(k.toLowerCase())),
     },
@@ -1524,14 +1525,14 @@ export async function generateClientFallbackAnalysis(
     specialized_intelligence: specialized,
     ocr_summary: {
       ocr_applied: false,
-      avg_page_confidence: fields.length > 0 ? 0.95 : 0.0,
+      avg_page_confidence: 0.0,
       pages: [
         {
           page_number: 1,
           width: 612.0,
           height: 792.0,
           ocr_applied: false,
-          ocr_confidence: fields.length > 0 ? 0.95 : 0.0,
+          ocr_confidence: 0.0,
           rotation_corrected: false,
           detected_rotation: 0,
           block_count: blocks.length,
@@ -1592,8 +1593,20 @@ export interface PacketSortResult {
   zip_archive_base64?: string | null;
 }
 
+/**
+ * @deprecated Legacy test fixture constants retained solely for unit-test asset compatibility.
+ * Offline packet sorting and extraction NEVER fabricate or return these blank binary stubs.
+ */
 export const MINIMAL_VALID_PDF_BASE64 =
-  "JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqIDIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iaiAzIDAgb2JqPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCA2MTIgNzkyXS9QYXJlbnQgMiAwIFI+PmVuZG9iaiB0cmFpbGVyPDwvUm9vdCAxIDAgUj4+CiUlRU9G";
+  "JVBERi0xLjQKJcOkw7zDtsOfCjIgMCBvYmoKPDwvTGVuZ3RoIDMgMCBSL0ZpbHRlci9GbGF0ZURlY29kZT4+CnN0cmVhbQp4nDMwMFAA" +
+  "Q24FBL8Cgv8hCQA2CwQ5CmVuZHN0cmVhbQplbmRvYmoKMyAwIG9iagoxOAplbmRvYmoKMSAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50" +
+  "IDQgMCBSL01lZGlhQm94WzAgMCA2MTIgNzkyXS9Db250ZW50cyAyIDAgUj4+CmVuZG9iago0IDAgb2JqCjw8L1R5cGUvUGFnZXMvS2lk" +
+  "c1sxIDAgUl0vQ291bnQgMT4+CmVuZG9iago1IDAgb2JqCjw8L1R5cGUvQ2F0YWxvZy9QYWdlcyA0IDAgUj4+CmVuZG9iagp4cmVmCjAg" +
+  "NgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAxMjEgMDAwMDAgbiAKMDAwMDAwMDAyMyAwMDAwMCBuIAowMDAwMDAwMTA0IDAwMDAw" +
+  "IG4gCjAwMDAwMDAxOTggMDAwMDAgbiAKMDAwMDAwMDI1NSAwMDAwMCBuIAp0cmFpbGVyCjw8L1NpemUgNi9Sb290IDUgMCBSPj4Kc3Rh" +
+  "cnR4cmVmCjMwNwolJUVPRgo=";
+
+/** @deprecated Legacy test fixture constant; offline packet sorting returns `zip_archive_base64: null`. */
 export const MINIMAL_VALID_ZIP_BASE64 = "UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==";
 
 export async function generateClientFallbackPacketSort(
@@ -1724,7 +1737,7 @@ export async function generateClientFallbackPacketSort(
           statutory_badges: grp.analysis.specialized_intelligence.role_attribution?.statutory_badges || [],
           extracted_fields: grp.extractedMap,
           text_preview: grp.rawText.slice(0, 1200),
-          pdf_base64: MINIMAL_VALID_PDF_BASE64,
+          pdf_base64: undefined,
         };
 
         let existingFolder = folderMap.get(key);
@@ -1795,7 +1808,7 @@ export async function generateClientFallbackPacketSort(
                     ...(grp.extractedMap.marriage_date ? { marriage_date: grp.extractedMap.marriage_date } : {}),
                   },
                   text_preview: grp.rawText.slice(0, 800),
-                  pdf_base64: MINIMAL_VALID_PDF_BASE64,
+                  pdf_base64: undefined,
                 },
               ],
             });
@@ -1813,7 +1826,7 @@ export async function generateClientFallbackPacketSort(
         total_split_documents: personFolders.reduce((acc, f) => acc + f.documents.length, 0),
         person_folders: personFolders,
         zip_archive_filename: `${fname.replace(/\.[^/.]+$/, "")}_Sorted_By_Person.zip`,
-        zip_archive_base64: MINIMAL_VALID_ZIP_BASE64,
+        zip_archive_base64: null,
       };
     }
   }
@@ -1845,7 +1858,7 @@ export async function generateClientFallbackPacketSort(
     statutory_badges: analysis.specialized_intelligence.role_attribution?.statutory_badges || [],
     extracted_fields: extractedMap,
     text_preview: contentText.slice(0, 1200) || `Binary file uploaded (${fname}) — OCR backend required for optical parsing.`,
-    pdf_base64: MINIMAL_VALID_PDF_BASE64,
+    pdf_base64: undefined,
   };
 
   const primaryAnchors: Record<string, string[]> = {};
@@ -1907,7 +1920,7 @@ export async function generateClientFallbackPacketSort(
             ...(extractedMap.marriage_date ? { marriage_date: extractedMap.marriage_date } : {}),
           },
           text_preview: contentText.slice(0, 800),
-          pdf_base64: MINIMAL_VALID_PDF_BASE64,
+          pdf_base64: undefined,
         },
       ],
     });
@@ -1922,7 +1935,7 @@ export async function generateClientFallbackPacketSort(
     total_split_documents: personFolders.reduce((acc, f) => acc + f.documents.length, 0),
     person_folders: personFolders,
     zip_archive_filename: `${fname.replace(/\.[^/.]+$/, "")}_Sorted_By_Person.zip`,
-    zip_archive_base64: MINIMAL_VALID_ZIP_BASE64,
+    zip_archive_base64: null,
   };
 }
 
@@ -2007,7 +2020,7 @@ function isLikelyMultiDocumentPacket(file: File, contentSnippet: string): boolea
  * client-side fallback for 100% offline/test reliability.
  */
 export async function runSmartIntakePipeline(
-  files: File[],
+  rawFiles: Array<File | null | undefined>,
   options?: {
     caseId?: string;
     contributorRole?: "applicant" | "sponsor" | "staff";
@@ -2021,7 +2034,8 @@ export async function runSmartIntakePipeline(
     }) => void;
   }
 ): Promise<SmartIntakeApiResult> {
-  if (!files || files.length === 0) {
+  const files = (rawFiles || []).filter((f): f is File => Boolean(f));
+  if (files.length === 0) {
     return {
       totalFilesDropped: 0,
       totalPagesProcessed: 0,

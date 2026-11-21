@@ -1033,7 +1033,11 @@ class OCREngine:
         """
         results: list[PageExtractionResult] = []
 
-        if mime_type == "application/pdf" or preopened_doc is not None:
+        if (
+            mime_type == "application/pdf"
+            or preopened_doc is not None
+            or (isinstance(content, (bytes, bytearray)) and bytes(content[:5]) == b"%PDF-")
+        ):
             owns_doc = preopened_doc is None
             doc = None
             try:
@@ -1375,10 +1379,12 @@ class OCREngine:
                         pass
 
         else:
-            # Image file (JPEG, PNG, TIFF, WebP)
+            # Image file (JPEG, PNG, TIFF, WebP, BMP, GIF)
             try:
                 detected_rot = 0
                 is_rot_corrected = False
+                width, height = 612.0, 792.0
+                got_pil_dims = False
                 try:
                     from PIL import Image, ImageOps
                     with Image.open(io.BytesIO(content)) as im:
@@ -1393,28 +1399,42 @@ class OCREngine:
 
                         if detected_rot != 0 or orientation != 1:
                             transposed = ImageOps.exif_transpose(im)
+                            width, height = float(transposed.width), float(transposed.height)
+                            got_pil_dims = True
                             buf = io.BytesIO()
-                            transposed.save(buf, format=im.format or "PNG")
+                            save_fmt = im.format if im.format in ("PNG", "JPEG", "WEBP", "TIFF", "BMP") else "PNG"
+                            transposed.save(buf, format=save_fmt)
                             content = buf.getvalue()
                             is_rot_corrected = True
+                        else:
+                            width, height = float(im.width), float(im.height)
+                            got_pil_dims = True
                 except Exception:
                     pass
 
-                img_doc = pymupdf.open(stream=content, filetype=mime_type.split("/")[-1])
-                width, height = 612.0, 792.0
-                if len(img_doc) > 0:
-                    rect = img_doc[0].rect
-                    width, height = float(rect.width), float(rect.height)
-                img_doc.close()
+                if not got_pil_dims and pymupdf is not None:
+                    try:
+                        img_doc = pymupdf.open(stream=content, filetype=mime_type.split("/")[-1])
+                        if len(img_doc) > 0:
+                            rect = img_doc[0].rect
+                            width, height = float(rect.width), float(rect.height)
+                        img_doc.close()
+                    except Exception:
+                        pass
 
                 # Perform OCR on image bytes
                 img_text, blocks = cls._ocr_image_content(content, width, height)
+                avg_conf = (
+                    round(sum(b.confidence for b in blocks) / len(blocks), 3)
+                    if blocks
+                    else (0.91 if img_text.strip() else 0.0)
+                )
                 results.append(
                     PageExtractionResult(
                         page_number=1,
                         text=img_text,
                         ocr_applied=True,
-                        ocr_confidence=0.91,
+                        ocr_confidence=avg_conf,
                         blocks=blocks,
                         width=width,
                         height=height,
@@ -1428,7 +1448,7 @@ class OCREngine:
                         page_number=1,
                         text="",
                         ocr_applied=True,
-                        ocr_confidence=0.6,
+                        ocr_confidence=0.0,
                         blocks=[],
                         width=612.0,
                         height=792.0,

@@ -29,6 +29,12 @@ import {
   inferRawFileCategoryAndLabel,
 } from "../../lib/rawClientPacketStore";
 import { useWorkspaceSafe } from "../../lib/context/WorkspaceContext";
+import {
+  ExtractionNotificationToastPayload,
+  notifyExtractionComplete,
+  primeExtractionNotifications,
+} from "../../lib/notifications";
+import { ExtractionCompletionToast } from "./ExtractionCompletionToast";
 
 export interface SmartIntakeDocumentResult {
   id: string;
@@ -291,6 +297,8 @@ export function SmartDropzone(props: SmartDropzoneProps): React.JSX.Element {
   const [prefillConfirmed, setPrefillConfirmed] = useState(false);
   const [showForensicsDrawer, setShowForensicsDrawer] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [completionToast, setCompletionToast] =
+    useState<ExtractionNotificationToastPayload | null>(null);
 
   const storageKeyId = caseId || "default_client";
   const uploadRole: RoleCode =
@@ -457,7 +465,11 @@ export function SmartDropzone(props: SmartDropzoneProps): React.JSX.Element {
     const initialPages = files.length === 1 ? Math.max(1, Math.min(42, Math.ceil((files[0].size || 4096) / 4096))) : files.length;
 
     bgJobIdRef.current = null;
+    // Unlock Web Audio & request OS notification permission inside file selection gesture
+    primeExtractionNotifications();
+
     setErrorMsg(null);
+    setCompletionToast(null);
     setPrefillConfirmed(false);
     setShowForensicsDrawer(false);
     setActiveBatchName(batchLabel);
@@ -689,6 +701,16 @@ export function SmartDropzone(props: SmartDropzoneProps): React.JSX.Element {
 
       setRawApiDocs(result.documents);
       setLastSummary(summary);
+      setCompletionToast(
+        notifyExtractionComplete({
+          filename: batchLabel,
+          fieldsCount: prefillKeysCount,
+          pagesCount: result.totalPagesProcessed,
+          documentsCount: summaryDocs.length,
+          offlineFallback: Boolean(result.backendOffline),
+          source: "paralegal_studio",
+        })
+      );
       onIntakeComplete?.(summary);
     } catch (err: any) {
       const message = err?.message || "Document intake failed.";
@@ -1356,6 +1378,11 @@ export function SmartDropzone(props: SmartDropzoneProps): React.JSX.Element {
           )}
         </div>
       )}
+
+      <ExtractionCompletionToast
+        toast={completionToast}
+        onDismiss={() => setCompletionToast(null)}
+      />
     </div>
   );
 }

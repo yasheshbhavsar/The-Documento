@@ -14,7 +14,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.resolve(__dirname),
   experimental: {
-    proxyTimeout: 120000,
+    proxyTimeout: 300000,
+    proxyClientMaxBodySize: "100mb",
     agentUpgrade: "security",
   },
   turbopack: {

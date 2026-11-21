@@ -10,9 +10,20 @@ if (-not (Test-Path $venvScripts)) {
     exit 1
 }
 
-$alembicExe = Join-Path $venvScripts "alembic.exe"
-$uvicornExe = Join-Path $venvScripts "uvicorn.exe"
+$pythonExe = Join-Path $venvScripts "python.exe"
 $alembicIni = Join-Path $backendDir "alembic.ini"
+
+if (-not (Test-Path $pythonExe)) {
+    Write-Error "Python interpreter not found at $pythonExe. Please ensure backend virtual environment is initialized."
+    exit 1
+}
+
+# Guard against spawning duplicate uvicorn listeners on port 8000 on Windows
+$existingPort = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
+if ($existingPort) {
+    Write-Host "FastAPI backend is already listening on port 8000 (PID: $($existingPort[0].OwningProcess)). Skipping duplicate launch." -ForegroundColor Yellow
+    exit 0
+}
 
 if (-not $env:DATABASE_URL) {
     $envFile = Join-Path $scriptDir ".env"
@@ -25,7 +36,8 @@ if (-not $env:DATABASE_URL) {
                 [Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim(), "Process")
             }
         }
-    } elseif (Test-Path $backendEnv) {
+    }
+    elseif (Test-Path $backendEnv) {
         Get-Content $backendEnv | ForEach-Object {
             $line = $_.Trim()
             if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
@@ -47,7 +59,7 @@ Set-Location $backendDir
 Write-Host "Checking database / running Alembic migrations..." -ForegroundColor Cyan
 $prevErrorPref = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-& $alembicExe -c $alembicIni upgrade head
+& $pythonExe -m alembic -c $alembicIni upgrade head
 $alembicExit = $LASTEXITCODE
 $ErrorActionPreference = $prevErrorPref
 
@@ -62,4 +74,4 @@ if ($alembicExit -ne 0) {
 
 Write-Host "Starting FastAPI server at http://localhost:8000..." -ForegroundColor Green
 Write-Host "OpenAPI documentation: http://localhost:8000/docs" -ForegroundColor Yellow
-& $uvicornExe backend.app.main:app --reload --port 8000
+& $pythonExe -m uvicorn backend.app.main:app --reload --port 8000
